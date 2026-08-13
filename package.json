@@ -1,0 +1,12 @@
+{
+  "name": "wb-analytics",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Лента заказов и аналитика продавца Wildberries",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js",
+    "test": "node --test"
+  },
+  "engines": { "node": ">=20" }
+}
