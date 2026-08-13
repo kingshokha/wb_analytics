@@ -1,16 +1,31 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { normalizeOrders, extractFunnel, WB_HOSTS } = require('../server');
+const { normalizeOrders, normalizeOrderFeed, extractFunnel, WB_HOSTS } = require('../server');
 
-test('объединяет и сортирует FBS и статистические заказы', () => {
+test('объединяет и сортирует FBS и события ленты WB', () => {
   const result = normalizeOrders(
     { orders: [{ id: 1, nmId: 11, createdAt: '2026-08-12T10:00:00Z', price: 5000 }] },
-    [{ srid: 's2', nmId: 12, date: '2026-08-13T10:00:00Z', totalPrice: 100 }]
+    { data: { currency: 'RUB', orders: [{ srid: 's2', nmId: 12, chrtId: 22, createdAt: '2026-08-11T10:00:00Z', updatedAt: '2026-08-13T10:00:00Z', status: 'buyout', sellerPrice: 100 }] } }
   );
   assert.equal(result.length, 2);
   assert.equal(result[0].id, 's2');
   assert.equal(result[1].source, 'FBS');
+});
+
+test('преобразует актуальный ответ order-feed и использует время обновления события', () => {
+  const result = normalizeOrderFeed({ data: { currency: 'RUB', orders: [{
+    nmId: 938594007, chrtId: 1413756489, srid: 'order.1', createdAt: '2026-08-06T08:37:34Z',
+    updatedAt: '2026-08-12T16:02:24Z', status: 'cancel', cancelType: 'receipt',
+    warehouseName: 'Коледино', warehouseRegion: 'Центральный', destinationCity: 'Санкт-Петербург',
+    destinationDistrict: 'Северо-Западный', sellerPrice: 970.09, isMp: false, isB2b: false
+  }] } });
+  assert.equal(result[0].id, 'order.1');
+  assert.equal(result[0].createdAt, '2026-08-12T16:02:24Z');
+  assert.equal(result[0].orderedAt, '2026-08-06T08:37:34Z');
+  assert.equal(result[0].status, 'cancel');
+  assert.equal(result[0].price, 97009);
+  assert.equal(result[0].source, 'Лента WB');
 });
 
 test('суммирует показатели воронки разных товаров', () => {
