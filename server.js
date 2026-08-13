@@ -118,6 +118,8 @@ function dateDaysAgo(days) {
   const date = new Date(); date.setDate(date.getDate() - days); return date.toISOString().slice(0, 10);
 }
 
+function wait(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
+
 async function cachedAnalytics(key, loader, ttl = 60_000) {
   const cached = analyticsCache.get(key);
   if (cached && Date.now() - cached.savedAt < ttl) return cached.value;
@@ -129,6 +131,35 @@ async function cachedAnalytics(key, loader, ttl = 60_000) {
     if (cached) return cached.value;
     throw error;
   }
+}
+
+async function loadProductCards(token) {
+  const cards = [];
+  let cursor = { limit: 100 };
+  for (let page = 0; page < 50; page++) {
+    const response = await wbRequest(token, 'https://content-api.wildberries.ru/content/v2/get/cards/list', {
+      method: 'POST',
+      body: { settings: { sort: { ascending: false }, cursor, filter: { withPhoto: -1 } } }
+    });
+    const batch = Array.isArray(response?.cards) ? response.cards : [];
+    cards.push(...batch);
+    if (batch.length < 100 || !response?.cursor?.updatedAt || !response?.cursor?.nmID) break;
+    cursor = { limit: 100, updatedAt: response.cursor.updatedAt, nmID: response.cursor.nmID };
+    if ((page + 1) % 5 === 0) await wait(650);
+  }
+  return cards;
+}
+
+function enrichOrders(orders, cards) {
+  const byNmId = new Map((cards || []).map(card => [String(card.nmID), card]));
+  return orders.map(order => {
+    const card = byNmId.get(String(order.nmId));
+    if (!card) return order;
+    const photo = card.photos?.[0];
+    return { ...order, name: card.title || order.name, article: card.vendorCode || order.article,
+      brand: card.brand || '', subjectName: card.subjectName || '',
+      photo: photo?.c246x328 || photo?.tm || photo?.square || photo?.big || '' };
+  });
 }
 
 function demoDashboard() {
@@ -213,10 +244,12 @@ async function dashboard(id, from, to) {
     cachedAnalytics(`sales-funnel:${id}:${safeFrom}:${safeTo}`, () => wbRequest(token, 'https://seller-analytics-api.wildberries.ru/api/analytics/v3/sales-funnel/products', { method: 'POST', body: {
       selectedPeriod: { start: safeFrom, end: safeTo }, nmIds: [], skipDeletedNm: true,
       orderBy: { field: 'openCard', mode: 'desc' }, limit: 1000, offset: 0
-    }})).catch(e => (warnings.push(`Воронка: ${e.message}`), { data: { products: [] } }))
+    }})).catch(e => (warnings.push(`Воронка: ${e.message}`), { data: { products: [] } })),
+    cachedAnalytics(`product-cards:${id}`, () => loadProductCards(token), 10 * 60_000)
+      .catch(e => (warnings.push(`Карточки товаров: ${e.message}`), []))
   ];
-  const [fbs, stats, funnel] = await Promise.all(jobs);
-  return { demo: false, orders: normalizeOrders(fbs, stats), funnel: extractFunnel(funnel), warnings };
+  const [fbs, orderFeed, funnel, cards] = await Promise.all(jobs);
+  return { demo: false, orders: enrichOrders(normalizeOrders(fbs, orderFeed), cards), funnel: extractFunnel(funnel), warnings };
 }
 
 async function handleApi(req, res, url) {
@@ -278,4 +311,4 @@ const server = http.createServer(async (req, res) => {
 
 if (require.main === module) server.listen(PORT, '127.0.0.1', () => console.log(`WB Analytics: http://127.0.0.1:${PORT}`));
 
-module.exports = { server, cabinets, normalizeOrders, normalizeOrderFeed, extractFunnel, WB_HOSTS };
+module.exports = { server, cabinets, normalizeOrders, normalizeOrderFeed, enrichOrders, extractFunnel, WB_HOSTS };
