@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>WB Pulse — заказы и аналитика</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <div class="shell">
+    <aside class="sidebar">
+      <a class="brand" href="#"><span class="brand-mark">W</span><span>WB Pulse</span></a>
+      <nav>
+        <button class="nav-item active" data-page="orders"><span>⌁</span> Заказы <b id="newBadge">0</b></button>
+        <button class="nav-item" data-page="funnel"><span>◫</span> Воронка</button>
+        <button class="nav-item" data-page="console"><span>⌘</span> API-консоль</button>
+      </nav>
+      <div class="sync-state"><i></i><span><strong>WB API</strong><small id="syncText">Подключение…</small></span></div>
+      <div class="cabinet-wrap">
+        <button class="cabinet" id="cabinetButton">
+          <span class="avatar" id="cabinetAvatar">Д</span>
+          <span><strong id="cabinetName">Демо-кабинет</strong><small id="cabinetMode">Без токена</small></span>
+          <em>⌃</em>
+        </button>
+        <div class="cabinet-menu" id="cabinetMenu">
+          <div class="menu-title">Кабинеты продавца</div>
+          <div id="cabinetList"></div>
+          <button class="rename" id="renameCabinet">✎ Переименовать выбранный</button>
+        </div>
+      </div>
+    </aside>
+
+    <main>
+      <header>
+        <div><p class="eyebrow">Операционный центр</p><h1 id="pageTitle">Лента заказов</h1></div>
+        <div class="header-actions">
+          <label class="date"><span>Период</span><input id="dateFrom" type="date"><b>—</b><input id="dateTo" type="date"></label>
+          <button class="refresh" id="refresh">↻ <span>Обновить</span></button>
+        </div>
+      </header>
+
+      <div id="alertArea"></div>
+
+      <section class="page active" id="page-orders">
+        <div class="metrics" id="metrics"></div>
+        <div class="panel">
+          <div class="panel-head">
+            <div><h2>Все заказы</h2><p id="orderCount">Загрузка данных…</p></div>
+            <div class="filters">
+              <label class="search">⌕ <input id="search" placeholder="Артикул, товар или номер"></label>
+              <select id="statusFilter"><option value="">Все статусы</option><option value="new">Новые</option><option value="confirm">На сборке</option><option value="complete">В доставке / проданы</option><option value="cancel">Отменены</option></select>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table><thead><tr><th>Заказ</th><th>Товар</th><th>Склад</th><th>Сумма</th><th>Статус</th><th></th></tr></thead><tbody id="ordersBody"></tbody></table>
+          </div>
+          <div class="empty hidden" id="emptyOrders"><span>⌕</span><h3>Заказы не найдены</h3><p>Измените фильтры или период.</p></div>
+        </div>
+      </section>
+
+      <section class="page" id="page-funnel">
+        <div class="funnel-layout">
+          <div class="panel funnel-panel"><div class="panel-head"><div><h2>Воронка продаж</h2><p>От первого интереса до выкупа</p></div><span class="live">● Данные WB</span></div><div id="funnelChart" class="funnel-chart"></div></div>
+          <div class="panel insight"><p class="eyebrow">Диагностика</p><h2>Конверсия этапов</h2><div id="conversionList"></div><div class="hint"><b>Как читать</b><p>Ищите самый большой провал между соседними этапами — там находится главный резерв роста.</p></div></div>
+        </div>
+      </section>
+
+      <section class="page" id="page-console">
+        <div class="console-grid">
+          <div class="panel console-form">
+            <p class="eyebrow">Все методы документации</p><h2>API-консоль</h2><p class="lead">Запрос проходит через сервер, поэтому токен не виден в браузере. Используйте только адрес метода из официальной документации WB.</p>
+            <label>HTTP-метод<select id="apiMethod"><option>GET</option><option>POST</option><option>PUT</option><option>PATCH</option><option>DELETE</option></select></label>
+            <label>Полный URL<input id="apiUrl" value="https://marketplace-api.wildberries.ru/api/v3/orders/new"></label>
+            <label>JSON-тело<textarea id="apiBody" spellcheck="false" placeholder="{}"></textarea></label>
+            <label class="confirm-line"><input type="checkbox" id="apiConfirm"> Подтверждаю изменяющий запрос</label>
+            <button class="primary" id="runApi">Выполнить запрос →</button>
+          </div>
+          <div class="panel response"><div class="panel-head"><div><h2>Ответ</h2><p id="apiStatus">Запрос ещё не выполнялся</p></div><button id="copyResponse">Копировать</button></div><pre id="apiResponse">{
+  "подсказка": "Выберите метод и выполните запрос"
+}</pre></div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <div class="modal" id="modal"><div class="modal-card"><button class="modal-x" id="modalClose">×</button><div id="modalContent"></div></div></div>
+  <div class="toast" id="toast"></div>
+  <script src="/app.js"></script>
+</body>
+</html>
