@@ -23,6 +23,7 @@ const WB_HOSTS = new Set([
   'common-api.wildberries.ru', 'user-management-api.wildberries.ru'
 ]);
 const ALLOWED_METHODS = new Set(['GET', 'POST', 'PUT', 'PATCH', 'DELETE']);
+const analyticsCache = new Map();
 
 function loadEnv(file) {
   if (!fs.existsSync(file)) return;
@@ -117,6 +118,19 @@ function dateDaysAgo(days) {
   const date = new Date(); date.setDate(date.getDate() - days); return date.toISOString().slice(0, 10);
 }
 
+async function cachedAnalytics(key, loader, ttl = 60_000) {
+  const cached = analyticsCache.get(key);
+  if (cached && Date.now() - cached.savedAt < ttl) return cached.value;
+  try {
+    const value = await loader();
+    analyticsCache.set(key, { value, savedAt: Date.now() });
+    return value;
+  } catch (error) {
+    if (cached) return cached.value;
+    throw error;
+  }
+}
+
 function demoDashboard() {
   const now = Date.now();
   const statuses = ['new', 'confirm', 'complete', 'cancel'];
@@ -131,17 +145,43 @@ function demoDashboard() {
   return { demo: true, orders, funnel: { views: 14840, cart: 3180, orders: 1246, sales: 982, revenue: 1762400, currency: 'RUB' }, warnings: [] };
 }
 
-function normalizeOrders(fbs, stats) {
+function currencyCode(currency) {
+  return ({ RUB: 643, BYN: 933, KZT: 398, AMD: 51, KGS: 417, UZS: 860 })[currency] || 643;
+}
+
+function normalizeOrderFeed(payload) {
+  const data = payload?.data || payload || {};
+  const code = currencyCode(data.currency);
+  return (data.orders || []).map(order => ({
+    id: order.srid,
+    nmId: order.nmId,
+    chrtId: order.chrtId,
+    article: `chrtID ${order.chrtId}`,
+    name: `Товар WB ${order.nmId}`,
+    status: order.status === 'buyout' ? 'complete' : order.status === 'cancel' ? 'cancel' : 'new',
+    rawStatus: order.status,
+    cancelType: order.cancelType,
+    createdAt: order.updatedAt || order.createdAt,
+    orderedAt: order.createdAt,
+    price: Math.round(Number(order.sellerPrice || 0) * 100),
+    currencyCode: code,
+    warehouse: order.warehouseName || '—',
+    warehouseRegion: order.warehouseRegion,
+    destinationCity: order.destinationCity,
+    destinationDistrict: order.destinationDistrict,
+    isMp: Boolean(order.isMp),
+    isB2b: Boolean(order.isB2b),
+    source: 'Лента WB'
+  }));
+}
+
+function normalizeOrders(fbs, orderFeed) {
   const a = (fbs?.orders || []).map(o => ({
     id: o.id, nmId: o.nmId, article: o.article || o.vendorCode || `№ ${o.id}`, name: o.article || `Товар ${o.nmId}`,
     status: 'new', createdAt: o.createdAt || o.createdDate, price: o.convertedFinalPrice ?? o.finalPrice ?? o.convertedPrice ?? o.price,
     currencyCode: o.convertedCurrencyCode || o.currencyCode, warehouse: o.warehouseId ? `Склад ${o.warehouseId}` : '—', source: 'FBS'
   }));
-  const b = (Array.isArray(stats) ? stats : []).map(o => ({
-    id: o.srid || o.odid, nmId: o.nmId, article: o.supplierArticle || `№ ${o.nmId}`, name: o.subject || o.category || o.supplierArticle,
-    status: o.isCancel ? 'cancel' : 'complete', createdAt: o.date || o.lastChangeDate, price: Math.round(Number(o.totalPrice || 0) * 100),
-    currencyCode: 643, warehouse: o.warehouseName || '—', source: 'Статистика'
-  }));
+  const b = normalizeOrderFeed(orderFeed);
   return [...a, ...b].sort((x, y) => new Date(y.createdAt) - new Date(x.createdAt));
 }
 
@@ -167,11 +207,13 @@ async function dashboard(id, from, to) {
   const safeTo = /^\d{4}-\d{2}-\d{2}$/.test(to || '') ? to : dateDaysAgo(0);
   const jobs = [
     wbRequest(token, 'https://marketplace-api.wildberries.ru/api/v3/orders/new').catch(e => (warnings.push(`FBS: ${e.message}`), { orders: [] })),
-    wbRequest(token, `https://statistics-api.wildberries.ru/api/v1/supplier/orders?dateFrom=${safeFrom}&flag=0`).catch(e => (warnings.push(`Статистика: ${e.message}`), [])),
-    wbRequest(token, 'https://seller-analytics-api.wildberries.ru/api/analytics/v3/sales-funnel/products', { method: 'POST', body: {
+    cachedAnalytics(`order-feed:${id}:${safeFrom}:${safeTo}`, () => wbRequest(token, 'https://seller-analytics-api.wildberries.ru/api/analytics/v1/order-feed', { method: 'POST', body: {
+      selectedPeriod: { start: `${safeFrom}T00:00:00Z`, end: `${safeTo}T23:59:59Z` }
+    }})).catch(e => (warnings.push(`Лента заказов: ${e.message}`), { data: { orders: [] } })),
+    cachedAnalytics(`sales-funnel:${id}:${safeFrom}:${safeTo}`, () => wbRequest(token, 'https://seller-analytics-api.wildberries.ru/api/analytics/v3/sales-funnel/products', { method: 'POST', body: {
       selectedPeriod: { start: safeFrom, end: safeTo }, nmIds: [], skipDeletedNm: true,
       orderBy: { field: 'openCard', mode: 'desc' }, limit: 1000, offset: 0
-    }}).catch(e => (warnings.push(`Воронка: ${e.message}`), { data: { products: [] } }))
+    }})).catch(e => (warnings.push(`Воронка: ${e.message}`), { data: { products: [] } }))
   ];
   const [fbs, stats, funnel] = await Promise.all(jobs);
   return { demo: false, orders: normalizeOrders(fbs, stats), funnel: extractFunnel(funnel), warnings };
@@ -236,4 +278,4 @@ const server = http.createServer(async (req, res) => {
 
 if (require.main === module) server.listen(PORT, '127.0.0.1', () => console.log(`WB Analytics: http://127.0.0.1:${PORT}`));
 
-module.exports = { server, cabinets, normalizeOrders, extractFunnel, WB_HOSTS };
+module.exports = { server, cabinets, normalizeOrders, normalizeOrderFeed, extractFunnel, WB_HOSTS };
