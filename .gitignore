@@ -3,5 +3,6 @@
 !.env.example
 node_modules/
 data/cabinets.json
+data/balance-history.json
 *.log
 .DS_Store
