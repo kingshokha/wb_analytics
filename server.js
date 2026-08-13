@@ -10,6 +10,7 @@ loadEnv(path.join(ROOT, '.env'));
 
 const PORT = Number(process.env.PORT || 4173);
 const DATA_FILE = path.join(ROOT, 'data', 'cabinets.json');
+const BALANCE_HISTORY_FILE = path.join(ROOT, 'data', 'balance-history.json');
 const PUBLIC_DIR = path.join(ROOT, 'public');
 const WB_HOSTS = new Set([
   'content-api.wildberries.ru', 'content-api-sandbox.wildberries.ru',
@@ -38,6 +39,26 @@ function loadEnv(file) {
 
 function readAliases() {
   try { return JSON.parse(fs.readFileSync(DATA_FILE, 'utf8')); } catch { return {}; }
+}
+
+function readBalanceHistory() {
+  try { return JSON.parse(fs.readFileSync(BALANCE_HISTORY_FILE, 'utf8')); } catch { return {}; }
+}
+
+function saveBalanceSnapshot(cabinetId, balance) {
+  const history = readBalanceHistory();
+  const list = Array.isArray(history[cabinetId]) ? history[cabinetId] : [];
+  const current = Number(balance?.current || 0);
+  const forWithdraw = Number(balance?.for_withdraw || 0);
+  const previous = list[0];
+  if (!previous || previous.current !== current || previous.forWithdraw !== forWithdraw || previous.currency !== balance.currency) {
+    list.unshift({ timestamp: new Date().toISOString(), currency: balance.currency || 'RUB', current, forWithdraw,
+      delta: previous ? current - previous.current : 0, withdrawDelta: previous ? forWithdraw - previous.forWithdraw : 0 });
+    history[cabinetId] = list.slice(0, 20);
+    fs.mkdirSync(path.dirname(BALANCE_HISTORY_FILE), { recursive: true });
+    fs.writeFileSync(BALANCE_HISTORY_FILE, JSON.stringify(history, null, 2));
+  }
+  return history[cabinetId] || list;
 }
 
 function cabinets() {
@@ -246,10 +267,15 @@ async function dashboard(id, from, to) {
       orderBy: { field: 'openCard', mode: 'desc' }, limit: 1000, offset: 0
     }})).catch(e => (warnings.push(`Воронка: ${e.message}`), { data: { products: [] } })),
     cachedAnalytics(`product-cards:${id}`, () => loadProductCards(token), 10 * 60_000)
-      .catch(e => (warnings.push(`Карточки товаров: ${e.message}`), []))
+      .catch(e => (warnings.push(`Карточки товаров: ${e.message}`), [])),
+    cachedAnalytics(`balance:${id}`, () => wbRequest(token, 'https://finance-api.wildberries.ru/api/v1/account/balance'), 60_000)
+      .catch(e => (warnings.push(`Баланс: ${e.message}`), null))
   ];
-  const [fbs, orderFeed, funnel, cards] = await Promise.all(jobs);
-  return { demo: false, orders: enrichOrders(normalizeOrders(fbs, orderFeed), cards), funnel: extractFunnel(funnel), warnings };
+  const [fbs, orderFeed, funnel, cards, balance] = await Promise.all(jobs);
+  const balanceHistory = balance ? saveBalanceSnapshot(id, balance) : (readBalanceHistory()[id] || []);
+  return { demo: false, orders: enrichOrders(normalizeOrders(fbs, orderFeed), cards), funnel: extractFunnel(funnel),
+    balance: balance ? { currency: balance.currency || 'RUB', current: Number(balance.current || 0),
+      forWithdraw: Number(balance.for_withdraw || 0), history: balanceHistory } : null, warnings };
 }
 
 async function handleApi(req, res, url) {
