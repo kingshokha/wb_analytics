@@ -1,7 +1,7 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { normalizeOrders, normalizeOrderFeed, extractFunnel, WB_HOSTS } = require('../server');
+const { normalizeOrders, normalizeOrderFeed, enrichOrders, extractFunnel, WB_HOSTS } = require('../server');
 
 test('объединяет и сортирует FBS и события ленты WB', () => {
   const result = normalizeOrders(
@@ -26,6 +26,17 @@ test('преобразует актуальный ответ order-feed и ис�
   assert.equal(result[0].status, 'cancel');
   assert.equal(result[0].price, 97009);
   assert.equal(result[0].source, 'Лента WB');
+});
+
+test('добавляет к заказу название, бренд, артикул и главное фото карточки', () => {
+  const result = enrichOrders([{ nmId: 123, name: 'Товар WB 123', article: 'chrtID 1' }], [{
+    nmID: 123, title: 'Кроссовки Urban', vendorCode: 'URBAN-01', brand: 'Example', subjectName: 'Кроссовки',
+    photos: [{ c246x328: 'https://basket.example/card.webp', big: 'https://basket.example/big.webp' }]
+  }]);
+  assert.equal(result[0].name, 'Кроссовки Urban');
+  assert.equal(result[0].article, 'URBAN-01');
+  assert.equal(result[0].brand, 'Example');
+  assert.equal(result[0].photo, 'https://basket.example/card.webp');
 });
 
 test('суммирует показатели воронки разных товаров', () => {
