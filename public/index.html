@@ -14,6 +14,7 @@
       <nav>
         <button class="nav-item active" data-page="orders"><span>⌁</span> Заказы <b id="newBadge">0</b></button>
         <button class="nav-item" data-page="funnel"><span>◫</span> Воронка</button>
+        <button class="nav-item" data-page="ads"><span>↗</span> Реклама</button>
         <button class="nav-item" data-page="console"><span>⌘</span> API-консоль</button>
       </nav>
       <div class="sync-state"><i></i><span><strong>WB API</strong><small id="syncText">Подключение…</small></span></div>
@@ -64,6 +65,40 @@
         <div class="funnel-layout">
           <div class="panel funnel-panel"><div class="panel-head"><div><h2>Воронка продаж</h2><p>От первого интереса до выкупа</p></div><span class="live">● Данные WB</span></div><div id="funnelChart" class="funnel-chart"></div></div>
           <div class="panel insight"><p class="eyebrow">Диагностика</p><h2>Конверсия этапов</h2><div id="conversionList"></div><div class="hint"><b>Как читать</b><p>Ищите самый большой провал между соседними этапами — там находится главный резерв роста.</p></div></div>
+        </div>
+      </section>
+
+      <section class="page" id="page-ads">
+        <div class="ad-note"><span>WB Продвижение</span><p>Статистика кампаний v3 · ДРР = расходы / выручка рекламных заказов × 100%</p></div>
+        <div class="metrics ad-metrics" id="adMetrics"></div>
+        <div class="ad-chart-grid">
+          <div class="panel ad-chart-panel">
+            <div class="panel-head"><div><h2>Расходы и выручка по дням</h2><p>Столбцы — расходы, линия — выручка рекламных заказов</p></div><span class="chart-legend"><i></i> Расходы <i></i> Выручка</span></div>
+            <div class="ad-chart" id="adMoneyChart"></div>
+          </div>
+          <div class="panel ad-chart-panel">
+            <div class="panel-head"><div><h2>CTR и ДРР</h2><p>Эффективность продвижения по дням</p></div></div>
+            <div class="ad-chart" id="adRateChart"></div>
+          </div>
+        </div>
+        <div class="ad-details-grid">
+          <div class="panel">
+            <div class="panel-head"><div><h2>Платформы</h2><p>Распределение рекламных расходов</p></div></div>
+            <div id="adPlatforms" class="platform-list"></div>
+          </div>
+          <div class="panel ad-secondary-metrics">
+            <div class="panel-head"><div><h2>Детали конверсии</h2><p>От показа до рекламного заказа</p></div></div>
+            <div id="adDetails"></div>
+          </div>
+        </div>
+        <div class="panel ad-table-panel">
+          <div class="panel-head"><div><h2>Рекламные кампании</h2><p id="adCampaignCount">Загрузка данных…</p></div><div class="filters"><label class="search">⌕ <input id="adSearch" placeholder="Название или ID кампании"></label><select id="adStatus"><option value="">Все статусы</option><option value="9">Активные</option><option value="11">На паузе</option><option value="7">Завершённые</option></select></div></div>
+          <div class="table-wrap"><table class="ad-table"><thead><tr><th>Кампания</th><th>Статус</th><th>Расход</th><th>Показы</th><th>Клики</th><th>CTR</th><th>CPC</th><th>Заказы</th><th>Выручка</th><th>ДРР</th><th>ROAS</th></tr></thead><tbody id="adCampaignsBody"></tbody></table></div>
+          <div class="empty hidden" id="emptyAds"><span>↗</span><h3>Нет рекламных данных</h3><p>Измените период или фильтры.</p></div>
+        </div>
+        <div class="panel ad-products-panel">
+          <div class="panel-head"><div><h2>Товары в рекламе</h2><p>До 100 товаров, отсортированных по затратам</p></div></div>
+          <div class="table-wrap"><table class="ad-table"><thead><tr><th>Товар</th><th>Расход</th><th>Показы</th><th>Клики</th><th>CTR</th><th>Заказы</th><th>Выручка</th><th>ДРР</th></tr></thead><tbody id="adProductsBody"></tbody></table></div>
         </div>
       </section>
 

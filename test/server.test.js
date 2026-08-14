@@ -1,7 +1,7 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { normalizeOrders, normalizeOrderFeed, enrichOrders, extractFunnel, WB_HOSTS } = require('../server');
+const { normalizeOrders, normalizeOrderFeed, enrichOrders, extractFunnel, summarizeAdStats, validAdPeriod, WB_HOSTS } = require('../server');
 
 test('объединяет и сортирует FBS и события ленты WB', () => {
   const result = normalizeOrders(
@@ -58,4 +58,26 @@ test('понимает актуальные поля воронки WB API v3', 
 test('разрешает только известные официальные хосты WB', () => {
   assert.equal(WB_HOSTS.has('marketplace-api.wildberries.ru'), true);
   assert.equal(WB_HOSTS.has('example.com'), false);
+});
+
+test('собирает рекламные метрики и рассчитывает CTR, CPC, ДРР и ROAS', () => {
+  const result = summarizeAdStats([{ id: 77, status: 9, bid_type: 'manual', settings: { name: 'Поиск', payment_type: 'cpm' } }], [{
+    advertId: 77, views: 1000, clicks: 40, sum: 800, orders: 8, sum_price: 8000, atbs: 12, shks: 6,
+    days: [{ date: '2026-08-10T00:00:00Z', views: 1000, clicks: 40, sum: 800, orders: 8, sum_price: 8000,
+      apps: [{ appType: 32, views: 1000, clicks: 40, sum: 800, orders: 8, sum_price: 8000,
+        nms: [{ nmId: 123, name: 'Товар', views: 1000, clicks: 40, sum: 800, orders: 8, sum_price: 8000 }] }] }]
+  }], '2026-08-10', '2026-08-11');
+  assert.equal(result.totals.ctr, 4);
+  assert.equal(result.totals.cpc, 20);
+  assert.equal(result.totals.drr, 10);
+  assert.equal(result.totals.roas, 10);
+  assert.equal(result.daily.length, 2);
+  assert.equal(result.campaigns[0].name, 'Поиск');
+  assert.equal(result.platforms.find(item => item.id === 32).spend, 800);
+  assert.equal(result.products[0].nmId, 123);
+});
+
+test('не разрешает период рекламной статистики больше 31 дня', () => {
+  assert.deepEqual(validAdPeriod('2026-08-01', '2026-08-31'), { from: '2026-08-01', to: '2026-08-31' });
+  assert.throws(() => validAdPeriod('2026-07-01', '2026-08-01'), /не более 31 дня/);
 });

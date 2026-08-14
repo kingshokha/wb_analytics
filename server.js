@@ -252,6 +252,138 @@ function extractFunnel(payload) {
   return total;
 }
 
+function safeRatio(value, base, multiplier = 100) {
+  return Number(base) ? Number(value || 0) / Number(base) * multiplier : 0;
+}
+
+function adMetrics(source = {}) {
+  const views = Number(source.views || 0), clicks = Number(source.clicks || 0), spend = Number(source.sum || 0);
+  const orders = Number(source.orders || 0), revenue = Number(source.sum_price || 0);
+  return {
+    views, clicks, spend, orders, revenue,
+    carts: Number(source.atbs || 0), sales: Number(source.shks || 0), canceled: Number(source.canceled || 0),
+    ctr: safeRatio(clicks, views), cpc: safeRatio(spend, clicks, 1), cpm: safeRatio(spend, views, 1000),
+    cr: safeRatio(orders, clicks), drr: safeRatio(spend, revenue), roas: safeRatio(revenue, spend, 1)
+  };
+}
+
+function addAdMetrics(target, source = {}) {
+  target.views += Number(source.views || 0); target.clicks += Number(source.clicks || 0);
+  target.spend += Number(source.sum ?? source.spend ?? 0); target.orders += Number(source.orders || 0);
+  target.revenue += Number(source.sum_price ?? source.revenue ?? 0); target.carts += Number(source.atbs ?? source.carts ?? 0);
+  target.sales += Number(source.shks ?? source.sales ?? 0); target.canceled += Number(source.canceled || 0);
+}
+
+function finalizeAdMetrics(target) {
+  return { ...target, ctr: safeRatio(target.clicks, target.views), cpc: safeRatio(target.spend, target.clicks, 1),
+    cpm: safeRatio(target.spend, target.views, 1000), cr: safeRatio(target.orders, target.clicks),
+    drr: safeRatio(target.spend, target.revenue), roas: safeRatio(target.revenue, target.spend, 1) };
+}
+
+function emptyAdMetrics(extra = {}) {
+  return { views: 0, clicks: 0, spend: 0, orders: 0, revenue: 0, carts: 0, sales: 0, canceled: 0, ...extra };
+}
+
+function summarizeAdStats(campaigns = [], stats = [], from, to) {
+  const campaignById = new Map(campaigns.map(item => [String(item.id), item]));
+  const daily = new Map();
+  for (let cursor = new Date(`${from}T00:00:00Z`), end = new Date(`${to}T00:00:00Z`); cursor <= end; cursor.setUTCDate(cursor.getUTCDate() + 1)) {
+    const date = cursor.toISOString().slice(0, 10); daily.set(date, emptyAdMetrics({ date }));
+  }
+  const platforms = new Map([[1, emptyAdMetrics({ id: 1, name: 'Сайт' })], [32, emptyAdMetrics({ id: 32, name: 'Android' })], [64, emptyAdMetrics({ id: 64, name: 'iOS' })]]);
+  const products = new Map();
+  const rows = [];
+  for (const stat of stats) {
+    const campaign = campaignById.get(String(stat.advertId));
+    rows.push({ id: stat.advertId, name: campaign?.settings?.name || `Кампания #${stat.advertId}`,
+      status: campaign?.status, paymentType: campaign?.settings?.payment_type || '', bidType: campaign?.bid_type || '',
+      updatedAt: campaign?.timestamps?.updated || '', ...adMetrics(stat) });
+    for (const day of stat.days || []) {
+      const date = String(day.date || '').slice(0, 10);
+      if (!daily.has(date)) daily.set(date, emptyAdMetrics({ date }));
+      addAdMetrics(daily.get(date), day);
+      for (const app of day.apps || []) {
+        const appType = Number(app.appType || 0);
+        if (!platforms.has(appType)) platforms.set(appType, emptyAdMetrics({ id: appType, name: appType === 0 ? 'Не определено WB' : `Платформа ${appType}` }));
+        addAdMetrics(platforms.get(appType), app);
+        for (const nm of app.nms || []) {
+          const key = String(nm.nmId || nm.nm || 'unknown');
+          if (!products.has(key)) products.set(key, emptyAdMetrics({ nmId: nm.nmId || nm.nm, name: nm.name || `Товар ${key}` }));
+          addAdMetrics(products.get(key), nm);
+        }
+      }
+    }
+  }
+  for (const campaign of campaigns) {
+    if (!rows.some(row => String(row.id) === String(campaign.id))) rows.push({ id: campaign.id,
+      name: campaign.settings?.name || `Кампания #${campaign.id}`, status: campaign.status,
+      paymentType: campaign.settings?.payment_type || '', bidType: campaign.bid_type || '', updatedAt: campaign.timestamps?.updated || '',
+      ...finalizeAdMetrics(emptyAdMetrics()) });
+  }
+  const total = emptyAdMetrics(); rows.forEach(row => addAdMetrics(total, row));
+  return { period: { from, to }, totals: finalizeAdMetrics(total),
+    daily: [...daily.values()].sort((a, b) => a.date.localeCompare(b.date)).map(finalizeAdMetrics),
+    campaigns: rows.map(finalizeAdMetrics).sort((a, b) => b.spend - a.spend),
+    platforms: [...platforms.values()].map(finalizeAdMetrics).sort((a, b) => b.spend - a.spend),
+    products: [...products.values()].map(finalizeAdMetrics).sort((a, b) => b.spend - a.spend).slice(0, 100) };
+}
+
+function demoAds(from, to) {
+  const campaigns = [
+    { id: 101, status: 9, bid_type: 'manual', settings: { name: 'Поиск · базовая коллекция', payment_type: 'cpm' } },
+    { id: 102, status: 11, bid_type: 'unified', settings: { name: 'Автокампания · хиты', payment_type: 'cpm' } },
+    { id: 103, status: 7, bid_type: 'manual', settings: { name: 'Карточка товара · новинки', payment_type: 'cpc' } }
+  ];
+  const stats = campaigns.map((campaign, campaignIndex) => {
+    const days = [];
+    for (let cursor = new Date(`${from}T00:00:00Z`), end = new Date(`${to}T00:00:00Z`), index = 0; cursor <= end; cursor.setUTCDate(cursor.getUTCDate() + 1), index++) {
+      const views = 5200 + campaignIndex * 1700 + index * 260, clicks = Math.round(views * (0.025 + campaignIndex * .006));
+      const spend = Math.round((clicks * (13 + campaignIndex * 4)) * 100) / 100, orders = Math.round(clicks * (.08 + campaignIndex * .015));
+      const revenue = orders * (1750 + campaignIndex * 410);
+      days.push({ date: cursor.toISOString(), views, clicks, sum: spend, orders, sum_price: revenue,
+        atbs: Math.round(clicks * .23), shks: Math.round(orders * .78), canceled: campaignIndex === 2 && index % 4 === 0 ? 1 : 0,
+        apps: [{ appType: 1, views: Math.round(views * .18), clicks: Math.round(clicks * .18), sum: spend * .18, orders: Math.round(orders * .18), sum_price: revenue * .18 },
+          { appType: 32, views: Math.round(views * .52), clicks: Math.round(clicks * .52), sum: spend * .52, orders: Math.round(orders * .52), sum_price: revenue * .52 },
+          { appType: 64, views: Math.round(views * .30), clicks: Math.round(clicks * .30), sum: spend * .30, orders: Math.round(orders * .30), sum_price: revenue * .30 }] });
+    }
+    const total = emptyAdMetrics(); days.forEach(day => addAdMetrics(total, day));
+    return { advertId: campaign.id, sum: total.spend, sum_price: total.revenue, atbs: total.carts, shks: total.sales,
+      views: total.views, clicks: total.clicks, orders: total.orders, canceled: total.canceled, days };
+  });
+  return { demo: true, ...summarizeAdStats(campaigns, stats, from, to), warnings: [] };
+}
+
+function validAdPeriod(from, to) {
+  const pattern = /^\d{4}-\d{2}-\d{2}$/;
+  const safeTo = pattern.test(to || '') ? to : dateDaysAgo(0);
+  const safeFrom = pattern.test(from || '') ? from : dateDaysAgo(7);
+  const days = Math.floor((new Date(`${safeTo}T00:00:00Z`) - new Date(`${safeFrom}T00:00:00Z`)) / 86_400_000) + 1;
+  if (!Number.isFinite(days) || days < 1) throw apiError(400, 'Начало периода должно быть раньше окончания');
+  if (days > 31) throw apiError(400, 'Для рекламы выберите период не более 31 дня — это ограничение WB API');
+  return { from: safeFrom, to: safeTo };
+}
+
+async function advertising(id, from, to) {
+  const period = validAdPeriod(from, to);
+  if (id === 'demo' || !cabinets().length) return demoAds(period.from, period.to);
+  const token = tokenFor(id); const warnings = [];
+  const campaignData = await cachedAnalytics(`ad-campaigns:${id}`, () => wbRequest(token,
+    'https://advert-api.wildberries.ru/api/advert/v2/adverts?statuses=7,9,11'), 3 * 60_000);
+  const campaigns = Array.isArray(campaignData?.adverts) ? campaignData.adverts : [];
+  const stats = [];
+  for (let offset = 0; offset < campaigns.length; offset += 50) {
+    if (offset) await wait(20_100);
+    const ids = campaigns.slice(offset, offset + 50).map(item => item.id).join(',');
+    if (!ids) continue;
+    try {
+      const chunk = await cachedAnalytics(`ad-stats:${id}:${period.from}:${period.to}:${ids}`, () => wbRequest(token,
+        `https://advert-api.wildberries.ru/adv/v3/fullstats?ids=${ids}&beginDate=${period.from}&endDate=${period.to}`), 3 * 60_000);
+      if (Array.isArray(chunk)) stats.push(...chunk);
+    } catch (error) { warnings.push(`Статистика рекламы: ${error.message}`); }
+  }
+  return { demo: false, ...summarizeAdStats(campaigns, stats, period.from, period.to), warnings };
+}
+
 async function dashboard(id, from, to) {
   if (id === 'demo' || !cabinets().length) return demoDashboard();
   const token = tokenFor(id); const warnings = [];
@@ -291,6 +423,9 @@ async function handleApi(req, res, url) {
   }
   if (req.method === 'GET' && url.pathname === '/api/dashboard') {
     return send(res, 200, await dashboard(url.searchParams.get('cabinet') || 'demo', url.searchParams.get('from'), url.searchParams.get('to')));
+  }
+  if (req.method === 'GET' && url.pathname === '/api/advertising') {
+    return send(res, 200, await advertising(url.searchParams.get('cabinet') || 'demo', url.searchParams.get('from'), url.searchParams.get('to')));
   }
   if (req.method === 'POST' && url.pathname === '/api/orders/status') {
     const body = await readJson(req); const token = tokenFor(body.cabinet);
@@ -337,4 +472,4 @@ const server = http.createServer(async (req, res) => {
 
 if (require.main === module) server.listen(PORT, '127.0.0.1', () => console.log(`WB Analytics: http://127.0.0.1:${PORT}`));
 
-module.exports = { server, cabinets, normalizeOrders, normalizeOrderFeed, enrichOrders, extractFunnel, WB_HOSTS };
+module.exports = { server, cabinets, normalizeOrders, normalizeOrderFeed, enrichOrders, extractFunnel, summarizeAdStats, validAdPeriod, WB_HOSTS };
