@@ -254,12 +254,17 @@ async function updateFbsStocks(body) {
 }
 
 async function copyFbsStocks(body) {
-  const token = tokenFor(body.cabinet); const targetWarehouseId = String(body.targetWarehouseId || '');
+  const token = tokenFor(body.cabinet);
+  const targetWarehouseIds = [...new Set((Array.isArray(body.targetWarehouseIds) ? body.targetWarehouseIds : [body.targetWarehouseId]).map(value => String(value || '')).filter(Boolean))];
   const stocks = (body.items || []).map(item => ({ chrtId: Number(item.chrtId), amount: Math.floor(Number(item.amount)) }))
     .filter(item => Number.isInteger(item.chrtId) && Number.isFinite(item.amount) && item.amount >= 0);
-  if (!targetWarehouseId || !stocks.length) throw apiError(400, 'Выберите целевой склад и товары для копирования');
-  const response = await wbRequest(token, `https://marketplace-api.wildberries.ru/api/v3/stocks/${encodeURIComponent(targetWarehouseId)}`, { method: 'PUT', body: { stocks } });
-  return { ok: true, updated: stocks.length, targetWarehouseId, response: response || null };
+  if (!targetWarehouseIds.length || !stocks.length) throw apiError(400, 'Выберите хотя бы один целевой склад и товары для копирования');
+  const results = [];
+  for (const targetWarehouseId of targetWarehouseIds) {
+    const response = await wbRequest(token, `https://marketplace-api.wildberries.ru/api/v3/stocks/${encodeURIComponent(targetWarehouseId)}`, { method: 'PUT', body: { stocks } });
+    results.push({ targetWarehouseId, count: stocks.length, response: response || null });
+  }
+  return { ok: true, updated: stocks.length * results.length, warehouses: results, targetWarehouseIds };
 }
 
 function enrichOrders(orders, cards) {
