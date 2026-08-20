@@ -231,6 +231,37 @@ async function fbsStocks(id) {
   return { demo: false, ...normalizeFbsStocks(warehouses, responses, cards), warnings };
 }
 
+function groupStockUpdates(items = []) {
+  const grouped = new Map();
+  for (const item of items) {
+    const warehouseId = String(item.warehouseId || ''); const chrtId = Number(item.chrtId); const amount = Number(item.amount);
+    if (!warehouseId || !Number.isInteger(chrtId) || !Number.isFinite(amount) || amount < 0) continue;
+    if (!grouped.has(warehouseId)) grouped.set(warehouseId, []);
+    grouped.get(warehouseId).push({ chrtId, amount: Math.floor(amount) });
+  }
+  return grouped;
+}
+
+async function updateFbsStocks(body) {
+  const token = tokenFor(body.cabinet); const grouped = groupStockUpdates(body.items);
+  if (!grouped.size) throw apiError(400, 'Выберите хотя бы один товар и укажите корректный остаток');
+  const results = [];
+  for (const [warehouseId, stocks] of grouped) {
+    const response = await wbRequest(token, `https://marketplace-api.wildberries.ru/api/v3/stocks/${encodeURIComponent(warehouseId)}`, { method: 'PUT', body: { stocks } });
+    results.push({ warehouseId, count: stocks.length, response: response || null });
+  }
+  return { ok: true, updated: results.reduce((sum, item) => sum + item.count, 0), warehouses: results };
+}
+
+async function copyFbsStocks(body) {
+  const token = tokenFor(body.cabinet); const targetWarehouseId = String(body.targetWarehouseId || '');
+  const stocks = (body.items || []).map(item => ({ chrtId: Number(item.chrtId), amount: Math.floor(Number(item.amount)) }))
+    .filter(item => Number.isInteger(item.chrtId) && Number.isFinite(item.amount) && item.amount >= 0);
+  if (!targetWarehouseId || !stocks.length) throw apiError(400, 'Выберите целевой склад и товары для копирования');
+  const response = await wbRequest(token, `https://marketplace-api.wildberries.ru/api/v3/stocks/${encodeURIComponent(targetWarehouseId)}`, { method: 'PUT', body: { stocks } });
+  return { ok: true, updated: stocks.length, targetWarehouseId, response: response || null };
+}
+
 function enrichOrders(orders, cards) {
   const byNmId = new Map((cards || []).map(card => [String(card.nmID), card]));
   return orders.map(order => {
@@ -489,6 +520,16 @@ async function handleApi(req, res, url) {
   }
   if (req.method === 'GET' && url.pathname === '/api/fbs-stocks') {
     return send(res, 200, await fbsStocks(url.searchParams.get('cabinet') || 'demo'));
+  }
+  if (req.method === 'POST' && url.pathname === '/api/fbs-stocks/update') {
+    const body = await readJson(req);
+    if (!body.confirm) throw apiError(400, 'Подтвердите изменение остатков');
+    return send(res, 200, await updateFbsStocks(body));
+  }
+  if (req.method === 'POST' && url.pathname === '/api/fbs-stocks/copy') {
+    const body = await readJson(req);
+    if (!body.confirm) throw apiError(400, 'Подтвердите копирование остатков');
+    return send(res, 200, await copyFbsStocks(body));
   }
   if (req.method === 'POST' && url.pathname === '/api/orders/status') {
     const body = await readJson(req); const token = tokenFor(body.cabinet);
