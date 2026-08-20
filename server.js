@@ -171,6 +171,66 @@ async function loadProductCards(token) {
   return cards;
 }
 
+function stockCardIndex(cards = []) {
+  const index = new Map();
+  for (const card of cards) for (const size of card.sizes || []) {
+    const chrtId = String(size.chrtID || size.chrtId || '');
+    if (!chrtId) continue;
+    index.set(chrtId, { nmId: card.nmID, vendorCode: card.vendorCode || '', name: card.title || `Товар ${card.nmID}`,
+      category: card.subjectName || 'Без категории', size: size.techSize || size.wbSize || '—', sku: (size.skus || [])[0] || '' });
+  }
+  return index;
+}
+
+function normalizeFbsStocks(warehouses = [], stockResponses = [], cards = []) {
+  const byChrt = stockCardIndex(cards); const rows = [];
+  stockResponses.forEach(({ warehouse, stocks }) => (stocks || []).forEach(stock => {
+    const meta = byChrt.get(String(stock.chrtId)) || {};
+    rows.push({ warehouseId: warehouse.id, warehouseName: warehouse.name || `Склад ${warehouse.id}`, officeId: warehouse.officeId,
+      nmId: meta.nmId || '', vendorCode: meta.vendorCode || '', name: meta.name || `Размер ${stock.chrtId}`,
+      category: meta.category || 'Без категории', size: meta.size || '—', sku: stock.sku || meta.sku || '', chrtId: stock.chrtId,
+      amount: Number(stock.amount || 0) });
+  }));
+  const totalAmount = rows.reduce((sum, row) => sum + row.amount, 0);
+  const categories = [...new Set(rows.map(row => row.category).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'ru'));
+  return { rows: rows.sort((a, b) => b.amount - a.amount || String(a.name).localeCompare(String(b.name), 'ru')),
+    warehouses: warehouses.map(item => ({ id: item.id, name: item.name || `Склад ${item.id}`, officeId: item.officeId })), categories,
+    totals: { rows: rows.length, products: new Set(rows.map(row => String(row.nmId || row.chrtId))).size,
+      warehouses: new Set(rows.map(row => String(row.warehouseId))).size, amount: totalAmount,
+      zero: rows.filter(row => row.amount === 0).length, positive: rows.filter(row => row.amount > 0).length } };
+}
+
+function demoFbsStocks() {
+  const warehouses = [{ id: 'demo-1', name: 'Основной FBS', officeId: 1 }, { id: 'demo-2', name: 'Резервный FBS', officeId: 2 }];
+  const cards = [
+    { nmID: 100001, vendorCode: 'TSHIRT-BLACK', title: 'Футболка базовая', subjectName: 'Одежда', sizes: [{ chrtID: 501, techSize: 'M', skus: ['460000000001'] }] },
+    { nmID: 100002, vendorCode: 'MUG-THERMO', title: 'Термокружка', subjectName: 'Посуда', sizes: [{ chrtID: 502, techSize: '500 мл', skus: ['460000000002'] }] },
+    { nmID: 100003, vendorCode: 'HOODIE-GREEN', title: 'Худи Oversize', subjectName: 'Одежда', sizes: [{ chrtID: 503, techSize: 'L', skus: ['460000000003'] }] }
+  ];
+  return { demo: true, ...normalizeFbsStocks(warehouses, [{ warehouse: warehouses[0], stocks: [{ chrtId: 501, sku: '460000000001', amount: 42 }, { chrtId: 502, sku: '460000000002', amount: 8 }] }, { warehouse: warehouses[1], stocks: [{ chrtId: 501, sku: '460000000001', amount: 15 }, { chrtId: 503, sku: '460000000003', amount: 0 }] }], cards), warnings: [] };
+}
+
+async function fbsStocks(id) {
+  if (id === 'demo' || !cabinets().length) return demoFbsStocks();
+  const token = tokenFor(id); const warnings = [];
+  const warehousesResponse = await cachedAnalytics(`fbs-warehouses:${id}`, () => wbRequest(token, 'https://marketplace-api.wildberries.ru/api/v3/warehouses'), 2 * 60_000);
+  const warehouses = (Array.isArray(warehousesResponse) ? warehousesResponse : []).filter(item => Number(item.deliveryType) === 1 && !item.isDeleting);
+  const cards = await cachedAnalytics(`product-cards:${id}`, () => loadProductCards(token), 10 * 60_000);
+  const chrtIds = [...stockCardIndex(cards).keys()]; const responses = [];
+  for (const warehouse of warehouses) {
+    const stocks = [];
+    for (let offset = 0; offset < chrtIds.length; offset += 1000) {
+      if (offset) await wait(220);
+      try {
+        const result = await wbRequest(token, `https://marketplace-api.wildberries.ru/api/v3/stocks/${warehouse.id}`, { method: 'POST', body: { chrtIds: chrtIds.slice(offset, offset + 1000).map(Number) } });
+        stocks.push(...(Array.isArray(result?.stocks) ? result.stocks : []));
+      } catch (error) { warnings.push(`${warehouse.name || warehouse.id}: ${error.message}`); }
+    }
+    responses.push({ warehouse, stocks });
+  }
+  return { demo: false, ...normalizeFbsStocks(warehouses, responses, cards), warnings };
+}
+
 function enrichOrders(orders, cards) {
   const byNmId = new Map((cards || []).map(card => [String(card.nmID), card]));
   return orders.map(order => {
@@ -427,6 +487,9 @@ async function handleApi(req, res, url) {
   if (req.method === 'GET' && url.pathname === '/api/advertising') {
     return send(res, 200, await advertising(url.searchParams.get('cabinet') || 'demo', url.searchParams.get('from'), url.searchParams.get('to')));
   }
+  if (req.method === 'GET' && url.pathname === '/api/fbs-stocks') {
+    return send(res, 200, await fbsStocks(url.searchParams.get('cabinet') || 'demo'));
+  }
   if (req.method === 'POST' && url.pathname === '/api/orders/status') {
     const body = await readJson(req); const token = tokenFor(body.cabinet);
     return send(res, 200, await wbRequest(token, 'https://marketplace-api.wildberries.ru/api/v3/orders/status', { method: 'POST', body: { orders: body.orders } }));
@@ -472,4 +535,4 @@ const server = http.createServer(async (req, res) => {
 
 if (require.main === module) server.listen(PORT, '127.0.0.1', () => console.log(`WB Analytics: http://127.0.0.1:${PORT}`));
 
-module.exports = { server, cabinets, normalizeOrders, normalizeOrderFeed, enrichOrders, extractFunnel, summarizeAdStats, validAdPeriod, WB_HOSTS };
+module.exports = { server, cabinets, normalizeOrders, normalizeOrderFeed, enrichOrders, extractFunnel, summarizeAdStats, validAdPeriod, normalizeFbsStocks, WB_HOSTS };

@@ -1,7 +1,7 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { normalizeOrders, normalizeOrderFeed, enrichOrders, extractFunnel, summarizeAdStats, validAdPeriod, WB_HOSTS } = require('../server');
+const { normalizeOrders, normalizeOrderFeed, enrichOrders, extractFunnel, summarizeAdStats, validAdPeriod, normalizeFbsStocks, WB_HOSTS } = require('../server');
 
 test('объединяет и сортирует FBS и события ленты WB', () => {
   const result = normalizeOrders(
@@ -80,4 +80,18 @@ test('собирает рекламные метрики и рассчитыва
 test('не разрешает период рекламной статистики больше 31 дня', () => {
   assert.deepEqual(validAdPeriod('2026-08-01', '2026-08-31'), { from: '2026-08-01', to: '2026-08-31' });
   assert.throws(() => validAdPeriod('2026-07-01', '2026-08-01'), /не более 31 дня/);
+});
+
+test('объединяет остатки FBS с карточками и сохраняет артикулы продавца и WB', () => {
+  const result = normalizeFbsStocks(
+    [{ id: 10, name: 'Коледино', officeId: 15 }],
+    [{ warehouse: { id: 10, name: 'Коледино', officeId: 15 }, stocks: [{ chrtId: 501, sku: '460000000001', amount: 12 }] }],
+    [{ nmID: 123456, vendorCode: 'VENDOR-1', title: 'Товар', subjectName: 'Категория', sizes: [{ chrtID: 501, techSize: 'M', skus: ['460000000001'] }] }]
+  );
+  assert.equal(result.rows[0].vendorCode, 'VENDOR-1');
+  assert.equal(result.rows[0].nmId, 123456);
+  assert.equal(result.rows[0].warehouseName, 'Коледино');
+  assert.equal(result.rows[0].amount, 12);
+  assert.equal(result.totals.amount, 12);
+  assert.deepEqual(result.categories, ['Категория']);
 });

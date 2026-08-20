@@ -13,6 +13,7 @@
       <a class="brand" href="#"><span class="brand-mark">W</span><span>WB Pulse</span></a>
       <nav>
         <button class="nav-item active" data-page="orders"><span>⌁</span> Заказы <b id="newBadge">0</b></button>
+        <button class="nav-item" data-page="stocks"><span>▦</span> Остатки FBS</button>
         <button class="nav-item" data-page="funnel"><span>◫</span> Воронка</button>
         <button class="nav-item" data-page="ads"><span>↗</span> Реклама</button>
         <button class="nav-item" data-page="console"><span>⌘</span> API-консоль</button>
@@ -58,6 +59,15 @@
             <table><thead><tr><th>Дата оформления</th><th>Дата статуса</th><th>Товар</th><th>Откуда</th><th>Куда</th><th>Сумма</th><th>Статус</th><th>ID заказа</th></tr></thead><tbody id="ordersBody"></tbody></table>
           </div>
           <div class="empty hidden" id="emptyOrders"><span>⌕</span><h3>Заказы не найдены</h3><p>Измените фильтры или период.</p></div>
+        </div>
+      </section>
+
+      <section class="page" id="page-stocks">
+        <div class="metrics stock-metrics" id="stockMetrics"></div>
+        <div class="panel stock-panel">
+          <div class="panel-head"><div><h2>Остатки по складам FBS</h2><p id="stockCount">Загрузка остатков…</p></div><div class="filters stock-filters"><label class="search">⌕ <input id="stockSearch" placeholder="Товар, артикул или nmId"></label><select id="stockWarehouse"><option value="">Все склады</option></select><select id="stockCategory"><option value="">Все категории</option></select><select id="stockAvailability"><option value="">Все остатки</option><option value="positive">В наличии</option><option value="zero">Нулевые</option></select></div></div>
+          <div class="table-wrap"><table class="stock-table"><thead><tr><th>Товар</th><th>Артикул продавца</th><th>Артикул WB (nmId)</th><th>Категория</th><th>Склад FBS</th><th>Размер</th><th>SKU / баркод</th><th>Остаток</th></tr></thead><tbody id="stocksBody"></tbody></table></div>
+          <div class="empty hidden" id="emptyStocks"><span>▦</span><h3>Остатки не найдены</h3><p>Измените фильтры или проверьте настройки складов FBS.</p></div>
         </div>
       </section>
 
