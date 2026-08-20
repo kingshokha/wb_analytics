@@ -231,6 +231,59 @@ async function fbsStocks(id) {
   return { demo: false, ...normalizeFbsStocks(warehouses, responses, cards), warnings };
 }
 
+function normalizePrices(goods = [], cards = []) {
+  const byNmId = new Map(cards.map(card => [String(card.nmID), card]));
+  const rows = goods.map(good => {
+    const card = byNmId.get(String(good.nmID)) || {}; const sizes = Array.isArray(good.sizes) ? good.sizes : []; const firstSize = sizes[0] || {};
+    return { nmId: Number(good.nmID), vendorCode: good.vendorCode || card.vendorCode || '', name: card.title || `Товар ${good.nmID}`,
+      category: card.subjectName || 'Без категории', brand: card.brand || 'Без бренда', currency: good.currencyIsoCode4217 || 'RUB',
+      price: Number(firstSize.price || good.price || 0), discountedPrice: Number(firstSize.discountedPrice || good.discountedPrice || 0),
+      clubDiscountedPrice: Number(firstSize.clubDiscountedPrice || good.clubDiscountedPrice || 0), discount: Number(good.discount || 0),
+      clubDiscount: Number(good.clubDiscount || 0), sizes: sizes.length, sizeItems: sizes.map(size => ({ sizeId: Number(size.sizeID), name: size.techSizeName || '' })).filter(size => Number.isInteger(size.sizeId)), editableSizePrice: Boolean(good.editableSizePrice), isBadTurnover: Boolean(good.isBadTurnover) };
+  });
+  const categories = [...new Set(rows.map(row => row.category))].sort((a, b) => a.localeCompare(b, 'ru'));
+  const brands = [...new Set(rows.map(row => row.brand))].sort((a, b) => a.localeCompare(b, 'ru'));
+  return { rows, categories, brands, totals: { products: rows.length, averagePrice: rows.length ? rows.reduce((sum, row) => sum + row.price, 0) / rows.length : 0,
+    averageDiscount: rows.length ? rows.reduce((sum, row) => sum + row.discount, 0) / rows.length : 0, discounted: rows.filter(row => row.discount > 0).length,
+    badTurnover: rows.filter(row => row.isBadTurnover).length } };
+}
+
+function demoPrices() {
+  const cards = [{ nmID: 100001, vendorCode: 'TSHIRT-BLACK', title: 'Футболка базовая', subjectName: 'Одежда', brand: 'WB Pulse' }, { nmID: 100002, vendorCode: 'MUG-THERMO', title: 'Термокружка', subjectName: 'Посуда', brand: 'Home' }];
+  const goods = [{ nmID: 100001, vendorCode: 'TSHIRT-BLACK', currencyIsoCode4217: 'RUB', discount: 20, clubDiscount: 5, sizes: [{ price: 1990, discountedPrice: 1592, clubDiscountedPrice: 1512 }] }, { nmID: 100002, vendorCode: 'MUG-THERMO', currencyIsoCode4217: 'RUB', discount: 10, clubDiscount: 0, sizes: [{ price: 1290, discountedPrice: 1161, clubDiscountedPrice: 1161 }] }];
+  return { demo: true, ...normalizePrices(goods, cards), warnings: [] };
+}
+
+async function prices(id) {
+  if (id === 'demo' || !cabinets().length) return demoPrices();
+  const token = tokenFor(id); const cards = await cachedAnalytics(`product-cards:${id}`, () => loadProductCards(token), 10 * 60_000); const goods = [];
+  for (let offset = 0; offset < 100_000; offset += 1000) {
+    const response = await wbRequest(token, `https://discounts-prices-api.wildberries.ru/api/v2/list/goods/filter?limit=1000&offset=${offset}`);
+    const batch = Array.isArray(response?.data?.listGoods) ? response.data.listGoods : []; goods.push(...batch);
+    if (batch.length < 1000) break; await wait(650);
+  }
+  return { demo: false, ...normalizePrices(goods, cards), warnings: [] };
+}
+
+async function updatePrices(body) {
+  const token = tokenFor(body.cabinet);
+  const items = (body.items || []).map(item => ({ nmID: Number(item.nmId), price: Number(item.price), discount: Number(item.discount), editableSizePrice: Boolean(item.editableSizePrice), sizeItems: Array.isArray(item.sizeItems) ? item.sizeItems : [] }))
+    .filter(item => Number.isInteger(item.nmID) && Number.isFinite(item.price) && item.price > 0 && Number.isInteger(item.discount) && item.discount >= 0 && item.discount <= 99);
+  if (!items.length) throw apiError(400, 'Выберите товары и укажите корректные цену и скидку');
+  const data = items.map(item => item.editableSizePrice ? { nmID: item.nmID, discount: item.discount } : { nmID: item.nmID, price: item.price, discount: item.discount });
+  const sizeData = items.filter(item => item.editableSizePrice).flatMap(item => item.sizeItems.map(size => ({ nmID: item.nmID, sizeID: Number(size.sizeId), price: item.price })).filter(size => Number.isInteger(size.sizeID)));
+  const uploads = [];
+  for (let offset = 0; offset < data.length; offset += 1000) {
+    if (offset) await wait(650);
+    uploads.push(await wbRequest(token, 'https://discounts-prices-api.wildberries.ru/api/v2/upload/task', { method: 'POST', body: { data: data.slice(offset, offset + 1000) } }));
+  }
+  for (let offset = 0; offset < sizeData.length; offset += 1000) {
+    await wait(650);
+    uploads.push(await wbRequest(token, 'https://discounts-prices-api.wildberries.ru/api/v2/upload/task/size', { method: 'POST', body: { data: sizeData.slice(offset, offset + 1000) } }));
+  }
+  return { ok: true, updated: items.length, updatedSizes: sizeData.length, uploads };
+}
+
 function groupStockUpdates(items = []) {
   const grouped = new Map();
   for (const item of items) {
@@ -526,6 +579,14 @@ async function handleApi(req, res, url) {
   if (req.method === 'GET' && url.pathname === '/api/fbs-stocks') {
     return send(res, 200, await fbsStocks(url.searchParams.get('cabinet') || 'demo'));
   }
+  if (req.method === 'GET' && url.pathname === '/api/prices') {
+    return send(res, 200, await prices(url.searchParams.get('cabinet') || 'demo'));
+  }
+  if (req.method === 'POST' && url.pathname === '/api/prices/update') {
+    const body = await readJson(req);
+    if (!body.confirm) throw apiError(400, 'Подтвердите изменение цен и скидок');
+    return send(res, 200, await updatePrices(body));
+  }
   if (req.method === 'POST' && url.pathname === '/api/fbs-stocks/update') {
     const body = await readJson(req);
     if (!body.confirm) throw apiError(400, 'Подтвердите изменение остатков');
@@ -581,4 +642,4 @@ const server = http.createServer(async (req, res) => {
 
 if (require.main === module) server.listen(PORT, '127.0.0.1', () => console.log(`WB Analytics: http://127.0.0.1:${PORT}`));
 
-module.exports = { server, cabinets, normalizeOrders, normalizeOrderFeed, enrichOrders, extractFunnel, summarizeAdStats, validAdPeriod, normalizeFbsStocks, WB_HOSTS };
+module.exports = { server, cabinets, normalizeOrders, normalizeOrderFeed, enrichOrders, extractFunnel, summarizeAdStats, validAdPeriod, normalizeFbsStocks, normalizePrices, WB_HOSTS };

@@ -1,7 +1,7 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { normalizeOrders, normalizeOrderFeed, enrichOrders, extractFunnel, summarizeAdStats, validAdPeriod, normalizeFbsStocks, WB_HOSTS } = require('../server');
+const { normalizeOrders, normalizeOrderFeed, enrichOrders, extractFunnel, summarizeAdStats, validAdPeriod, normalizeFbsStocks, normalizePrices, WB_HOSTS } = require('../server');
 
 test('объединяет и сортирует FBS и события ленты WB', () => {
   const result = normalizeOrders(
@@ -93,5 +93,13 @@ test('объединяет остатки FBS с карточками и сох�
   assert.equal(result.rows[0].warehouseName, 'Коледино');
   assert.equal(result.rows[0].amount, 12);
   assert.equal(result.totals.amount, 12);
+  assert.deepEqual(result.categories, ['Категория']);
+});
+
+test('объединяет цены с названиями, категориями и артикулами карточек', () => {
+  const result = normalizePrices([{ nmID: 123, discount: 20, clubDiscount: 5, currencyIsoCode4217: 'RUB', sizes: [{ price: 1000, discountedPrice: 800, clubDiscountedPrice: 760 }] }], [{ nmID: 123, vendorCode: 'SELLER-1', title: 'Тестовый товар', subjectName: 'Категория', brand: 'Бренд' }]);
+  assert.equal(result.rows[0].vendorCode, 'SELLER-1');
+  assert.equal(result.rows[0].price, 1000);
+  assert.equal(result.rows[0].discount, 20);
   assert.deepEqual(result.categories, ['Категория']);
 });
