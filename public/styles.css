@@ -29,3 +29,4 @@ small,th,.status,.live,.response button,.chart-legend,.platform-row span,.ad-det
 .truncate-content{display:block;max-width:100%}
 .table-cell>.ad-product-name,.table-cell>.product{overflow:hidden}
 .table-cell>.ad-product-name>span,.table-cell>.product>span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.stock-table td:nth-child(2)>.table-cell.truncate-content{display:inline-block;max-width:calc(100% - 52px);vertical-align:middle}

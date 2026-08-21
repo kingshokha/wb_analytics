@@ -50,7 +50,7 @@
   }
 
   function textTarget(cell) {
-    if (cell.querySelector('button, input, img, svg, [role="button"]')) return null;
+    if (cell.querySelector('button, input, svg, [role="button"]')) return null;
     return cell.querySelector('.ad-product-name > span, .product > span, strong') || cell;
   }
 
