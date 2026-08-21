@@ -327,7 +327,8 @@ function enrichOrders(orders, cards) {
     const card = byNmId.get(String(order.nmId));
     if (!card) return order;
     const photo = card.photos?.[0];
-    return { ...order, name: card.title || order.name, article: card.vendorCode || order.article,
+    const size = (card.sizes || []).find(item => String(item.chrtID || item.chrtId) === String(order.chrtId)) || card.sizes?.[0];
+    return { ...order, name: card.title || order.name, article: card.vendorCode || order.article, barcode: size?.skus?.[0] || '',
       brand: card.brand || '', subjectName: card.subjectName || '',
       photo: photo?.c246x328 || photo?.tm || photo?.square || photo?.big || '' };
   });
@@ -434,6 +435,12 @@ function emptyAdMetrics(extra = {}) {
   return { views: 0, clicks: 0, spend: 0, orders: 0, revenue: 0, carts: 0, sales: 0, canceled: 0, ...extra };
 }
 
+function campaignProductIds(campaign = {}) {
+  const candidates = [campaign.nm_settings, campaign.nmSettings, campaign.settings?.nms, campaign.autoParams?.nms,
+    Array.isArray(campaign.unitedParams) ? campaign.unitedParams.flatMap(item => item.nms || []) : []];
+  return [...new Set(candidates.flatMap(list => Array.isArray(list) ? list : []).map(item => Number(item?.nm_id || item?.nmId || item?.nm || item)).filter(Number.isInteger))];
+}
+
 function summarizeAdStats(campaigns = [], stats = [], from, to) {
   const campaignById = new Map(campaigns.map(item => [String(item.id), item]));
   const daily = new Map();
@@ -445,9 +452,10 @@ function summarizeAdStats(campaigns = [], stats = [], from, to) {
   const rows = [];
   for (const stat of stats) {
     const campaign = campaignById.get(String(stat.advertId));
+    const nmIds = [...new Set([...campaignProductIds(campaign), ...(stat.days || []).flatMap(day => (day.apps || []).flatMap(app => (app.nms || []).map(nm => Number(nm.nmId || nm.nm)).filter(Number.isInteger)))])];
     rows.push({ id: stat.advertId, name: campaign?.settings?.name || `Кампания #${stat.advertId}`,
       status: campaign?.status, paymentType: campaign?.settings?.payment_type || '', bidType: campaign?.bid_type || '',
-      updatedAt: campaign?.timestamps?.updated || '', ...adMetrics(stat) });
+      updatedAt: campaign?.timestamps?.updated || '', nmIds, ...adMetrics(stat) });
     for (const day of stat.days || []) {
       const date = String(day.date || '').slice(0, 10);
       if (!daily.has(date)) daily.set(date, emptyAdMetrics({ date }));
@@ -467,7 +475,7 @@ function summarizeAdStats(campaigns = [], stats = [], from, to) {
   for (const campaign of campaigns) {
     if (!rows.some(row => String(row.id) === String(campaign.id))) rows.push({ id: campaign.id,
       name: campaign.settings?.name || `Кампания #${campaign.id}`, status: campaign.status,
-      paymentType: campaign.settings?.payment_type || '', bidType: campaign.bid_type || '', updatedAt: campaign.timestamps?.updated || '',
+      paymentType: campaign.settings?.payment_type || '', bidType: campaign.bid_type || '', updatedAt: campaign.timestamps?.updated || '', nmIds: campaignProductIds(campaign),
       ...finalizeAdMetrics(emptyAdMetrics()) });
   }
   const total = emptyAdMetrics(); rows.forEach(row => addAdMetrics(total, row));
@@ -476,6 +484,15 @@ function summarizeAdStats(campaigns = [], stats = [], from, to) {
     campaigns: rows.map(finalizeAdMetrics).sort((a, b) => b.spend - a.spend),
     platforms: [...platforms.values()].map(finalizeAdMetrics).sort((a, b) => b.spend - a.spend),
     products: [...products.values()].map(finalizeAdMetrics).sort((a, b) => b.spend - a.spend).slice(0, 100) };
+}
+
+function enrichAdvertising(summary, cards = []) {
+  const byNmId = new Map(cards.map(card => [String(card.nmID), { name: card.title || `Товар ${card.nmID}`, vendorCode: card.vendorCode || '',
+    photo: card.photos?.[0]?.c246x328 || card.photos?.[0]?.tm || card.photos?.[0]?.square || card.photos?.[0]?.big || '',
+    barcode: card.sizes?.[0]?.skus?.[0] || '' }]));
+  const products = (summary.products || []).map(product => ({ ...product, ...(byNmId.get(String(product.nmId)) || {}) }));
+  const campaigns = (summary.campaigns || []).map(campaign => ({ ...campaign, photo: (campaign.nmIds || []).map(nmId => byNmId.get(String(nmId))?.photo).find(Boolean) || '' }));
+  return { ...summary, products, campaigns };
 }
 
 function demoAds(from, to) {
@@ -531,7 +548,8 @@ async function advertising(id, from, to) {
       if (Array.isArray(chunk)) stats.push(...chunk);
     } catch (error) { warnings.push(`Статистика рекламы: ${error.message}`); }
   }
-  return { demo: false, ...summarizeAdStats(campaigns, stats, period.from, period.to), warnings };
+  const cards = await cachedAnalytics(`product-cards:${id}`, () => loadProductCards(token), 10 * 60_000);
+  return { demo: false, ...enrichAdvertising(summarizeAdStats(campaigns, stats, period.from, period.to), cards), warnings };
 }
 
 async function dashboard(id, from, to) {
