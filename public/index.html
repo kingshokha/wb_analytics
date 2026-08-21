@@ -17,7 +17,6 @@
         <button class="nav-item" data-page="prices"><span>₽</span> Цены и скидки</button>
         <button class="nav-item" data-page="funnel"><span>◫</span> Воронка</button>
         <button class="nav-item" data-page="ads"><span>↗</span> Реклама</button>
-        <button class="nav-item" data-page="console"><span>⌘</span> API-консоль</button>
       </nav>
       <div class="sync-state"><i></i><span><strong>WB API</strong><small id="syncText">Подключение…</small></span></div>
       <div class="cabinet-wrap">
@@ -66,8 +65,8 @@
       <section class="page" id="page-stocks">
         <div class="metrics stock-metrics" id="stockMetrics"></div>
         <div class="panel stock-panel">
-          <div class="panel-head"><div><h2>Остатки по складам FBS</h2><p id="stockCount">Загрузка остатков…</p></div><div class="filters stock-filters"><label class="search">⌕ <input id="stockSearch" placeholder="Товар, артикул или nmId"></label><details class="multi-filter"><summary id="stockWarehouseLabel">Склады</summary><div id="stockWarehouseOptions"></div></details><details class="multi-filter"><summary id="stockCategoryLabel">Категории</summary><div id="stockCategoryOptions"></div></details><details class="multi-filter"><summary>Наличие</summary><div id="stockAvailabilityOptions"><label><input type="checkbox" value="positive"> В наличии</label><label><input type="checkbox" value="zero"> Нулевые</label></div></details></div></div>
-          <div class="table-wrap"><table class="stock-table"><thead><tr><th class="check-col"><input type="checkbox" id="stockSelectAll" aria-label="Выбрать все товары"></th><th data-stock-sort="name">Товар ↕</th><th data-stock-sort="vendorCode">Артикул продавца ↕</th><th data-stock-sort="nmId">Артикул WB (nmId) ↕</th><th data-stock-sort="category">Категория ↕</th><th data-stock-sort="warehouseName">Склад FBS ↕</th><th data-stock-sort="size">Размер ↕</th><th data-stock-sort="sku">SKU / баркод ↕</th><th data-stock-sort="amount">Остаток ↕</th></tr></thead><tbody id="stocksBody"></tbody></table></div>
+          <div class="panel-head"><div><h2>Остатки по складам FBS</h2><p id="stockCount">Загрузка остатков…</p></div><div class="filters stock-filters"><label class="search">⌕ <input id="stockSearch" placeholder="Товар или артикул"></label><details class="multi-filter"><summary id="stockWarehouseLabel">Склады</summary><div id="stockWarehouseOptions"></div></details><details class="multi-filter"><summary id="stockCategoryLabel">Категории</summary><div id="stockCategoryOptions"></div></details><details class="multi-filter"><summary>Наличие</summary><div id="stockAvailabilityOptions"><label><input type="checkbox" value="positive"> В наличии</label><label><input type="checkbox" value="zero"> Нулевые</label></div></details></div></div>
+          <div class="table-wrap"><table class="stock-table"><thead><tr><th class="check-col"><input type="checkbox" id="stockSelectAll" aria-label="Выбрать все товары"></th><th data-stock-sort="name">Товар ↕</th><th data-stock-sort="vendorCode">Артикул продавца ↕</th><th data-stock-sort="nmId">Артикул WB ↕</th><th data-stock-sort="category">Категория ↕</th><th data-stock-sort="warehouseName">Склад FBS ↕</th><th data-stock-sort="sku">SKU / баркод ↕</th><th data-stock-sort="amount">Остаток ↕</th></tr></thead><tbody id="stocksBody"></tbody></table></div>
           <div class="empty hidden" id="emptyStocks"><span>▦</span><h3>Остатки не найдены</h3><p>Измените фильтры или проверьте настройки складов FBS.</p></div>
         </div>
         <div class="stock-actions hidden" id="stockActions"><strong id="stockSelectedCount">Выбрано: 0</strong><button class="primary" id="setStockButton">Задать остаток</button><button class="secondary" id="copyStockButton">Скопировать на склад</button><button class="stock-clear" id="clearStockSelection">Сбросить</button></div>
@@ -123,26 +122,12 @@
         </div>
       </section>
 
-      <section class="page" id="page-console">
-        <div class="console-grid">
-          <div class="panel console-form">
-            <p class="eyebrow">Все методы документации</p><h2>API-консоль</h2><p class="lead">Запрос проходит через сервер, поэтому токен не виден в браузере. Используйте только адрес метода из официальной документации WB.</p>
-            <label>HTTP-метод<select id="apiMethod"><option>GET</option><option>POST</option><option>PUT</option><option>PATCH</option><option>DELETE</option></select></label>
-            <label>Полный URL<input id="apiUrl" value="https://marketplace-api.wildberries.ru/api/v3/orders/new"></label>
-            <label>JSON-тело<textarea id="apiBody" spellcheck="false" placeholder="{}"></textarea></label>
-            <label class="confirm-line"><input type="checkbox" id="apiConfirm"> Подтверждаю изменяющий запрос</label>
-            <button class="primary" id="runApi">Выполнить запрос →</button>
-          </div>
-          <div class="panel response"><div class="panel-head"><div><h2>Ответ</h2><p id="apiStatus">Запрос ещё не выполнялся</p></div><button id="copyResponse">Копировать</button></div><pre id="apiResponse">{
-  "подсказка": "Выберите метод и выполните запрос"
-}</pre></div>
-        </div>
-      </section>
     </main>
   </div>
 
   <div class="modal" id="modal"><div class="modal-card"><button class="modal-x" id="modalClose">×</button><div id="modalContent"></div></div></div>
   <div class="toast" id="toast"></div>
+  <button id="runApi" hidden></button><button id="copyResponse" hidden></button>
   <script src="/app.js"></script>
 </body>
 </html>
