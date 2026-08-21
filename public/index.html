@@ -114,13 +114,13 @@
           </div>
         </div>
         <div class="panel ad-table-panel">
-          <div class="panel-head"><div><h2>Рекламные кампании</h2><p id="adCampaignCount">Загрузка данных…</p></div><div class="filters"><label class="search">⌕ <input id="adSearch" placeholder="Название или ID кампании"></label><select id="adStatus"><option value="">Все статусы</option><option value="9">Активные</option><option value="11">На паузе</option><option value="7">Завершённые</option></select></div></div>
+          <div class="panel-head"><div><h2>Рекламные кампании</h2><p id="adCampaignCount">Загрузка данных…</p></div><div class="filters"><label class="search">⌕ <input id="adSearch" placeholder="Название или ID кампании"></label><select id="adStatus" hidden><option value=""></option></select><details class="multi-filter"><summary id="adStatusLabel">Статусы (2)</summary><div id="adStatusOptions"><label><input type="checkbox" value="9" checked> Активные</label><label><input type="checkbox" value="11" checked> На паузе</label><label><input type="checkbox" value="7"> Завершённые</label></div></details></div></div>
           <div class="table-wrap"><table class="ad-table"><thead><tr><th data-ad-sort="name">Кампания ↕</th><th data-ad-sort="status">Статус ↕</th><th data-ad-sort="spend">Расход ↕</th><th data-ad-sort="views">Показы ↕</th><th data-ad-sort="clicks">Клики ↕</th><th data-ad-sort="ctr">CTR ↕</th><th data-ad-sort="cpc">CPC ↕</th><th data-ad-sort="orders">Заказы ↕</th><th data-ad-sort="revenue">Выручка ↕</th><th data-ad-sort="drr">ДРР ↕</th><th data-ad-sort="roas">ROAS ↕</th></tr></thead><tbody id="adCampaignsBody"></tbody></table></div>
           <div class="empty hidden" id="emptyAds"><span>↗</span><h3>Нет рекламных данных</h3><p>Измените период или фильтры.</p></div>
         </div>
         <div class="panel ad-products-panel">
           <div class="panel-head"><div><h2>Товары в рекламе</h2><p>До 100 товаров, отсортированных по затратам</p></div></div>
-          <div class="table-wrap"><table class="ad-table"><thead><tr><th>Товар</th><th>Расход</th><th>Показы</th><th>Клики</th><th>CTR</th><th>Заказы</th><th>Выручка</th><th>ДРР</th></tr></thead><tbody id="adProductsBody"></tbody></table></div>
+          <div class="table-wrap"><table class="ad-table"><thead><tr><th data-ad-product-sort="name">Товар ↕</th><th data-ad-product-sort="spend">Расход ↕</th><th data-ad-product-sort="views">Показы ↕</th><th data-ad-product-sort="clicks">Клики ↕</th><th data-ad-product-sort="ctr">CTR ↕</th><th data-ad-product-sort="orders">Заказы ↕</th><th data-ad-product-sort="revenue">Выручка ↕</th><th data-ad-product-sort="drr">ДРР ↕</th></tr></thead><tbody id="adProductsBody"></tbody></table></div>
         </div>
       </section>
 
