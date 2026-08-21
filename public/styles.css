@@ -22,3 +22,10 @@ small,th,.status,.live,.response button,.chart-legend,.platform-row span,.ad-det
 .filter-tools{display:grid;gap:6px;padding:7px;background:#fafbfa;border-bottom:1px solid var(--line)}.filter-search{width:100%;height:31px;padding:0 9px;border:1px solid var(--line);border-radius:7px;background:white;color:var(--ink);font:500 11px Manrope;outline:0}.filter-search:focus{border-color:var(--purple)}.filter-select-all{display:flex!important;align-items:center;gap:7px;padding:6px 7px!important;font-weight:800!important;border-bottom:1px solid var(--line)}.filter-select-all input{accent-color:var(--purple)}
 /* Global minimum text size required by AGENTS.md. */
 .campaign-details span,.funnel-history-row span,.funnel-history-row b{font-size:11px!important}
+/* Fixed table layout and reusable ellipsis cell. */
+.table-wrap table{table-layout:fixed}
+.table-wrap table td{white-space:nowrap;vertical-align:middle}
+.table-cell{min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.truncate-content{display:block;max-width:100%}
+.table-cell>.ad-product-name,.table-cell>.product{overflow:hidden}
+.table-cell>.ad-product-name>span,.table-cell>.product>span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
