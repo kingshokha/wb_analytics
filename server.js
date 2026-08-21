@@ -575,24 +575,14 @@ async function dashboard(id, from, to) {
     cachedAnalytics(`order-feed:${id}:${safeFrom}:${safeTo}`, () => wbRequest(token, 'https://seller-analytics-api.wildberries.ru/api/analytics/v1/order-feed', { method: 'POST', body: {
       selectedPeriod: { start: `${safeFrom}T00:00:00Z`, end: `${safeTo}T23:59:59Z` }
     }})).catch(e => (warnings.push(`Лента заказов: ${e.message}`), { data: { orders: [] } })),
-    cachedAnalytics(`sales-funnel:${id}:${safeFrom}:${safeTo}`, () => wbRequest(token, 'https://seller-analytics-api.wildberries.ru/api/analytics/v3/sales-funnel/products', { method: 'POST', body: {
-      selectedPeriod: { start: safeFrom, end: safeTo }, nmIds: [], skipDeletedNm: true,
-      orderBy: { field: 'openCard', mode: 'desc' }, limit: 1000, offset: 0
-    }})).catch(e => (warnings.push(`Воронка: ${e.message}`), { data: { products: [] } })),
-    cachedAnalytics(`sales-funnel-history:${id}:${safeFrom}:${safeTo}`, () => wbRequest(token, 'https://seller-analytics-api.wildberries.ru/api/analytics/v3/sales-funnel/products/history', { method: 'POST', body: {
-      selectedPeriod: { start: safeFrom, end: safeTo }, nmIds: [], skipDeletedNm: true, aggregationLevel: 'day'
-    }})).catch(e => (warnings.push(`История воронки: ${e.message}`), [])),
-    cachedAnalytics(`sales-funnel-grouped-history:${id}:${safeFrom}:${safeTo}`, () => wbRequest(token, 'https://seller-analytics-api.wildberries.ru/api/analytics/v3/sales-funnel/grouped/history', { method: 'POST', body: {
-      selectedPeriod: { start: safeFrom, end: safeTo }, brandNames: [], subjectIds: [], tagIds: [], skipDeletedNm: true, aggregationLevel: 'day'
-    }})).catch(e => (warnings.push(`Групповая история воронки: ${e.message}`), [])),
     cachedAnalytics(`product-cards:${id}`, () => loadProductCards(token), 10 * 60_000)
       .catch(e => (warnings.push(`Карточки товаров: ${e.message}`), [])),
     cachedAnalytics(`balance:${id}`, () => wbRequest(token, 'https://finance-api.wildberries.ru/api/v1/account/balance'), 60_000)
       .catch(e => (warnings.push(`Баланс: ${e.message}`), null))
   ];
-  const [fbs, orderFeed, funnel, funnelHistory, funnelGroupedHistory, cards, balance] = await Promise.all(jobs);
+  const [fbs, orderFeed, cards, balance] = await Promise.all(jobs);
   const balanceHistory = balance ? saveBalanceSnapshot(id, balance) : (readBalanceHistory()[id] || []);
-  return { demo: false, orders: enrichOrders(normalizeOrders(fbs, orderFeed), cards), funnel: extractFunnel(funnel), funnelProducts: funnel?.data?.products || funnel?.products || [], funnelHistory, funnelGroupedHistory,
+  return { demo: false, orders: enrichOrders(normalizeOrders(fbs, orderFeed), cards), funnel: extractFunnel({ data: { products: [] } }), funnelProducts: [], funnelHistory: [], funnelGroupedHistory: [],
     balance: balance ? { currency: balance.currency || 'RUB', current: Number(balance.current || 0),
       forWithdraw: Number(balance.for_withdraw || 0), history: balanceHistory } : null, warnings };
 }
