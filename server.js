@@ -345,7 +345,7 @@ function demoDashboard() {
     price: 129900 + (index % 5) * 45000, currencyCode: 643,
     warehouse: ['Коледино', 'Казань', 'Электросталь'][index % 3], source: index < 6 ? 'FBS' : 'Статистика'
   }));
-  return { demo: true, orders, funnel: { views: 14840, cart: 3180, orders: 1246, sales: 982, revenue: 1762400, currency: 'RUB' }, warnings: [] };
+  return { demo: true, orders, funnel: { views: 14840, cart: 3180, orders: 1246, sales: 982, revenue: 1762400, currency: 'RUB' }, funnelProducts: [], funnelHistory: [], funnelGroupedHistory: [], warnings: [] };
 }
 
 function currencyCode(currency) {
@@ -552,6 +552,19 @@ async function advertising(id, from, to) {
   return { demo: false, ...enrichAdvertising(summarizeAdStats(campaigns, stats, period.from, period.to), cards), warnings };
 }
 
+async function funnelDetails(id, from, to) {
+  if (id === 'demo' || !cabinets().length) return { products: [], history: [], groupedHistory: [] };
+  const token = tokenFor(id); const start = /^\d{4}-\d{2}-\d{2}$/.test(from || '') ? from : dateDaysAgo(7); const end = /^\d{4}-\d{2}-\d{2}$/.test(to || '') ? to : dateDaysAgo(0);
+  const cards = await cachedAnalytics(`product-cards:${id}`, () => loadProductCards(token), 10 * 60_000); const nmIds = cards.map(card => Number(card.nmID)).filter(Number.isInteger).slice(0, 20);
+  const body = { selectedPeriod: { start, end }, nmIds, skipDeletedNm: true, aggregationLevel: 'day' };
+  const [products, history, groupedHistory] = await Promise.all([
+    wbRequest(token, 'https://seller-analytics-api.wildberries.ru/api/analytics/v3/sales-funnel/products', { method: 'POST', body: { ...body, orderBy: { field: 'openCard', mode: 'desc' }, limit: 1000, offset: 0 } }),
+    wbRequest(token, 'https://seller-analytics-api.wildberries.ru/api/analytics/v3/sales-funnel/products/history', { method: 'POST', body }),
+    wbRequest(token, 'https://seller-analytics-api.wildberries.ru/api/analytics/v3/sales-funnel/grouped/history', { method: 'POST', body: { selectedPeriod: { start, end }, brandNames: [], subjectIds: [], tagIds: [], skipDeletedNm: true, aggregationLevel: 'day' } })
+  ]);
+  return { products: products?.data?.products || products?.products || [], history: Array.isArray(history) ? history : history?.data || [], groupedHistory: Array.isArray(groupedHistory) ? groupedHistory : groupedHistory?.data || [] };
+}
+
 async function dashboard(id, from, to) {
   if (id === 'demo' || !cabinets().length) return demoDashboard();
   const token = tokenFor(id); const warnings = [];
@@ -566,14 +579,20 @@ async function dashboard(id, from, to) {
       selectedPeriod: { start: safeFrom, end: safeTo }, nmIds: [], skipDeletedNm: true,
       orderBy: { field: 'openCard', mode: 'desc' }, limit: 1000, offset: 0
     }})).catch(e => (warnings.push(`Воронка: ${e.message}`), { data: { products: [] } })),
+    cachedAnalytics(`sales-funnel-history:${id}:${safeFrom}:${safeTo}`, () => wbRequest(token, 'https://seller-analytics-api.wildberries.ru/api/analytics/v3/sales-funnel/products/history', { method: 'POST', body: {
+      selectedPeriod: { start: safeFrom, end: safeTo }, nmIds: [], skipDeletedNm: true, aggregationLevel: 'day'
+    }})).catch(e => (warnings.push(`История воронки: ${e.message}`), [])),
+    cachedAnalytics(`sales-funnel-grouped-history:${id}:${safeFrom}:${safeTo}`, () => wbRequest(token, 'https://seller-analytics-api.wildberries.ru/api/analytics/v3/sales-funnel/grouped/history', { method: 'POST', body: {
+      selectedPeriod: { start: safeFrom, end: safeTo }, brandNames: [], subjectIds: [], tagIds: [], skipDeletedNm: true, aggregationLevel: 'day'
+    }})).catch(e => (warnings.push(`Групповая история воронки: ${e.message}`), [])),
     cachedAnalytics(`product-cards:${id}`, () => loadProductCards(token), 10 * 60_000)
       .catch(e => (warnings.push(`Карточки товаров: ${e.message}`), [])),
     cachedAnalytics(`balance:${id}`, () => wbRequest(token, 'https://finance-api.wildberries.ru/api/v1/account/balance'), 60_000)
       .catch(e => (warnings.push(`Баланс: ${e.message}`), null))
   ];
-  const [fbs, orderFeed, funnel, cards, balance] = await Promise.all(jobs);
+  const [fbs, orderFeed, funnel, funnelHistory, funnelGroupedHistory, cards, balance] = await Promise.all(jobs);
   const balanceHistory = balance ? saveBalanceSnapshot(id, balance) : (readBalanceHistory()[id] || []);
-  return { demo: false, orders: enrichOrders(normalizeOrders(fbs, orderFeed), cards), funnel: extractFunnel(funnel),
+  return { demo: false, orders: enrichOrders(normalizeOrders(fbs, orderFeed), cards), funnel: extractFunnel(funnel), funnelProducts: funnel?.data?.products || funnel?.products || [], funnelHistory, funnelGroupedHistory,
     balance: balance ? { currency: balance.currency || 'RUB', current: Number(balance.current || 0),
       forWithdraw: Number(balance.for_withdraw || 0), history: balanceHistory } : null, warnings };
 }
@@ -594,6 +613,9 @@ async function handleApi(req, res, url) {
   }
   if (req.method === 'GET' && url.pathname === '/api/advertising') {
     return send(res, 200, await advertising(url.searchParams.get('cabinet') || 'demo', url.searchParams.get('from'), url.searchParams.get('to')));
+  }
+  if (req.method === 'GET' && url.pathname === '/api/funnel') {
+    return send(res, 200, await funnelDetails(url.searchParams.get('cabinet') || 'demo', url.searchParams.get('from'), url.searchParams.get('to')));
   }
   if (req.method === 'GET' && url.pathname === '/api/fbs-stocks') {
     return send(res, 200, await fbsStocks(url.searchParams.get('cabinet') || 'demo'));
