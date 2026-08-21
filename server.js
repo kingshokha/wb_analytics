@@ -555,14 +555,15 @@ async function advertising(id, from, to) {
 async function funnelDetails(id, from, to) {
   if (id === 'demo' || !cabinets().length) return { products: [], history: [], groupedHistory: [] };
   const token = tokenFor(id); const start = /^\d{4}-\d{2}-\d{2}$/.test(from || '') ? from : dateDaysAgo(7); const end = /^\d{4}-\d{2}-\d{2}$/.test(to || '') ? to : dateDaysAgo(0);
-  const cards = await cachedAnalytics(`product-cards:${id}`, () => loadProductCards(token), 10 * 60_000); const nmIds = cards.map(card => Number(card.nmID)).filter(Number.isInteger).slice(0, 20);
-  const body = { selectedPeriod: { start, end }, nmIds, skipDeletedNm: true, aggregationLevel: 'day' };
-  const [products, history, groupedHistory] = await Promise.all([
-    wbRequest(token, 'https://seller-analytics-api.wildberries.ru/api/analytics/v3/sales-funnel/products', { method: 'POST', body: { ...body, orderBy: { field: 'openCard', mode: 'desc' }, limit: 1000, offset: 0 } }),
-    wbRequest(token, 'https://seller-analytics-api.wildberries.ru/api/analytics/v3/sales-funnel/products/history', { method: 'POST', body }),
-    wbRequest(token, 'https://seller-analytics-api.wildberries.ru/api/analytics/v3/sales-funnel/grouped/history', { method: 'POST', body: { selectedPeriod: { start, end }, brandNames: [], subjectIds: [], tagIds: [], skipDeletedNm: true, aggregationLevel: 'day' } })
-  ]);
-  return { products: products?.data?.products || products?.products || [], history: Array.isArray(history) ? history : history?.data || [], groupedHistory: Array.isArray(groupedHistory) ? groupedHistory : groupedHistory?.data || [] };
+  const body = { selectedPeriod: { start, end }, nmIds: [], skipDeletedNm: true, orderBy: { field: 'openCard', mode: 'desc' }, limit: 1000, offset: 0 };
+  const response = await wbRequest(token, 'https://seller-analytics-api.wildberries.ru/api/analytics/v3/sales-funnel/products', { method: 'POST', body });
+  const products = response?.data?.products || response?.products || [];
+  let groupedHistory = [];
+  try {
+    const groupedResponse = await wbRequest(token, 'https://seller-analytics-api.wildberries.ru/api/analytics/v3/sales-funnel/grouped/history', { method: 'POST', body: { selectedPeriod: { start, end }, brandNames: [], subjectIds: [], tagIds: [], skipDeletedNm: true, aggregationLevel: 'day' } });
+    groupedHistory = Array.isArray(groupedResponse) ? groupedResponse : groupedResponse?.data || [];
+  } catch { groupedHistory = []; }
+  return { products, history: groupedHistory, groupedHistory };
 }
 
 async function dashboard(id, from, to) {
