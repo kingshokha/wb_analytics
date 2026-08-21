@@ -38,6 +38,8 @@
         <div><p class="eyebrow">Операционный центр</p><h1 id="pageTitle">Лента заказов</h1></div>
         <div class="header-actions">
           <label class="date"><span>Период</span><input id="dateFrom" type="date"><b>—</b><input id="dateTo" type="date"></label>
+          <select class="month-select hidden" id="adMonth" aria-label="Выбрать месяц"></select>
+          <button class="apply-period" id="applyPeriod">Применить</button>
           <button class="refresh" id="refresh">↻ <span>Обновить</span></button>
         </div>
       </header>
@@ -113,7 +115,7 @@
         </div>
         <div class="panel ad-table-panel">
           <div class="panel-head"><div><h2>Рекламные кампании</h2><p id="adCampaignCount">Загрузка данных…</p></div><div class="filters"><label class="search">⌕ <input id="adSearch" placeholder="Название или ID кампании"></label><select id="adStatus"><option value="">Все статусы</option><option value="9">Активные</option><option value="11">На паузе</option><option value="7">Завершённые</option></select></div></div>
-          <div class="table-wrap"><table class="ad-table"><thead><tr><th>Кампания</th><th>Статус</th><th>Расход</th><th>Показы</th><th>Клики</th><th>CTR</th><th>CPC</th><th>Заказы</th><th>Выручка</th><th>ДРР</th><th>ROAS</th></tr></thead><tbody id="adCampaignsBody"></tbody></table></div>
+          <div class="table-wrap"><table class="ad-table"><thead><tr><th data-ad-sort="name">Кампания ↕</th><th data-ad-sort="status">Статус ↕</th><th data-ad-sort="spend">Расход ↕</th><th data-ad-sort="views">Показы ↕</th><th data-ad-sort="clicks">Клики ↕</th><th data-ad-sort="ctr">CTR ↕</th><th data-ad-sort="cpc">CPC ↕</th><th data-ad-sort="orders">Заказы ↕</th><th data-ad-sort="revenue">Выручка ↕</th><th data-ad-sort="drr">ДРР ↕</th><th data-ad-sort="roas">ROAS ↕</th></tr></thead><tbody id="adCampaignsBody"></tbody></table></div>
           <div class="empty hidden" id="emptyAds"><span>↗</span><h3>Нет рекламных данных</h3><p>Измените период или фильтры.</p></div>
         </div>
         <div class="panel ad-products-panel">
