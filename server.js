@@ -177,7 +177,8 @@ function stockCardIndex(cards = []) {
     const chrtId = String(size.chrtID || size.chrtId || '');
     if (!chrtId) continue;
     index.set(chrtId, { nmId: card.nmID, vendorCode: card.vendorCode || '', name: card.title || `Товар ${card.nmID}`,
-      category: card.subjectName || 'Без категории', size: size.techSize || size.wbSize || '—', sku: (size.skus || [])[0] || '' });
+      category: card.subjectName || 'Без категории', size: size.techSize || size.wbSize || '—', sku: (size.skus || [])[0] || '',
+      photo: card.photos?.[0]?.c246x328 || card.photos?.[0]?.tm || card.photos?.[0]?.square || card.photos?.[0]?.big || '' });
   }
   return index;
 }
@@ -188,7 +189,7 @@ function normalizeFbsStocks(warehouses = [], stockResponses = [], cards = []) {
     const meta = byChrt.get(String(stock.chrtId)) || {};
     rows.push({ warehouseId: warehouse.id, warehouseName: warehouse.name || `Склад ${warehouse.id}`, officeId: warehouse.officeId,
       nmId: meta.nmId || '', vendorCode: meta.vendorCode || '', name: meta.name || `Размер ${stock.chrtId}`,
-      category: meta.category || 'Без категории', size: meta.size || '—', sku: stock.sku || meta.sku || '', chrtId: stock.chrtId,
+      category: meta.category || 'Без категории', size: meta.size || '—', sku: stock.sku || meta.sku || '', photo: meta.photo || '', chrtId: stock.chrtId,
       amount: Number(stock.amount || 0) });
   }));
   const totalAmount = rows.reduce((sum, row) => sum + row.amount, 0);
