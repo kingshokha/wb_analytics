@@ -24,7 +24,7 @@ small,th,.status,.live,.response button,.chart-legend,.platform-row span,.ad-det
 .campaign-details span,.funnel-history-row span,.funnel-history-row b{font-size:11px!important}
 /* Fixed table layout and reusable ellipsis cell. */
 .table-wrap table{table-layout:fixed}
-.table-wrap table td{white-space:nowrap;vertical-align:middle}
+.table-wrap table td{white-space:nowrap;overflow:hidden;vertical-align:middle}
 .table-cell{min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
 .truncate-content{display:block;max-width:100%}
 .table-cell>.ad-product-name,.table-cell>.product{overflow:hidden}
