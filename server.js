@@ -455,7 +455,7 @@ function summarizeAdStats(campaigns = [], stats = [], from, to) {
     const nmIds = [...new Set([...campaignProductIds(campaign), ...(stat.days || []).flatMap(day => (day.apps || []).flatMap(app => (app.nms || []).map(nm => Number(nm.nmId || nm.nm)).filter(Number.isInteger)))])];
     rows.push({ id: stat.advertId, name: campaign?.settings?.name || `Кампания #${stat.advertId}`,
       status: campaign?.status, paymentType: campaign?.settings?.payment_type || '', bidType: campaign?.bid_type || '',
-      updatedAt: campaign?.timestamps?.updated || '', nmIds, ...adMetrics(stat) });
+      updatedAt: campaign?.timestamps?.updated || '', nmIds, daily: (stat.days || []).map(day => ({ date: String(day.date || '').slice(0, 10), ...adMetrics(day) })), ...adMetrics(stat) });
     for (const day of stat.days || []) {
       const date = String(day.date || '').slice(0, 10);
       if (!daily.has(date)) daily.set(date, emptyAdMetrics({ date }));
@@ -530,6 +530,12 @@ function validAdPeriod(from, to) {
   return { from: safeFrom, to: safeTo };
 }
 
+async function advertisingCampaign(id, campaignId, from, to) {
+  const summary = await advertising(id, from, to);
+  const campaign = (summary.campaigns || []).find(item => String(item.id) === String(campaignId));
+  if (!campaign) throw apiError(404, 'Кампания не найдена за выбранный период');
+  return { period: summary.period, campaign };
+}
 async function advertising(id, from, to) {
   const period = validAdPeriod(from, to);
   if (id === 'demo' || !cabinets().length) return demoAds(period.from, period.to);
@@ -601,6 +607,9 @@ async function handleApi(req, res, url) {
   }
   if (req.method === 'GET' && url.pathname === '/api/dashboard') {
     return send(res, 200, await dashboard(url.searchParams.get('cabinet') || 'demo', url.searchParams.get('from'), url.searchParams.get('to')));
+  }
+  if (req.method === 'GET' && url.pathname === '/api/advertising/campaign') {
+    return send(res, 200, await advertisingCampaign(url.searchParams.get('cabinet') || 'demo', url.searchParams.get('id'), url.searchParams.get('from'), url.searchParams.get('to')));
   }
   if (req.method === 'GET' && url.pathname === '/api/advertising') {
     return send(res, 200, await advertising(url.searchParams.get('cabinet') || 'demo', url.searchParams.get('from'), url.searchParams.get('to')));
