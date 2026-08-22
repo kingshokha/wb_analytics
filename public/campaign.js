@@ -37,8 +37,13 @@
     });
   }
 
-  function renderSummary() {
+  function renderSummary(campaign) {
     const cards = [
+      ['Показы', number(campaign.views)],
+      ['Клики', number(campaign.clicks)],
+      ['Рекламные заказы', number(campaign.orders)],
+      ['Сумма заказов', money(campaign.revenue)],
+      ['Затраты', money(campaign.spend)],
       ['Средний ДРР', percent(average('drr'))],
       ['Средний CTR', percent(average('ctr'))],
       ['Средний CPC', money(average('cpc'))],
@@ -70,7 +75,29 @@
     const grid = [0, .25, .5, .75, 1].map((ratio) => `<line class="chart-grid" x1="${left}" x2="${width - right}" y1="${y(max * ratio)}" y2="${y(max * ratio)}"/><text class="chart-axis" x="${left - 8}" y="${y(max * ratio) + 4}" text-anchor="end">${number(max * ratio)}</text>`).join('');
     const labels = rows.map((row, index) => index % Math.max(1, Math.ceil(rows.length / 8)) === 0 ? `<text class="chart-axis" x="${x(index)}" y="${height - 14}" text-anchor="middle">${escapeHtml(date(row.date))}</text>` : '').join('');
     const lines = selected.map((metric) => { const points = rows.map((row, index) => `${x(index)},${y(row[metric.key])}`).join(' '); const dots = rows.map((row, index) => `<circle class="chart-dot" cx="${x(index)}" cy="${y(row[metric.key])}" r="3" fill="${metric.color}"><title>${escapeHtml(date(row.date))}: ${escapeHtml(formatCell(metric.key, row[metric.key]))}</title></circle>`).join(''); return `<polyline class="chart-line" points="${points}" stroke="${metric.color}"/>${dots}`; }).join('');
-    svg.innerHTML = `${grid}${labels}${lines}`;
+    svg.innerHTML = `${grid}${labels}${lines}`; bindChartHover(rows, x);
+  }
+
+  function bindChartHover(rows, xPosition) {
+    const svg = $('#dailyChart');
+    const tooltip = $('#chartTooltip');
+    const chartWrap = $('.chart-wrap');
+    svg.onpointermove = (event) => {
+      const bounds = svg.getBoundingClientRect();
+      const viewX = Math.max(0, Math.min(1200, (event.clientX - bounds.left) / bounds.width * 1200));
+      const left = 54, right = 22, chartWidth = 1200 - left - right;
+      const index = rows.length === 1 ? 0 : Math.max(0, Math.min(rows.length - 1, Math.round((viewX - left) / chartWidth * (rows.length - 1))));
+      const row = rows[index];
+      const metricValues = chartMetrics.filter((metric) => state.visibleMetrics.has(metric.key)).map((metric) => `<span><i style="background:${metric.color}"></i>${metric.label}: <b>${escapeHtml(formatCell(metric.key, row[metric.key]))}</b></span>`).join('');
+      tooltip.innerHTML = `<strong>${escapeHtml(date(row.date))}</strong>${metricValues}`;
+      tooltip.hidden = false;
+      const point = xPosition(index) / 1200 * bounds.width;
+      tooltip.style.left = `${Math.max(12, Math.min(chartWrap.clientWidth - tooltip.offsetWidth - 12, point))}px`;
+      const existing = svg.querySelector('.chart-hover-line');
+      if (existing) existing.setAttribute('x1', String(xPosition(index))), existing.setAttribute('x2', String(xPosition(index)));
+      else svg.insertAdjacentHTML('beforeend', `<line class="chart-hover-line" x1="${xPosition(index)}" x2="${xPosition(index)}" y1="20" y2="248"/>`);
+    };
+    svg.onpointerleave = () => { tooltip.hidden = true; };
   }
 
   async function load() {
@@ -83,7 +110,7 @@
       state.rows = campaign.daily || [];
       $('#campaignTitle').textContent = campaign.name || `Кампания #${campaign.id}`;
       $('#periodLabel').textContent = `Кампания #${campaign.id} · ${date(data.period.from)} — ${date(data.period.to)}`;
-      renderSummary(); renderChartOptions(); renderChart(); renderTable();
+      renderSummary(campaign); renderChartOptions(); renderChart(); renderTable();
     } catch (error) { $('#periodLabel').textContent = error.message; $('#dailyBody').innerHTML = `<tr><td colspan="11" class="empty">${escapeHtml(error.message)}</td></tr>`; }
   }
 
