@@ -1,119 +1,19 @@
 (() => {
   'use strict';
-
   const params = new URLSearchParams(location.search);
-  const state = { rows: [], sort: { key: 'date', direction: 'desc' }, visibleMetrics: new Set(['views', 'clicks', 'orders', 'spend']) };
-  const columns = ['date', 'views', 'clicks', 'ctr', 'cpc', 'carts', 'orders', 'canceled', 'revenue', 'spend', 'drr'];
-  const chartMetrics = [
-    { key: 'views', label: 'Показы', color: '#277a70' },
-    { key: 'clicks', label: 'Клики', color: '#d77b28' },
-    { key: 'carts', label: 'Корзины', color: '#4d8f63' },
-    { key: 'orders', label: 'Заказы', color: '#b35b45' },
-    { key: 'spend', label: 'Затраты', color: '#5a7d9a' },
-    { key: 'revenue', label: 'Сумма заказов', color: '#8b6b3f' }
-  ];
-  const $ = (selector) => document.querySelector(selector);
-  const number = (value) => Number(value || 0).toLocaleString('ru-RU', { maximumFractionDigits: 2 });
-  const money = (value) => `${number(value)} ₽`;
-  const percent = (value) => `${number(value)}%`;
-  const date = (value) => { const parsed = new Date(`${value}T00:00:00Z`); return Number.isNaN(parsed.getTime()) ? value : parsed.toLocaleDateString('ru-RU'); };
-  const escapeHtml = (value) => String(value ?? '').replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' }[char]));
-  const average = (key) => state.rows.length ? state.rows.reduce((sum, row) => sum + Number(row[key] || 0), 0) / state.rows.length : 0;
-  const total = (key) => state.rows.reduce((sum, row) => sum + Number(row[key] || 0), 0);
-
-  function formatCell(key, value) {
-    if (key === 'date') return date(value);
-    if (['spend', 'revenue', 'cpc'].includes(key)) return money(value);
-    if (['ctr', 'drr'].includes(key)) return percent(value);
-    return number(value);
-  }
-
-  function sortedRows() {
-    const { key, direction } = state.sort;
-    return [...state.rows].sort((left, right) => {
-      const a = left[key] ?? '', b = right[key] ?? '';
-      const result = typeof a === 'number' && typeof b === 'number' ? a - b : String(a).localeCompare(String(b), 'ru', { numeric: true });
-      return direction === 'asc' ? result : -result;
-    });
-  }
-
-  function renderSummary(campaign) {
-    const cards = [
-      ['Показы', number(campaign.views)],
-      ['Клики', number(campaign.clicks)],
-      ['Рекламные заказы', number(campaign.orders)],
-      ['Сумма заказов', money(campaign.revenue)],
-      ['Затраты', money(campaign.spend)],
-      ['Средний ДРР', percent(average('drr'))],
-      ['Средний CTR', percent(average('ctr'))],
-      ['Средний CPC', money(average('cpc'))],
-      ['Добавления в корзину', number(total('carts'))],
-      ['Отмены', number(total('canceled'))]
-    ];
-    $('#summary').innerHTML = cards.map(([label, value]) => `<div class="metric"><span>${label}</span><strong>${value}</strong></div>`).join('');
-  }
-
-  function renderTable() {
-    const rows = sortedRows();
-    $('#dailyBody').innerHTML = rows.length ? rows.map((row) => `<tr>${columns.map((key) => `<td>${escapeHtml(formatCell(key, row[key]))}</td>`).join('')}</tr>`).join('') : '<tr><td colspan="11" class="empty">Нет дневных данных за выбранный период</td></tr>';
-  }
-
-  function renderChartOptions() {
-    $('#chartOptions').innerHTML = chartMetrics.map((metric) => `<label><input type="checkbox" data-chart-key="${metric.key}" ${state.visibleMetrics.has(metric.key) ? 'checked' : ''}> ${metric.label}</label>`).join('');
-    $('#chartOptions').querySelectorAll('input').forEach((input) => input.addEventListener('change', () => { input.checked ? state.visibleMetrics.add(input.dataset.chartKey) : state.visibleMetrics.delete(input.dataset.chartKey); renderChart(); }));
-  }
-
-  function renderChart() {
-    const svg = $('#dailyChart');
-    const rows = [...state.rows].sort((a, b) => String(a.date).localeCompare(String(b.date)));
-    const selected = chartMetrics.filter((metric) => state.visibleMetrics.has(metric.key));
-    const width = 1200, height = 290, left = 54, right = 22, top = 20, bottom = 42, chartWidth = width - left - right, chartHeight = height - top - bottom;
-    if (!rows.length || !selected.length) { svg.innerHTML = '<text x="600" y="145" text-anchor="middle" class="chart-axis">Выберите данные для отображения</text>'; return; }
-    const max = Math.max(1, ...selected.flatMap((metric) => rows.map((row) => Number(row[metric.key] || 0))));
-    const x = (index) => left + (rows.length === 1 ? chartWidth / 2 : index * chartWidth / (rows.length - 1));
-    const y = (value) => top + chartHeight - Number(value || 0) / max * chartHeight;
-    const grid = [0, .25, .5, .75, 1].map((ratio) => `<line class="chart-grid" x1="${left}" x2="${width - right}" y1="${y(max * ratio)}" y2="${y(max * ratio)}"/><text class="chart-axis" x="${left - 8}" y="${y(max * ratio) + 4}" text-anchor="end">${number(max * ratio)}</text>`).join('');
-    const labels = rows.map((row, index) => index % Math.max(1, Math.ceil(rows.length / 8)) === 0 ? `<text class="chart-axis" x="${x(index)}" y="${height - 14}" text-anchor="middle">${escapeHtml(date(row.date))}</text>` : '').join('');
-    const lines = selected.map((metric) => { const points = rows.map((row, index) => `${x(index)},${y(row[metric.key])}`).join(' '); const dots = rows.map((row, index) => `<circle class="chart-dot" cx="${x(index)}" cy="${y(row[metric.key])}" r="3" fill="${metric.color}"><title>${escapeHtml(date(row.date))}: ${escapeHtml(formatCell(metric.key, row[metric.key]))}</title></circle>`).join(''); return `<polyline class="chart-line" points="${points}" stroke="${metric.color}"/>${dots}`; }).join('');
-    svg.innerHTML = `${grid}${labels}${lines}`; bindChartHover(rows, x);
-  }
-
-  function bindChartHover(rows, xPosition) {
-    const svg = $('#dailyChart');
-    const tooltip = $('#chartTooltip');
-    const chartWrap = $('.chart-wrap');
-    svg.onpointermove = (event) => {
-      const bounds = svg.getBoundingClientRect();
-      const viewX = Math.max(0, Math.min(1200, (event.clientX - bounds.left) / bounds.width * 1200));
-      const left = 54, right = 22, chartWidth = 1200 - left - right;
-      const index = rows.length === 1 ? 0 : Math.max(0, Math.min(rows.length - 1, Math.round((viewX - left) / chartWidth * (rows.length - 1))));
-      const row = rows[index];
-      const metricValues = chartMetrics.filter((metric) => state.visibleMetrics.has(metric.key)).map((metric) => `<span><i style="background:${metric.color}"></i>${metric.label}: <b>${escapeHtml(formatCell(metric.key, row[metric.key]))}</b></span>`).join('');
-      tooltip.innerHTML = `<strong>${escapeHtml(date(row.date))}</strong>${metricValues}`;
-      tooltip.hidden = false;
-      const point = xPosition(index) / 1200 * bounds.width;
-      tooltip.style.left = `${Math.max(12, Math.min(chartWrap.clientWidth - tooltip.offsetWidth - 12, point))}px`;
-      const existing = svg.querySelector('.chart-hover-line');
-      if (existing) existing.setAttribute('x1', String(xPosition(index))), existing.setAttribute('x2', String(xPosition(index)));
-      else svg.insertAdjacentHTML('beforeend', `<line class="chart-hover-line" x1="${xPosition(index)}" x2="${xPosition(index)}" y1="20" y2="248"/>`);
-    };
-    svg.onpointerleave = () => { tooltip.hidden = true; };
-  }
-
-  async function load() {
-    const query = new URLSearchParams({ cabinet: params.get('cabinet') || 'demo', id: params.get('id') || '', from: params.get('from') || '', to: params.get('to') || '' });
-    try {
-      const response = await fetch(`/api/advertising/campaign?${query}`);
-      if (!response.ok) throw new Error((await response.json()).error || 'Не удалось получить данные');
-      const data = await response.json();
-      const campaign = data.campaign;
-      state.rows = campaign.daily || [];
-      $('#campaignTitle').textContent = campaign.name || `Кампания #${campaign.id}`;
-      $('#periodLabel').textContent = `Кампания #${campaign.id} · ${date(data.period.from)} — ${date(data.period.to)}`;
-      renderSummary(campaign); renderChartOptions(); renderChart(); renderTable();
-    } catch (error) { $('#periodLabel').textContent = error.message; $('#dailyBody').innerHTML = `<tr><td colspan="11" class="empty">${escapeHtml(error.message)}</td></tr>`; }
-  }
-
-  document.querySelectorAll('th[data-key]').forEach((header) => header.addEventListener('click', () => { const key = header.dataset.key; state.sort = state.sort.key === key ? { key, direction: state.sort.direction === 'asc' ? 'desc' : 'asc' } : { key, direction: 'desc' }; renderTable(); }));
-  load();
+  const state = { rows: [], productDaily: [], sort: { key: 'date', direction: 'desc' }, productSort: { key: 'date', direction: 'desc' }, visibleMetrics: new Set(['views', 'clicks', 'orders', 'spend']), visibleCards: new Set() };
+  const columns = ['date','views','clicks','ctr','cpc','carts','orders','canceled','revenue','spend','drr'];
+  const chartMetrics = [{key:'views',label:'Показы',color:'#277a70'},{key:'clicks',label:'Клики',color:'#d77b28'},{key:'carts',label:'Корзины',color:'#4d8f63'},{key:'orders',label:'Заказы',color:'#b35b45'},{key:'spend',label:'Затраты',color:'#5a7d9a'},{key:'revenue',label:'Сумма заказов',color:'#8b6b3f'}];
+  const $=s=>document.querySelector(s), number=v=>Number(v||0).toLocaleString('ru-RU',{maximumFractionDigits:2}), money=v=>`${number(v)} ₽`, percent=v=>`${number(v)}%`, date=v=>{const d=new Date(`${v}T00:00:00Z`);return Number.isNaN(d.getTime())?v:d.toLocaleDateString('ru-RU')}, esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c])), total=k=>state.rows.reduce((s,r)=>s+Number(r[k]||0),0), average=k=>state.rows.length?total(k)/state.rows.length:0;
+  const fmt=(k,v)=>k==='date'?date(v):['spend','revenue','cpc'].includes(k)?money(v):['ctr','drr'].includes(k)?percent(v):number(v);
+  function sorted(rows, sort){return [...rows].sort((a,b)=>{const av=a[sort.key]??'',bv=b[sort.key]??'',r=typeof av==='number'&&typeof bv==='number'?av-bv:String(av).localeCompare(String(bv),'ru',{numeric:true});return sort.direction==='asc'?r:-r})}
+  function renderSummary(c){const cards=[['Показы',number(c.views)],['Клики',number(c.clicks)],['Рекламные заказы',number(c.orders)],['Сумма заказов',money(c.revenue)],['Затраты',money(c.spend)],['Средний ДРР',percent(average('drr'))],['Средний CTR',percent(average('ctr'))],['Средний CPC',money(average('cpc'))],['Добавления в корзину',number(total('carts'))],['Отмены',number(total('canceled'))]];$('#summary').innerHTML=cards.map(x=>`<div class="metric"><span>${x[0]}</span><strong>${x[1]}</strong></div>`).join('')}
+  function renderTable(){const rows=sorted(state.rows,state.sort);$('#dailyBody').innerHTML=rows.length?rows.map(r=>`<tr>${columns.map(k=>`<td>${esc(fmt(k,r[k]))}</td>`).join('')}</tr>`).join(''):'<tr><td colspan="11" class="empty">Нет дневных данных за выбранный период</td></tr>'}
+  function renderProductTable(){const rows=sorted(state.productDaily,state.productSort);$('#productDailyBody').innerHTML=rows.length?rows.map(r=>`<tr><td>${esc(r.nmId||'—')}</td><td>${esc(r.name||'—')}</td>${columns.slice(0,1).map(k=>`<td>${esc(fmt(k,r[k]))}</td>`)}${columns.slice(1).map(k=>`<td>${esc(fmt(k,r[k]))}</td>`).join('')}</tr>`).join(''):'<tr><td colspan="13" class="empty">Нет данных по артикулам за выбранный период</td></tr>'}
+  function renderOptions(){const cards=[...new Map(state.productDaily.map(r=>[String(r.nmId),r])).values()];$('#chartOptions').innerHTML=chartMetrics.map(m=>`<label><input type="checkbox" data-chart-key="${m.key}" ${state.visibleMetrics.has(m.key)?'checked':''}> ${m.label}</label>`).join('')+cards.map((c,i)=>`<label><input type="checkbox" data-card-key="${esc(c.nmId)}" ${state.visibleCards.has(String(c.nmId))?'checked':''}> Артикул ${esc(c.nmId)}</label>`).join('');$('#chartOptions').querySelectorAll('[data-chart-key]').forEach(i=>i.onchange=()=>{i.checked?state.visibleMetrics.add(i.dataset.chartKey):state.visibleMetrics.delete(i.dataset.chartKey);renderChart()});$('#chartOptions').querySelectorAll('[data-card-key]').forEach(i=>i.onchange=()=>{i.checked?state.visibleCards.add(i.dataset.cardKey):state.visibleCards.delete(i.dataset.cardKey);renderChart()})}
+  function renderChart(){const svg=$('#dailyChart'), rows=[...state.rows].sort((a,b)=>String(a.date).localeCompare(String(b.date))), left=54,right=22,top=20,bottom=42,w=1200,h=290,pw=w-left-right,ph=h-top-bottom;const cards=[...new Map(state.productDaily.map(r=>[String(r.nmId),r])).values()];const selected=chartMetrics.filter(m=>state.visibleMetrics.has(m.key));const series=[...selected,...cards.filter(c=>state.visibleCards.has(String(c.nmId))).map((c,i)=>({key:`card:${c.nmId}`,label:`Артикул ${c.nmId}`,color:['#b35b45','#5a7d9a','#8b6b3f','#277a70','#d77b28'][i%5],card:c.nmId}))];if(!rows.length||!series.length){svg.innerHTML='<text x="600" y="145" text-anchor="middle" class="chart-axis">Выберите данные для отображения</text>';return}const byDay=new Map(state.productDaily.map(r=>[`${r.nmId}:${r.date}`,r]));const max=Math.max(1,...series.flatMap(s=>rows.map(r=>Number(s.card?byDay.get(`${s.card}:${r.date}`)?.spend||0:r[s.key]||0))));const x=i=>left+(rows.length===1?pw/2:i*pw/(rows.length-1)),y=v=>top+ph-Number(v||0)/max*ph;const grid=[0,.25,.5,.75,1].map(r=>`<line class="chart-grid" x1="${left}" x2="${w-right}" y1="${y(max*r)}" y2="${y(max*r)}"/><text class="chart-axis" x="${left-8}" y="${y(max*r)+4}" text-anchor="end">${number(max*r)}</text>`).join('');const labels=rows.map((r,i)=>i%Math.max(1,Math.ceil(rows.length/8))===0?`<text class="chart-axis" x="${x(i)}" y="${h-14}" text-anchor="middle">${esc(date(r.date))}</text>`:'').join('');const lines=series.map(s=>{const pts=rows.map((r,i)=>{const v=s.card?(byDay.get(`${s.card}:${r.date}`)?.spend||0):r[s.key];return `${x(i)},${y(v)}`}).join(' ');return `<polyline class="chart-line" points="${pts}" stroke="${s.color}"/>`}).join('');svg.innerHTML=`${grid}${labels}${lines}<rect class="chart-hit-area" x="${left}" y="${top}" width="${pw}" height="${ph}" fill="transparent"/>`;bindHover(rows,x,series,byDay,w,top,top+ph)}
+  function bindHover(rows,x,series,byDay,w,top,bottom){const svg=$('#dailyChart'),tip=$('#chartTooltip'),wrap=$('.chart-wrap');svg.onpointermove=e=>{const b=svg.getBoundingClientRect(),vx=(e.clientX-b.left)/b.width*w;let idx=0,best=Infinity;rows.forEach((_,i)=>{const d=Math.abs(x(i)-vx);if(d<best){best=d;idx=i}});const row=rows[idx];tip.innerHTML=`<strong>${esc(date(row.date))}</strong>`+series.map(s=>{const v=s.card?(byDay.get(`${s.card}:${row.date}`)?.spend||0):row[s.key];return `<span><i style="background:${s.color}"></i>${s.label}: <b>${esc(fmt(s.card?'spend':s.key,v))}</b></span>`}).join('');tip.hidden=false;const px=x(idx)/w*b.width;tip.style.left=`${Math.max(12,Math.min(wrap.clientWidth-tip.offsetWidth-12,px))}px`;let line=svg.querySelector('.chart-hover-line');if(!line){svg.insertAdjacentHTML('beforeend','<line class="chart-hover-line" y1="20" y2="248"/>');line=svg.querySelector('.chart-hover-line')}line.setAttribute('x1',x(idx));line.setAttribute('x2',x(idx))};svg.onpointerleave=()=>tip.hidden=true}
+  async function exportHalfYear(){const b=$('#exportHalfYear');b.disabled=true;b.textContent='Выгрузка…';try{const q=new URLSearchParams({cabinet:params.get('cabinet')||'demo',id:params.get('id')||''}),r=await fetch(`/api/advertising/campaign/history?${q}`);if(!r.ok)throw new Error((await r.json()).error||'Не удалось выгрузить статистику');const d=await r.json();state.rows=d.campaign.daily||[];state.productDaily=d.productDaily||[];renderSummary(d.campaign);renderOptions();renderChart();renderTable();renderProductTable();$('#periodLabel').textContent=`Кампания #${d.campaign.id} · ${date(d.period.from)} — ${date(d.period.to)} · сохранено в ${d.file}`;b.textContent='Выгружено за полгода'}catch(e){b.disabled=false;b.textContent='Выгрузить за полгода';alert(e.message)}}
+  async function load(){const q=new URLSearchParams({cabinet:params.get('cabinet')||'demo',id:params.get('id')||'',from:params.get('from')||'',to:params.get('to')||''});try{const r=await fetch(`/api/advertising/campaign?${q}`);if(!r.ok)throw new Error((await r.json()).error||'Не удалось получить данные');const d=await r.json();state.rows=d.campaign.daily||[];state.productDaily=d.productDaily||[];$('#campaignTitle').textContent=d.campaign.name||`Кампания #${d.campaign.id}`;$('#periodLabel').textContent=`Кампания #${d.campaign.id} · ${date(d.period.from)} — ${date(d.period.to)}`;renderSummary(d.campaign);renderOptions();renderChart();renderTable();renderProductTable()}catch(e){$('#periodLabel').textContent=e.message;$('#dailyBody').innerHTML=`<tr><td colspan="11" class="empty">${esc(e.message)}</td></tr>`}}
+  document.querySelectorAll('th[data-key]').forEach(h=>h.onclick=()=>{const k=h.dataset.key;state.sort=state.sort.key===k?{key:k,direction:state.sort.direction==='asc'?'desc':'asc'}:{key:k,direction:'desc'};renderTable()});document.querySelectorAll('th[data-product-key]').forEach(h=>h.onclick=()=>{const k=h.dataset.productKey;state.productSort=state.productSort.key===k?{key:k,direction:state.productSort.direction==='asc'?'desc':'asc'}:{key:k,direction:'desc'};renderProductTable()});$('#exportHalfYear').onclick=exportHalfYear;load();
 })();

@@ -10,6 +10,7 @@ loadEnv(path.join(ROOT, '.env'));
 
 const PORT = Number(process.env.PORT || 4173);
 const DATA_FILE = path.join(ROOT, 'data', 'cabinets.json');
+const STATISTICS_FILE = path.join(ROOT, 'statistics.json');
 const BALANCE_HISTORY_FILE = path.join(ROOT, 'data', 'balance-history.json');
 const PUBLIC_DIR = path.join(ROOT, 'public');
 const WB_HOSTS = new Set([
@@ -449,6 +450,7 @@ function summarizeAdStats(campaigns = [], stats = [], from, to) {
   }
   const platforms = new Map([[1, emptyAdMetrics({ id: 1, name: 'Сайт' })], [32, emptyAdMetrics({ id: 32, name: 'Android' })], [64, emptyAdMetrics({ id: 64, name: 'iOS' })]]);
   const products = new Map();
+  const productDaily = new Map();
   const rows = [];
   for (const stat of stats) {
     const campaign = campaignById.get(String(stat.advertId));
@@ -483,7 +485,8 @@ function summarizeAdStats(campaigns = [], stats = [], from, to) {
     daily: [...daily.values()].sort((a, b) => a.date.localeCompare(b.date)).map(finalizeAdMetrics),
     campaigns: rows.map(finalizeAdMetrics).sort((a, b) => b.spend - a.spend),
     platforms: [...platforms.values()].map(finalizeAdMetrics).sort((a, b) => b.spend - a.spend),
-    products: [...products.values()].map(finalizeAdMetrics).sort((a, b) => b.spend - a.spend).slice(0, 100) };
+    products: [...products.values()].map(finalizeAdMetrics).sort((a, b) => b.spend - a.spend).slice(0, 100),
+    productDaily: [...productDaily.values()].map(finalizeAdMetrics).sort((a, b) => `${a.date}:${a.nmId}`.localeCompare(`${b.date}:${b.nmId}`)) };
 }
 
 function enrichAdvertising(summary, cards = []) {
@@ -530,11 +533,47 @@ function validAdPeriod(from, to) {
   return { from: safeFrom, to: safeTo };
 }
 
+function sixMonthPeriod() {
+  const to = new Date(); to.setUTCHours(0, 0, 0, 0);
+  const from = new Date(to); from.setUTCDate(from.getUTCDate() - 182);
+  return { from: from.toISOString().slice(0, 10), to: to.toISOString().slice(0, 10) };
+}
+
+async function advertisingCampaignHistory(id, campaignId) {
+  const whole = sixMonthPeriod();
+  const daily = new Map(); const productDaily = new Map(); let campaign = null;
+  for (let cursor = new Date(`${whole.from}T00:00:00Z`); cursor <= new Date(`${whole.to}T00:00:00Z`); ) {
+    const chunkFrom = cursor.toISOString().slice(0, 10);
+    const chunkEnd = new Date(cursor); chunkEnd.setUTCDate(chunkEnd.getUTCDate() + 30);
+    const chunkTo = chunkEnd > new Date(`${whole.to}T00:00:00Z`) ? whole.to : chunkEnd.toISOString().slice(0, 10);
+    const data = await advertising(id, chunkFrom, chunkTo);
+    campaign = (data.campaigns || []).find(item => String(item.id) === String(campaignId)) || campaign;
+    for (const row of (data.campaign?.id ? [data.campaign] : data.campaigns || [])) {
+      if (String(row.id) !== String(campaignId)) continue;
+      for (const day of row.daily || []) daily.set(day.date, day);
+    }
+    for (const row of data.productDaily || []) {
+      const key = `${row.nmId}:${row.date}`; if (!productDaily.has(key)) productDaily.set(key, row);
+    }
+    cursor = new Date(chunkEnd); cursor.setUTCDate(cursor.getUTCDate() + 1);
+    if (cursor <= new Date(`${whole.to}T00:00:00Z`) && id !== 'demo') await wait(21_000);
+  }
+  if (!campaign) throw apiError(404, 'Кампания не найдена');
+  const allowed = new Set((campaign.nmIds || []).map(String));
+  const result = { generatedAt: new Date().toISOString(), cabinet: id, campaignId, period: whole,
+    campaign: { ...campaign, daily: [...daily.values()].sort((a, b) => a.date.localeCompare(b.date)) },
+    productDaily: [...productDaily.values()].filter(item => !allowed.size || allowed.has(String(item.nmId))).sort((a, b) => (String(a.date)+":"+String(a.nmId)).localeCompare(String(b.date)+":"+String(b.nmId))) };
+  fs.mkdirSync(path.dirname(STATISTICS_FILE), { recursive: true });
+  fs.writeFileSync(STATISTICS_FILE, JSON.stringify(result, null, 2));
+  return { ...result, file: 'statistics.json' };
+}
 async function advertisingCampaign(id, campaignId, from, to) {
   const summary = await advertising(id, from, to);
   const campaign = (summary.campaigns || []).find(item => String(item.id) === String(campaignId));
   if (!campaign) throw apiError(404, 'Кампания не найдена за выбранный период');
-  return { period: summary.period, campaign };
+  const allowed = new Set((campaign.nmIds || []).map(String));
+  const productDaily = (summary.productDaily || []).filter(item => !allowed.size || allowed.has(String(item.nmId)));
+  return { period: summary.period, campaign, productDaily };
 }
 async function advertising(id, from, to) {
   const period = validAdPeriod(from, to);
@@ -610,6 +649,9 @@ async function handleApi(req, res, url) {
   }
   if (req.method === 'GET' && url.pathname === '/api/advertising/campaign') {
     return send(res, 200, await advertisingCampaign(url.searchParams.get('cabinet') || 'demo', url.searchParams.get('id'), url.searchParams.get('from'), url.searchParams.get('to')));
+  }
+  if (req.method === 'GET' && url.pathname === '/api/advertising/campaign/history') {
+    return send(res, 200, await advertisingCampaignHistory(url.searchParams.get('cabinet') || 'demo', url.searchParams.get('id')));
   }
   if (req.method === 'GET' && url.pathname === '/api/advertising') {
     return send(res, 200, await advertising(url.searchParams.get('cabinet') || 'demo', url.searchParams.get('from'), url.searchParams.get('to')));
