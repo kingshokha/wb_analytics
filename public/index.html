@@ -12,11 +12,11 @@
     <aside class="sidebar">
       <a class="brand" href="#"><span class="brand-mark">W</span><span>WB Pulse</span></a>
       <nav>
-        <button class="nav-item active" data-page="orders"><span class="nav-icon">🛍️</span> Заказы <b id="newBadge">0</b></button>
-        <button class="nav-item" data-page="stocks"><span class="nav-icon">📦</span> Остатки FBS</button>
-        <button class="nav-item" data-page="prices"><span>₽</span> Цены и скидки</button>
-        <button class="nav-item" data-page="funnel"><span>◫</span> Воронка</button>
-        <button class="nav-item" data-page="ads"><span>↗</span> Реклама</button>
+        <button class="nav-item active" data-page="orders"><span class="nav-icon" aria-hidden="true">▤</span> Заказы <b id="newBadge">0</b></button>
+        <button class="nav-item" data-page="stocks"><span class="nav-icon" aria-hidden="true">◇</span> Остатки FBS</button>
+        <button class="nav-item" data-page="prices"><span class="nav-icon" aria-hidden="true">₽</span> Цены и скидки</button>
+        <button class="nav-item" data-page="funnel"><span class="nav-icon" aria-hidden="true">◫</span> Воронка</button>
+        <button class="nav-item" data-page="ads"><span class="nav-icon" aria-hidden="true">↗</span> Реклама</button>
       </nav>
       <div class="sync-state"><i></i><span><strong>WB API</strong><small id="syncText">Подключение…</small></span></div>
       <div class="cabinet-wrap">
@@ -70,16 +70,17 @@
           <div class="panel-head"><div><h2>Остатки по складам FBS</h2><p id="stockCount">Загрузка остатков…</p></div><div class="filters stock-filters"><label class="search">⌕ <input id="stockSearch" placeholder="Товар или артикул"></label><details class="multi-filter"><summary id="stockWarehouseLabel">Склады</summary><div id="stockWarehouseOptions"></div></details><details class="multi-filter"><summary id="stockCategoryLabel">Категории</summary><div id="stockCategoryOptions"></div></details><details class="multi-filter"><summary>Наличие</summary><div id="stockAvailabilityOptions"><label><input type="checkbox" value="positive"> В наличии</label><label><input type="checkbox" value="zero"> Нулевые</label></div></details></div></div>
           <div class="table-wrap"><table class="stock-table"><thead><tr><th class="check-col"><input type="checkbox" id="stockSelectAll" aria-label="Выбрать все товары"></th><th data-stock-sort="name">Товар ↕</th><th data-stock-sort="vendorCode">Артикул продавца ↕</th><th data-stock-sort="nmId">Артикул WB ↕</th><th data-stock-sort="category">Категория ↕</th><th data-stock-sort="warehouseName">Склад FBS ↕</th><th data-stock-sort="sku">SKU / баркод ↕</th><th data-stock-sort="amount">Остаток ↕</th></tr></thead><tbody id="stocksBody"></tbody></table></div>
           <div class="empty hidden" id="emptyStocks"><span>▦</span><h3>Остатки не найдены</h3><p>Измените фильтры или проверьте настройки складов FBS.</p></div>
+          <div class="stock-pagination hidden" id="stockPagination" aria-label="Пагинация остатков"></div>
         </div>
         <div class="stock-actions hidden" id="stockActions"><strong id="stockSelectedCount">Выбрано: 0</strong><button class="primary" id="setStockButton">Задать остаток</button><button class="secondary" id="copyStockButton">Скопировать на склад</button><button class="stock-clear" id="clearStockSelection">Сбросить</button></div>
       </section>
 
       <section class="page" id="page-prices">
-        <div class="metrics stock-metrics" id="priceMetrics"></div>
         <div class="panel stock-panel">
           <div class="panel-head"><div><h2>Цены и скидки товаров</h2><p id="priceCount">Загрузка цен…</p></div><div class="filters stock-filters"><label class="search">⌕ <input id="priceSearch" placeholder="Товар, артикул или nmId"></label><details class="multi-filter"><summary id="priceCategoryLabel">Категории</summary><div id="priceCategoryOptions"></div></details><details class="multi-filter"><summary id="priceBrandLabel">Бренды</summary><div id="priceBrandOptions"></div></details><details class="multi-filter"><summary id="priceDiscountLabel">Скидки</summary><div id="priceDiscountOptions"><label><input type="checkbox" value="discounted"> Со скидкой</label><label><input type="checkbox" value="none"> Без скидки</label><label><input type="checkbox" value="club"> Скидка WB Клуба</label></div></details></div></div>
           <div class="table-wrap"><table class="stock-table"><thead><tr><th class="check-col"><input type="checkbox" id="priceSelectAll" aria-label="Выбрать все товары"></th><th data-price-sort="name">Товар ↕</th><th data-price-sort="vendorCode">Артикул продавца ↕</th><th data-price-sort="nmId">Артикул WB ↕</th><th data-price-sort="category">Категория ↕</th><th data-price-sort="brand">Бренд ↕</th><th data-price-sort="price">Цена ↕</th><th data-price-sort="discount">Скидка ↕</th><th data-price-sort="discountedPrice">Цена со скидкой ↕</th><th data-price-sort="clubDiscount">WB Клуб ↕</th></tr></thead><tbody id="pricesBody"></tbody></table></div>
           <div class="empty hidden" id="emptyPrices"><span>₽</span><h3>Товары не найдены</h3><p>Измените фильтры или проверьте права токена «Цены и скидки».</p></div>
+          <div class="stock-pagination hidden" id="pricePagination" aria-label="Пагинация цен и скидок"></div>
         </div>
         <div class="stock-actions hidden" id="priceActions"><strong id="priceSelectedCount">Выбрано: 0</strong><button class="primary" id="setPriceButton">Задать цену и скидку</button><button class="stock-clear" id="clearPriceSelection">Сбросить</button></div>
       </section>
