@@ -233,6 +233,51 @@ async function fbsStocks(id) {
   return { demo: false, ...normalizeFbsStocks(warehouses, responses, cards), warnings };
 }
 
+function normalizeFbwStocks(items = [], cards = []) {
+  const byChrt = stockCardIndex(cards);
+  const rows = items.map(item => {
+    const meta = byChrt.get(String(item.chrtId)) || {};
+    return { warehouseId: item.warehouseId, warehouseName: item.warehouseName || `Склад ${item.warehouseId || 'WB'}`,
+      regionName: item.regionName || 'Без региона', nmId: Number(item.nmId || meta.nmId || 0) || '', chrtId: Number(item.chrtId || 0) || '',
+      vendorCode: meta.vendorCode || '', name: meta.name || `Товар ${item.nmId || item.chrtId || ''}`,
+      category: meta.category || 'Без категории', size: meta.size || '—', sku: meta.sku || '', photo: meta.photo || '',
+      amount: Number(item.quantity || 0), inWayToClient: Number(item.inWayToClient || 0), inWayFromClient: Number(item.inWayFromClient || 0) };
+  });
+  const warehouses = [...new Map(rows.map(row => [String(row.warehouseId), { id: row.warehouseId, name: row.warehouseName }])).values()]
+    .sort((a, b) => String(a.name).localeCompare(String(b.name), 'ru'));
+  const categories = [...new Set(rows.map(row => row.category).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'ru'));
+  return { rows: rows.sort((a, b) => b.amount - a.amount || String(a.name).localeCompare(String(b.name), 'ru')), warehouses, categories,
+    totals: { rows: rows.length, products: new Set(rows.map(row => String(row.nmId || row.chrtId))).size,
+      warehouses: new Set(rows.map(row => String(row.warehouseId))).size, amount: rows.reduce((sum, row) => sum + row.amount, 0),
+      zero: rows.filter(row => row.amount === 0).length, positive: rows.filter(row => row.amount > 0).length } };
+}
+
+function demoFbwStocks() {
+  const cards = [
+    { nmID: 100001, vendorCode: 'TSHIRT-BLACK', title: 'Футболка базовая', subjectName: 'Одежда', sizes: [{ chrtID: 501, techSize: 'M', skus: ['460000000001'] }] },
+    { nmID: 100002, vendorCode: 'MUG-THERMO', title: 'Термокружка', subjectName: 'Посуда', sizes: [{ chrtID: 502, techSize: '500 мл', skus: ['460000000002'] }] }
+  ];
+  const items = [
+    { nmId: 100001, chrtId: 501, warehouseId: 507, warehouseName: 'Коледино', regionName: 'Центральный', quantity: 42, inWayToClient: 3, inWayFromClient: 1 },
+    { nmId: 100002, chrtId: 502, warehouseId: 117986, warehouseName: 'Казань', regionName: 'Приволжский', quantity: 8, inWayToClient: 2, inWayFromClient: 0 }
+  ];
+  return { demo: true, ...normalizeFbwStocks(items, cards), warnings: [] };
+}
+
+async function fbwStocks(id) {
+  if (id === 'demo' || !cabinets().length) return demoFbwStocks();
+  const token = tokenFor(id); const limit = 250000; const items = [];
+  for (let offset = 0; ; offset += limit) {
+    const response = await wbRequest(token, 'https://seller-analytics-api.wildberries.ru/api/analytics/v1/stocks-report/wb-warehouses',
+      { method: 'POST', body: { nmIds: [], chrtIds: [], limit, offset } });
+    const batch = Array.isArray(response?.data?.items) ? response.data.items : Array.isArray(response?.items) ? response.items : [];
+    items.push(...batch);
+    if (batch.length < limit) break;
+    await wait(20_100);
+  }
+  const cards = await cachedAnalytics(`product-cards:${id}`, () => loadProductCards(token), 10 * 60_000);
+  return { demo: false, ...normalizeFbwStocks(items, cards), warnings: [] };
+}
 function normalizePrices(goods = [], cards = []) {
   const byNmId = new Map(cards.map(card => [String(card.nmID), card]));
   const rows = goods.map(good => {
@@ -533,14 +578,15 @@ function validAdPeriod(from, to) {
   return { from: safeFrom, to: safeTo };
 }
 
-function sixMonthPeriod() {
+function advertisingPeriod(months = 6) {
   const to = new Date(); to.setUTCHours(0, 0, 0, 0);
-  const from = new Date(to); from.setUTCDate(from.getUTCDate() - 182);
+  const safeMonths = Math.min(6, Math.max(1, Number(months) || 6));
+  const from = new Date(to); from.setUTCMonth(from.getUTCMonth() - safeMonths); from.setUTCDate(from.getUTCDate() + 1);
   return { from: from.toISOString().slice(0, 10), to: to.toISOString().slice(0, 10) };
 }
 
-async function advertisingCampaignHistory(id, campaignId) {
-  const whole = sixMonthPeriod();
+async function advertisingCampaignHistory(id, campaignId, months = 6) {
+  const whole = advertisingPeriod(months);
   const daily = new Map(); const productDaily = new Map(); let campaign = null;
   for (let cursor = new Date(`${whole.from}T00:00:00Z`); cursor <= new Date(`${whole.to}T00:00:00Z`); ) {
     const chunkFrom = cursor.toISOString().slice(0, 10);
@@ -651,7 +697,7 @@ async function handleApi(req, res, url) {
     return send(res, 200, await advertisingCampaign(url.searchParams.get('cabinet') || 'demo', url.searchParams.get('id'), url.searchParams.get('from'), url.searchParams.get('to')));
   }
   if (req.method === 'GET' && url.pathname === '/api/advertising/campaign/history') {
-    return send(res, 200, await advertisingCampaignHistory(url.searchParams.get('cabinet') || 'demo', url.searchParams.get('id')));
+    return send(res, 200, await advertisingCampaignHistory(url.searchParams.get('cabinet') || 'demo', url.searchParams.get('id'), url.searchParams.get('months')));
   }
   if (req.method === 'GET' && url.pathname === '/api/advertising') {
     return send(res, 200, await advertising(url.searchParams.get('cabinet') || 'demo', url.searchParams.get('from'), url.searchParams.get('to')));
@@ -661,6 +707,9 @@ async function handleApi(req, res, url) {
   }
   if (req.method === 'GET' && url.pathname === '/api/fbs-stocks') {
     return send(res, 200, await fbsStocks(url.searchParams.get('cabinet') || 'demo'));
+  }
+  if (req.method === 'GET' && url.pathname === '/api/fbw-stocks') {
+    return send(res, 200, await fbwStocks(url.searchParams.get('cabinet') || 'demo'));
   }
   if (req.method === 'GET' && url.pathname === '/api/prices') {
     return send(res, 200, await prices(url.searchParams.get('cabinet') || 'demo'));
@@ -725,4 +774,7 @@ const server = http.createServer(async (req, res) => {
 
 if (require.main === module) server.listen(PORT, '127.0.0.1', () => console.log(`WB Analytics: http://127.0.0.1:${PORT}`));
 
-module.exports = { server, cabinets, normalizeOrders, normalizeOrderFeed, enrichOrders, extractFunnel, summarizeAdStats, validAdPeriod, normalizeFbsStocks, normalizePrices, WB_HOSTS };
+module.exports = { server, cabinets, normalizeOrders, normalizeOrderFeed, enrichOrders, extractFunnel, summarizeAdStats, validAdPeriod, advertisingPeriod, normalizeFbsStocks, normalizeFbwStocks, normalizePrices, WB_HOSTS };
+
+
+

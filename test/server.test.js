@@ -1,7 +1,7 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { normalizeOrders, normalizeOrderFeed, enrichOrders, extractFunnel, summarizeAdStats, validAdPeriod, normalizeFbsStocks, normalizePrices, WB_HOSTS } = require('../server');
+const { normalizeOrders, normalizeOrderFeed, enrichOrders, extractFunnel, summarizeAdStats, validAdPeriod, normalizeFbsStocks, normalizeFbwStocks, normalizePrices, WB_HOSTS } = require('../server');
 
 test('объединяет и сортирует FBS и события ленты WB', () => {
   const result = normalizeOrders(
@@ -96,6 +96,16 @@ test('объединяет остатки FBS с карточками и сох�
   assert.deepEqual(result.categories, ['Категория']);
 });
 
+test('нормализует остатки FBW по складу и размеру', () => {
+  const result = normalizeFbwStocks([
+    { nmId: 123456, chrtId: 501, warehouseId: 507, warehouseName: 'Коледино', regionName: 'Центральный', quantity: 14, inWayToClient: 2, inWayFromClient: 1 }
+  ], [{ nmID: 123456, vendorCode: 'VENDOR-1', title: 'Товар', subjectName: 'Категория', sizes: [{ chrtID: 501, techSize: 'M', skus: ['460000000001'] }] }]);
+  assert.equal(result.rows[0].warehouseName, 'Коледино');
+  assert.equal(result.rows[0].regionName, 'Центральный');
+  assert.equal(result.rows[0].amount, 14);
+  assert.equal(result.rows[0].inWayToClient, 2);
+  assert.equal(result.totals.warehouses, 1);
+});
 test('объединяет цены с названиями, категориями и артикулами карточек', () => {
   const result = normalizePrices([{ nmID: 123, discount: 20, clubDiscount: 5, currencyIsoCode4217: 'RUB', sizes: [{ price: 1000, discountedPrice: 800, clubDiscountedPrice: 760 }] }], [{ nmID: 123, vendorCode: 'SELLER-1', title: 'Тестовый товар', subjectName: 'Категория', brand: 'Бренд' }]);
   assert.equal(result.rows[0].vendorCode, 'SELLER-1');

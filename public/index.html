@@ -13,6 +13,7 @@
       <a class="brand" href="#"><span class="brand-mark">W</span><span>WB Pulse</span></a>
       <nav>
         <button class="nav-item active" data-page="orders"><span class="nav-icon" aria-hidden="true">▤</span> Заказы <b id="newBadge">0</b></button>
+        <button class="nav-item" data-page="fbw-stocks"><span class="nav-icon" aria-hidden="true">◇</span> Остатки FBW</button>
         <button class="nav-item" data-page="stocks"><span class="nav-icon" aria-hidden="true">◇</span> Остатки FBS</button>
         <button class="nav-item" data-page="prices"><span class="nav-icon" aria-hidden="true">₽</span> Цены и скидки</button>
         <button class="nav-item" data-page="funnel"><span class="nav-icon" aria-hidden="true">◫</span> Воронка</button>
@@ -64,6 +65,14 @@
         </div>
       </section>
 
+      <section class="page" id="page-fbw-stocks">
+        <div class="panel stock-panel">
+          <div class="panel-head"><div><h2>Остатки по складам FBW</h2><p id="fbwStockCount">Загрузка остатков…</p></div><div class="filters stock-filters"><label class="search">⌕ <input id="fbwStockSearch" placeholder="Товар или артикул"></label><details class="multi-filter"><summary id="fbwWarehouseLabel">Склады</summary><div id="fbwWarehouseOptions"></div></details><details class="multi-filter"><summary id="fbwCategoryLabel">Категории</summary><div id="fbwCategoryOptions"></div></details><details class="multi-filter"><summary>Наличие</summary><div id="fbwAvailabilityOptions"><label><input type="checkbox" value="positive"> В наличии</label><label><input type="checkbox" value="zero"> Нулевые</label></div></details></div></div>
+          <div class="table-wrap"><table class="stock-table fbw-stock-table"><thead><tr><th data-fbw-sort="name">Товар ↕</th><th data-fbw-sort="vendorCode">Артикул продавца ↕</th><th data-fbw-sort="nmId">Артикул WB ↕</th><th data-fbw-sort="category">Категория ↕</th><th data-fbw-sort="warehouseName">Склад FBW ↕</th><th data-fbw-sort="amount">Остаток ↕</th><th data-fbw-sort="inWayToClient">В пути к клиенту ↕</th><th data-fbw-sort="inWayFromClient">В пути от клиента ↕</th></tr></thead><tbody id="fbwStocksBody"></tbody></table></div>
+          <div class="empty hidden" id="emptyFbwStocks"><span>▦</span><h3>Остатки не найдены</h3><p>Измените фильтры или проверьте права токена «Аналитика».</p></div>
+          <div class="stock-pagination hidden" id="fbwStockPagination" aria-label="Пагинация остатков FBW"></div>
+        </div>
+      </section>
       <section class="page" id="page-stocks">
         <div class="metrics stock-metrics" id="stockMetrics"></div>
         <div class="panel stock-panel">
