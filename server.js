@@ -176,6 +176,11 @@ async function loadProductCards(token) {
   return cards;
 }
 
+function cardPhoto(card = {}) {
+  const photo = card.photos?.[0] || {};
+  return photo.c246x328 || photo.tm || photo.square || photo.big || '';
+}
+
 function stockCardIndex(cards = []) {
   const index = new Map();
   for (const card of cards) for (const size of card.sizes || []) {
@@ -183,7 +188,7 @@ function stockCardIndex(cards = []) {
     if (!chrtId) continue;
     index.set(chrtId, { nmId: card.nmID, vendorCode: card.vendorCode || '', name: card.title || `Товар ${card.nmID}`,
       category: card.subjectName || 'Без категории', size: size.techSize || size.wbSize || '—', sku: (size.skus || [])[0] || '',
-      photo: card.photos?.[0]?.c246x328 || card.photos?.[0]?.tm || card.photos?.[0]?.square || card.photos?.[0]?.big || '' });
+      photo: cardPhoto(card) });
   }
   return index;
 }
@@ -287,7 +292,7 @@ function normalizePrices(goods = [], cards = []) {
   const rows = goods.map(good => {
     const card = byNmId.get(String(good.nmID)) || {}; const sizes = Array.isArray(good.sizes) ? good.sizes : []; const firstSize = sizes[0] || {};
     return { nmId: Number(good.nmID), vendorCode: good.vendorCode || card.vendorCode || '', name: card.title || `Товар ${good.nmID}`,
-      photo: card.photos?.[0]?.c246x328 || card.photos?.[0]?.tm || card.photos?.[0]?.square || card.photos?.[0]?.big || '',
+      photo: cardPhoto(card),
       category: card.subjectName || 'Без категории', brand: card.brand || 'Без бренда', currency: good.currencyIsoCode4217 || 'RUB',
       price: Number(firstSize.price || good.price || 0), discountedPrice: Number(firstSize.discountedPrice || good.discountedPrice || 0),
       clubDiscountedPrice: Number(firstSize.clubDiscountedPrice || good.clubDiscountedPrice || 0), discount: Number(good.discount || 0),
@@ -377,11 +382,10 @@ function enrichOrders(orders, cards) {
   return orders.map(order => {
     const card = byNmId.get(String(order.nmId));
     if (!card) return order;
-    const photo = card.photos?.[0];
     const size = (card.sizes || []).find(item => String(item.chrtID || item.chrtId) === String(order.chrtId)) || card.sizes?.[0];
     return { ...order, name: card.title || order.name, article: card.vendorCode || order.article, barcode: size?.skus?.[0] || '',
       brand: card.brand || '', subjectName: card.subjectName || '',
-      photo: photo?.c246x328 || photo?.tm || photo?.square || photo?.big || '' };
+      photo: cardPhoto(card) };
   });
 }
 
@@ -544,7 +548,7 @@ function summarizeAdStats(campaigns = [], stats = [], from, to) {
 
 function enrichAdvertising(summary, cards = []) {
   const byNmId = new Map(cards.map(card => [String(card.nmID), { name: card.title || `Товар ${card.nmID}`, vendorCode: card.vendorCode || '',
-    photo: card.photos?.[0]?.c246x328 || card.photos?.[0]?.tm || card.photos?.[0]?.square || card.photos?.[0]?.big || '',
+    photo: cardPhoto(card),
     barcode: card.sizes?.[0]?.skus?.[0] || '' }]));
   const products = (summary.products || []).map(product => ({ ...product, ...(byNmId.get(String(product.nmId)) || {}) }));
   const campaigns = (summary.campaigns || []).map(campaign => ({ ...campaign, photo: (campaign.nmIds || []).map(nmId => byNmId.get(String(nmId))?.photo).find(Boolean) || '' }));
@@ -651,12 +655,21 @@ async function advertising(id, from, to) {
   return { demo: false, ...enrichAdvertising(summarizeAdStats(campaigns, stats, period.from, period.to), cards), warnings };
 }
 
+function enrichFunnelProducts(products = [], cards = []) {
+  const byNmId = new Map(cards.map(card => [String(card.nmID), cardPhoto(card)]));
+  return products.map(item => {
+    const photo = byNmId.get(String((item.product || item).nmId ?? (item.product || item).nmID)) || '';
+    return item.product ? { ...item, product: { ...item.product, photo } } : { ...item, photo };
+  });
+}
+
 async function funnelDetails(id, from, to) {
   if (id === 'demo' || !cabinets().length) return { products: [], history: [], groupedHistory: [] };
   const token = tokenFor(id); const start = /^\d{4}-\d{2}-\d{2}$/.test(from || '') ? from : dateDaysAgo(7); const end = /^\d{4}-\d{2}-\d{2}$/.test(to || '') ? to : dateDaysAgo(0);
   const body = { selectedPeriod: { start, end }, nmIds: [], skipDeletedNm: true, orderBy: { field: 'openCard', mode: 'desc' }, limit: 1000, offset: 0 };
   const response = await wbRequest(token, 'https://seller-analytics-api.wildberries.ru/api/analytics/v3/sales-funnel/products', { method: 'POST', body });
-  const products = response?.data?.products || response?.products || [];
+  const products = enrichFunnelProducts(response?.data?.products || response?.products || [],
+    await cachedAnalytics(`product-cards:${id}`, () => loadProductCards(token), 10 * 60_000).catch(() => []));
   let groupedHistory = [];
   try {
     const groupedResponse = await wbRequest(token, 'https://seller-analytics-api.wildberries.ru/api/analytics/v3/sales-funnel/grouped/history', { method: 'POST', body: { selectedPeriod: { start, end }, brandNames: [], subjectIds: [], tagIds: [], skipDeletedNm: true, aggregationLevel: 'day' } });
