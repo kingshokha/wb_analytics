@@ -62,3 +62,6 @@ small,th,.status,.live,.response button,.chart-legend,.platform-row span,.ad-det
 .trbx-actions button[disabled]{opacity:.45;cursor:not-allowed}
 .trbx-empty{margin:0;font-size:11px;color:var(--muted)}
 @media(max-width:980px){.supply-columns{grid-template-columns:1fr}}
+.price-product-cell{display:flex;align-items:center}
+.price-product-cell>span{display:block;min-width:0}
+.price-product-cell strong{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
