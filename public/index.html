@@ -12,7 +12,8 @@
     <aside class="sidebar">
       <a class="brand" href="#"><span class="brand-mark">W</span><span>WB Pulse</span></a>
       <nav>
-        <button class="nav-item active" data-page="orders"><span class="nav-icon" aria-hidden="true">▤</span> Заказы <b id="newBadge">0</b></button>
+        <button class="nav-item active" data-page="orders"><span class="nav-icon" aria-hidden="true">▤</span> Лента заказов <b id="newBadge">0</b></button>
+        <button class="nav-item" data-page="fbs-orders"><span class="nav-icon" aria-hidden="true">◈</span> Новые заказы <b id="fbsBadge">0</b></button>
         <button class="nav-item" data-page="fbw-stocks"><span class="nav-icon" aria-hidden="true">◇</span> Остатки FBW</button>
         <button class="nav-item" data-page="stocks"><span class="nav-icon" aria-hidden="true">◇</span> Остатки FBS</button>
         <button class="nav-item" data-page="prices"><span class="nav-icon" aria-hidden="true">₽</span> Цены и скидки</button>
@@ -62,6 +63,67 @@
             <table><thead><tr><th>Дата оформления</th><th>Дата статуса</th><th>Товар</th><th>Откуда</th><th>Куда</th><th>Сумма</th><th>Статус</th><th>ID заказа</th></tr></thead><tbody id="ordersBody"></tbody></table>
           </div>
           <div class="empty hidden" id="emptyOrders"><span>⌕</span><h3>Заказы не найдены</h3><p>Измените фильтры или период.</p></div>
+        </div>
+      </section>
+
+      <section class="page" id="page-fbs-orders">
+        <div class="metrics stock-metrics" id="fbsMetrics"></div>
+        <div class="panel stock-panel">
+          <div class="panel-head">
+            <div><h2>Новые сборочные задания FBS</h2><p id="fbsCount">Загрузка заданий…</p></div>
+            <div class="filters stock-filters">
+              <label class="search">⌕ <input id="fbsSearch" placeholder="Товар, артикул или номер задания"></label>
+              <details class="multi-filter"><summary id="fbsWarehouseLabel">Склады</summary><div id="fbsWarehouseOptions"></div></details>
+              <details class="multi-filter"><summary id="fbsCategoryLabel">Категории</summary><div id="fbsCategoryOptions"></div></details>
+              <details class="multi-filter"><summary>Сборка</summary><div id="fbsAssemblyOptions"><label><input type="checkbox" value="free"> Без поставки</label><label><input type="checkbox" value="assembled"> Уже в поставке</label></div></details>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table class="stock-table fbs-order-table"><thead><tr><th class="check-col"><input type="checkbox" id="fbsSelectAll" aria-label="Выбрать все задания"></th><th data-fbs-sort="createdAt">Создано ↕</th><th data-fbs-sort="name">Товар ↕</th><th data-fbs-sort="vendorCode">Артикул продавца ↕</th><th data-fbs-sort="nmId">Артикул WB ↕</th><th data-fbs-sort="sku">Баркод ↕</th><th data-fbs-sort="price">Сумма ↕</th><th data-fbs-sort="supplyId">Поставка ↕</th><th data-fbs-sort="id">Задание ↕</th></tr></thead><tbody id="fbsOrdersBody"></tbody></table>
+          </div>
+          <div class="empty hidden" id="emptyFbsOrders"><span>◈</span><h3>Новых заданий нет</h3><p>Измените фильтры или проверьте права токена «Маркетплейс».</p></div>
+          <div class="stock-pagination hidden" id="fbsPagination" aria-label="Пагинация новых заданий"></div>
+        </div>
+
+        <div class="stock-actions hidden" id="fbsActions">
+          <strong id="fbsSelectedCount">Выбрано: 0</strong>
+          <button class="primary" id="assembleButton">Собрать в поставку</button>
+          <button class="secondary" id="fbsStickerButton">Стикеры товаров</button>
+          <button class="stock-clear" id="clearFbsSelection">Сбросить</button>
+        </div>
+
+        <div class="panel supply-panel">
+          <div class="panel-head">
+            <div><h2>Поставки</h2><p id="supplyCount">Загрузка поставок…</p></div>
+            <div class="filters"><button class="secondary" id="createSupplyButton">+ Новая поставка</button></div>
+          </div>
+          <div class="table-wrap">
+            <table class="stock-table supply-table"><thead><tr><th>Поставка</th><th>Название</th><th>Создана</th><th>Статус</th><th>Груз</th><th>Действия</th></tr></thead><tbody id="suppliesBody"></tbody></table>
+          </div>
+          <div class="empty hidden" id="emptySupplies"><span>▣</span><h3>Поставок нет</h3><p>Создайте поставку, чтобы собирать в неё задания.</p></div>
+        </div>
+
+        <div class="panel supply-detail-panel hidden" id="supplyDetailPanel">
+          <div class="panel-head">
+            <div><h2 id="supplyDetailTitle">Состав поставки</h2><p id="supplyDetailMeta"></p></div>
+            <div class="filters">
+              <button class="secondary" id="addTrbxButton">+ Грузоместа</button>
+              <button class="secondary" id="supplyBarcodeButton">QR поставки</button>
+              <button class="secondary" id="trbxStickersButton">QR грузомест</button>
+              <button class="primary" id="deliverSupplyButton">Передать в доставку</button>
+              <button class="stock-clear" id="closeSupplyDetail">Закрыть</button>
+            </div>
+          </div>
+          <div class="supply-columns">
+            <div class="supply-column">
+              <h3>Задания в поставке <small id="supplyOrderCount"></small></h3>
+              <div class="table-wrap"><table class="stock-table"><thead><tr><th class="check-col"><input type="checkbox" id="supplyOrderSelectAll" aria-label="Выбрать все задания поставки"></th><th>Товар</th><th>Артикул</th><th>Грузоместо</th><th>Задание</th></tr></thead><tbody id="supplyOrdersBody"></tbody></table></div>
+            </div>
+            <div class="supply-column">
+              <h3>Грузоместа <small id="trbxCount"></small></h3>
+              <div id="trbxList" class="trbx-list"></div>
+            </div>
+          </div>
         </div>
       </section>
 

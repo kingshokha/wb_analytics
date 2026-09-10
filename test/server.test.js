@@ -1,7 +1,7 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { normalizeOrders, normalizeOrderFeed, enrichOrders, extractFunnel, summarizeAdStats, validAdPeriod, normalizeFbsStocks, normalizeFbwStocks, normalizePrices, WB_HOSTS } = require('../server');
+const { normalizeOrders, normalizeOrderFeed, enrichOrders, extractFunnel, summarizeAdStats, validAdPeriod, normalizeFbsStocks, normalizeFbwStocks, normalizePrices, normalizeNewOrders, summarizeSupplies, normalizeTrbxes, chunkOrders, stickerType, WB_HOSTS } = require('../server');
 
 test('объединяет и сортирует FBS и события ленты WB', () => {
   const result = normalizeOrders(
@@ -75,6 +75,9 @@ test('собирает рекламные метрики и рассчитыва
   assert.equal(result.campaigns[0].name, 'Поиск');
   assert.equal(result.platforms.find(item => item.id === 32).spend, 800);
   assert.equal(result.products[0].nmId, 123);
+  assert.equal(result.productDaily.length, 1);
+  assert.equal(result.productDaily[0].nmId, 123);
+  assert.equal(result.productDaily[0].spend, 800);
 });
 
 test('не разрешает период рекламной статистики больше 31 дня', () => {
@@ -112,4 +115,57 @@ test('объединяет цены с названиями, категория�
   assert.equal(result.rows[0].price, 1000);
   assert.equal(result.rows[0].discount, 20);
   assert.deepEqual(result.categories, ['Категория']);
+});
+
+
+test('связывает новые сборочные задания FBS с карточками и считает сборку', () => {
+  const cards = [{ nmID: 100001, vendorCode: 'TSHIRT', title: 'Футболка', subjectName: 'Одежда', sizes: [{ chrtID: 501, techSize: 'M', skus: ['4600001'] }] }];
+  const result = normalizeNewOrders([
+    { id: 11, nmId: 100001, chrtId: 501, skus: ['4600001'], warehouseId: 7, createdAt: '2026-09-01T10:00:00Z', convertedPrice: 129900, convertedCurrencyCode: 643, cargoType: 1 },
+    { id: 12, nmId: 100001, chrtId: 501, warehouseId: 7, createdAt: '2026-09-02T10:00:00Z', price: 100000, supplyId: 'WB-GI-1' }
+  ], cards);
+  assert.equal(result.rows[0].id, 12, 'свежие задания идут первыми');
+  assert.equal(result.rows[1].name, 'Футболка');
+  assert.equal(result.rows[1].vendorCode, 'TSHIRT');
+  assert.equal(result.rows[1].size, 'M');
+  assert.equal(result.rows[1].sku, '4600001');
+  assert.equal(result.rows[1].cargoTypeName, 'Обычный');
+  assert.equal(result.totals.orders, 2);
+  assert.equal(result.totals.free, 1);
+  assert.equal(result.totals.assembled, 1);
+  assert.equal(result.totals.amount, 229900);
+  assert.deepEqual(result.categories, ['Одежда']);
+  assert.equal(result.warehouses.length, 1);
+});
+
+test('показывает открытые поставки раньше закрытых', () => {
+  const result = summarizeSupplies([
+    { id: 'WB-GI-2', name: 'Закрытая', done: true, createdAt: '2026-09-05T10:00:00Z', cargoType: 2 },
+    { id: 'WB-GI-1', name: 'Открытая', done: false, createdAt: '2026-09-01T10:00:00Z', cargoType: 1 }
+  ]);
+  assert.equal(result.rows[0].id, 'WB-GI-1');
+  assert.equal(result.rows[1].cargoTypeName, 'СГТ');
+  assert.deepEqual(result.totals, { supplies: 2, open: 1, closed: 1 });
+});
+
+test('нормализует грузоместа и их состав', () => {
+  const result = normalizeTrbxes([{ id: 'WB-TRBX-2', orderIds: [5, 'x'] }, { id: 'WB-TRBX-1' }]);
+  assert.deepEqual(result.map(item => item.id), ['WB-TRBX-1', 'WB-TRBX-2']);
+  assert.deepEqual(result[1].orderIds, [5]);
+  assert.deepEqual(result[0].orderIds, []);
+});
+
+test('режет стикеры на пачки по 100 заданий без повторов', () => {
+  const chunks = chunkOrders([...Array.from({ length: 150 }, (_, index) => index + 1), 1, 2]);
+  assert.equal(chunks.length, 2);
+  assert.equal(chunks[0].length, 100);
+  assert.equal(chunks[1].length, 50);
+  assert.deepEqual(chunkOrders([]), []);
+});
+
+test('разрешает только поддерживаемые форматы стикеров', () => {
+  assert.equal(stickerType('svg'), 'svg');
+  assert.equal(stickerType('zplh'), 'zplh');
+  assert.equal(stickerType('pdf'), 'png');
+  assert.equal(stickerType(undefined), 'png');
 });
