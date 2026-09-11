@@ -29,6 +29,9 @@ const MARKETPLACE_API = 'https://marketplace-api.wildberries.ru';
 const STICKER_TYPES = new Set(['png', 'svg', 'zplv', 'zplh']);
 const ORDER_STICKER_CHUNK = 100;
 const CARGO_TYPES = { 0: 'Не указан', 1: 'Обычный', 2: 'СГТ', 3: 'КГТ' };
+const AD_BUDGET_STATUSES = new Set([9, 11]);
+const AD_BUDGET_CHUNK = 4;
+const AD_BUDGET_LIMIT = 100;
 const analyticsCache = new Map();
 
 function loadEnv(file) {
@@ -510,7 +513,7 @@ function summarizeAdStats(campaigns = [], stats = [], from, to) {
     const campaign = campaignById.get(String(stat.advertId));
     const nmIds = [...new Set([...campaignProductIds(campaign), ...(stat.days || []).flatMap(day => (day.apps || []).flatMap(app => (app.nms || []).map(nm => Number(nm.nmId || nm.nm)).filter(Number.isInteger)))])];
     rows.push({ id: stat.advertId, name: campaign?.settings?.name || `Кампания #${stat.advertId}`,
-      status: campaign?.status, paymentType: campaign?.settings?.payment_type || '', bidType: campaign?.bid_type || '',
+      status: campaign?.status, type: campaign?.type ?? null, paymentType: campaign?.settings?.payment_type || '', bidType: campaign?.bid_type || '',
       updatedAt: campaign?.timestamps?.updated || '', nmIds, daily: (stat.days || []).map(day => ({ date: String(day.date || '').slice(0, 10), ...adMetrics(day) })), ...adMetrics(stat) });
     for (const day of stat.days || []) {
       const date = String(day.date || '').slice(0, 10);
@@ -524,8 +527,8 @@ function summarizeAdStats(campaigns = [], stats = [], from, to) {
           const key = String(nm.nmId || nm.nm || 'unknown');
           if (!products.has(key)) products.set(key, emptyAdMetrics({ nmId: nm.nmId || nm.nm, name: nm.name || `Товар ${key}` }));
           addAdMetrics(products.get(key), nm);
-          const productKey = `${key}:${date}`;
-          if (!productDaily.has(productKey)) productDaily.set(productKey, emptyAdMetrics({ nmId: nm.nmId || nm.nm, name: nm.name || `Товар ${key}`, date }));
+          const productKey = `${stat.advertId}:${key}:${date}`;
+          if (!productDaily.has(productKey)) productDaily.set(productKey, emptyAdMetrics({ advertId: stat.advertId, nmId: nm.nmId || nm.nm, name: nm.name || `Товар ${key}`, date }));
           addAdMetrics(productDaily.get(productKey), nm);
         }
       }
@@ -533,7 +536,7 @@ function summarizeAdStats(campaigns = [], stats = [], from, to) {
   }
   for (const campaign of campaigns) {
     if (!rows.some(row => String(row.id) === String(campaign.id))) rows.push({ id: campaign.id,
-      name: campaign.settings?.name || `Кампания #${campaign.id}`, status: campaign.status,
+      name: campaign.settings?.name || `Кампания #${campaign.id}`, status: campaign.status, type: campaign.type ?? null,
       paymentType: campaign.settings?.payment_type || '', bidType: campaign.bid_type || '', updatedAt: campaign.timestamps?.updated || '', nmIds: campaignProductIds(campaign),
       ...finalizeAdMetrics(emptyAdMetrics()) });
   }
@@ -546,6 +549,13 @@ function summarizeAdStats(campaigns = [], stats = [], from, to) {
     productDaily: [...productDaily.values()].map(finalizeAdMetrics).sort((a, b) => `${a.date}:${a.nmId}`.localeCompare(`${b.date}:${b.nmId}`)) };
 }
 
+function campaignProductDaily(rows = [], campaignId, nmIds = []) {
+  const own = rows.filter(row => String(row.advertId) === String(campaignId));
+  if (own.length || rows.some(row => row.advertId !== undefined)) return own;
+  const allowed = new Set(nmIds.map(String));
+  return rows.filter(row => !allowed.size || allowed.has(String(row.nmId)));
+}
+
 function enrichAdvertising(summary, cards = []) {
   const byNmId = new Map(cards.map(card => [String(card.nmID), { name: card.title || `Товар ${card.nmID}`, vendorCode: card.vendorCode || '',
     photo: cardPhoto(card),
@@ -555,12 +565,20 @@ function enrichAdvertising(summary, cards = []) {
   return { ...summary, products, campaigns };
 }
 
+function demoAdProducts(campaignIndex, views, clicks, spend, orders, revenue) {
+  return [.62, .38].map((share, index) => ({ nmId: 4210000 + campaignIndex * 10 + index, name: `Демо-товар ${campaignIndex + 1}.${index + 1}`,
+    views: Math.round(views * share), clicks: Math.round(clicks * share), sum: Math.round(spend * share * 100) / 100,
+    orders: Math.round(orders * share), sum_price: Math.round(revenue * share * 100) / 100,
+    atbs: Math.round(clicks * share * .23), shks: Math.round(orders * share * .78) }));
+}
+
 function demoAds(from, to) {
   const campaigns = [
-    { id: 101, status: 9, bid_type: 'manual', settings: { name: 'Поиск · базовая коллекция', payment_type: 'cpm' } },
-    { id: 102, status: 11, bid_type: 'unified', settings: { name: 'Автокампания · хиты', payment_type: 'cpm' } },
-    { id: 103, status: 7, bid_type: 'manual', settings: { name: 'Карточка товара · новинки', payment_type: 'cpc' } }
+    { id: 101, status: 9, type: 9, bid_type: 'manual', settings: { name: 'Поиск · базовая коллекция', payment_type: 'cpm' } },
+    { id: 102, status: 11, type: 8, bid_type: 'unified', settings: { name: 'Автокампания · хиты', payment_type: 'cpm' } },
+    { id: 103, status: 7, type: 5, bid_type: 'manual', settings: { name: 'Карточка товара · новинки', payment_type: 'cpc' } }
   ];
+  const demoBudgets = new Map([['101', 18400], ['102', 7250]]);
   const stats = campaigns.map((campaign, campaignIndex) => {
     const days = [];
     for (let cursor = new Date(`${from}T00:00:00Z`), end = new Date(`${to}T00:00:00Z`), index = 0; cursor <= end; cursor.setUTCDate(cursor.getUTCDate() + 1), index++) {
@@ -569,15 +587,18 @@ function demoAds(from, to) {
       const revenue = orders * (1750 + campaignIndex * 410);
       days.push({ date: cursor.toISOString(), views, clicks, sum: spend, orders, sum_price: revenue,
         atbs: Math.round(clicks * .23), shks: Math.round(orders * .78), canceled: campaignIndex === 2 && index % 4 === 0 ? 1 : 0,
-        apps: [{ appType: 1, views: Math.round(views * .18), clicks: Math.round(clicks * .18), sum: spend * .18, orders: Math.round(orders * .18), sum_price: revenue * .18 },
-          { appType: 32, views: Math.round(views * .52), clicks: Math.round(clicks * .52), sum: spend * .52, orders: Math.round(orders * .52), sum_price: revenue * .52 },
-          { appType: 64, views: Math.round(views * .30), clicks: Math.round(clicks * .30), sum: spend * .30, orders: Math.round(orders * .30), sum_price: revenue * .30 }] });
+        apps: [1, 32, 64].map((appType, appIndex) => {
+          const share = [.18, .52, .30][appIndex];
+          return { appType, views: Math.round(views * share), clicks: Math.round(clicks * share), sum: spend * share,
+            orders: Math.round(orders * share), sum_price: revenue * share, nms: demoAdProducts(campaignIndex, views * share, clicks * share, spend * share, orders * share, revenue * share) };
+        }) });
     }
     const total = emptyAdMetrics(); days.forEach(day => addAdMetrics(total, day));
     return { advertId: campaign.id, sum: total.spend, sum_price: total.revenue, atbs: total.carts, shks: total.sales,
       views: total.views, clicks: total.clicks, orders: total.orders, canceled: total.canceled, days };
   });
-  return { demo: true, ...summarizeAdStats(campaigns, stats, from, to), warnings: [] };
+  const summary = summarizeAdStats(campaigns, stats, from, to);
+  return { demo: true, ...summary, campaigns: withAdBudgets(summary.campaigns, demoBudgets), warnings: [] };
 }
 
 function validAdPeriod(from, to) {
@@ -610,17 +631,16 @@ async function advertisingCampaignHistory(id, campaignId, months = 6) {
       if (String(row.id) !== String(campaignId)) continue;
       for (const day of row.daily || []) daily.set(day.date, day);
     }
-    for (const row of data.productDaily || []) {
+    for (const row of campaignProductDaily(data.productDaily || [], campaignId, campaign?.nmIds || [])) {
       const key = `${row.nmId}:${row.date}`; if (!productDaily.has(key)) productDaily.set(key, row);
     }
     cursor = new Date(chunkEnd); cursor.setUTCDate(cursor.getUTCDate() + 1);
     if (cursor <= new Date(`${whole.to}T00:00:00Z`) && id !== 'demo') await wait(21_000);
   }
   if (!campaign) throw apiError(404, 'Кампания не найдена');
-  const allowed = new Set((campaign.nmIds || []).map(String));
   const result = { generatedAt: new Date().toISOString(), cabinet: id, campaignId, period: whole,
     campaign: { ...campaign, daily: [...daily.values()].sort((a, b) => a.date.localeCompare(b.date)) },
-    productDaily: [...productDaily.values()].filter(item => !allowed.size || allowed.has(String(item.nmId))).sort((a, b) => (String(a.date)+":"+String(a.nmId)).localeCompare(String(b.date)+":"+String(b.nmId))) };
+    productDaily: [...productDaily.values()].sort((a, b) => (String(a.date)+":"+String(a.nmId)).localeCompare(String(b.date)+":"+String(b.nmId))) };
   fs.mkdirSync(path.dirname(STATISTICS_FILE), { recursive: true });
   fs.writeFileSync(STATISTICS_FILE, JSON.stringify(result, null, 2));
   return { ...result, file: 'statistics.json' };
@@ -629,8 +649,7 @@ async function advertisingCampaign(id, campaignId, from, to) {
   const summary = await advertising(id, from, to);
   const campaign = (summary.campaigns || []).find(item => String(item.id) === String(campaignId));
   if (!campaign) throw apiError(404, 'Кампания не найдена за выбранный период');
-  const allowed = new Set((campaign.nmIds || []).map(String));
-  const productDaily = (summary.productDaily || []).filter(item => !allowed.size || allowed.has(String(item.nmId)));
+  const productDaily = campaignProductDaily(summary.productDaily || [], campaignId, campaign.nmIds || []);
   return { period: summary.period, campaign, productDaily };
 }
 async function advertising(id, from, to) {
@@ -652,7 +671,30 @@ async function advertising(id, from, to) {
     } catch (error) { warnings.push(`Статистика рекламы: ${error.message}`); }
   }
   const cards = await cachedAnalytics(`product-cards:${id}`, () => loadProductCards(token), 10 * 60_000);
-  return { demo: false, ...enrichAdvertising(summarizeAdStats(campaigns, stats, period.from, period.to), cards), warnings };
+  const budgets = await advertBudgets(id, token, campaigns, warnings);
+  const summary = enrichAdvertising(summarizeAdStats(campaigns, stats, period.from, period.to), cards);
+  return { demo: false, ...summary, campaigns: withAdBudgets(summary.campaigns, budgets), warnings };
+}
+
+function withAdBudgets(campaigns = [], budgets = new Map()) {
+  return campaigns.map(campaign => ({ ...campaign, budget: budgets.has(String(campaign.id)) ? budgets.get(String(campaign.id)) : null }));
+}
+
+async function advertBudgets(id, token, campaigns = [], warnings = []) {
+  const targets = campaigns.filter(item => AD_BUDGET_STATUSES.has(Number(item.status))).map(item => item.id).filter(Boolean);
+  const budgets = new Map();
+  let failed = 0;
+  for (let offset = 0; offset < targets.length && offset < AD_BUDGET_LIMIT; offset += AD_BUDGET_CHUNK) {
+    if (offset) await wait(1_100);
+    const chunk = targets.slice(offset, offset + AD_BUDGET_CHUNK);
+    const loaded = await Promise.all(chunk.map(advertId => cachedAnalytics(`ad-budget:${id}:${advertId}`, () => wbRequest(token,
+      `https://advert-api.wildberries.ru/adv/v1/budget?id=${encodeURIComponent(advertId)}`), 60_000)
+      .then(data => ({ advertId, total: Number(data?.total ?? 0) })).catch(() => { failed += 1; return null; })));
+    for (const item of loaded) if (item) budgets.set(String(item.advertId), item.total);
+  }
+  if (failed) warnings.push(`Остаток бюджета: WB не ответил по ${failed} кампаниям`);
+  if (targets.length > AD_BUDGET_LIMIT) warnings.push(`Остаток бюджета показан для первых ${AD_BUDGET_LIMIT} кампаний из ${targets.length}`);
+  return budgets;
 }
 
 function enrichFunnelProducts(products = [], cards = []) {
@@ -1099,7 +1141,7 @@ const server = http.createServer(async (req, res) => {
 
 if (require.main === module) server.listen(PORT, '127.0.0.1', () => console.log(`WB Analytics: http://127.0.0.1:${PORT}`));
 
-module.exports = { server, cabinets, normalizeOrders, normalizeOrderFeed, enrichOrders, extractFunnel, summarizeAdStats, validAdPeriod, advertisingPeriod, normalizeFbsStocks, normalizeFbwStocks, normalizePrices, normalizeNewOrders, summarizeSupplies, normalizeTrbxes, chunkOrders, stickerType, WB_HOSTS };
+module.exports = { server, cabinets, normalizeOrders, normalizeOrderFeed, enrichOrders, extractFunnel, summarizeAdStats, campaignProductDaily, withAdBudgets, validAdPeriod, advertisingPeriod, normalizeFbsStocks, normalizeFbwStocks, normalizePrices, normalizeNewOrders, summarizeSupplies, normalizeTrbxes, chunkOrders, stickerType, WB_HOSTS };
 
 
 

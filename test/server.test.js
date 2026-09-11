@@ -1,7 +1,7 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { normalizeOrders, normalizeOrderFeed, enrichOrders, extractFunnel, summarizeAdStats, validAdPeriod, normalizeFbsStocks, normalizeFbwStocks, normalizePrices, normalizeNewOrders, summarizeSupplies, normalizeTrbxes, chunkOrders, stickerType, WB_HOSTS } = require('../server');
+const { normalizeOrders, normalizeOrderFeed, enrichOrders, extractFunnel, summarizeAdStats, campaignProductDaily, withAdBudgets, validAdPeriod, normalizeFbsStocks, normalizeFbwStocks, normalizePrices, normalizeNewOrders, summarizeSupplies, normalizeTrbxes, chunkOrders, stickerType, WB_HOSTS } = require('../server');
 
 test('объединяет и сортирует FBS и события ленты WB', () => {
   const result = normalizeOrders(
@@ -168,4 +168,24 @@ test('разрешает только поддерживаемые формат�
   assert.equal(stickerType('zplh'), 'zplh');
   assert.equal(stickerType('pdf'), 'png');
   assert.equal(stickerType(undefined), 'png');
+});
+
+test('делит статистику по артикулам между кампаниями', () => {
+  const campaigns = [{ id: 77, status: 9, type: 9, bid_type: 'manual', settings: { name: 'Поиск', payment_type: 'cpm' } },
+    { id: 88, status: 11, type: 8, bid_type: 'unified', settings: { name: 'Авто', payment_type: 'cpc' } }];
+  const day = (advertId, views) => ({ advertId, days: [{ date: '2026-08-10T00:00:00Z', views, clicks: 10, sum: 100, orders: 1, sum_price: 1000,
+    apps: [{ appType: 32, views, clicks: 10, sum: 100, orders: 1, sum_price: 1000,
+      nms: [{ nmId: 123, name: 'Товар', views, clicks: 10, sum: 100, orders: 1, sum_price: 1000 }] }] }] });
+  const result = summarizeAdStats(campaigns, [day(77, 500), day(88, 300)], '2026-08-10', '2026-08-10');
+  assert.equal(result.productDaily.length, 2);
+  assert.equal(result.campaigns.find(row => row.id === 77).type, 9);
+  const own = campaignProductDaily(result.productDaily, 77, [123]);
+  assert.equal(own.length, 1);
+  assert.equal(own[0].views, 500);
+});
+
+test('подставляет остаток бюджета к кампаниям и оставляет null без данных', () => {
+  const rows = withAdBudgets([{ id: 77 }, { id: 88 }], new Map([['77', 18400]]));
+  assert.equal(rows[0].budget, 18400);
+  assert.equal(rows[1].budget, null);
 });
