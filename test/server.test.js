@@ -1,7 +1,7 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { normalizeOrders, normalizeOrderFeed, enrichOrders, extractFunnel, summarizeAdStats, campaignProductDaily, withAdBudgets, normalizeStockPreset, validAdPeriod, normalizeFbsStocks, normalizeFbwStocks, normalizePrices, normalizeNewOrders, summarizeSupplies, normalizeTrbxes, chunkOrders, stickerType, WB_HOSTS } = require('../server');
+const { normalizeOrders, normalizeOrderFeed, enrichOrders, extractFunnel, summarizeAdStats, campaignProductDaily, withAdBudgets, normalizeStockPreset, normalizePricePreset, validAdPeriod, normalizeFbsStocks, normalizeFbwStocks, normalizePrices, normalizeNewOrders, summarizeSupplies, normalizeTrbxes, chunkOrders, stickerType, WB_HOSTS } = require('../server');
 
 test('объединяет и сортирует FBS и события ленты WB', () => {
   const result = normalizeOrders(
@@ -206,4 +206,21 @@ test('не сохраняет шаблон остатков без назван�
   assert.throws(() => normalizeStockPreset({ name: '', warehouseIds: ['1'], items: [{ chrtId: 1, amount: 1 }] }), /название/i);
   assert.throws(() => normalizeStockPreset({ name: 'Тест', warehouseIds: [], items: [{ chrtId: 1, amount: 1 }] }), /склад/i);
   assert.throws(() => normalizeStockPreset({ name: 'Тест', warehouseIds: ['1'], items: [] }), /артикул/i);
+});
+
+test('проверяет шаблон цен и отбрасывает некорректные позиции', () => {
+  const preset = normalizePricePreset({ name: 'Распродажа', items: [
+    { nmId: 100001, price: '1990', discount: '20', name: 'Футболка', vendorCode: 'TSHIRT' },
+    { nmId: 100002, price: 0, discount: 10 },
+    { nmId: 100003, price: 1290, discount: 120 },
+    { nmId: 100004, price: 500, discount: 0 }] });
+  assert.equal(preset.items.length, 2);
+  assert.equal(preset.items[0].price, 1990);
+  assert.equal(preset.items[0].discount, 20);
+  assert.equal(preset.items[1].nmId, 100004);
+});
+
+test('не сохраняет шаблон цен без названия или позиций', () => {
+  assert.throws(() => normalizePricePreset({ name: '', items: [{ nmId: 1, price: 100, discount: 0 }] }), /название/i);
+  assert.throws(() => normalizePricePreset({ name: 'Тест', items: [] }), /товар/i);
 });

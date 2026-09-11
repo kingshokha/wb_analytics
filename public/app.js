@@ -89,7 +89,7 @@ document.addEventListener('click',event=>{if(event.target.closest('.nav-item[dat
 const refreshObserver=new MutationObserver(()=>$('#loadingOverlay')?.classList.toggle('visible',$('#refresh')?.classList.contains('loading')));
 setTimeout(()=>{const refresh=$('#refresh');if(refresh)refreshObserver.observe(refresh,{attributes:true,attributeFilter:['class']});},0);
 setTimeout(()=>{const from=$('#dateFrom'),to=$('#dateTo'),month=$('#adMonth');from.onchange=to.onchange=()=>{state.adsKey=''};month.onchange=()=>{if(!month.value)return;if(month.value==='last31'){const end=new Date(),start=new Date();start.setDate(end.getDate()-30);from.value=start.toISOString().slice(0,10);to.value=end.toISOString().slice(0,10)}else{const [year,number]=month.value.split('-').map(Number),last=new Date(year,number,0);from.value=`${year}-${String(number).padStart(2,'0')}-01`;to.value=`${year}-${String(number).padStart(2,'0')}-${String(last.getDate()).padStart(2,'0')}`}state.adsKey='';loadAds(true)};$$('#adStatusOptions input').forEach(input=>input.onchange=()=>{input.checked?state.adStatuses.add(input.value):state.adStatuses.delete(input.value);$('#adStatusLabel').textContent=`Статусы (${state.adStatuses.size})`;renderAdCampaigns()});document.addEventListener('click',event=>{const nav=event.target.closest('.nav-item');if(nav)month.classList.toggle('hidden',nav.dataset.page!=='ads')})},0);
-function bind(){$$('.nav-item').forEach(b=>b.onclick=()=>{state.activePage=b.dataset.page;$$('.nav-item').forEach(x=>x.classList.toggle('active',x===b));$$('.page').forEach(x=>x.classList.toggle('active',x.id===`page-${b.dataset.page}`));$('#pageTitle').textContent={orders:'Лента заказов','fbs-orders':'Новые заказы FBS',stocks:'Остатки FBS','fbw-stocks':'Остатки FBW',prices:'Цены и скидки',funnel:'Воронка продаж',ads:'Аналитика рекламы',console:'API-консоль'}[b.dataset.page];$('.header-actions').style.visibility=b.dataset.page==='console'?'hidden':'visible';const noPeriod=['stocks','fbw-stocks','fbs-orders','prices'].includes(b.dataset.page);$('.date').classList.toggle('hidden',noPeriod);if(b.dataset.page==='ads')loadAds();if(b.dataset.page==='stocks')loadStocks();if(b.dataset.page==='fbw-stocks')loadFbwStocks();if(b.dataset.page==='prices')loadPrices();if(b.dataset.page==='fbs-orders')loadFbsOrders()});$('#refresh').onclick=()=>loadCurrentPage(true);$('#dateFrom').onchange=()=>{state.adsKey='';loadCurrentPage()};$('#dateTo').onchange=()=>{state.adsKey='';loadCurrentPage()};$('#search').oninput=renderOrders;$('#statusFilter').onchange=renderOrders;$('#adSearch').oninput=renderAdCampaigns;$('#adStatus').onchange=renderAdCampaigns;$('#stockSearch').oninput=()=>{resetStockPage();renderStocks()};$('#fbwStockSearch').oninput=()=>{state.fbwPage=1;renderFbwStocks()};$('#setStockButton').onclick=openSetStock;$('#stockPresetsButton').onclick=openStockPresets;$('#copyStockButton').onclick=openCopyStock;$('#clearStockSelection').onclick=()=>{state.stockSelected.clear();renderStocks()};$('#priceSearch').oninput=()=>{resetPricePage();renderPrices()};$('#setPriceButton').onclick=openSetPrices;$('#clearPriceSelection').onclick=()=>{state.priceSelected.clear();renderPrices()};$('#cabinetButton').onclick=()=>$('#cabinetMenu').classList.toggle('open');$('#renameCabinet').onclick=()=>{const c=state.cabinets.find(x=>x.id===state.cabinet);if(!c.configured)return toast('Демо-кабинет переименовать нельзя');openModal(`<p class="eyebrow">Настройки кабинета</p><h2>Новое название</h2><input id="renameInput" maxlength="60" value="${escapeHtml(c.name)}"><button class="primary" id="saveName">Сохранить</button>`);setTimeout(()=>$('#renameInput').focus(),0);$('#saveName').onclick=async()=>{try{const name=$('#renameInput').value.trim();await api(`/api/cabinets/${c.id}`,{method:'PATCH',body:JSON.stringify({name})});c.name=name;renderCabinets();closeModal();toast('Название сохранено')}catch(e){toast(e.message)}}};$('#modalClose').onclick=closeModal;$('#modal').onclick=e=>{if(e.target===$('#modal'))closeModal()};$('#runApi').onclick=runConsole;$('#copyResponse').onclick=()=>navigator.clipboard.writeText($('#apiResponse').textContent).then(()=>toast('Ответ скопирован'));bindFbsOrders()}
+function bind(){$$('.nav-item').forEach(b=>b.onclick=()=>{state.activePage=b.dataset.page;$$('.nav-item').forEach(x=>x.classList.toggle('active',x===b));$$('.page').forEach(x=>x.classList.toggle('active',x.id===`page-${b.dataset.page}`));$('#pageTitle').textContent={orders:'Лента заказов','fbs-orders':'Новые заказы FBS',stocks:'Остатки FBS','fbw-stocks':'Остатки FBW',prices:'Цены и скидки',funnel:'Воронка продаж',ads:'Аналитика рекламы',console:'API-консоль'}[b.dataset.page];$('.header-actions').style.visibility=b.dataset.page==='console'?'hidden':'visible';const noPeriod=['stocks','fbw-stocks','fbs-orders','prices'].includes(b.dataset.page);$('.date').classList.toggle('hidden',noPeriod);if(b.dataset.page==='ads')loadAds();if(b.dataset.page==='stocks')loadStocks();if(b.dataset.page==='fbw-stocks')loadFbwStocks();if(b.dataset.page==='prices')loadPrices();if(b.dataset.page==='fbs-orders')loadFbsOrders()});$('#refresh').onclick=()=>loadCurrentPage(true);$('#dateFrom').onchange=()=>{state.adsKey='';loadCurrentPage()};$('#dateTo').onchange=()=>{state.adsKey='';loadCurrentPage()};$('#search').oninput=renderOrders;$('#statusFilter').onchange=renderOrders;$('#adSearch').oninput=renderAdCampaigns;$('#adStatus').onchange=renderAdCampaigns;$('#stockSearch').oninput=()=>{resetStockPage();renderStocks()};$('#fbwStockSearch').oninput=()=>{state.fbwPage=1;renderFbwStocks()};$('#setStockButton').onclick=openSetStock;$('#stockPresetsButton').onclick=openStockPresets;$('#copyStockButton').onclick=openCopyStock;$('#clearStockSelection').onclick=()=>{state.stockSelected.clear();renderStocks()};$('#priceSearch').oninput=()=>{resetPricePage();renderPrices()};$('#setPriceButton').onclick=openSetPrices;$('#pricePresetsButton').onclick=openPricePresets;$('#clearPriceSelection').onclick=()=>{state.priceSelected.clear();renderPrices()};$('#cabinetButton').onclick=()=>$('#cabinetMenu').classList.toggle('open');$('#renameCabinet').onclick=()=>{const c=state.cabinets.find(x=>x.id===state.cabinet);if(!c.configured)return toast('Демо-кабинет переименовать нельзя');openModal(`<p class="eyebrow">Настройки кабинета</p><h2>Новое название</h2><input id="renameInput" maxlength="60" value="${escapeHtml(c.name)}"><button class="primary" id="saveName">Сохранить</button>`);setTimeout(()=>$('#renameInput').focus(),0);$('#saveName').onclick=async()=>{try{const name=$('#renameInput').value.trim();await api(`/api/cabinets/${c.id}`,{method:'PATCH',body:JSON.stringify({name})});c.name=name;renderCabinets();closeModal();toast('Название сохранено')}catch(e){toast(e.message)}}};$('#modalClose').onclick=closeModal;$('#modal').onclick=e=>{if(e.target===$('#modal'))closeModal()};$('#runApi').onclick=runConsole;$('#copyResponse').onclick=()=>navigator.clipboard.writeText($('#apiResponse').textContent).then(()=>toast('Ответ скопирован'));bindFbsOrders()}
 
 function initResizableTables(root=document){root.querySelectorAll('table').forEach((table,tableIndex)=>{if(table.dataset.resizable==='1')return;const headers=[...table.querySelectorAll('thead th')];if(!headers.length)return;table.dataset.resizable='1';table.classList.add('resizable-table');const bodyId=table.querySelector('tbody[id]')?.id||`table-${tableIndex}`,storageKey=`wb-column-widths:${bodyId}`;let saved=[];try{saved=JSON.parse(localStorage.getItem(storageKey)||'[]')}catch{}if(saved.length===headers.length&&saved.every(Number.isFinite)){headers.forEach((header,index)=>header.style.width=`${saved[index]}px`);const total=saved.reduce((sum,width)=>sum+width,0);table.style.width=`${total}px`;table.style.minWidth=`${total}px`;table.style.tableLayout='fixed'}headers.forEach((header,index)=>{const handle=document.createElement('span');handle.className='column-resizer';handle.title='Потяните, чтобы изменить ширину';handle.setAttribute('aria-hidden','true');handle.onclick=event=>{event.preventDefault();event.stopPropagation()};handle.onpointerdown=event=>{if(event.button!==0)return;event.preventDefault();event.stopPropagation();const widths=headers.map(item=>Math.round(item.getBoundingClientRect().width));if(!widths[index])return;headers.forEach((item,column)=>item.style.width=`${widths[column]}px`);const startX=event.clientX,startWidth=widths[index],startTotal=widths.reduce((sum,width)=>sum+width,0);table.style.width=`${startTotal}px`;table.style.minWidth=`${startTotal}px`;table.style.tableLayout='fixed';document.body.classList.add('resizing-column');const move=moveEvent=>{const width=Math.max(48,Math.round(startWidth+moveEvent.clientX-startX)),delta=width-startWidth;header.style.width=`${width}px`;table.style.width=`${startTotal+delta}px`;table.style.minWidth=`${startTotal+delta}px`};const stop=()=>{document.removeEventListener('pointermove',move);document.removeEventListener('pointerup',stop);document.removeEventListener('pointercancel',stop);document.body.classList.remove('resizing-column');const current=headers.map(item=>Math.round(item.getBoundingClientRect().width));localStorage.setItem(storageKey,JSON.stringify(current))};document.addEventListener('pointermove',move);document.addEventListener('pointerup',stop,{once:true});document.addEventListener('pointercancel',stop,{once:true})};header.append(handle)})})}
 const tableObserver=new MutationObserver(()=>initResizableTables());
@@ -152,10 +152,10 @@ async function openStockPresets(){
 function renderPresetList(){
   const cards=presetState.presets.map(preset=>{
     const amount=preset.items.reduce((sum,item)=>sum+Number(item.amount||0),0);
-    return `<div class="preset-card"><div><strong>${escapeHtml(preset.name)}</strong><small>${fmtNum(preset.items.length)} артикулов · всего ${fmtNum(amount)} шт · ${escapeHtml(presetWarehouseNames(preset))}</small></div>`+
-      `<button class="primary" data-preset-run="${escapeHtml(preset.id)}">Выполнить</button>`+
+    return `<div class="preset-card"><div><strong>${escapeHtml(preset.name)}</strong><small>Артикулов: ${fmtNum(preset.items.length)} · всего ${fmtNum(amount)} шт · складов: ${fmtNum((preset.warehouseIds||[]).length)}</small></div>`+
+      `<div class="preset-card-actions"><button class="primary" data-preset-run="${escapeHtml(preset.id)}">Выполнить</button>`+
       `<button data-preset-edit="${escapeHtml(preset.id)}">Изменить</button>`+
-      `<button class="danger" data-preset-delete="${escapeHtml(preset.id)}">Удалить</button></div>`;
+      `<button class="danger" data-preset-delete="${escapeHtml(preset.id)}">Удалить</button></div></div>`;
   }).join('');
   openModal(`<p class="eyebrow">Остатки FBS</p><h2>Шаблоны остатков</h2>`+
     `<p>Шаблон хранит артикулы с нужным количеством. При выполнении эти остатки выставляются на выбранных складах.</p>`+
@@ -256,7 +256,7 @@ function openPresetApply(id){
   openModal(`<p class="eyebrow">Выполнение шаблона</p><h2>${escapeHtml(preset.name)}</h2>`+
     `<p>Остатки будут заменены на указанные значения. Складов: ${fmtNum(warehouses.length)} · позиций к обновлению: ${fmtNum(warehouses.length*preset.items.length)}.`+
     `${missing?` <b>Складов из шаблона больше нет: ${fmtNum(missing)}.</b>`:''}</p>`+
-    `<p class="eyebrow">${escapeHtml(presetWarehouseNames({warehouseIds:warehouses}))}</p>`+
+    `<p><b>Склады:</b> ${escapeHtml(presetWarehouseNames({warehouseIds:warehouses}))}</p>`+
     `<div class="preset-items">${rows}</div>`+
     `<div class="preset-actions"><button class="primary" id="presetRun">Выполнить</button><button id="presetCancel">Отмена</button></div>`);
   $('#presetCancel').onclick=renderPresetList;
@@ -270,5 +270,145 @@ async function runPreset(preset,warehouses){
   try{
     await api('/api/fbs-stocks/update',{method:'POST',body:JSON.stringify({cabinet:state.cabinet,items,confirm:true})});
     closeModal();toast(`Шаблон «${preset.name}» выполнен: позиций ${fmtNum(items.length)}`);await loadStocks(true);
+  }catch(e){toast(e.message);if(button){button.disabled=false;button.textContent='Выполнить'}}
+}
+
+// --- Шаблоны цен и скидок ---
+const pricePresetState={presets:[],draft:null};
+function pricePresetCatalog(){return (state.prices?.rows||[]).map(row=>({nmId:row.nmId,name:row.name,vendorCode:row.vendorCode,photo:row.photo,price:row.price,discount:row.discount}))}
+async function openPricePresets(){
+  if(!state.prices)await loadPrices();
+  try{const data=await api(`/api/price-presets?cabinet=${encodeURIComponent(state.cabinet)}`);pricePresetState.presets=data.presets||[]}
+  catch(e){pricePresetState.presets=[];toast(e.message)}
+  renderPricePresetList();
+}
+function renderPricePresetList(){
+  const cards=pricePresetState.presets.map(preset=>{
+    const prices=preset.items.map(item=>Number(item.price)||0);
+    const min=prices.length?Math.min(...prices):0,max=prices.length?Math.max(...prices):0;
+    const range=min===max?fmtRub(min):`${fmtRub(min)} — ${fmtRub(max)}`;
+    return `<div class="preset-card"><div><strong>${escapeHtml(preset.name)}</strong><small>Товаров: ${fmtNum(preset.items.length)} · цены ${escapeHtml(range)}</small></div>`+
+      `<div class="preset-card-actions"><button class="primary" data-price-preset-run="${escapeHtml(preset.id)}">Выполнить</button>`+
+      `<button data-price-preset-edit="${escapeHtml(preset.id)}">Изменить</button>`+
+      `<button class="danger" data-price-preset-delete="${escapeHtml(preset.id)}">Удалить</button></div></div>`;
+  }).join('');
+  openModal(`<p class="eyebrow">Цены и скидки</p><h2>Шаблоны цен</h2>`+
+    `<p>Шаблон хранит товары с ценой и скидкой продавца. При выполнении эти значения отправляются в Wildberries.</p>`+
+    `<div class="preset-list">${cards||'<div class="preset-empty">Шаблонов пока нет. Создайте первый и добавьте в него товары с ценой и скидкой.</div>'}</div>`+
+    `<div class="preset-actions"><button class="primary" id="pricePresetCreate">Новый шаблон</button></div>`);
+  $('#pricePresetCreate').onclick=()=>openPricePresetEditor(null);
+  $$('[data-price-preset-run]').forEach(button=>button.onclick=()=>openPricePresetApply(button.dataset.pricePresetRun));
+  $$('[data-price-preset-edit]').forEach(button=>button.onclick=()=>openPricePresetEditor(button.dataset.pricePresetEdit));
+  $$('[data-price-preset-delete]').forEach(button=>button.onclick=()=>deletePricePreset(button.dataset.pricePresetDelete));
+}
+function openPricePresetEditor(id){
+  const existing=pricePresetState.presets.find(item=>item.id===id);
+  pricePresetState.draft=existing?{...existing,items:existing.items.map(item=>({...item}))}:{id:'',name:'',items:[]};
+  const draft=pricePresetState.draft;
+  openModal(`<p class="eyebrow">Цены и скидки</p><h2>${existing?'Изменить шаблон':'Новый шаблон'}</h2>`+
+    `<label class="stock-modal-label">Название<input id="pricePresetName" maxlength="60" placeholder="Например: цены на распродажу" value="${escapeHtml(draft.name)}"></label>`+
+    `<label class="stock-modal-label preset-search">Добавить товар<input id="pricePresetSearch" placeholder="Название, артикул WB или артикул продавца" autocomplete="off"><div id="pricePresetSuggest"></div></label>`+
+    `<div class="preset-items" id="pricePresetItems"></div>`+
+    `<div class="preset-actions"><button class="primary" id="pricePresetSave">Сохранить шаблон</button>`+
+    `${state.priceSelected.size?`<button id="pricePresetAddSelected">Добавить выбранные (${fmtNum(state.priceSelected.size)})</button>`:''}`+
+    `<button id="pricePresetBack">К списку</button></div>`);
+  $('#pricePresetName').oninput=event=>{draft.name=event.target.value};
+  $('#pricePresetSearch').oninput=event=>renderPricePresetSuggest(event.target.value);
+  $('#pricePresetSearch').onblur=()=>setTimeout(()=>{const box=$('#pricePresetSuggest');if(box)box.innerHTML=''},180);
+  $('#pricePresetSave').onclick=savePricePreset;
+  $('#pricePresetBack').onclick=renderPricePresetList;
+  if($('#pricePresetAddSelected'))$('#pricePresetAddSelected').onclick=()=>{
+    (state.prices?.rows||[]).filter(row=>state.priceSelected.has(String(row.nmId))).forEach(row=>addPricePresetItem(row));
+    renderPricePresetItems();
+  };
+  renderPricePresetItems();
+}
+function renderPricePresetSuggest(term){
+  const box=$('#pricePresetSuggest');if(!box)return;
+  const query=String(term||'').trim().toLowerCase();
+  if(query.length<2){box.innerHTML='';return}
+  const chosen=new Set(pricePresetState.draft.items.map(item=>String(item.nmId)));
+  const found=pricePresetCatalog().filter(item=>!chosen.has(String(item.nmId))&&
+    `${item.name} ${item.nmId} ${item.vendorCode}`.toLowerCase().includes(query)).slice(0,8);
+  box.className='preset-suggest';
+  box.innerHTML=found.length?found.map(item=>`<button type="button" data-price-preset-add="${escapeHtml(item.nmId)}">${presetPhoto(item)}<span><b>${escapeHtml(item.name)}</b><small>${escapeHtml(item.vendorCode||'—')} · nmId ${escapeHtml(item.nmId)} · сейчас ${escapeHtml(fmtRub(item.price))} · скидка ${escapeHtml(item.discount)}%</small></span></button>`).join(''):'<button type="button" disabled><span><b>Ничего не найдено</b></span></button>';
+  box.querySelectorAll('[data-price-preset-add]').forEach(button=>button.onclick=()=>{
+    const item=pricePresetCatalog().find(row=>String(row.nmId)===button.dataset.pricePresetAdd);
+    if(item)addPricePresetItem(item);
+    $('#pricePresetSearch').value='';box.innerHTML='';renderPricePresetItems();
+  });
+}
+function addPricePresetItem(row){
+  const draft=pricePresetState.draft;
+  if(draft.items.some(item=>String(item.nmId)===String(row.nmId)))return;
+  draft.items.push({nmId:row.nmId,name:row.name,vendorCode:row.vendorCode,photo:row.photo,price:Math.round(Number(row.price)||0)||1,discount:Math.round(Number(row.discount)||0)});
+}
+function renderPricePresetItems(){
+  const box=$('#pricePresetItems');if(!box)return;
+  const items=pricePresetState.draft.items;
+  box.innerHTML=items.length?items.map((item,index)=>`<div class="preset-item">${presetPhoto(item)}<div><b>${escapeHtml(item.name||'Товар')}</b><small>${escapeHtml(item.vendorCode||'—')} · nmId ${escapeHtml(item.nmId)} · со скидкой ${escapeHtml(fmtRub(Math.round(Number(item.price)*(100-Number(item.discount))/100)))}</small></div>`+
+    `<input type="number" min="1" step="1" value="${Number(item.price)||0}" data-price-preset-price="${index}" aria-label="Цена, ₽">`+
+    `<input type="number" min="0" max="99" step="1" value="${Number(item.discount)||0}" data-price-preset-discount="${index}" aria-label="Скидка, %">`+
+    `<button type="button" data-price-preset-remove="${index}" aria-label="Убрать">×</button></div>`).join('')
+    :'<div class="preset-empty">Добавьте товары через поиск выше</div>';
+  box.querySelectorAll('[data-price-preset-price]').forEach(input=>input.onchange=()=>{
+    pricePresetState.draft.items[Number(input.dataset.pricePresetPrice)].price=Math.max(1,Math.round(Number(input.value)||0));
+    renderPricePresetItems();
+  });
+  box.querySelectorAll('[data-price-preset-discount]').forEach(input=>input.onchange=()=>{
+    pricePresetState.draft.items[Number(input.dataset.pricePresetDiscount)].discount=Math.min(99,Math.max(0,Math.round(Number(input.value)||0)));
+    renderPricePresetItems();
+  });
+  box.querySelectorAll('[data-price-preset-remove]').forEach(button=>button.onclick=()=>{
+    pricePresetState.draft.items.splice(Number(button.dataset.pricePresetRemove),1);renderPricePresetItems();
+  });
+}
+async function savePricePreset(){
+  const draft=pricePresetState.draft;
+  if(!String(draft.name||'').trim())return toast('Укажите название шаблона');
+  if(!draft.items.length)return toast('Добавьте хотя бы один товар');
+  if(draft.items.some(item=>!(Number(item.price)>0)))return toast('Цена должна быть больше нуля');
+  if(draft.items.some(item=>!Number.isInteger(Number(item.discount))||Number(item.discount)<0||Number(item.discount)>99))return toast('Скидка должна быть целым числом от 0 до 99');
+  try{
+    const data=await api('/api/price-presets',{method:'POST',body:JSON.stringify({cabinet:state.cabinet,preset:draft})});
+    pricePresetState.presets=data.presets||[];toast('Шаблон сохранён');renderPricePresetList();
+  }catch(e){toast(e.message)}
+}
+async function deletePricePreset(id){
+  const preset=pricePresetState.presets.find(item=>item.id===id);
+  if(!preset||!confirm(`Удалить шаблон «${preset.name}»?`))return;
+  try{
+    const data=await api(`/api/price-presets?cabinet=${encodeURIComponent(state.cabinet)}&id=${encodeURIComponent(id)}`,{method:'DELETE'});
+    pricePresetState.presets=data.presets||[];toast('Шаблон удалён');renderPricePresetList();
+  }catch(e){toast(e.message)}
+}
+function openPricePresetApply(id){
+  const preset=pricePresetState.presets.find(item=>item.id===id);if(!preset)return;
+  const byNmId=new Map((state.prices?.rows||[]).map(row=>[String(row.nmId),row]));
+  const ready=preset.items.filter(item=>byNmId.has(String(item.nmId)));
+  const missing=preset.items.length-ready.length;
+  const rows=preset.items.map(item=>{
+    const known=byNmId.get(String(item.nmId));
+    return `<div class="preset-item">${presetPhoto(item)}<div><b>${escapeHtml(item.name||'Товар')}</b><small>${known?`сейчас ${escapeHtml(fmtRub(known.price))} · скидка ${escapeHtml(known.discount)}%`:'нет в текущем списке цен'}</small></div>`+
+      `<input type="number" value="${Number(item.price)||0}" disabled><input type="number" value="${Number(item.discount)||0}" disabled></div>`;
+  }).join('');
+  openModal(`<p class="eyebrow">Выполнение шаблона</p><h2>${escapeHtml(preset.name)}</h2>`+
+    `<p>Будет отправлено товаров: ${fmtNum(ready.length)}. Для поразмерных карточек цена изменится у каждого размера.`+
+    `${missing?` <b>Пропущено товаров, которых нет в списке цен: ${fmtNum(missing)}.</b>`:''}</p>`+
+    `<div class="preset-items">${rows}</div>`+
+    `<div class="preset-actions"><button class="primary" id="pricePresetRun">Выполнить</button><button id="pricePresetCancel">Отмена</button></div>`);
+  $('#pricePresetCancel').onclick=renderPricePresetList;
+  $('#pricePresetRun').onclick=()=>runPricePreset(preset,ready);
+}
+async function runPricePreset(preset,ready){
+  if(state.demo)return toast('В демо-режиме изменение цен отключено');
+  if(!ready.length)return toast('Ни один товар шаблона не найден в текущем списке цен');
+  const byNmId=new Map((state.prices?.rows||[]).map(row=>[String(row.nmId),row]));
+  const items=ready.map(item=>{const row=byNmId.get(String(item.nmId));
+    return {nmId:item.nmId,price:Number(item.price),discount:Number(item.discount),editableSizePrice:row.editableSizePrice,sizeItems:row.sizeItems}});
+  const button=$('#pricePresetRun');if(button){button.disabled=true;button.textContent='Выполняем…'}
+  try{
+    await api('/api/prices/update',{method:'POST',body:JSON.stringify({cabinet:state.cabinet,items,confirm:true})});
+    closeModal();toast(`Шаблон «${preset.name}» отправлен в WB: товаров ${fmtNum(items.length)}`);await loadPrices(true);
   }catch(e){toast(e.message);if(button){button.disabled=false;button.textContent='Выполнить'}}
 }

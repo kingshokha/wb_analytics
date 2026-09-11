@@ -30,9 +30,11 @@ const STICKER_TYPES = new Set(['png', 'svg', 'zplv', 'zplh']);
 const ORDER_STICKER_CHUNK = 100;
 const CARGO_TYPES = { 0: 'Не указан', 1: 'Обычный', 2: 'СГТ', 3: 'КГТ' };
 const STOCK_PRESETS_FILE = path.join(ROOT, 'data', 'stock-presets.json');
-const STOCK_PRESET_MAX_ITEMS = 200;
-const STOCK_PRESET_MAX_COUNT = 50;
+const PRICE_PRESETS_FILE = path.join(ROOT, 'data', 'price-presets.json');
+const PRESET_MAX_ITEMS = 200;
+const PRESET_MAX_COUNT = 50;
 const STOCK_PRESET_MAX_AMOUNT = 100_000;
+const PRICE_PRESET_MAX_PRICE = 1_000_000;
 const AD_BUDGET_STATUSES = new Set([9, 11]);
 const AD_BUDGET_CHUNK = 4;
 const AD_BUDGET_LIMIT = 100;
@@ -57,18 +59,62 @@ function readBalanceHistory() {
   try { return JSON.parse(fs.readFileSync(BALANCE_HISTORY_FILE, 'utf8')); } catch { return {}; }
 }
 
-function readStockPresets() {
-  try { return JSON.parse(fs.readFileSync(STOCK_PRESETS_FILE, 'utf8')); } catch { return {}; }
+function readPresets(file) {
+  try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return {}; }
 }
 
-function writeStockPresets(presets) {
-  fs.mkdirSync(path.dirname(STOCK_PRESETS_FILE), { recursive: true });
-  fs.writeFileSync(STOCK_PRESETS_FILE, JSON.stringify(presets, null, 2));
+function writePresets(file, presets) {
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, JSON.stringify(presets, null, 2));
+}
+
+function presetName(preset = {}) {
+  const name = String(preset.name || '').trim().slice(0, 60);
+  if (!name) throw apiError(400, 'Укажите название шаблона');
+  return name;
+}
+
+function presetId(preset = {}) {
+  return /^[\w-]{1,40}$/.test(String(preset.id || '')) ? String(preset.id) : `preset-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
+}
+
+function savePreset(file, cabinetId, preset, normalize) {
+  const id = String(cabinetId || '');
+  if (!id) throw apiError(400, 'Не указан кабинет');
+  const normalized = normalize(preset);
+  const all = readPresets(file);
+  const list = Array.isArray(all[id]) ? all[id] : [];
+  const index = list.findIndex(item => item.id === normalized.id);
+  if (index >= 0) list[index] = normalized; else list.push(normalized);
+  if (list.length > PRESET_MAX_COUNT) throw apiError(400, `Больше ${PRESET_MAX_COUNT} шаблонов хранить нельзя`);
+  all[id] = list;
+  writePresets(file, all);
+  return { presets: list };
+}
+
+function removePreset(file, cabinetId, id) {
+  const cabinet = String(cabinetId || '');
+  const all = readPresets(file);
+  all[cabinet] = (Array.isArray(all[cabinet]) ? all[cabinet] : []).filter(item => item.id !== String(id || ''));
+  writePresets(file, all);
+  return { presets: all[cabinet] };
+}
+
+function normalizePricePreset(preset = {}) {
+  const name = presetName(preset);
+  const items = (Array.isArray(preset.items) ? preset.items : []).map(item => ({
+    nmId: Number(item.nmId), price: Math.round(Number(item.price)), discount: Math.round(Number(item.discount)),
+    name: String(item.name || '').slice(0, 160), vendorCode: String(item.vendorCode || '').slice(0, 80),
+    photo: String(item.photo || '').slice(0, 300)
+  })).filter(item => Number.isInteger(item.nmId) && Number.isFinite(item.price) && item.price > 0 && item.price <= PRICE_PRESET_MAX_PRICE
+    && Number.isInteger(item.discount) && item.discount >= 0 && item.discount <= 99);
+  if (!items.length) throw apiError(400, 'Добавьте в шаблон хотя бы один товар с ценой и скидкой');
+  if (items.length > PRESET_MAX_ITEMS) throw apiError(400, `В шаблоне не может быть больше ${PRESET_MAX_ITEMS} товаров`);
+  return { id: presetId(preset), name, items, updatedAt: new Date().toISOString() };
 }
 
 function normalizeStockPreset(preset = {}) {
-  const name = String(preset.name || '').trim().slice(0, 60);
-  if (!name) throw apiError(400, 'Укажите название шаблона');
+  const name = presetName(preset);
   const warehouseIds = [...new Set((Array.isArray(preset.warehouseIds) ? preset.warehouseIds : []).map(value => String(value || '')).filter(Boolean))];
   if (!warehouseIds.length) throw apiError(400, 'Выберите хотя бы один склад FBS');
   const items = (Array.isArray(preset.items) ? preset.items : []).map(item => ({
@@ -78,32 +124,8 @@ function normalizeStockPreset(preset = {}) {
     size: String(item.size || '').slice(0, 40), photo: String(item.photo || '').slice(0, 300)
   })).filter(item => Number.isInteger(item.chrtId) && Number.isInteger(item.amount) && item.amount >= 0 && item.amount <= STOCK_PRESET_MAX_AMOUNT);
   if (!items.length) throw apiError(400, 'Добавьте в шаблон хотя бы один артикул с количеством');
-  if (items.length > STOCK_PRESET_MAX_ITEMS) throw apiError(400, `В шаблоне не может быть больше ${STOCK_PRESET_MAX_ITEMS} артикулов`);
-  const id = /^[\w-]{1,40}$/.test(String(preset.id || '')) ? String(preset.id) : `preset-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
-  return { id, name, warehouseIds, items, updatedAt: new Date().toISOString() };
-}
-
-function saveStockPreset(cabinetId, preset) {
-  const id = String(cabinetId || '');
-  if (!id) throw apiError(400, 'Не указан кабинет');
-  const normalized = normalizeStockPreset(preset);
-  const all = readStockPresets();
-  const list = Array.isArray(all[id]) ? all[id] : [];
-  const index = list.findIndex(item => item.id === normalized.id);
-  if (index >= 0) list[index] = normalized; else list.push(normalized);
-  if (list.length > STOCK_PRESET_MAX_COUNT) throw apiError(400, `Больше ${STOCK_PRESET_MAX_COUNT} шаблонов хранить нельзя`);
-  all[id] = list;
-  writeStockPresets(all);
-  return { presets: list };
-}
-
-function deleteStockPreset(cabinetId, presetId) {
-  const id = String(cabinetId || '');
-  const all = readStockPresets();
-  const list = (Array.isArray(all[id]) ? all[id] : []).filter(item => item.id !== String(presetId || ''));
-  all[id] = list;
-  writeStockPresets(all);
-  return { presets: list };
+  if (items.length > PRESET_MAX_ITEMS) throw apiError(400, `В шаблоне не может быть больше ${PRESET_MAX_ITEMS} артикулов`);
+  return { id: presetId(preset), name, warehouseIds, items, updatedAt: new Date().toISOString() };
 }
 
 function saveBalanceSnapshot(cabinetId, balance) {
@@ -1089,15 +1111,24 @@ async function handleApi(req, res, url) {
     return send(res, 200, await updatePrices(body));
   }
   if (req.method === 'GET' && url.pathname === '/api/stock-presets') {
-    const cabinet = url.searchParams.get('cabinet') || 'demo';
-    return send(res, 200, { presets: readStockPresets()[cabinet] || [] });
+    return send(res, 200, { presets: readPresets(STOCK_PRESETS_FILE)[url.searchParams.get('cabinet') || 'demo'] || [] });
   }
   if (req.method === 'POST' && url.pathname === '/api/stock-presets') {
     const body = await readJson(req);
-    return send(res, 200, saveStockPreset(body.cabinet, body.preset));
+    return send(res, 200, savePreset(STOCK_PRESETS_FILE, body.cabinet, body.preset, normalizeStockPreset));
   }
   if (req.method === 'DELETE' && url.pathname === '/api/stock-presets') {
-    return send(res, 200, deleteStockPreset(url.searchParams.get('cabinet') || '', url.searchParams.get('id') || ''));
+    return send(res, 200, removePreset(STOCK_PRESETS_FILE, url.searchParams.get('cabinet') || '', url.searchParams.get('id') || ''));
+  }
+  if (req.method === 'GET' && url.pathname === '/api/price-presets') {
+    return send(res, 200, { presets: readPresets(PRICE_PRESETS_FILE)[url.searchParams.get('cabinet') || 'demo'] || [] });
+  }
+  if (req.method === 'POST' && url.pathname === '/api/price-presets') {
+    const body = await readJson(req);
+    return send(res, 200, savePreset(PRICE_PRESETS_FILE, body.cabinet, body.preset, normalizePricePreset));
+  }
+  if (req.method === 'DELETE' && url.pathname === '/api/price-presets') {
+    return send(res, 200, removePreset(PRICE_PRESETS_FILE, url.searchParams.get('cabinet') || '', url.searchParams.get('id') || ''));
   }
   if (req.method === 'POST' && url.pathname === '/api/fbs-stocks/update') {
     const body = await readJson(req);
@@ -1206,7 +1237,7 @@ const server = http.createServer(async (req, res) => {
 
 if (require.main === module) server.listen(PORT, '127.0.0.1', () => console.log(`WB Analytics: http://127.0.0.1:${PORT}`));
 
-module.exports = { server, cabinets, normalizeOrders, normalizeOrderFeed, enrichOrders, extractFunnel, summarizeAdStats, campaignProductDaily, withAdBudgets, normalizeStockPreset, validAdPeriod, advertisingPeriod, normalizeFbsStocks, normalizeFbwStocks, normalizePrices, normalizeNewOrders, summarizeSupplies, normalizeTrbxes, chunkOrders, stickerType, WB_HOSTS };
+module.exports = { server, cabinets, normalizeOrders, normalizeOrderFeed, enrichOrders, extractFunnel, summarizeAdStats, campaignProductDaily, withAdBudgets, normalizeStockPreset, normalizePricePreset, validAdPeriod, advertisingPeriod, normalizeFbsStocks, normalizeFbwStocks, normalizePrices, normalizeNewOrders, summarizeSupplies, normalizeTrbxes, chunkOrders, stickerType, WB_HOSTS };
 
 
 
