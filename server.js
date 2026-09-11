@@ -29,6 +29,10 @@ const MARKETPLACE_API = 'https://marketplace-api.wildberries.ru';
 const STICKER_TYPES = new Set(['png', 'svg', 'zplv', 'zplh']);
 const ORDER_STICKER_CHUNK = 100;
 const CARGO_TYPES = { 0: 'Не указан', 1: 'Обычный', 2: 'СГТ', 3: 'КГТ' };
+const STOCK_PRESETS_FILE = path.join(ROOT, 'data', 'stock-presets.json');
+const STOCK_PRESET_MAX_ITEMS = 200;
+const STOCK_PRESET_MAX_COUNT = 50;
+const STOCK_PRESET_MAX_AMOUNT = 100_000;
 const AD_BUDGET_STATUSES = new Set([9, 11]);
 const AD_BUDGET_CHUNK = 4;
 const AD_BUDGET_LIMIT = 100;
@@ -51,6 +55,55 @@ function readAliases() {
 
 function readBalanceHistory() {
   try { return JSON.parse(fs.readFileSync(BALANCE_HISTORY_FILE, 'utf8')); } catch { return {}; }
+}
+
+function readStockPresets() {
+  try { return JSON.parse(fs.readFileSync(STOCK_PRESETS_FILE, 'utf8')); } catch { return {}; }
+}
+
+function writeStockPresets(presets) {
+  fs.mkdirSync(path.dirname(STOCK_PRESETS_FILE), { recursive: true });
+  fs.writeFileSync(STOCK_PRESETS_FILE, JSON.stringify(presets, null, 2));
+}
+
+function normalizeStockPreset(preset = {}) {
+  const name = String(preset.name || '').trim().slice(0, 60);
+  if (!name) throw apiError(400, 'Укажите название шаблона');
+  const warehouseIds = [...new Set((Array.isArray(preset.warehouseIds) ? preset.warehouseIds : []).map(value => String(value || '')).filter(Boolean))];
+  if (!warehouseIds.length) throw apiError(400, 'Выберите хотя бы один склад FBS');
+  const items = (Array.isArray(preset.items) ? preset.items : []).map(item => ({
+    chrtId: Number(item.chrtId), amount: Math.floor(Number(item.amount)),
+    nmId: Number(item.nmId) || '', sku: String(item.sku || '').slice(0, 40),
+    name: String(item.name || '').slice(0, 160), vendorCode: String(item.vendorCode || '').slice(0, 80),
+    size: String(item.size || '').slice(0, 40), photo: String(item.photo || '').slice(0, 300)
+  })).filter(item => Number.isInteger(item.chrtId) && Number.isInteger(item.amount) && item.amount >= 0 && item.amount <= STOCK_PRESET_MAX_AMOUNT);
+  if (!items.length) throw apiError(400, 'Добавьте в шаблон хотя бы один артикул с количеством');
+  if (items.length > STOCK_PRESET_MAX_ITEMS) throw apiError(400, `В шаблоне не может быть больше ${STOCK_PRESET_MAX_ITEMS} артикулов`);
+  const id = /^[\w-]{1,40}$/.test(String(preset.id || '')) ? String(preset.id) : `preset-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
+  return { id, name, warehouseIds, items, updatedAt: new Date().toISOString() };
+}
+
+function saveStockPreset(cabinetId, preset) {
+  const id = String(cabinetId || '');
+  if (!id) throw apiError(400, 'Не указан кабинет');
+  const normalized = normalizeStockPreset(preset);
+  const all = readStockPresets();
+  const list = Array.isArray(all[id]) ? all[id] : [];
+  const index = list.findIndex(item => item.id === normalized.id);
+  if (index >= 0) list[index] = normalized; else list.push(normalized);
+  if (list.length > STOCK_PRESET_MAX_COUNT) throw apiError(400, `Больше ${STOCK_PRESET_MAX_COUNT} шаблонов хранить нельзя`);
+  all[id] = list;
+  writeStockPresets(all);
+  return { presets: list };
+}
+
+function deleteStockPreset(cabinetId, presetId) {
+  const id = String(cabinetId || '');
+  const all = readStockPresets();
+  const list = (Array.isArray(all[id]) ? all[id] : []).filter(item => item.id !== String(presetId || ''));
+  all[id] = list;
+  writeStockPresets(all);
+  return { presets: list };
 }
 
 function saveBalanceSnapshot(cabinetId, balance) {
@@ -1035,6 +1088,17 @@ async function handleApi(req, res, url) {
     if (!body.confirm) throw apiError(400, 'Подтвердите изменение цен и скидок');
     return send(res, 200, await updatePrices(body));
   }
+  if (req.method === 'GET' && url.pathname === '/api/stock-presets') {
+    const cabinet = url.searchParams.get('cabinet') || 'demo';
+    return send(res, 200, { presets: readStockPresets()[cabinet] || [] });
+  }
+  if (req.method === 'POST' && url.pathname === '/api/stock-presets') {
+    const body = await readJson(req);
+    return send(res, 200, saveStockPreset(body.cabinet, body.preset));
+  }
+  if (req.method === 'DELETE' && url.pathname === '/api/stock-presets') {
+    return send(res, 200, deleteStockPreset(url.searchParams.get('cabinet') || '', url.searchParams.get('id') || ''));
+  }
   if (req.method === 'POST' && url.pathname === '/api/fbs-stocks/update') {
     const body = await readJson(req);
     if (!body.confirm) throw apiError(400, 'Подтвердите изменение остатков');
@@ -1142,7 +1206,7 @@ const server = http.createServer(async (req, res) => {
 
 if (require.main === module) server.listen(PORT, '127.0.0.1', () => console.log(`WB Analytics: http://127.0.0.1:${PORT}`));
 
-module.exports = { server, cabinets, normalizeOrders, normalizeOrderFeed, enrichOrders, extractFunnel, summarizeAdStats, campaignProductDaily, withAdBudgets, validAdPeriod, advertisingPeriod, normalizeFbsStocks, normalizeFbwStocks, normalizePrices, normalizeNewOrders, summarizeSupplies, normalizeTrbxes, chunkOrders, stickerType, WB_HOSTS };
+module.exports = { server, cabinets, normalizeOrders, normalizeOrderFeed, enrichOrders, extractFunnel, summarizeAdStats, campaignProductDaily, withAdBudgets, normalizeStockPreset, validAdPeriod, advertisingPeriod, normalizeFbsStocks, normalizeFbwStocks, normalizePrices, normalizeNewOrders, summarizeSupplies, normalizeTrbxes, chunkOrders, stickerType, WB_HOSTS };
 
 
 

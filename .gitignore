@@ -4,6 +4,7 @@
 node_modules/
 data/cabinets.json
 data/balance-history.json
+data/stock-presets.json
 *.log
 .DS_Store
 statistics.json

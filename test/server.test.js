@@ -1,7 +1,7 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { normalizeOrders, normalizeOrderFeed, enrichOrders, extractFunnel, summarizeAdStats, campaignProductDaily, withAdBudgets, validAdPeriod, normalizeFbsStocks, normalizeFbwStocks, normalizePrices, normalizeNewOrders, summarizeSupplies, normalizeTrbxes, chunkOrders, stickerType, WB_HOSTS } = require('../server');
+const { normalizeOrders, normalizeOrderFeed, enrichOrders, extractFunnel, summarizeAdStats, campaignProductDaily, withAdBudgets, normalizeStockPreset, validAdPeriod, normalizeFbsStocks, normalizeFbwStocks, normalizePrices, normalizeNewOrders, summarizeSupplies, normalizeTrbxes, chunkOrders, stickerType, WB_HOSTS } = require('../server');
 
 test('объединяет и сортирует FBS и события ленты WB', () => {
   const result = normalizeOrders(
@@ -188,4 +188,22 @@ test('подставляет остаток бюджета к кампаниям
   const rows = withAdBudgets([{ id: 77 }, { id: 88 }], new Map([['77', 18400]]));
   assert.equal(rows[0].budget, 18400);
   assert.equal(rows[1].budget, null);
+});
+
+test('проверяет шаблон остатков и отбрасывает некорректные позиции', () => {
+  const preset = normalizeStockPreset({ name: '  Утренние остатки  ', warehouseIds: ['12', '12', ''],
+    items: [{ chrtId: 501, amount: '5', nmId: 100001, name: 'Футболка', vendorCode: 'TSHIRT', size: 'M', sku: '460000000001' },
+      { chrtId: 502, amount: -1 }, { chrtId: 'нет', amount: 3 }, { chrtId: 503, amount: 0 }] });
+  assert.equal(preset.name, 'Утренние остатки');
+  assert.deepEqual(preset.warehouseIds, ['12']);
+  assert.equal(preset.items.length, 2);
+  assert.equal(preset.items[0].amount, 5);
+  assert.equal(preset.items[1].chrtId, 503);
+  assert.match(preset.id, /^preset-/);
+});
+
+test('не сохраняет шаблон остатков без названия, склада или позиций', () => {
+  assert.throws(() => normalizeStockPreset({ name: '', warehouseIds: ['1'], items: [{ chrtId: 1, amount: 1 }] }), /название/i);
+  assert.throws(() => normalizeStockPreset({ name: 'Тест', warehouseIds: [], items: [{ chrtId: 1, amount: 1 }] }), /склад/i);
+  assert.throws(() => normalizeStockPreset({ name: 'Тест', warehouseIds: ['1'], items: [] }), /артикул/i);
 });

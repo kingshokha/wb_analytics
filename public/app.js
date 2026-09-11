@@ -89,7 +89,7 @@ document.addEventListener('click',event=>{if(event.target.closest('.nav-item[dat
 const refreshObserver=new MutationObserver(()=>$('#loadingOverlay')?.classList.toggle('visible',$('#refresh')?.classList.contains('loading')));
 setTimeout(()=>{const refresh=$('#refresh');if(refresh)refreshObserver.observe(refresh,{attributes:true,attributeFilter:['class']});},0);
 setTimeout(()=>{const from=$('#dateFrom'),to=$('#dateTo'),month=$('#adMonth');from.onchange=to.onchange=()=>{state.adsKey=''};month.onchange=()=>{if(!month.value)return;if(month.value==='last31'){const end=new Date(),start=new Date();start.setDate(end.getDate()-30);from.value=start.toISOString().slice(0,10);to.value=end.toISOString().slice(0,10)}else{const [year,number]=month.value.split('-').map(Number),last=new Date(year,number,0);from.value=`${year}-${String(number).padStart(2,'0')}-01`;to.value=`${year}-${String(number).padStart(2,'0')}-${String(last.getDate()).padStart(2,'0')}`}state.adsKey='';loadAds(true)};$$('#adStatusOptions input').forEach(input=>input.onchange=()=>{input.checked?state.adStatuses.add(input.value):state.adStatuses.delete(input.value);$('#adStatusLabel').textContent=`Статусы (${state.adStatuses.size})`;renderAdCampaigns()});document.addEventListener('click',event=>{const nav=event.target.closest('.nav-item');if(nav)month.classList.toggle('hidden',nav.dataset.page!=='ads')})},0);
-function bind(){$$('.nav-item').forEach(b=>b.onclick=()=>{state.activePage=b.dataset.page;$$('.nav-item').forEach(x=>x.classList.toggle('active',x===b));$$('.page').forEach(x=>x.classList.toggle('active',x.id===`page-${b.dataset.page}`));$('#pageTitle').textContent={orders:'Лента заказов','fbs-orders':'Новые заказы FBS',stocks:'Остатки FBS','fbw-stocks':'Остатки FBW',prices:'Цены и скидки',funnel:'Воронка продаж',ads:'Аналитика рекламы',console:'API-консоль'}[b.dataset.page];$('.header-actions').style.visibility=b.dataset.page==='console'?'hidden':'visible';const noPeriod=['stocks','fbw-stocks','fbs-orders','prices'].includes(b.dataset.page);$('.date').classList.toggle('hidden',noPeriod);if(b.dataset.page==='ads')loadAds();if(b.dataset.page==='stocks')loadStocks();if(b.dataset.page==='fbw-stocks')loadFbwStocks();if(b.dataset.page==='prices')loadPrices();if(b.dataset.page==='fbs-orders')loadFbsOrders()});$('#refresh').onclick=()=>loadCurrentPage(true);$('#dateFrom').onchange=()=>{state.adsKey='';loadCurrentPage()};$('#dateTo').onchange=()=>{state.adsKey='';loadCurrentPage()};$('#search').oninput=renderOrders;$('#statusFilter').onchange=renderOrders;$('#adSearch').oninput=renderAdCampaigns;$('#adStatus').onchange=renderAdCampaigns;$('#stockSearch').oninput=()=>{resetStockPage();renderStocks()};$('#fbwStockSearch').oninput=()=>{state.fbwPage=1;renderFbwStocks()};$('#setStockButton').onclick=openSetStock;$('#copyStockButton').onclick=openCopyStock;$('#clearStockSelection').onclick=()=>{state.stockSelected.clear();renderStocks()};$('#priceSearch').oninput=()=>{resetPricePage();renderPrices()};$('#setPriceButton').onclick=openSetPrices;$('#clearPriceSelection').onclick=()=>{state.priceSelected.clear();renderPrices()};$('#cabinetButton').onclick=()=>$('#cabinetMenu').classList.toggle('open');$('#renameCabinet').onclick=()=>{const c=state.cabinets.find(x=>x.id===state.cabinet);if(!c.configured)return toast('Демо-кабинет переименовать нельзя');openModal(`<p class="eyebrow">Настройки кабинета</p><h2>Новое название</h2><input id="renameInput" maxlength="60" value="${escapeHtml(c.name)}"><button class="primary" id="saveName">Сохранить</button>`);setTimeout(()=>$('#renameInput').focus(),0);$('#saveName').onclick=async()=>{try{const name=$('#renameInput').value.trim();await api(`/api/cabinets/${c.id}`,{method:'PATCH',body:JSON.stringify({name})});c.name=name;renderCabinets();closeModal();toast('Название сохранено')}catch(e){toast(e.message)}}};$('#modalClose').onclick=closeModal;$('#modal').onclick=e=>{if(e.target===$('#modal'))closeModal()};$('#runApi').onclick=runConsole;$('#copyResponse').onclick=()=>navigator.clipboard.writeText($('#apiResponse').textContent).then(()=>toast('Ответ скопирован'));bindFbsOrders()}
+function bind(){$$('.nav-item').forEach(b=>b.onclick=()=>{state.activePage=b.dataset.page;$$('.nav-item').forEach(x=>x.classList.toggle('active',x===b));$$('.page').forEach(x=>x.classList.toggle('active',x.id===`page-${b.dataset.page}`));$('#pageTitle').textContent={orders:'Лента заказов','fbs-orders':'Новые заказы FBS',stocks:'Остатки FBS','fbw-stocks':'Остатки FBW',prices:'Цены и скидки',funnel:'Воронка продаж',ads:'Аналитика рекламы',console:'API-консоль'}[b.dataset.page];$('.header-actions').style.visibility=b.dataset.page==='console'?'hidden':'visible';const noPeriod=['stocks','fbw-stocks','fbs-orders','prices'].includes(b.dataset.page);$('.date').classList.toggle('hidden',noPeriod);if(b.dataset.page==='ads')loadAds();if(b.dataset.page==='stocks')loadStocks();if(b.dataset.page==='fbw-stocks')loadFbwStocks();if(b.dataset.page==='prices')loadPrices();if(b.dataset.page==='fbs-orders')loadFbsOrders()});$('#refresh').onclick=()=>loadCurrentPage(true);$('#dateFrom').onchange=()=>{state.adsKey='';loadCurrentPage()};$('#dateTo').onchange=()=>{state.adsKey='';loadCurrentPage()};$('#search').oninput=renderOrders;$('#statusFilter').onchange=renderOrders;$('#adSearch').oninput=renderAdCampaigns;$('#adStatus').onchange=renderAdCampaigns;$('#stockSearch').oninput=()=>{resetStockPage();renderStocks()};$('#fbwStockSearch').oninput=()=>{state.fbwPage=1;renderFbwStocks()};$('#setStockButton').onclick=openSetStock;$('#stockPresetsButton').onclick=openStockPresets;$('#copyStockButton').onclick=openCopyStock;$('#clearStockSelection').onclick=()=>{state.stockSelected.clear();renderStocks()};$('#priceSearch').oninput=()=>{resetPricePage();renderPrices()};$('#setPriceButton').onclick=openSetPrices;$('#clearPriceSelection').onclick=()=>{state.priceSelected.clear();renderPrices()};$('#cabinetButton').onclick=()=>$('#cabinetMenu').classList.toggle('open');$('#renameCabinet').onclick=()=>{const c=state.cabinets.find(x=>x.id===state.cabinet);if(!c.configured)return toast('Демо-кабинет переименовать нельзя');openModal(`<p class="eyebrow">Настройки кабинета</p><h2>Новое название</h2><input id="renameInput" maxlength="60" value="${escapeHtml(c.name)}"><button class="primary" id="saveName">Сохранить</button>`);setTimeout(()=>$('#renameInput').focus(),0);$('#saveName').onclick=async()=>{try{const name=$('#renameInput').value.trim();await api(`/api/cabinets/${c.id}`,{method:'PATCH',body:JSON.stringify({name})});c.name=name;renderCabinets();closeModal();toast('Название сохранено')}catch(e){toast(e.message)}}};$('#modalClose').onclick=closeModal;$('#modal').onclick=e=>{if(e.target===$('#modal'))closeModal()};$('#runApi').onclick=runConsole;$('#copyResponse').onclick=()=>navigator.clipboard.writeText($('#apiResponse').textContent).then(()=>toast('Ответ скопирован'));bindFbsOrders()}
 
 function initResizableTables(root=document){root.querySelectorAll('table').forEach((table,tableIndex)=>{if(table.dataset.resizable==='1')return;const headers=[...table.querySelectorAll('thead th')];if(!headers.length)return;table.dataset.resizable='1';table.classList.add('resizable-table');const bodyId=table.querySelector('tbody[id]')?.id||`table-${tableIndex}`,storageKey=`wb-column-widths:${bodyId}`;let saved=[];try{saved=JSON.parse(localStorage.getItem(storageKey)||'[]')}catch{}if(saved.length===headers.length&&saved.every(Number.isFinite)){headers.forEach((header,index)=>header.style.width=`${saved[index]}px`);const total=saved.reduce((sum,width)=>sum+width,0);table.style.width=`${total}px`;table.style.minWidth=`${total}px`;table.style.tableLayout='fixed'}headers.forEach((header,index)=>{const handle=document.createElement('span');handle.className='column-resizer';handle.title='Потяните, чтобы изменить ширину';handle.setAttribute('aria-hidden','true');handle.onclick=event=>{event.preventDefault();event.stopPropagation()};handle.onpointerdown=event=>{if(event.button!==0)return;event.preventDefault();event.stopPropagation();const widths=headers.map(item=>Math.round(item.getBoundingClientRect().width));if(!widths[index])return;headers.forEach((item,column)=>item.style.width=`${widths[column]}px`);const startX=event.clientX,startWidth=widths[index],startTotal=widths.reduce((sum,width)=>sum+width,0);table.style.width=`${startTotal}px`;table.style.minWidth=`${startTotal}px`;table.style.tableLayout='fixed';document.body.classList.add('resizing-column');const move=moveEvent=>{const width=Math.max(48,Math.round(startWidth+moveEvent.clientX-startX)),delta=width-startWidth;header.style.width=`${width}px`;table.style.width=`${startTotal+delta}px`;table.style.minWidth=`${startTotal+delta}px`};const stop=()=>{document.removeEventListener('pointermove',move);document.removeEventListener('pointerup',stop);document.removeEventListener('pointercancel',stop);document.body.classList.remove('resizing-column');const current=headers.map(item=>Math.round(item.getBoundingClientRect().width));localStorage.setItem(storageKey,JSON.stringify(current))};document.addEventListener('pointermove',move);document.addEventListener('pointerup',stop,{once:true});document.addEventListener('pointercancel',stop,{once:true})};header.append(handle)})})}
 const tableObserver=new MutationObserver(()=>initResizableTables());
@@ -130,3 +130,145 @@ function openAddTrbx(){const detail=state.supplyDetail;if(!detail?.supply)return
 async function fillTrbx(trbxId){const detail=state.supplyDetail;if(!detail?.supply)return;if(state.demo)return toast('В демо-режиме раскладка по грузоместам отключена');if(!state.supplyOrderSelected.size)return toast('Отметьте задания в составе поставки');try{const data=await api('/api/supplies/trbx/orders',{method:'POST',body:JSON.stringify({cabinet:state.cabinet,supplyId:detail.supply.id,trbxId,orders:[...state.supplyOrderSelected].map(Number),confirm:true})});toast(`В ${trbxId} добавлено заданий: ${data.added}`);state.supplyOrderSelected=new Set();await openSupplyDetail(detail.supply.id)}catch(e){toast(e.message)}}
 async function removeTrbx(trbxId){const detail=state.supplyDetail;if(!detail?.supply)return;if(state.demo)return toast('В демо-режиме удаление грузомест отключено');if(!confirm(`Удалить грузоместо ${trbxId}?`))return;try{await api('/api/supplies/trbx/delete',{method:'POST',body:JSON.stringify({cabinet:state.cabinet,supplyId:detail.supply.id,trbxIds:[trbxId],confirm:true})});toast('Грузоместо удалено');await openSupplyDetail(detail.supply.id)}catch(e){toast(e.message)}}
 function bindFbsOrders(){$('#fbsSearch').oninput=()=>{state.fbsPage=1;renderFbsOrders()};$('#assembleButton').onclick=openAssembleModal;$('#fbsStickerButton').onclick=downloadOrderStickers;$('#clearFbsSelection').onclick=()=>{state.fbsSelected.clear();renderFbsOrders()};$('#createSupplyButton').onclick=openCreateSupply;$('#addTrbxButton').onclick=openAddTrbx;$('#supplyBarcodeButton').onclick=()=>downloadSupplyBarcode();$('#trbxStickersButton').onclick=()=>downloadTrbxStickers();$('#deliverSupplyButton').onclick=deliverSupply;$('#closeSupplyDetail').onclick=()=>{state.supplyDetail=null;renderSupplyDetail()}}
+
+// --- Шаблоны остатков FBS ---
+const presetState={presets:[],draft:null};
+function presetCatalog(){
+  const unique=new Map();
+  for(const row of state.stocks?.rows||[]){const key=String(row.chrtId);if(!key||unique.has(key))continue;
+    unique.set(key,{chrtId:row.chrtId,nmId:row.nmId,name:row.name,vendorCode:row.vendorCode,size:row.size,sku:row.sku,photo:row.photo});}
+  return [...unique.values()];
+}
+function presetWarehouses(){return (state.stocks?.warehouses||[]).map(item=>({id:String(item.id),name:item.name}))}
+function presetWarehouseNames(preset){const known=new Map(presetWarehouses().map(item=>[item.id,item.name]));
+  return (preset.warehouseIds||[]).map(id=>known.get(String(id))||`Склад ${id}`).join(', ')||'склады не выбраны'}
+function presetPhoto(item){return item.photo?`<img src="${escapeHtml(item.photo)}" alt="" loading="lazy">`:'<img alt="">'}
+async function openStockPresets(){
+  if(!state.stocks)await loadStocks();
+  try{const data=await api(`/api/stock-presets?cabinet=${encodeURIComponent(state.cabinet)}`);presetState.presets=data.presets||[]}
+  catch(e){presetState.presets=[];toast(e.message)}
+  renderPresetList();
+}
+function renderPresetList(){
+  const cards=presetState.presets.map(preset=>{
+    const amount=preset.items.reduce((sum,item)=>sum+Number(item.amount||0),0);
+    return `<div class="preset-card"><div><strong>${escapeHtml(preset.name)}</strong><small>${fmtNum(preset.items.length)} артикулов · всего ${fmtNum(amount)} шт · ${escapeHtml(presetWarehouseNames(preset))}</small></div>`+
+      `<button class="primary" data-preset-run="${escapeHtml(preset.id)}">Выполнить</button>`+
+      `<button data-preset-edit="${escapeHtml(preset.id)}">Изменить</button>`+
+      `<button class="danger" data-preset-delete="${escapeHtml(preset.id)}">Удалить</button></div>`;
+  }).join('');
+  openModal(`<p class="eyebrow">Остатки FBS</p><h2>Шаблоны остатков</h2>`+
+    `<p>Шаблон хранит артикулы с нужным количеством. При выполнении эти остатки выставляются на выбранных складах.</p>`+
+    `<div class="preset-list">${cards||'<div class="preset-empty">Шаблонов пока нет. Создайте первый и добавьте в него артикулы с количеством.</div>'}</div>`+
+    `<div class="preset-actions"><button class="primary" id="presetCreate">Новый шаблон</button></div>`);
+  $('#presetCreate').onclick=()=>openPresetEditor(null);
+  $$('[data-preset-run]').forEach(button=>button.onclick=()=>openPresetApply(button.dataset.presetRun));
+  $$('[data-preset-edit]').forEach(button=>button.onclick=()=>openPresetEditor(button.dataset.presetEdit));
+  $$('[data-preset-delete]').forEach(button=>button.onclick=()=>deletePreset(button.dataset.presetDelete));
+}
+function openPresetEditor(id){
+  const existing=presetState.presets.find(item=>item.id===id);
+  presetState.draft=existing?{...existing,items:existing.items.map(item=>({...item}))}
+    :{id:'',name:'',warehouseIds:presetWarehouses().map(item=>item.id),items:[]};
+  const draft=presetState.draft;
+  const warehouses=presetWarehouses().map(item=>`<label><input type="checkbox" data-preset-warehouse="${escapeHtml(item.id)}" ${draft.warehouseIds.includes(item.id)?'checked':''}> ${escapeHtml(item.name)}</label>`).join('');
+  openModal(`<p class="eyebrow">Остатки FBS</p><h2>${existing?'Изменить шаблон':'Новый шаблон'}</h2>`+
+    `<label class="stock-modal-label">Название<input id="presetName" maxlength="60" placeholder="Например: утренние остатки" value="${escapeHtml(draft.name)}"></label>`+
+    `<p class="eyebrow">Склады</p><div class="preset-warehouses">${warehouses||'<small>Склады FBS не найдены</small>'}</div>`+
+    `<label class="stock-modal-label preset-search">Добавить артикул<input id="presetSearch" placeholder="Название, артикул WB, артикул продавца или баркод" autocomplete="off"><div id="presetSuggest"></div></label>`+
+    `<div class="preset-items" id="presetItems"></div>`+
+    `<div class="preset-actions"><button class="primary" id="presetSave">Сохранить шаблон</button>`+
+    `${state.stockSelected.size?`<button id="presetAddSelected">Добавить выбранные (${fmtNum(state.stockSelected.size)})</button>`:''}`+
+    `<button id="presetBack">К списку</button></div>`);
+  $$('[data-preset-warehouse]').forEach(input=>input.onchange=()=>{
+    const id=input.dataset.presetWarehouse;
+    draft.warehouseIds=input.checked?[...new Set([...draft.warehouseIds,id])]:draft.warehouseIds.filter(item=>item!==id);
+  });
+  $('#presetName').oninput=event=>{draft.name=event.target.value};
+  $('#presetSearch').oninput=event=>renderPresetSuggest(event.target.value);
+  $('#presetSearch').onblur=()=>setTimeout(()=>{const box=$('#presetSuggest');if(box)box.innerHTML=''},180);
+  $('#presetSave').onclick=savePreset;
+  $('#presetBack').onclick=renderPresetList;
+  if($('#presetAddSelected'))$('#presetAddSelected').onclick=()=>{
+    stockSelectedRows().forEach(row=>addPresetItem({chrtId:row.chrtId,nmId:row.nmId,name:row.name,vendorCode:row.vendorCode,size:row.size,sku:row.sku,photo:row.photo},row.amount));
+    renderPresetItems();
+  };
+  renderPresetItems();
+}
+function renderPresetSuggest(term){
+  const box=$('#presetSuggest');if(!box)return;
+  const query=String(term||'').trim().toLowerCase();
+  if(query.length<2){box.innerHTML='';return}
+  const chosen=new Set(presetState.draft.items.map(item=>String(item.chrtId)));
+  const found=presetCatalog().filter(item=>!chosen.has(String(item.chrtId))&&
+    `${item.name} ${item.nmId} ${item.vendorCode} ${item.sku} ${item.size}`.toLowerCase().includes(query)).slice(0,8);
+  box.className='preset-suggest';
+  box.innerHTML=found.length?found.map(item=>`<button type="button" data-preset-add="${escapeHtml(item.chrtId)}">${presetPhoto(item)}<span><b>${escapeHtml(item.name)}</b><small>${escapeHtml(item.vendorCode||'—')} · nmId ${escapeHtml(item.nmId||'—')} · размер ${escapeHtml(item.size||'—')}</small></span></button>`).join(''):'<button type="button" disabled><span><b>Ничего не найдено</b></span></button>';
+  box.querySelectorAll('[data-preset-add]').forEach(button=>button.onclick=()=>{
+    const item=presetCatalog().find(row=>String(row.chrtId)===button.dataset.presetAdd);
+    if(item)addPresetItem(item,0);
+    $('#presetSearch').value='';box.innerHTML='';renderPresetItems();
+  });
+}
+function addPresetItem(item,amount){
+  const draft=presetState.draft;
+  if(draft.items.some(row=>String(row.chrtId)===String(item.chrtId)))return;
+  draft.items.push({chrtId:item.chrtId,nmId:item.nmId,name:item.name,vendorCode:item.vendorCode,size:item.size,sku:item.sku,photo:item.photo,amount:Number(amount)||0});
+}
+function renderPresetItems(){
+  const box=$('#presetItems');if(!box)return;
+  const items=presetState.draft.items;
+  box.innerHTML=items.length?items.map((item,index)=>`<div class="preset-item">${presetPhoto(item)}<div><b>${escapeHtml(item.name||'Товар')}</b><small>${escapeHtml(item.vendorCode||'—')} · nmId ${escapeHtml(item.nmId||'—')} · размер ${escapeHtml(item.size||'—')}</small></div>`+
+    `<input type="number" min="0" step="1" value="${Number(item.amount)||0}" data-preset-amount="${index}" aria-label="Количество"><button type="button" data-preset-remove="${index}" aria-label="Убрать">×</button></div>`).join('')
+    :'<div class="preset-empty">Добавьте артикулы через поиск выше</div>';
+  box.querySelectorAll('[data-preset-amount]').forEach(input=>input.oninput=()=>{
+    presetState.draft.items[Number(input.dataset.presetAmount)].amount=Math.max(0,Math.floor(Number(input.value)||0));
+  });
+  box.querySelectorAll('[data-preset-remove]').forEach(button=>button.onclick=()=>{
+    presetState.draft.items.splice(Number(button.dataset.presetRemove),1);renderPresetItems();
+  });
+}
+async function savePreset(){
+  const draft=presetState.draft;
+  if(!String(draft.name||'').trim())return toast('Укажите название шаблона');
+  if(!draft.warehouseIds.length)return toast('Выберите хотя бы один склад FBS');
+  if(!draft.items.length)return toast('Добавьте хотя бы один артикул');
+  if(draft.items.some(item=>!Number.isInteger(Number(item.amount))||Number(item.amount)<0))return toast('Количество должно быть целым числом не меньше нуля');
+  try{
+    const data=await api('/api/stock-presets',{method:'POST',body:JSON.stringify({cabinet:state.cabinet,preset:draft})});
+    presetState.presets=data.presets||[];toast('Шаблон сохранён');renderPresetList();
+  }catch(e){toast(e.message)}
+}
+async function deletePreset(id){
+  const preset=presetState.presets.find(item=>item.id===id);
+  if(!preset||!confirm(`Удалить шаблон «${preset.name}»?`))return;
+  try{
+    const data=await api(`/api/stock-presets?cabinet=${encodeURIComponent(state.cabinet)}&id=${encodeURIComponent(id)}`,{method:'DELETE'});
+    presetState.presets=data.presets||[];toast('Шаблон удалён');renderPresetList();
+  }catch(e){toast(e.message)}
+}
+function openPresetApply(id){
+  const preset=presetState.presets.find(item=>item.id===id);if(!preset)return;
+  const known=new Set(presetWarehouses().map(item=>item.id));
+  const warehouses=(preset.warehouseIds||[]).filter(item=>known.has(String(item)));
+  const missing=(preset.warehouseIds||[]).length-warehouses.length;
+  const rows=preset.items.map(item=>`<div class="preset-item">${presetPhoto(item)}<div><b>${escapeHtml(item.name||'Товар')}</b><small>${escapeHtml(item.vendorCode||'—')} · размер ${escapeHtml(item.size||'—')}</small></div><input type="number" value="${Number(item.amount)||0}" disabled></div>`).join('');
+  openModal(`<p class="eyebrow">Выполнение шаблона</p><h2>${escapeHtml(preset.name)}</h2>`+
+    `<p>Остатки будут заменены на указанные значения. Складов: ${fmtNum(warehouses.length)} · позиций к обновлению: ${fmtNum(warehouses.length*preset.items.length)}.`+
+    `${missing?` <b>Складов из шаблона больше нет: ${fmtNum(missing)}.</b>`:''}</p>`+
+    `<p class="eyebrow">${escapeHtml(presetWarehouseNames({warehouseIds:warehouses}))}</p>`+
+    `<div class="preset-items">${rows}</div>`+
+    `<div class="preset-actions"><button class="primary" id="presetRun">Выполнить</button><button id="presetCancel">Отмена</button></div>`);
+  $('#presetCancel').onclick=renderPresetList;
+  $('#presetRun').onclick=()=>runPreset(preset,warehouses);
+}
+async function runPreset(preset,warehouses){
+  if(state.demo)return toast('В демо-режиме изменение остатков отключено');
+  if(!warehouses.length)return toast('У шаблона нет действующих складов FBS');
+  const items=warehouses.flatMap(warehouseId=>preset.items.map(item=>({warehouseId,chrtId:item.chrtId,amount:Number(item.amount)||0})));
+  const button=$('#presetRun');if(button){button.disabled=true;button.textContent='Выполняем…'}
+  try{
+    await api('/api/fbs-stocks/update',{method:'POST',body:JSON.stringify({cabinet:state.cabinet,items,confirm:true})});
+    closeModal();toast(`Шаблон «${preset.name}» выполнен: позиций ${fmtNum(items.length)}`);await loadStocks(true);
+  }catch(e){toast(e.message);if(button){button.disabled=false;button.textContent='Выполнить'}}
+}
