@@ -562,7 +562,8 @@ function enrichAdvertising(summary, cards = []) {
     barcode: card.sizes?.[0]?.skus?.[0] || '' }]));
   const products = (summary.products || []).map(product => ({ ...product, ...(byNmId.get(String(product.nmId)) || {}) }));
   const campaigns = (summary.campaigns || []).map(campaign => ({ ...campaign, photo: (campaign.nmIds || []).map(nmId => byNmId.get(String(nmId))?.photo).find(Boolean) || '' }));
-  return { ...summary, products, campaigns };
+  const productDaily = (summary.productDaily || []).map(row => ({ ...row, ...(byNmId.get(String(row.nmId)) || {}) }));
+  return { ...summary, products, campaigns, productDaily };
 }
 
 function demoAdProducts(campaignIndex, views, clicks, spend, orders, revenue) {
@@ -689,8 +690,8 @@ async function advertBudgets(id, token, campaigns = [], warnings = []) {
     const chunk = targets.slice(offset, offset + AD_BUDGET_CHUNK);
     const loaded = await Promise.all(chunk.map(advertId => cachedAnalytics(`ad-budget:${id}:${advertId}`, () => wbRequest(token,
       `https://advert-api.wildberries.ru/adv/v1/budget?id=${encodeURIComponent(advertId)}`), 60_000)
-      .then(data => ({ advertId, total: Number(data?.total ?? 0) })).catch(() => { failed += 1; return null; })));
-    for (const item of loaded) if (item) budgets.set(String(item.advertId), item.total);
+      .then(data => ({ advertId, total: data?.currency ? Number(data.total || 0) : null })).catch(() => { failed += 1; return null; })));
+    for (const item of loaded) if (item && item.total !== null) budgets.set(String(item.advertId), item.total);
   }
   if (failed) warnings.push(`Остаток бюджета: WB не ответил по ${failed} кампаниям`);
   if (targets.length > AD_BUDGET_LIMIT) warnings.push(`Остаток бюджета показан для первых ${AD_BUDGET_LIMIT} кампаний из ${targets.length}`);
