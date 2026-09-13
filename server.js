@@ -35,6 +35,7 @@ const PRESET_MAX_ITEMS = 200;
 const PRESET_MAX_COUNT = 50;
 const STOCK_PRESET_MAX_AMOUNT = 100_000;
 const PRICE_PRESET_MAX_PRICE = 1_000_000;
+const STOCKS_REPORT_API = 'https://seller-analytics-api.wildberries.ru/api/analytics/v1/stocks-report';
 const AD_CAMPAIGNS_URL = 'https://advert-api.wildberries.ru/api/advert/v2/adverts?statuses=7,9,11';
 const FULLSTATS_INTERVAL = 20_500;
 const HISTORY_MAX_MONTHS = 12;
@@ -358,17 +359,55 @@ function demoFbwStocks() {
   return { demo: true, ...normalizeFbwStocks(items, cards), warnings: [] };
 }
 
-async function fbwStocks(id) {
-  if (id === 'demo' || !cabinets().length) return demoFbwStocks();
-  const token = tokenFor(id); const limit = 250000; const items = [];
+// Отчёты остатков WB обновляются раз в 30 минут и ограничены 3 запросами в минуту,
+// поэтому ответ кэшируется ненадолго и общий для вкладок FBW и цен.
+async function loadInventoryReport(token, report) {
+  const limit = 250000; const items = [];
   for (let offset = 0; ; offset += limit) {
-    const response = await wbRequest(token, 'https://seller-analytics-api.wildberries.ru/api/analytics/v1/stocks-report/wb-warehouses',
-      { method: 'POST', body: { nmIds: [], chrtIds: [], limit, offset } });
+    const response = await wbRequest(token, `${STOCKS_REPORT_API}/${report}`, { method: 'POST', body: { nmIds: [], chrtIds: [], limit, offset } });
     const batch = Array.isArray(response?.data?.items) ? response.data.items : Array.isArray(response?.items) ? response.items : [];
     items.push(...batch);
     if (batch.length < limit) break;
     await wait(20_100);
   }
+  return items;
+}
+
+function inventoryReport(id, token, report) {
+  return cachedAnalytics(`inventory:${report}:${id}`, () => loadInventoryReport(token, report), 2 * 60_000);
+}
+
+function summarizeStockTotals(wbItems = [], sellerItems = []) {
+  const totals = {};
+  const add = (items, key) => {
+    for (const item of items) {
+      const nmId = String(item.nmId || '');
+      if (!nmId) continue;
+      const row = totals[nmId] ||= { fbs: 0, fbw: 0, total: 0 };
+      const quantity = Number(item.quantity || 0);
+      row[key] += quantity; row.total += quantity;
+    }
+  };
+  add(wbItems, 'fbw'); add(sellerItems, 'fbs');
+  return totals;
+}
+
+async function priceStocks(id) {
+  if (id === 'demo' || !cabinets().length) {
+    return { demo: true, byNmId: summarizeStockTotals([{ nmId: 100001, quantity: 57 }, { nmId: 100002, quantity: 12 }],
+      [{ nmId: 100001, quantity: 42 }, { nmId: 100001, quantity: 15 }, { nmId: 100002, quantity: 8 }]), warnings: [] };
+  }
+  const token = tokenFor(id); const warnings = [];
+  const wb = await inventoryReport(id, token, 'wb-warehouses').catch(error => { warnings.push(`Остатки на складах WB: ${error.message}`); return null; });
+  const seller = await inventoryReport(id, token, 'seller-warehouses').catch(error => { warnings.push(`Остатки на складах продавца: ${error.message}`); return null; });
+  if (!wb && !seller) throw apiError(502, warnings.join('; '));
+  return { demo: false, updatedAt: new Date().toISOString(), byNmId: summarizeStockTotals(wb || [], seller || []), warnings };
+}
+
+async function fbwStocks(id) {
+  if (id === 'demo' || !cabinets().length) return demoFbwStocks();
+  const token = tokenFor(id);
+  const items = await inventoryReport(id, token, 'wb-warehouses');
   const cards = await cachedAnalytics(`product-cards:${id}`, () => loadProductCards(token), 10 * 60_000);
   return { demo: false, ...normalizeFbwStocks(items, cards), warnings: [] };
 }
@@ -1192,6 +1231,9 @@ async function handleApi(req, res, url) {
   if (req.method === 'GET' && url.pathname === '/api/prices') {
     return send(res, 200, await prices(url.searchParams.get('cabinet') || 'demo'));
   }
+  if (req.method === 'GET' && url.pathname === '/api/prices/stocks') {
+    return send(res, 200, await priceStocks(url.searchParams.get('cabinet') || 'demo'));
+  }
   if (req.method === 'POST' && url.pathname === '/api/prices/update') {
     const body = await readJson(req);
     if (!body.confirm) throw apiError(400, 'Подтвердите изменение цен и скидок');
@@ -1324,7 +1366,7 @@ const server = http.createServer(async (req, res) => {
 
 if (require.main === module) server.listen(PORT, '127.0.0.1', () => console.log(`WB Analytics: http://127.0.0.1:${PORT}`));
 
-module.exports = { server, cabinets, normalizeOrders, normalizeOrderFeed, enrichOrders, extractFunnel, summarizeAdStats, campaignProductDaily, withAdBudgets, normalizeStockPreset, normalizePricePreset, validAdPeriod, historyPeriod, historyChunks, normalizeFbsStocks, normalizeFbwStocks, normalizePrices, normalizeNewOrders, summarizeSupplies, normalizeTrbxes, chunkOrders, stickerType, WB_HOSTS };
+module.exports = { server, cabinets, normalizeOrders, normalizeOrderFeed, enrichOrders, extractFunnel, summarizeAdStats, campaignProductDaily, withAdBudgets, normalizeStockPreset, normalizePricePreset, validAdPeriod, historyPeriod, historyChunks, normalizeFbsStocks, normalizeFbwStocks, normalizePrices, summarizeStockTotals, normalizeNewOrders, summarizeSupplies, normalizeTrbxes, chunkOrders, stickerType, WB_HOSTS };
 
 
 

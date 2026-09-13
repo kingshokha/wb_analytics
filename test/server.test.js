@@ -1,7 +1,7 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { normalizeOrders, normalizeOrderFeed, enrichOrders, extractFunnel, summarizeAdStats, campaignProductDaily, withAdBudgets, normalizeStockPreset, normalizePricePreset, validAdPeriod, historyPeriod, historyChunks, normalizeFbsStocks, normalizeFbwStocks, normalizePrices, normalizeNewOrders, summarizeSupplies, normalizeTrbxes, chunkOrders, stickerType, WB_HOSTS } = require('../server');
+const { normalizeOrders, normalizeOrderFeed, enrichOrders, extractFunnel, summarizeAdStats, campaignProductDaily, withAdBudgets, normalizeStockPreset, normalizePricePreset, validAdPeriod, historyPeriod, historyChunks, normalizeFbsStocks, normalizeFbwStocks, normalizePrices, summarizeStockTotals, normalizeNewOrders, summarizeSupplies, normalizeTrbxes, chunkOrders, stickerType, WB_HOSTS } = require('../server');
 
 test('объединяет и сортирует FBS и события ленты WB', () => {
   const result = normalizeOrders(
@@ -238,4 +238,14 @@ test('проверяет даты выгрузки кампании и огра�
   assert.throws(() => historyPeriod('2025-08-31', '2026-09-13', '2026-09-13'), /не раньше/);
   assert.throws(() => historyPeriod('2026-09-10', '2026-09-01', '2026-09-13'), /не позже/);
   assert.throws(() => historyPeriod('2026-09-01', '2026-09-14', '2026-09-13'), /позже сегодняшнего/);
+});
+
+test('суммирует общие остатки товара по складам продавца и WB', () => {
+  const totals = summarizeStockTotals(
+    [{ nmId: 100, quantity: 5 }, { nmId: 100, quantity: 2 }, { nmId: 300, quantity: 0 }],
+    [{ nmId: 100, quantity: 10 }, { nmId: 200, quantity: 4 }, { quantity: 99 }]);
+  assert.deepEqual(totals['100'], { fbs: 10, fbw: 7, total: 17 });
+  assert.deepEqual(totals['200'], { fbs: 4, fbw: 0, total: 4 });
+  assert.equal(totals['300'].total, 0);
+  assert.equal(Object.keys(totals).length, 3);
 });
