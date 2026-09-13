@@ -10,7 +10,8 @@ loadEnv(path.join(ROOT, '.env'));
 
 const PORT = Number(process.env.PORT || 4173);
 const DATA_FILE = path.join(ROOT, 'data', 'cabinets.json');
-const STATISTICS_FILE = path.join(ROOT, 'statistics.json');
+const ADS_DIR = path.join(ROOT, 'data', 'Ads');
+const AD_FRESH_DAYS = 7;
 const BALANCE_HISTORY_FILE = path.join(ROOT, 'data', 'balance-history.json');
 const PUBLIC_DIR = path.join(ROOT, 'public');
 const WB_HOSTS = new Set([
@@ -790,55 +791,194 @@ function fullstatsRequest(id, token, ids, from, to, onWait = () => {}) {
   return run;
 }
 
+function addDays(date, days) {
+  const value = new Date(`${date}T00:00:00Z`); value.setUTCDate(value.getUTCDate() + days);
+  return value.toISOString().slice(0, 10);
+}
+
+function datesBetween(from, to) {
+  const dates = [];
+  for (let date = from; date <= to; date = addDays(date, 1)) dates.push(date);
+  return dates;
+}
+
+// Какие дни нужно запросить у WB: несохранённые и свежие (WB ещё пересчитывает их статистику).
+// Соседние дни собираются в запросы не длиннее 31 дня, чтобы тратить меньше запросов.
+function planAdFetch(dates = [], storedDates = new Set(), today = localDate(), freshDays = AD_FRESH_DAYS) {
+  const freshFrom = addDays(today, -freshDays);
+  const missing = dates.filter(date => !storedDates.has(date) || date >= freshFrom);
+  const chunks = [];
+  for (let index = 0; index < missing.length; ) {
+    const limit = addDays(missing[index], 30);
+    let last = index;
+    while (last + 1 < missing.length && missing[last + 1] <= limit) last++;
+    chunks.push({ from: missing[index], to: missing[last] });
+    index = last + 1;
+  }
+  return { missing, chunks };
+}
+
+// Имя папки из названия кабинета: без символов, запрещённых в Windows, и не только из цифр,
+// чтобы не путать с папками кампаний.
+function safeFolderName(name, fallback) {
+  const clean = String(name || '').replace(/[<>:"/\\|?*\u0000-\u001f]/g, ' ').replace(/\s+/g, ' ').trim().replace(/[. ]+$/, '').slice(0, 80);
+  if (!clean || /^(con|prn|aux|nul|com\d|lpt\d)$/i.test(clean)) return fallback;
+  return /^\d+$/.test(clean) ? `Кабинет ${clean}` : clean;
+}
+
+function cabinetFolderName(cabinetId) {
+  const cabinet = cabinets().find(item => String(item.id) === String(cabinetId));
+  return safeFolderName(cabinet?.name, `Кабинет ${cabinetId}`);
+}
+
+// Если кабинет переименовали или папка лежит по старой схеме прямо в data/Ads,
+// папка кампании переносится на новое место, чтобы сохранённая статистика не терялась.
+function campaignDir(cabinetId, campaignId) {
+  const target = path.join(ADS_DIR, cabinetFolderName(cabinetId), String(campaignId));
+  if (fs.existsSync(target)) return target;
+  const candidates = [path.join(ADS_DIR, String(campaignId))];
+  try {
+    for (const entry of fs.readdirSync(ADS_DIR, { withFileTypes: true })) {
+      if (entry.isDirectory() && !/^\d+$/.test(entry.name)) candidates.push(path.join(ADS_DIR, entry.name, String(campaignId)));
+    }
+  } catch {}
+  const source = candidates.find(dir => dir !== target && fs.existsSync(dir));
+  if (source) {
+    fs.mkdirSync(path.dirname(target), { recursive: true });
+    fs.renameSync(source, target);
+    try { if (path.dirname(source) !== ADS_DIR && !fs.readdirSync(path.dirname(source)).length) fs.rmdirSync(path.dirname(source)); } catch {}
+  }
+  return target;
+}
+
+function adMonthFile(cabinetId, campaignId, month) {
+  return path.join(campaignDir(cabinetId, campaignId), `${month}.json`);
+}
+
+function readAdMonth(cabinetId, campaignId, month) {
+  try { return JSON.parse(fs.readFileSync(adMonthFile(cabinetId, campaignId, month), 'utf8')); } catch { return null; }
+}
+
+function loadStoredAdDays(cabinetId, campaignId, from, to) {
+  const stored = new Map();
+  for (const month of [...new Set(datesBetween(from, to).map(date => date.slice(0, 7)))]) {
+    for (const [date, record] of Object.entries(readAdMonth(cabinetId, campaignId, month)?.days || {})) {
+      if (date >= from && date <= to && record?.campaign) stored.set(date, record);
+    }
+  }
+  return stored;
+}
+
+function emptyAdDay(date) {
+  return { date, ...finalizeAdMetrics(emptyAdMetrics()) };
+}
+
+function saveAdDays(campaignId, cabinet, name, dates, daily, productsByDate) {
+  const fetchedAt = new Date().toISOString();
+  const byMonth = new Map();
+  for (const date of dates) {
+    if (!byMonth.has(date.slice(0, 7))) byMonth.set(date.slice(0, 7), []);
+    byMonth.get(date.slice(0, 7)).push(date);
+  }
+  for (const [month, monthDates] of byMonth) {
+    const file = readAdMonth(cabinet, campaignId, month) || { campaignId: Number(campaignId), month, days: {} };
+    for (const date of monthDates) {
+      file.days[date] = { fetchedAt, campaign: daily.get(date) || emptyAdDay(date),
+        products: (productsByDate.get(date) || []).map(({ photo, vendorCode, barcode, ...item }) => item) };
+    }
+    file.days = Object.fromEntries(Object.entries(file.days).sort(([a], [b]) => a.localeCompare(b)));
+    Object.assign(file, { cabinet, name, updatedAt: fetchedAt });
+    const target = adMonthFile(cabinet, campaignId, month);
+    fs.mkdirSync(path.dirname(target), { recursive: true });
+    fs.writeFileSync(`${target}.tmp`, JSON.stringify(file, null, 2));
+    fs.renameSync(`${target}.tmp`, target);
+  }
+}
+
+// Если вкладка рекламы только что скачала статистику всех кампаний за подходящий период,
+// нужная кампания берётся из этого ответа без нового запроса к WB.
+function cachedCampaignStats(id, campaignId, from, to) {
+  const prefix = `ad-stats:${id}:`;
+  for (const [key, entry] of analyticsCache) {
+    if (!key.startsWith(prefix) || Date.now() - entry.savedAt >= 3 * 60_000) continue;
+    const [cachedFrom, cachedTo, ids = ''] = key.slice(prefix.length).split(':');
+    if (cachedFrom > from || cachedTo < to || !ids.split(',').includes(String(campaignId))) continue;
+    const stat = (Array.isArray(entry.value) ? entry.value : []).find(item => String(item.advertId) === String(campaignId));
+    if (!stat) return [];
+    return [{ ...stat, days: (stat.days || []).filter(day => { const date = String(day.date || '').slice(0, 10); return date >= from && date <= to; }) }];
+  }
+  return null;
+}
+
+function hasAdActivity(day = {}) {
+  return ['views', 'clicks', 'spend', 'orders', 'revenue', 'carts', 'canceled'].some(key => Number(day[key] || 0) > 0);
+}
+
 async function advertisingCampaignHistory(id, campaignId, from, to, report = () => {}) {
   const whole = historyPeriod(from, to);
-  const chunks = historyChunks(whole);
   const demo = id === 'demo' || !cabinets().length;
+  if (!demo && !/^\d{1,15}$/.test(String(campaignId || ''))) throw apiError(400, 'Некорректный номер кампании');
   const token = demo ? null : tokenFor(id);
-  report({ type: 'start', chunks: chunks.length, period: whole });
-  let meta = null; let cardsPromise = Promise.resolve([]);
+  const dates = datesBetween(whole.from, whole.to);
+  const stored = demo ? new Map() : loadStoredAdDays(id, campaignId, whole.from, whole.to);
+  const plan = demo ? { missing: dates, chunks: historyChunks(whole) } : planAdFetch(dates, new Set(stored.keys()));
+  const storedDays = dates.length - plan.missing.length;
+  report({ type: 'start', chunks: plan.chunks.length, period: whole, days: dates.length, storedDays });
+  let meta = null; let cardsPromise = Promise.resolve([]); let campaign = null;
   if (!demo) {
     // Карточки нужны только для названий и фото, поэтому грузятся параллельно и не задерживают запросы статистики.
     cardsPromise = cachedAnalytics(`product-cards:${id}`, () => loadProductCards(token), 10 * 60_000).catch(() => []);
     const campaignData = await cachedAnalytics(`ad-campaigns:${id}`, () => wbRequest(token, AD_CAMPAIGNS_URL), 3 * 60_000);
     meta = (Array.isArray(campaignData?.adverts) ? campaignData.adverts : []).find(item => String(item.id) === String(campaignId));
     if (!meta) throw apiError(404, 'Кампания не найдена');
+    campaign = summarizeAdStats([meta], [], whole.from, whole.to).campaigns[0];
   }
-  const daily = new Map(); const productDaily = new Map(); const warnings = []; let campaign = null;
-  for (const [index, chunk] of chunks.entries()) {
-    report({ type: 'request', index, chunks: chunks.length, ...chunk });
+  const daily = new Map(); const productsByDate = new Map(); const warnings = [];
+  const missing = new Set(plan.missing);
+  for (const [date, record] of stored) {
+    if (missing.has(date)) continue;
+    daily.set(date, record.campaign);
+    productsByDate.set(date, (record.products || []).map(item => ({ ...item, date, advertId: Number(campaignId) })));
+  }
+  for (const [index, chunk] of plan.chunks.entries()) {
+    report({ type: 'request', index, chunks: plan.chunks.length, ...chunk });
     let data;
     try {
       if (demo) data = demoAds(chunk.from, chunk.to);
       else {
-        const stats = await fullstatsRequest(id, token, String(campaignId), chunk.from, chunk.to,
-          (ms, reason) => report({ type: 'wait', index, chunks: chunks.length, ms, reason }));
+        const stats = cachedCampaignStats(id, campaignId, chunk.from, chunk.to) || await fullstatsRequest(id, token, String(campaignId), chunk.from, chunk.to,
+          (ms, reason) => report({ type: 'wait', index, chunks: plan.chunks.length, ms, reason }));
         data = summarizeAdStats([meta], Array.isArray(stats) ? stats : [], chunk.from, chunk.to);
       }
     } catch (error) {
       warnings.push(`${chunk.from} — ${chunk.to}: ${error.message}`);
-      report({ type: 'chunk', index, chunks: chunks.length, ok: false, error: error.message });
+      report({ type: 'chunk', index, chunks: plan.chunks.length, ok: false, error: error.message });
       continue;
     }
     const row = (data.campaigns || []).find(item => String(item.id) === String(campaignId));
-    if (row) { campaign = row; for (const day of row.daily || []) daily.set(day.date, day); }
-    for (const item of campaignProductDaily(data.productDaily || [], campaignId, row?.nmIds || [])) {
-      const key = `${item.nmId}:${item.date}`; if (!productDaily.has(key)) productDaily.set(key, item);
+    if (row) campaign = row;
+    const chunkDates = datesBetween(chunk.from, chunk.to);
+    const chunkDays = new Map((row?.daily || []).map(day => [day.date, day]));
+    const chunkProducts = campaignProductDaily(data.productDaily || [], campaignId, row?.nmIds || []);
+    for (const date of chunkDates) {
+      daily.set(date, chunkDays.get(date) || emptyAdDay(date));
+      productsByDate.set(date, chunkProducts.filter(item => item.date === date));
     }
-    report({ type: 'chunk', index, chunks: chunks.length, ok: true });
+    if (!demo) {
+      try { saveAdDays(campaignId, id, meta.settings?.name || row?.name || '', chunkDates, daily, productsByDate); }
+      catch (error) { warnings.push(`Не удалось сохранить статистику ${chunk.from} — ${chunk.to}: ${error.message}`); }
+    }
+    report({ type: 'chunk', index, chunks: plan.chunks.length, ok: true });
   }
   if (!campaign) throw apiError(warnings.length ? 502 : 404, warnings[0] || 'Кампания не найдена');
   report({ type: 'finalize' });
-  const days = [...daily.values()].sort((a, b) => a.date.localeCompare(b.date));
+  const days = [...daily.values()].filter(hasAdActivity).sort((a, b) => a.date.localeCompare(b.date));
   const total = emptyAdMetrics(); days.forEach(day => addAdMetrics(total, day));
   const enriched = enrichAdvertising({ campaigns: [{ ...campaign, ...finalizeAdMetrics(total), daily: days }], products: [],
-    productDaily: [...productDaily.values()] }, await cardsPromise);
-  const result = { generatedAt: new Date().toISOString(), cabinet: id, campaignId, period: whole, warnings,
-    campaign: enriched.campaigns[0],
+    productDaily: [...productsByDate.values()].flat() }, await cardsPromise);
+  return { generatedAt: new Date().toISOString(), cabinet: id, campaignId, period: whole, warnings, storedDays, requests: plan.chunks.length,
+    folder: demo ? '' : `data/Ads/${cabinetFolderName(id)}/${campaignId}`, campaign: enriched.campaigns[0],
     productDaily: enriched.productDaily.sort((a, b) => `${a.date}:${a.nmId}`.localeCompare(`${b.date}:${b.nmId}`)) };
-  fs.mkdirSync(path.dirname(STATISTICS_FILE), { recursive: true });
-  fs.writeFileSync(STATISTICS_FILE, JSON.stringify(result, null, 2));
-  return { ...result, file: 'statistics.json' };
 }
 async function advertisingCampaign(id, campaignId, from, to) {
   const summary = await advertising(id, from, to);
@@ -1366,7 +1506,7 @@ const server = http.createServer(async (req, res) => {
 
 if (require.main === module) server.listen(PORT, '127.0.0.1', () => console.log(`WB Analytics: http://127.0.0.1:${PORT}`));
 
-module.exports = { server, cabinets, normalizeOrders, normalizeOrderFeed, enrichOrders, extractFunnel, summarizeAdStats, campaignProductDaily, withAdBudgets, normalizeStockPreset, normalizePricePreset, validAdPeriod, historyPeriod, historyChunks, normalizeFbsStocks, normalizeFbwStocks, normalizePrices, summarizeStockTotals, normalizeNewOrders, summarizeSupplies, normalizeTrbxes, chunkOrders, stickerType, WB_HOSTS };
+module.exports = { server, cabinets, normalizeOrders, normalizeOrderFeed, enrichOrders, extractFunnel, summarizeAdStats, campaignProductDaily, withAdBudgets, normalizeStockPreset, normalizePricePreset, validAdPeriod, historyPeriod, historyChunks, planAdFetch, datesBetween, safeFolderName, normalizeFbsStocks, normalizeFbwStocks, normalizePrices, summarizeStockTotals, normalizeNewOrders, summarizeSupplies, normalizeTrbxes, chunkOrders, stickerType, WB_HOSTS };
 
 
 

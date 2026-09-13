@@ -1,7 +1,7 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { normalizeOrders, normalizeOrderFeed, enrichOrders, extractFunnel, summarizeAdStats, campaignProductDaily, withAdBudgets, normalizeStockPreset, normalizePricePreset, validAdPeriod, historyPeriod, historyChunks, normalizeFbsStocks, normalizeFbwStocks, normalizePrices, summarizeStockTotals, normalizeNewOrders, summarizeSupplies, normalizeTrbxes, chunkOrders, stickerType, WB_HOSTS } = require('../server');
+const { normalizeOrders, normalizeOrderFeed, enrichOrders, extractFunnel, summarizeAdStats, campaignProductDaily, withAdBudgets, normalizeStockPreset, normalizePricePreset, validAdPeriod, historyPeriod, historyChunks, planAdFetch, datesBetween, safeFolderName, normalizeFbsStocks, normalizeFbwStocks, normalizePrices, summarizeStockTotals, normalizeNewOrders, summarizeSupplies, normalizeTrbxes, chunkOrders, stickerType, WB_HOSTS } = require('../server');
 
 test('объединяет и сортирует FBS и события ленты WB', () => {
   const result = normalizeOrders(
@@ -248,4 +248,33 @@ test('суммирует общие остатки товара по склад�
   assert.deepEqual(totals['200'], { fbs: 4, fbw: 0, total: 4 });
   assert.equal(totals['300'].total, 0);
   assert.equal(Object.keys(totals).length, 3);
+});
+
+test('запрашивает у WB только несохранённые и свежие дни кампании', () => {
+  const dates = datesBetween('2026-09-01', '2026-09-13');
+  assert.equal(dates.length, 13);
+  const empty = planAdFetch(dates, new Set(), '2026-09-13', 3);
+  assert.deepEqual(empty.chunks, [{ from: '2026-09-01', to: '2026-09-13' }]);
+  const saved = planAdFetch(dates, new Set(dates), '2026-09-13', 3);
+  assert.deepEqual(saved.missing, ['2026-09-10', '2026-09-11', '2026-09-12', '2026-09-13']);
+  assert.deepEqual(saved.chunks, [{ from: '2026-09-10', to: '2026-09-13' }]);
+  const old = planAdFetch(datesBetween('2026-06-01', '2026-06-30'), new Set(datesBetween('2026-06-01', '2026-06-30')), '2026-09-13', 3);
+  assert.deepEqual(old.chunks, []);
+});
+
+test('собирает пропуски в запросы не длиннее 31 дня', () => {
+  const dates = datesBetween('2026-01-01', '2026-03-31');
+  const stored = new Set(datesBetween('2026-01-06', '2026-01-19'));
+  const plan = planAdFetch(dates, stored, '2026-09-13', 3);
+  assert.deepEqual(plan.chunks[0], { from: '2026-01-01', to: '2026-01-31' });
+  assert.ok(plan.chunks.every(chunk => datesBetween(chunk.from, chunk.to).length <= 31));
+  assert.equal(plan.missing.length, dates.length - stored.size);
+});
+
+test('делает из названия кабинета допустимое имя папки', () => {
+  assert.equal(safeFolderName('ИП Шамсиддинов', 'Кабинет 1'), 'ИП Шамсиддинов');
+  assert.equal(safeFolderName('Мой: кабинет / тест?', 'Кабинет 1'), 'Мой кабинет тест');
+  assert.equal(safeFolderName('  ', 'Кабинет 1'), 'Кабинет 1');
+  assert.equal(safeFolderName('CON', 'Кабинет 1'), 'Кабинет 1');
+  assert.equal(safeFolderName('123', 'Кабинет 1'), 'Кабинет 123');
 });

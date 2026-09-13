@@ -56,7 +56,10 @@
   }
   function renderExportProgress(){
     const s=exportState,now=Date.now();
-    let text=`Запросы: ${exportRequestsSent(s,now)} из ${s.chunks||'…'}`;
+    const saved=s.storedDays?` · из сохранённого: ${s.storedDays} дн.`:'';
+    if(s.phase==='start'&&!s.known){$('#exportProgress').textContent='Проверяем сохранённую статистику…';return}
+    if(s.chunks===0){$('#exportProgress').textContent=`Все дни уже сохранены, запросы к WB не нужны${s.phase==='finalize'?' · подставляем названия и фото товаров…':''}`;return}
+    let text=`Запросы: ${exportRequestsSent(s,now)} из ${s.chunks}${saved}`;
     if(s.phase==='finalize'){text+=' · подставляем названия и фото товаров…'}
     else if(s.phase!=='start'){
       const waiting=s.phase==='wait'?Math.max(0,s.waitUntil-now):0;
@@ -69,7 +72,7 @@
   }
   function handleExportEvent(event){
     const s=exportState;
-    if(event.type==='start'){s.chunks=event.chunks;s.phase='start'}
+    if(event.type==='start'){s.chunks=event.chunks;s.storedDays=Number(event.storedDays||0);s.known=true;s.phase='start'}
     if(event.type==='request'){s.index=event.index;s.phase='request'}
     if(event.type==='wait'){s.index=event.index;s.phase='wait';s.reason=event.reason;s.waitUntil=Date.now()+Number(event.ms||0)}
     if(event.type==='chunk'){s.index=event.index;s.phase='received';if(!event.ok)s.failed++}if(event.type==='finalize')s.phase='finalize';
@@ -82,7 +85,7 @@
     const from=$('#exportFrom').value,to=$('#exportTo').value;
     if(!from||!to)return alert('Выберите даты начала и конца выгрузки');
     if(from>to)return alert('Дата начала должна быть не позже даты конца');
-    Object.assign(exportState,{started:Date.now(),chunks:0,index:0,phase:'start',reason:'',waitUntil:0,failed:0});
+    Object.assign(exportState,{started:Date.now(),chunks:0,index:0,phase:'start',reason:'',waitUntil:0,failed:0,storedDays:0,known:false});
     controls.forEach(control=>control.disabled=true);button.textContent='Выгрузка…';
     renderExportProgress();clearInterval(exportState.timer);exportState.timer=setInterval(renderExportProgress,250);
     try{
@@ -100,17 +103,19 @@
       if(!result)throw new Error('Выгрузка прервалась без результата');
       state.rows=result.campaign.daily||[];state.productDaily=result.productDaily||[];
       renderMeta(result.campaign);renderSummary(result.campaign);renderOptions();renderChart();renderTable();renderProductTable();
-      $('#periodLabel').textContent=`Кампания #${result.campaign.id} · ${date(result.period.from)} — ${date(result.period.to)} · сохранено в ${result.file}`;
+      $('#campaignTitle').textContent=result.campaign.name||`Кампания #${result.campaign.id}`;
+      $('#periodLabel').textContent=`Кампания #${result.campaign.id} · ${date(result.period.from)} — ${date(result.period.to)}${result.folder?` · ${result.folder}`:''}`;
       clearInterval(exportState.timer);
       const took=formatSeconds(Math.max(1,Math.round((Date.now()-exportState.started)/1000)));
-      $('#exportProgress').textContent=exportState.failed?`Готово за ${took} · запросов без данных: ${exportState.failed} из ${exportState.chunks}`:`Готово за ${took} · запросов: ${exportState.chunks}`;
+      const saved=result.storedDays?` · из сохранённого: ${result.storedDays} дн.`:'';
+      $('#exportProgress').textContent=exportState.failed?`Готово за ${took} · запросов без данных: ${exportState.failed} из ${exportState.chunks}${saved}`:`Готово за ${took} · запросов к WB: ${exportState.chunks}${saved}`;
     }catch(e){
       clearInterval(exportState.timer);$('#exportProgress').textContent=`Ошибка: ${e.message}`;
     }finally{
       clearInterval(exportState.timer);controls.forEach(control=>control.disabled=false);button.textContent='Выгрузить';
     }
   }
-  async function load(){const q=new URLSearchParams({cabinet:params.get('cabinet')||'demo',id:params.get('id')||'',from:params.get('from')||'',to:params.get('to')||''});try{const r=await fetch(`/api/advertising/campaign?${q}`);if(!r.ok)throw new Error((await r.json()).error||'Не удалось получить данные');const d=await r.json();state.rows=d.campaign.daily||[];state.productDaily=d.productDaily||[];$('#campaignTitle').textContent=d.campaign.name||`Кампания #${d.campaign.id}`;$('#periodLabel').textContent=`Кампания #${d.campaign.id} · ${date(d.period.from)} — ${date(d.period.to)}`;renderMeta(d.campaign);renderSummary(d.campaign);renderOptions();renderChart();renderTable();renderProductTable()}catch(e){$('#periodLabel').textContent=e.message;$('#dailyBody').innerHTML=`<tr><td colspan="11" class="empty">${esc(e.message)}</td></tr>`}}
+  function load(){const from=params.get('from')||'',to=params.get('to')||'',fromInput=$('#exportFrom'),toInput=$('#exportTo');if(/^\d{4}-\d{2}-\d{2}$/.test(from)&&/^\d{4}-\d{2}-\d{2}$/.test(to)&&from<=to&&from>=fromInput.min&&to<=toInput.max){fromInput.value=from;toInput.value=to;fromInput.onchange()}exportHistory()}
   document.querySelectorAll('th[data-key]').forEach(h=>h.onclick=()=>{const k=h.dataset.key;state.sort=state.sort.key===k?{key:k,direction:state.sort.direction==='asc'?'desc':'asc'}:{key:k,direction:'desc'};renderTable()});document.querySelectorAll('th[data-product-key]').forEach(h=>h.onclick=()=>{const k=h.dataset.productKey;state.productSort=state.productSort.key===k?{key:k,direction:state.productSort.direction==='asc'?'desc':'asc'}:{key:k,direction:'desc'};renderProductTable()});buildExportPresets();$('#exportHistory').onclick=exportHistory;document.querySelectorAll('[data-modal-close]').forEach(el=>el.onclick=closeProductModal);document.addEventListener('keydown',event=>{if(event.key==='Escape')closeProductModal()});load();
 })();
 

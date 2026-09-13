@@ -9,3 +9,4 @@ data/price-presets.json
 *.log
 .DS_Store
 statistics.json
+data/Ads/
