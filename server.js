@@ -35,6 +35,11 @@ const PRESET_MAX_ITEMS = 200;
 const PRESET_MAX_COUNT = 50;
 const STOCK_PRESET_MAX_AMOUNT = 100_000;
 const PRICE_PRESET_MAX_PRICE = 1_000_000;
+const AD_CAMPAIGNS_URL = 'https://advert-api.wildberries.ru/api/advert/v2/adverts?statuses=7,9,11';
+const FULLSTATS_INTERVAL = 20_500;
+const HISTORY_MAX_MONTHS = 12;
+const fullstatsQueues = new Map();
+const fullstatsLastCall = new Map();
 const AD_BUDGET_STATUSES = new Set([9, 11]);
 const AD_BUDGET_CHUNK = 4;
 const AD_BUDGET_LIMIT = 100;
@@ -209,7 +214,9 @@ async function wbRequest(token, url, options = {}) {
     try { data = text ? JSON.parse(text) : null; } catch {}
     if (!response.ok) {
       const message = data?.detail || data?.message || `WB API вернул ${response.status}`;
-      throw apiError(response.status, message, data);
+      const error = apiError(response.status, message, data);
+      error.retryAfter = Number(response.headers.get('x-ratelimit-retry')) || 0;
+      throw error;
     }
     return data;
   } catch (error) {
@@ -687,36 +694,109 @@ function validAdPeriod(from, to) {
   return { from: safeFrom, to: safeTo };
 }
 
-function advertisingPeriod(months = 6) {
-  const to = new Date(); to.setUTCHours(0, 0, 0, 0);
-  const safeMonths = Math.min(6, Math.max(1, Number(months) || 6));
-  const from = new Date(to); from.setUTCMonth(from.getUTCMonth() - safeMonths); from.setUTCDate(from.getUTCDate() + 1);
-  return { from: from.toISOString().slice(0, 10), to: to.toISOString().slice(0, 10) };
+function localDate(date = new Date()) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 }
 
-async function advertisingCampaignHistory(id, campaignId, months = 6) {
-  const whole = advertisingPeriod(months);
-  const daily = new Map(); const productDaily = new Map(); let campaign = null;
-  for (let cursor = new Date(`${whole.from}T00:00:00Z`); cursor <= new Date(`${whole.to}T00:00:00Z`); ) {
-    const chunkFrom = cursor.toISOString().slice(0, 10);
+function historyPeriod(from, to, today = localDate()) {
+  const pattern = /^\d{4}-\d{2}-\d{2}$/;
+  if (!pattern.test(from || '') || !pattern.test(to || '')) throw apiError(400, 'Укажите даты начала и конца выгрузки');
+  if (from > to) throw apiError(400, 'Дата начала должна быть не позже даты конца');
+  if (to > today) throw apiError(400, 'Дата конца не может быть позже сегодняшнего дня');
+  const [year, month] = today.split('-').map(Number);
+  const earliest = new Date(Date.UTC(year, month - 1 - HISTORY_MAX_MONTHS, 1)).toISOString().slice(0, 10);
+  if (from < earliest) throw apiError(400, `Выгрузка доступна не раньше ${earliest.split('-').reverse().join('.')}`);
+  return { from, to };
+}
+
+function historyChunks({ from, to }) {
+  const chunks = [];
+  for (let cursor = new Date(`${from}T00:00:00Z`), end = new Date(`${to}T00:00:00Z`); cursor <= end; ) {
     const chunkEnd = new Date(cursor); chunkEnd.setUTCDate(chunkEnd.getUTCDate() + 30);
-    const chunkTo = chunkEnd > new Date(`${whole.to}T00:00:00Z`) ? whole.to : chunkEnd.toISOString().slice(0, 10);
-    const data = await advertising(id, chunkFrom, chunkTo);
-    campaign = (data.campaigns || []).find(item => String(item.id) === String(campaignId)) || campaign;
-    for (const row of (data.campaign?.id ? [data.campaign] : data.campaigns || [])) {
-      if (String(row.id) !== String(campaignId)) continue;
-      for (const day of row.daily || []) daily.set(day.date, day);
-    }
-    for (const row of campaignProductDaily(data.productDaily || [], campaignId, campaign?.nmIds || [])) {
-      const key = `${row.nmId}:${row.date}`; if (!productDaily.has(key)) productDaily.set(key, row);
-    }
-    cursor = new Date(chunkEnd); cursor.setUTCDate(cursor.getUTCDate() + 1);
-    if (cursor <= new Date(`${whole.to}T00:00:00Z`) && id !== 'demo') await wait(21_000);
+    chunks.push({ from: cursor.toISOString().slice(0, 10), to: (chunkEnd > end ? end : chunkEnd).toISOString().slice(0, 10) });
+    cursor = chunkEnd; cursor.setUTCDate(cursor.getUTCDate() + 1);
   }
-  if (!campaign) throw apiError(404, 'Кампания не найдена');
-  const result = { generatedAt: new Date().toISOString(), cabinet: id, campaignId, period: whole,
-    campaign: { ...campaign, daily: [...daily.values()].sort((a, b) => a.date.localeCompare(b.date)) },
-    productDaily: [...productDaily.values()].sort((a, b) => (String(a.date)+":"+String(a.nmId)).localeCompare(String(b.date)+":"+String(b.nmId))) };
+  return chunks;
+}
+
+// Статистика кампаний у WB ограничена одним запросом примерно раз в 20 секунд на продавца,
+// поэтому все обращения к ней идут через очередь кабинета.
+function fullstatsRequest(id, token, ids, from, to, onWait = () => {}) {
+  const key = `ad-stats:${id}:${from}:${to}:${ids}`;
+  const fresh = () => { const cached = analyticsCache.get(key); return cached && Date.now() - cached.savedAt < 3 * 60_000 ? cached : null; };
+  if (fresh()) return Promise.resolve(fresh().value);
+  const task = async () => {
+    if (fresh()) return fresh().value;
+    for (let attempt = 0; ; attempt++) {
+      const delay = (fullstatsLastCall.get(id) || 0) + FULLSTATS_INTERVAL - Date.now();
+      if (delay > 0) { onWait(delay, attempt ? 'retry' : 'limit'); await wait(delay); }
+      fullstatsLastCall.set(id, Date.now());
+      try {
+        const value = await wbRequest(token, `https://advert-api.wildberries.ru/adv/v3/fullstats?ids=${ids}&beginDate=${from}&endDate=${to}`);
+        analyticsCache.set(key, { value, savedAt: Date.now() });
+        return value;
+      } catch (error) {
+        if (error.status === 429 && attempt < 2) {
+          fullstatsLastCall.set(id, Date.now() + Math.max(0, (error.retryAfter || 0) * 1000 - FULLSTATS_INTERVAL));
+          continue;
+        }
+        const stale = analyticsCache.get(key);
+        if (stale) return stale.value;
+        throw error;
+      }
+    }
+  };
+  const run = (fullstatsQueues.get(id) || Promise.resolve()).then(task);
+  fullstatsQueues.set(id, run.catch(() => {}));
+  return run;
+}
+
+async function advertisingCampaignHistory(id, campaignId, from, to, report = () => {}) {
+  const whole = historyPeriod(from, to);
+  const chunks = historyChunks(whole);
+  const demo = id === 'demo' || !cabinets().length;
+  const token = demo ? null : tokenFor(id);
+  report({ type: 'start', chunks: chunks.length, period: whole });
+  let meta = null; let cardsPromise = Promise.resolve([]);
+  if (!demo) {
+    // Карточки нужны только для названий и фото, поэтому грузятся параллельно и не задерживают запросы статистики.
+    cardsPromise = cachedAnalytics(`product-cards:${id}`, () => loadProductCards(token), 10 * 60_000).catch(() => []);
+    const campaignData = await cachedAnalytics(`ad-campaigns:${id}`, () => wbRequest(token, AD_CAMPAIGNS_URL), 3 * 60_000);
+    meta = (Array.isArray(campaignData?.adverts) ? campaignData.adverts : []).find(item => String(item.id) === String(campaignId));
+    if (!meta) throw apiError(404, 'Кампания не найдена');
+  }
+  const daily = new Map(); const productDaily = new Map(); const warnings = []; let campaign = null;
+  for (const [index, chunk] of chunks.entries()) {
+    report({ type: 'request', index, chunks: chunks.length, ...chunk });
+    let data;
+    try {
+      if (demo) data = demoAds(chunk.from, chunk.to);
+      else {
+        const stats = await fullstatsRequest(id, token, String(campaignId), chunk.from, chunk.to,
+          (ms, reason) => report({ type: 'wait', index, chunks: chunks.length, ms, reason }));
+        data = summarizeAdStats([meta], Array.isArray(stats) ? stats : [], chunk.from, chunk.to);
+      }
+    } catch (error) {
+      warnings.push(`${chunk.from} — ${chunk.to}: ${error.message}`);
+      report({ type: 'chunk', index, chunks: chunks.length, ok: false, error: error.message });
+      continue;
+    }
+    const row = (data.campaigns || []).find(item => String(item.id) === String(campaignId));
+    if (row) { campaign = row; for (const day of row.daily || []) daily.set(day.date, day); }
+    for (const item of campaignProductDaily(data.productDaily || [], campaignId, row?.nmIds || [])) {
+      const key = `${item.nmId}:${item.date}`; if (!productDaily.has(key)) productDaily.set(key, item);
+    }
+    report({ type: 'chunk', index, chunks: chunks.length, ok: true });
+  }
+  if (!campaign) throw apiError(warnings.length ? 502 : 404, warnings[0] || 'Кампания не найдена');
+  report({ type: 'finalize' });
+  const days = [...daily.values()].sort((a, b) => a.date.localeCompare(b.date));
+  const total = emptyAdMetrics(); days.forEach(day => addAdMetrics(total, day));
+  const enriched = enrichAdvertising({ campaigns: [{ ...campaign, ...finalizeAdMetrics(total), daily: days }], products: [],
+    productDaily: [...productDaily.values()] }, await cardsPromise);
+  const result = { generatedAt: new Date().toISOString(), cabinet: id, campaignId, period: whole, warnings,
+    campaign: enriched.campaigns[0],
+    productDaily: enriched.productDaily.sort((a, b) => `${a.date}:${a.nmId}`.localeCompare(`${b.date}:${b.nmId}`)) };
   fs.mkdirSync(path.dirname(STATISTICS_FILE), { recursive: true });
   fs.writeFileSync(STATISTICS_FILE, JSON.stringify(result, null, 2));
   return { ...result, file: 'statistics.json' };
@@ -732,17 +812,14 @@ async function advertising(id, from, to) {
   const period = validAdPeriod(from, to);
   if (id === 'demo' || !cabinets().length) return demoAds(period.from, period.to);
   const token = tokenFor(id); const warnings = [];
-  const campaignData = await cachedAnalytics(`ad-campaigns:${id}`, () => wbRequest(token,
-    'https://advert-api.wildberries.ru/api/advert/v2/adverts?statuses=7,9,11'), 3 * 60_000);
+  const campaignData = await cachedAnalytics(`ad-campaigns:${id}`, () => wbRequest(token, AD_CAMPAIGNS_URL), 3 * 60_000);
   const campaigns = Array.isArray(campaignData?.adverts) ? campaignData.adverts : [];
   const stats = [];
   for (let offset = 0; offset < campaigns.length; offset += 50) {
-    if (offset) await wait(20_100);
     const ids = campaigns.slice(offset, offset + 50).map(item => item.id).join(',');
     if (!ids) continue;
     try {
-      const chunk = await cachedAnalytics(`ad-stats:${id}:${period.from}:${period.to}:${ids}`, () => wbRequest(token,
-        `https://advert-api.wildberries.ru/adv/v3/fullstats?ids=${ids}&beginDate=${period.from}&endDate=${period.to}`), 3 * 60_000);
+      const chunk = await fullstatsRequest(id, token, ids, period.from, period.to);
       if (Array.isArray(chunk)) stats.push(...chunk);
     } catch (error) { warnings.push(`Статистика рекламы: ${error.message}`); }
   }
@@ -1088,7 +1165,17 @@ async function handleApi(req, res, url) {
     return send(res, 200, await advertisingCampaign(url.searchParams.get('cabinet') || 'demo', url.searchParams.get('id'), url.searchParams.get('from'), url.searchParams.get('to')));
   }
   if (req.method === 'GET' && url.pathname === '/api/advertising/campaign/history') {
-    return send(res, 200, await advertisingCampaignHistory(url.searchParams.get('cabinet') || 'demo', url.searchParams.get('id'), url.searchParams.get('months')));
+    // Ответ идёт построчно: события прогресса, затем итог или ошибка.
+    res.writeHead(200, { 'Content-Type': 'application/x-ndjson; charset=utf-8', 'Cache-Control': 'no-store' });
+    const write = event => res.write(`${JSON.stringify(event)}\n`);
+    try {
+      const result = await advertisingCampaignHistory(url.searchParams.get('cabinet') || 'demo', url.searchParams.get('id'),
+        url.searchParams.get('from'), url.searchParams.get('to'), write);
+      write({ type: 'result', ...result });
+    } catch (error) {
+      write({ type: 'error', error: error.message || 'Не удалось выгрузить статистику' });
+    }
+    return res.end();
   }
   if (req.method === 'GET' && url.pathname === '/api/advertising') {
     return send(res, 200, await advertising(url.searchParams.get('cabinet') || 'demo', url.searchParams.get('from'), url.searchParams.get('to')));
@@ -1237,7 +1324,7 @@ const server = http.createServer(async (req, res) => {
 
 if (require.main === module) server.listen(PORT, '127.0.0.1', () => console.log(`WB Analytics: http://127.0.0.1:${PORT}`));
 
-module.exports = { server, cabinets, normalizeOrders, normalizeOrderFeed, enrichOrders, extractFunnel, summarizeAdStats, campaignProductDaily, withAdBudgets, normalizeStockPreset, normalizePricePreset, validAdPeriod, advertisingPeriod, normalizeFbsStocks, normalizeFbwStocks, normalizePrices, normalizeNewOrders, summarizeSupplies, normalizeTrbxes, chunkOrders, stickerType, WB_HOSTS };
+module.exports = { server, cabinets, normalizeOrders, normalizeOrderFeed, enrichOrders, extractFunnel, summarizeAdStats, campaignProductDaily, withAdBudgets, normalizeStockPreset, normalizePricePreset, validAdPeriod, historyPeriod, historyChunks, normalizeFbsStocks, normalizeFbwStocks, normalizePrices, normalizeNewOrders, summarizeSupplies, normalizeTrbxes, chunkOrders, stickerType, WB_HOSTS };
 
 
 

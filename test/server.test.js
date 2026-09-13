@@ -1,7 +1,7 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { normalizeOrders, normalizeOrderFeed, enrichOrders, extractFunnel, summarizeAdStats, campaignProductDaily, withAdBudgets, normalizeStockPreset, normalizePricePreset, validAdPeriod, normalizeFbsStocks, normalizeFbwStocks, normalizePrices, normalizeNewOrders, summarizeSupplies, normalizeTrbxes, chunkOrders, stickerType, WB_HOSTS } = require('../server');
+const { normalizeOrders, normalizeOrderFeed, enrichOrders, extractFunnel, summarizeAdStats, campaignProductDaily, withAdBudgets, normalizeStockPreset, normalizePricePreset, validAdPeriod, historyPeriod, historyChunks, normalizeFbsStocks, normalizeFbwStocks, normalizePrices, normalizeNewOrders, summarizeSupplies, normalizeTrbxes, chunkOrders, stickerType, WB_HOSTS } = require('../server');
 
 test('объединяет и сортирует FBS и события ленты WB', () => {
   const result = normalizeOrders(
@@ -223,4 +223,19 @@ test('проверяет шаблон цен и отбрасывает неко�
 test('не сохраняет шаблон цен без названия или позиций', () => {
   assert.throws(() => normalizePricePreset({ name: '', items: [{ nmId: 1, price: 100, discount: 0 }] }), /название/i);
   assert.throws(() => normalizePricePreset({ name: 'Тест', items: [] }), /товар/i);
+});
+
+test('делит период выгрузки кампании на блоки не длиннее 31 дня', () => {
+  assert.deepEqual(historyChunks({ from: '2026-09-01', to: '2026-09-13' }), [{ from: '2026-09-01', to: '2026-09-13' }]);
+  const chunks = historyChunks({ from: '2026-01-01', to: '2026-03-15' });
+  assert.equal(chunks.length, 3);
+  assert.deepEqual(chunks[0], { from: '2026-01-01', to: '2026-01-31' });
+  assert.equal(chunks[2].to, '2026-03-15');
+});
+
+test('проверяет даты выгрузки кампании и ограничивает глубину годом', () => {
+  assert.deepEqual(historyPeriod('2025-09-01', '2026-09-13', '2026-09-13'), { from: '2025-09-01', to: '2026-09-13' });
+  assert.throws(() => historyPeriod('2025-08-31', '2026-09-13', '2026-09-13'), /не раньше/);
+  assert.throws(() => historyPeriod('2026-09-10', '2026-09-01', '2026-09-13'), /не позже/);
+  assert.throws(() => historyPeriod('2026-09-01', '2026-09-14', '2026-09-13'), /позже сегодняшнего/);
 });
