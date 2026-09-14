@@ -15,7 +15,7 @@ function renderCabinets(){const selected=state.cabinets.find(c=>c.id===state.cab
 
 async function loadDashboard(){const btn=$('#refresh');btn.classList.add('loading');$('#syncText').textContent='Получаем данные…';try{const q=new URLSearchParams({cabinet:state.cabinet,from:$('#dateFrom').value,to:$('#dateTo').value});const data=await api('/api/dashboard?'+q);state.orders=data.orders||[];state.funnel=data.funnel||{};state.balance=data.balance||null;state.demo=data.demo;renderAll();$('#syncText').textContent=`Обновлено ${new Date().toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit'})}`;$('#cabinetMode').textContent=data.demo?'Демо-данные':'Единый токен активен';$('#alertArea').innerHTML=[data.demo?'Сейчас показаны демо-данные. Добавьте <b>WB_TOKEN_1</b> в файл .env и перезапустите сервер.':'',...(data.warnings||[])].filter(Boolean).map(x=>`<div class="alert">${escapeHtml(x).replace('&lt;b&gt;','<b>').replace('&lt;/b&gt;','</b>')}</div>`).join('')}catch(e){$('#syncText').textContent='Ошибка синхронизации';toast(e.message)}finally{btn.classList.remove('loading')}}
 function renderAll(){renderBalance();renderMetrics();renderOrders();renderFunnel();$('#newBadge').textContent=state.orders.filter(o=>o.source==='FBS'&&o.status==='new').length}
-async function loadFunnelDetails(){try{const q=new URLSearchParams({cabinet:state.cabinet,from:$('#dateFrom').value,to:$('#dateTo').value}),data=await api('/api/funnel?'+q);state.funnelProducts=data.products||[];state.funnelHistory=data.history||[];state.funnelGroupedHistory=data.groupedHistory||[];const total=state.funnelProducts.reduce((sum,item)=>{const h=item.statistic?.selected||item.history?.[0]||item;return {views:sum.views+Number(h.openCount||0),cart:sum.cart+Number(h.cartCount||0),orders:sum.orders+Number(h.orderCount||0),sales:sum.sales+Number(h.buyoutCount||0),revenue:sum.revenue+Number(h.buyoutSum||0)}},{views:0,cart:0,orders:0,sales:0,revenue:0});if(state.funnelProducts.length)state.funnel=total;renderFunnel();renderFunnelDetails()}catch(e){toast(e.message)}}
+async function loadFunnelDetails(){loadFunnelTrend();try{const q=new URLSearchParams({cabinet:state.cabinet,from:$('#dateFrom').value,to:$('#dateTo').value}),data=await api('/api/funnel?'+q);state.funnelProducts=data.products||[];state.funnelHistory=data.history||[];state.funnelGroupedHistory=data.groupedHistory||[];const total=state.funnelProducts.reduce((sum,item)=>{const h=item.statistic?.selected||item.history?.[0]||item;return {views:sum.views+Number(h.openCount||0),cart:sum.cart+Number(h.cartCount||0),orders:sum.orders+Number(h.orderCount||0),sales:sum.sales+Number(h.buyoutCount||0),revenue:sum.revenue+Number(h.buyoutSum||0)}},{views:0,cart:0,orders:0,sales:0,revenue:0});if(state.funnelProducts.length)state.funnel=total;renderFunnel();renderFunnelDetails()}catch(e){toast(e.message)}}
 function funnelProductRows(){const categories=state.funnelFilters.categories;return (state.funnelProducts||[]).map(item=>{const p=item.product||item,s=item.statistic?.selected||item.history?.[0]||item;return {...p,...s,title:p.title||p.name||`Товар ${p.nmId}`,vendorCode:p.vendorCode||'',subjectName:p.subjectName||'Без категории',nmId:p.nmId}}).filter(row=>!categories.size||categories.has(row.subjectName)).sort((a,b)=>{const key=state.funnelSort.key,av=a[key]??0,bv=b[key]??0,result=typeof av==='number'&&typeof bv==='number'?av-bv:String(av).localeCompare(String(bv),'ru',{numeric:true});return state.funnelSort.dir==='asc'?result:-result})}
 function renderFunnelDetails(){const rows=funnelProductRows(),categories=[...new Set((state.funnelProducts||[]).map(item=>(item.product||item).subjectName||'Без категории'))].sort((a,b)=>a.localeCompare(b,'ru'));$('#funnelCategoryOptions').innerHTML=categories.map(category=>`<label><input type="checkbox" value="${escapeHtml(category)}"> ${escapeHtml(category)}</label>`).join('')||'<span class="filter-empty">Нет вариантов</span>';$$('#funnelCategoryOptions input').forEach(input=>{input.checked=state.funnelFilters.categories.has(input.value);input.onchange=()=>{input.checked?state.funnelFilters.categories.add(input.value):state.funnelFilters.categories.delete(input.value);renderFunnelDetails()}});$('#funnelCategoryLabel').textContent=state.funnelFilters.categories.size?`Категории (${state.funnelFilters.categories.size})`:'Категории';$('#funnelProductCount').textContent=`${rows.length} из ${(state.funnelProducts||[]).length} товаров`;$('#funnelProductsBody').innerHTML=rows.map(row=>`<tr><td class="funnel-product-cell">${row.photo?`<img class="stock-product-photo" src="${escapeHtml(row.photo)}" alt="" loading="lazy">`:''}<strong>${escapeHtml(row.title)}</strong></td><td>${escapeHtml(row.vendorCode||'—')}</td><td>${escapeHtml(row.nmId||'—')}</td><td>${escapeHtml(row.subjectName)}</td><td>${fmtNum(row.openCount)}</td><td>${fmtNum(row.cartCount)}</td><td>${fmtNum(row.orderCount)}</td><td>${fmtNum(row.buyoutCount)}</td><td>${fmtPercent(row.buyoutPercent)}</td></tr>`).join('')||'<tr><td colspan="9" class="empty-row">Нет данных по товарам за период</td></tr>';$$('#funnelProductsBody .stock-product-photo').forEach(image=>{if(image.dataset.previewBound)return;image.dataset.previewBound='1';bindPhotoPreview(image)});$$('[data-funnel-sort]').forEach(header=>header.onclick=()=>{const key=header.dataset.funnelSort;state.funnelSort=state.funnelSort.key===key?{key,dir:state.funnelSort.dir==='asc'?'desc':'asc'}:{key,dir:'desc'};renderFunnelDetails()})}
 function balanceMoney(value,currency='RUB'){return new Intl.NumberFormat('ru-RU',{style:'currency',currency,maximumFractionDigits:2}).format(Number(value||0))}
@@ -75,7 +75,7 @@ async function getSticker(o){try{const data=await api('/api/orders/stickers',{me
 
 async function runConsole(){const out=$('#apiResponse'),status=$('#apiStatus');status.textContent='Выполняется…';try{let body;const raw=$('#apiBody').value.trim();if(raw)body=JSON.parse(raw);const data=await api('/api/proxy',{method:'POST',body:JSON.stringify({cabinet:state.cabinet,method:$('#apiMethod').value,url:$('#apiUrl').value.trim(),body,confirm:$('#apiConfirm').checked})});out.textContent=JSON.stringify(data,null,2);status.textContent='Успешный ответ · '+new Date().toLocaleTimeString('ru-RU')}catch(e){out.textContent=JSON.stringify({error:e.message},null,2);status.textContent='Ошибка запроса'}}
 
-function loadCurrentPage(force=false){if(state.activePage==='ads')return loadAds(force);if(state.activePage==='stocks')return loadStocks(force);if(state.activePage==='fbw-stocks')return loadFbwStocks(force);if(state.activePage==='prices')return loadPrices(force);if(state.activePage==='fbs-orders')return loadFbsOrders(force);return loadDashboard()}
+function loadCurrentPage(force=false){if(state.activePage==='ads')return loadAds(force);if(state.activePage==='stocks')return loadStocks(force);if(state.activePage==='fbw-stocks')return loadFbwStocks(force);if(state.activePage==='prices')return loadPrices(force);if(state.activePage==='fbs-orders')return loadFbsOrders(force);if(state.activePage==='funnel')loadFunnelDetails();return loadDashboard()}
 document.addEventListener('click', event => { if (!event.target.closest('.multi-filter')) $$('.multi-filter[open]').forEach(filter => { filter.removeAttribute('open'); }); });
 document.addEventListener('click', event => { const option=event.target.closest('.cab-option'); if(option){const cabinet=$('#cabinetButton');cabinet.classList.remove('switching');void cabinet.offsetWidth;cabinet.classList.add('switching');setTimeout(()=>cabinet.classList.remove('switching'),650);} });
 function bindPhotoPreview(image){image.addEventListener('mouseenter',()=>{const rect=image.getBoundingClientRect(),preview=document.createElement('img');preview.className='product-photo-preview';preview.src=image.currentSrc||image.src;preview.alt=image.alt||'';document.body.append(preview);const width=preview.offsetWidth,height=preview.offsetHeight;const left=Math.min(Math.max(8,rect.right+10),window.innerWidth-width-8);const top=Math.min(Math.max(8,rect.top+(rect.height-height)/2),window.innerHeight-height-8);preview.style.left=`${left}px`;preview.style.top=`${top}px`;image._photoPreview=preview}, {once:false});image.addEventListener('mouseleave',()=>{image._photoPreview?.remove();image._photoPreview=null})}
@@ -112,7 +112,7 @@ function renderFbsActions(){const count=state.fbsSelected.size;$('#fbsActions').
 function renderSupplies(){const rows=state.supplies?.rows||[],totals=state.supplies?.totals||{};$('#supplyCount').textContent=rows.length?`${fmtNum(totals.open)} ${pluralRu(totals.open,['открытая','открытые','открытых'])} из ${fmtNum(totals.supplies)}`:'Поставок нет';$('#emptySupplies').classList.toggle('hidden',rows.length>0);$('#suppliesBody').innerHTML=rows.map(row=>`<tr><td><button class="copy-article" data-copy="${escapeHtml(row.id)}">${escapeHtml(row.id)}</button></td><td><strong>${escapeHtml(row.name)}</strong></td><td><strong>${formatDate(row.createdAt)}</strong>${row.closedAt?`<small>закрыта ${formatDate(row.closedAt)}</small>`:''}</td><td><span class="status ${row.done?'status-complete':'status-new'}">${row.done?'Передана в доставку':'Открыта'}</span></td><td>${escapeHtml(row.cargoTypeName)}</td><td class="supply-row-actions"><button class="secondary" data-supply-detail="${escapeHtml(row.id)}">Состав</button><button class="secondary" data-supply-qr="${escapeHtml(row.id)}">QR</button><button class="danger" data-supply-remove="${escapeHtml(row.id)}" ${row.done?'disabled':''}>Удалить</button></td></tr>`).join('');$$('[data-supply-detail]').forEach(button=>button.onclick=()=>openSupplyDetail(button.dataset.supplyDetail));$$('[data-supply-qr]').forEach(button=>button.onclick=()=>downloadSupplyBarcode(button.dataset.supplyQr));$$('[data-supply-remove]').forEach(button=>button.onclick=()=>removeSupply(button.dataset.supplyRemove))}
 async function openSupplyDetail(supplyId){if(!supplyId)return;const btn=$('#refresh');btn.classList.add('loading');try{const q=new URLSearchParams({cabinet:state.cabinet,id:supplyId});state.supplyDetail=await api('/api/supplies/detail?'+q);state.supplyOrderSelected=new Set();renderSupplyDetail();(state.supplyDetail.warnings||[]).forEach(warning=>toast(warning));$('#supplyDetailPanel').scrollIntoView({behavior:'smooth',block:'start'})}catch(e){toast(e.message)}finally{btn.classList.remove('loading')}}
 function trbxOfOrder(orderId){return (state.supplyDetail?.trbxes||[]).find(trbx=>trbx.orderIds.includes(Number(orderId)))?.id||''}
-function renderSupplyDetail(){const detail=state.supplyDetail;const panel=$('#supplyDetailPanel');if(!detail?.supply){panel.classList.add('hidden');return}panel.classList.remove('hidden');const supply=detail.supply,orders=detail.orders||[],trbxes=detail.trbxes||[];$('#supplyDetailTitle').textContent=`Поставка ${supply.id}`;$('#supplyDetailMeta').innerHTML=`${escapeHtml(supply.name)} · создана ${formatDate(supply.createdAt)} · <span class="status ${supply.done?'status-complete':'status-new'}">${supply.done?'передана в доставку':'открыта'}</span>`;$('#deliverSupplyButton').disabled=supply.done||!orders.length;$('#addTrbxButton').disabled=supply.done;$('#supplyOrderCount').textContent=`${fmtNum(orders.length)} шт.`;$('#trbxCount').textContent=`${fmtNum(trbxes.length)} шт.`;$('#supplyOrdersBody').innerHTML=orders.map(row=>{const trbxId=trbxOfOrder(row.id);return `<tr><td class="check-col"><input type="checkbox" data-supply-order="${escapeHtml(row.id)}" ${state.supplyOrderSelected.has(String(row.id))?'checked':''} aria-label="Выбрать задание ${escapeHtml(row.id)}"></td><td><strong>${escapeHtml(row.name)}</strong><small>${escapeHtml(row.size)} · ${fmtMoney(row.price,row.currencyCode)}</small></td><td><button class="copy-article" data-copy="${escapeHtml(row.vendorCode||'')}">${escapeHtml(row.vendorCode||'—')}</button></td><td>${trbxId?`<strong>${escapeHtml(trbxId)}</strong>`:'<small>не разложено</small>'}</td><td><small>${escapeHtml(row.id)}</small></td></tr>`}).join('')||'<tr><td colspan="5"><small>В поставке пока нет заданий.</small></td></tr>';$('#supplyOrderSelectAll').checked=orders.length>0&&orders.every(row=>state.supplyOrderSelected.has(String(row.id)));$('#trbxList').innerHTML=trbxes.map(trbx=>`<article class="trbx-card"><header><strong>${escapeHtml(trbx.id)}</strong><span>${fmtNum(trbx.orderIds.length)} ${pluralRu(trbx.orderIds.length,['задание','задания','заданий'])}</span></header><div class="trbx-actions"><button class="secondary" data-trbx-fill="${escapeHtml(trbx.id)}" ${supply.done?'disabled':''}>Положить выбранные</button><button class="secondary" data-trbx-qr="${escapeHtml(trbx.id)}">QR</button><button class="danger" data-trbx-remove="${escapeHtml(trbx.id)}" ${supply.done?'disabled':''}>Удалить</button></div></article>`).join('')||'<p class="trbx-empty">Грузомест нет. Добавьте их, чтобы получить QR-коды коробов.</p>';$$('[data-supply-order]').forEach(input=>input.onchange=()=>inputSelection(state.supplyOrderSelected,input.dataset.supplyOrder,input.checked));$('#supplyOrderSelectAll').onchange=()=>{orders.forEach(row=>inputSelection(state.supplyOrderSelected,String(row.id),$('#supplyOrderSelectAll').checked));renderSupplyDetail()};$$('[data-trbx-fill]').forEach(button=>button.onclick=()=>fillTrbx(button.dataset.trbxFill));$$('[data-trbx-qr]').forEach(button=>button.onclick=()=>downloadTrbxStickers([button.dataset.trbxQr]));$$('[data-trbx-remove]').forEach(button=>button.onclick=()=>removeTrbx(button.dataset.trbxRemove))}
+function renderSupplyDetail(){const detail=state.supplyDetail;const panel=$('#supplyDetailPanel');if(!detail?.supply){panel.classList.add('hidden');return}panel.classList.remove('hidden');const supply=detail.supply,orders=detail.orders||[],trbxes=detail.trbxes||[];$('#supplyDetailTitle').textContent=`Поставка ${supply.id}`;$('#supplyDetailMeta').innerHTML=`${escapeHtml(supply.name)} · создана ${formatDate(supply.createdAt)} · <span class="status ${supply.done?'status-complete':'status-new'}">${supply.done?'передана в доставку':'открыта'}</span>`;$('#deliverSupplyButton').disabled=supply.done||!orders.length;$('#addTrbxButton').disabled=supply.done;$('#supplyStickersButton').disabled=!orders.length;$('#supplyOrderCount').textContent=`${fmtNum(orders.length)} шт.`;$('#trbxCount').textContent=`${fmtNum(trbxes.length)} шт.`;$('#supplyOrdersBody').innerHTML=orders.map(row=>{const trbxId=trbxOfOrder(row.id);return `<tr><td class="check-col"><input type="checkbox" data-supply-order="${escapeHtml(row.id)}" ${state.supplyOrderSelected.has(String(row.id))?'checked':''} aria-label="Выбрать задание ${escapeHtml(row.id)}"></td><td><strong>${escapeHtml(row.name)}</strong><small>${row.detailsMissing?'данные задания WB уже не отдаёт':`${escapeHtml(row.size)} · ${fmtMoney(row.price,row.currencyCode)}`}</small></td><td><button class="copy-article" data-copy="${escapeHtml(row.vendorCode||'')}">${escapeHtml(row.vendorCode||'—')}</button></td><td>${trbxId?`<strong>${escapeHtml(trbxId)}</strong>`:'<small>не разложено</small>'}</td><td><small>${escapeHtml(row.id)}</small></td></tr>`}).join('')||'<tr><td colspan="5"><small>В поставке пока нет заданий.</small></td></tr>';$('#supplyOrderSelectAll').checked=orders.length>0&&orders.every(row=>state.supplyOrderSelected.has(String(row.id)));$('#trbxList').innerHTML=trbxes.map(trbx=>`<article class="trbx-card"><header><strong>${escapeHtml(trbx.id)}</strong><span>${fmtNum(trbx.orderIds.length)} ${pluralRu(trbx.orderIds.length,['задание','задания','заданий'])}</span></header><div class="trbx-actions"><button class="secondary" data-trbx-fill="${escapeHtml(trbx.id)}" ${supply.done?'disabled':''}>Положить выбранные</button><button class="secondary" data-trbx-qr="${escapeHtml(trbx.id)}">QR</button><button class="danger" data-trbx-remove="${escapeHtml(trbx.id)}" ${supply.done?'disabled':''}>Удалить</button></div></article>`).join('')||'<p class="trbx-empty">Грузомест нет. Добавьте их, чтобы получить QR-коды коробов.</p>';$$('[data-supply-order]').forEach(input=>input.onchange=()=>inputSelection(state.supplyOrderSelected,input.dataset.supplyOrder,input.checked));$('#supplyOrderSelectAll').onchange=()=>{orders.forEach(row=>inputSelection(state.supplyOrderSelected,String(row.id),$('#supplyOrderSelectAll').checked));renderSupplyDetail()};$$('[data-trbx-fill]').forEach(button=>button.onclick=()=>fillTrbx(button.dataset.trbxFill));$$('[data-trbx-qr]').forEach(button=>button.onclick=()=>downloadTrbxStickers([button.dataset.trbxQr]));$$('[data-trbx-remove]').forEach(button=>button.onclick=()=>removeTrbx(button.dataset.trbxRemove))}
 function stickerMime(type){return type==='svg'?'image/svg+xml':type==='png'?'image/png':'text/plain'}
 function stickerExt(type){return type==='svg'?'svg':type==='png'?'png':'zpl'}
 function downloadBase64(file,name,mime){const a=document.createElement('a');a.href=`data:${mime};base64,${file}`;a.download=name;document.body.append(a);a.click();a.remove()}
@@ -129,7 +129,7 @@ async function deliverSupply(){const supply=state.supplyDetail?.supply;if(!suppl
 function openAddTrbx(){const detail=state.supplyDetail;if(!detail?.supply)return toast('Откройте состав поставки');if(state.demo)return toast('В демо-режиме грузоместа не создаются');openModal(`<p class="eyebrow">Поставка ${escapeHtml(detail.supply.id)}</p><h2>Добавить грузоместа</h2><p>WB создаст указанное количество коробов и выдаст для каждого QR-код.</p><label class="stock-modal-label">Количество<input id="trbxAmount" type="number" min="1" max="1000" step="1" value="1"></label><button class="primary" id="confirmTrbx">Добавить</button>`);$('#confirmTrbx').onclick=async()=>{try{const data=await api('/api/supplies/trbx',{method:'POST',body:JSON.stringify({cabinet:state.cabinet,supplyId:detail.supply.id,amount:Number($('#trbxAmount').value),confirm:true})});closeModal();toast(`Добавлено грузомест: ${data.trbxIds.length}`);await openSupplyDetail(detail.supply.id)}catch(e){toast(e.message)}}}
 async function fillTrbx(trbxId){const detail=state.supplyDetail;if(!detail?.supply)return;if(state.demo)return toast('В демо-режиме раскладка по грузоместам отключена');if(!state.supplyOrderSelected.size)return toast('Отметьте задания в составе поставки');try{const data=await api('/api/supplies/trbx/orders',{method:'POST',body:JSON.stringify({cabinet:state.cabinet,supplyId:detail.supply.id,trbxId,orders:[...state.supplyOrderSelected].map(Number),confirm:true})});toast(`В ${trbxId} добавлено заданий: ${data.added}`);state.supplyOrderSelected=new Set();await openSupplyDetail(detail.supply.id)}catch(e){toast(e.message)}}
 async function removeTrbx(trbxId){const detail=state.supplyDetail;if(!detail?.supply)return;if(state.demo)return toast('В демо-режиме удаление грузомест отключено');if(!confirm(`Удалить грузоместо ${trbxId}?`))return;try{await api('/api/supplies/trbx/delete',{method:'POST',body:JSON.stringify({cabinet:state.cabinet,supplyId:detail.supply.id,trbxIds:[trbxId],confirm:true})});toast('Грузоместо удалено');await openSupplyDetail(detail.supply.id)}catch(e){toast(e.message)}}
-function bindFbsOrders(){$('#fbsSearch').oninput=()=>{state.fbsPage=1;renderFbsOrders()};$('#assembleButton').onclick=openAssembleModal;$('#fbsStickerButton').onclick=downloadOrderStickers;$('#clearFbsSelection').onclick=()=>{state.fbsSelected.clear();renderFbsOrders()};$('#createSupplyButton').onclick=openCreateSupply;$('#addTrbxButton').onclick=openAddTrbx;$('#supplyBarcodeButton').onclick=()=>downloadSupplyBarcode();$('#trbxStickersButton').onclick=()=>downloadTrbxStickers();$('#deliverSupplyButton').onclick=deliverSupply;$('#closeSupplyDetail').onclick=()=>{state.supplyDetail=null;renderSupplyDetail()}}
+function bindFbsOrders(){$('#fbsSearch').oninput=()=>{state.fbsPage=1;renderFbsOrders()};$('#assembleButton').onclick=openAssembleModal;$('#fbsStickerButton').onclick=downloadOrderStickers;$('#clearFbsSelection').onclick=()=>{state.fbsSelected.clear();renderFbsOrders()};$('#createSupplyButton').onclick=openCreateSupply;$('#addTrbxButton').onclick=openAddTrbx;$('#supplyStickersButton').onclick=downloadSupplyOrderStickers;$('#supplyBarcodeButton').onclick=()=>downloadSupplyBarcode();$('#trbxStickersButton').onclick=()=>downloadTrbxStickers();$('#deliverSupplyButton').onclick=deliverSupply;$('#closeSupplyDetail').onclick=()=>{state.supplyDetail=null;renderSupplyDetail()}}
 
 // --- Шаблоны остатков FBS ---
 const presetState={presets:[],draft:null};
@@ -441,4 +441,147 @@ function priceStockCell(row){
   if(!state.priceStocks)return '<span class="stock-muted">Загрузка…</span>';
   if(row.stock==null)return '<span class="stock-muted">—</span>';
   return `<strong class="${row.stock>0?'in-stock':'out-stock'}">${fmtNum(row.stock)} шт</strong><small>FBS ${fmtNum(row.stockFbs)} · FBW ${fmtNum(row.stockFbw)}</small>`;
+}
+
+// --- График этапов воронки продаж ---
+const FUNNEL_TREND_METRICS=[
+  {key:'openCount',label:'Перешли в карточку',unit:'шт'},
+  {key:'cartCount',label:'Положили в корзину',unit:'шт'},
+  {key:'cartConversion',label:'Конверсия в корзину',unit:'%'},
+  {key:'addToWishlistCount',label:'Добавили в «Отложенные»',unit:'шт'},
+  {key:'orderCount',label:'Заказали товаров',unit:'шт'},
+  {key:'orderConversion',label:'Конверсия в заказ',unit:'%'},
+  {key:'orderSum',label:'Заказали на сумму',unit:'₽'},
+  {key:'buyoutCount',label:'Выкупили товаров',unit:'шт'},
+  {key:'buyoutSum',label:'Выкупили на сумму',unit:'₽'}];
+const TREND_MONTHS=['янв','фев','мар','апр','май','июн','июл','авг','сен','окт','ноя','дек'];
+const funnelTrend={data:null,metric:'orderCount',compare:true,grouping:'day',loading:false,error:''};
+const trendShift=(date,days)=>{const d=new Date(`${date}T00:00:00Z`);d.setUTCDate(d.getUTCDate()+days);return d.toISOString().slice(0,10)};
+const trendWeekStart=date=>{const d=new Date(`${date}T00:00:00Z`);d.setUTCDate(d.getUTCDate()-(d.getUTCDay()+6)%7);return d.toISOString().slice(0,10)};
+const trendShortDate=date=>`${date.slice(8,10)}.${date.slice(5,7)}`;
+const trendFullDate=date=>`${date.slice(8,10)}.${date.slice(5,7)}.${date.slice(2,4)}`;
+async function loadFunnelTrend(){
+  const cabinet=state.cabinet,from=$('#dateFrom').value,to=$('#dateTo').value;
+  funnelTrend.loading=true;funnelTrend.error='';renderFunnelTrend();
+  try{
+    const data=await api(`/api/funnel/history?${new URLSearchParams({cabinet,from,to})}`);
+    if(cabinet!==state.cabinet)return;
+    funnelTrend.data=data;
+    if(data.warnings?.length)$('#alertArea').insertAdjacentHTML('beforeend',data.warnings.map(text=>`<div class="alert">${escapeHtml(text)}</div>`).join(''));
+  }catch(e){funnelTrend.error=e.message}
+  finally{funnelTrend.loading=false;renderFunnelTrend()}
+}
+function funnelTrendPoints(days=[],period,grouping){
+  const byDate=new Map(days.map(day=>[day.date,day])),buckets=[],index=new Map();
+  for(let date=period.from;date<=period.to;date=trendShift(date,1)){
+    const key=grouping==='week'?trendWeekStart(date):grouping==='month'?date.slice(0,7):date;
+    if(!index.has(key)){const bucket={key,from:date,to:date,total:0,rows:[]};index.set(key,bucket);buckets.push(bucket)}
+    const bucket=index.get(key);bucket.to=date;bucket.total++;if(byDate.has(date))bucket.rows.push(byDate.get(date));
+  }
+  return buckets.map(bucket=>{
+    if(!bucket.rows.length)return {...bucket,values:null};
+    const sum=key=>bucket.rows.reduce((total,row)=>total+Number(row[key]||0),0);
+    const values={openCount:sum('openCount'),cartCount:sum('cartCount'),orderCount:sum('orderCount'),orderSum:sum('orderSum'),buyoutCount:sum('buyoutCount'),buyoutSum:sum('buyoutSum'),addToWishlistCount:sum('addToWishlistCount')};
+    values.cartConversion=values.openCount?values.cartCount/values.openCount*100:0;
+    values.orderConversion=values.cartCount?values.orderCount/values.cartCount*100:0;
+    return {...bucket,values};
+  });
+}
+function trendBucketLabel(bucket,grouping){
+  if(!bucket)return '';
+  if(grouping==='month'){const [year,month]=bucket.key.split('-');return `${TREND_MONTHS[Number(month)-1]} ${year}`}
+  if(grouping==='week')return `${trendShortDate(bucket.from)}–${trendShortDate(bucket.to)}`;
+  return trendShortDate(bucket.from);
+}
+function trendValue(metric,value){
+  if(value==null)return 'нет данных';
+  if(metric.unit==='%')return `${(Math.round(value*10)/10).toLocaleString('ru-RU')}%`;
+  if(metric.unit==='₽')return `${fmtNum(Math.round(value))} ₽`;
+  return fmtNum(Math.round(value));
+}
+function trendAxisValue(metric,value){return metric.unit==='₽'?shortMoney(value):metric.unit==='%'?`${fmtNum(Math.round(value))}%`:fmtNum(Math.round(value))}
+function niceTrendMax(value){if(!(value>0))return 4;const raw=value/4,power=10**Math.floor(Math.log10(raw)),step=[1,1.2,1.5,2,2.5,3,4,5,6,8,10].map(k=>k*power).find(k=>k>=raw);return step*4}
+// Плавная линия без выбросов за пределы соседних значений (монотонный кубический сплайн).
+function trendSmoothPath(points){
+  const n=points.length,dx=[],slopes=[],tangents=[];
+  for(let i=0;i<n-1;i++){dx[i]=points[i+1].x-points[i].x;slopes[i]=(points[i+1].y-points[i].y)/dx[i]}
+  tangents[0]=slopes[0];tangents[n-1]=slopes[n-2];
+  for(let i=1;i<n-1;i++)tangents[i]=slopes[i-1]*slopes[i]<=0?0:(slopes[i-1]+slopes[i])/2;
+  for(let i=0;i<n-1;i++){
+    if(slopes[i]===0){tangents[i]=0;tangents[i+1]=0;continue}
+    const a=tangents[i]/slopes[i],b=tangents[i+1]/slopes[i],s=a*a+b*b;
+    if(s>9){const k=3/Math.sqrt(s);tangents[i]=k*a*slopes[i];tangents[i+1]=k*b*slopes[i]}
+  }
+  let d=`M${points[0].x},${points[0].y}`;
+  for(let i=0;i<n-1;i++){const c=dx[i]/3;d+=` C${points[i].x+c},${points[i].y+tangents[i]*c} ${points[i+1].x-c},${points[i+1].y-tangents[i+1]*c} ${points[i+1].x},${points[i+1].y}`}
+  return d;
+}
+function renderFunnelTrend(){
+  const metricList=$('#funnelMetricList');if(!metricList)return;
+  const metric=FUNNEL_TREND_METRICS.find(item=>item.key===funnelTrend.metric)||FUNNEL_TREND_METRICS[0];
+  metricList.innerHTML=FUNNEL_TREND_METRICS.map(item=>`<button type="button" class="funnel-metric ${item.key===metric.key?'active':''}" data-trend-metric="${item.key}">${item.label}</button>`).join('');
+  metricList.querySelectorAll('[data-trend-metric]').forEach(button=>button.onclick=()=>{funnelTrend.metric=button.dataset.trendMetric;renderFunnelTrend()});
+  $('#funnelCompare').checked=funnelTrend.compare;$('#funnelGrouping').value=funnelTrend.grouping;
+  const chart=$('#funnelTrendChart'),legend=$('#funnelTrendLegend'),note=$('#funnelTrendNote'),data=funnelTrend.data;
+  if(!data){legend.innerHTML='';note.textContent='';chart.innerHTML=`<div class="chart-empty">${funnelTrend.error?escapeHtml(funnelTrend.error):'Загрузка истории воронки…'}</div>`;return}
+  const currentPeriod=data.periods.current,previousPeriod=data.periods.previous,grouping=funnelTrend.grouping;
+  legend.innerHTML=`<span><i class="legend-solid"></i>${trendFullDate(currentPeriod.from)} - ${trendFullDate(currentPeriod.to)}</span>`+
+    (funnelTrend.compare?`<span><i class="legend-dashed"></i>${trendFullDate(previousPeriod.from)} - ${trendFullDate(previousPeriod.to)}</span>`:'');
+  const current=funnelTrendPoints(data.current,currentPeriod,grouping);
+  const previous=funnelTrend.compare?funnelTrendPoints(data.previous,previousPeriod,grouping):[];
+  const notes=[];
+  if(!data.demo){
+    const earliest=funnelTrend.compare?previousPeriod.from:currentPeriod.from;
+    if(!data.storedFrom)notes.push('История воронки ещё не сохранена. WB отдаёт её только за последние 7 дней, более ранние дни будут копиться с сегодняшнего дня.');
+    else if(earliest<data.storedFrom)notes.push(`История воронки сохраняется с ${trendFullDate(data.storedFrom)}. WB отдаёт её только за последние 7 дней, поэтому более ранние дни на графике пустые.`);
+  }
+  if(funnelTrend.error)notes.push(`Не удалось обновить: ${funnelTrend.error}`);
+  if(funnelTrend.loading)notes.push('Обновляем…');
+  note.textContent=notes.join(' ');
+  if(!current.some(point=>point.values)&&!previous.some(point=>point.values)){chart.innerHTML='<div class="chart-empty">Нет сохранённых данных за выбранный период</div>';return}
+  const w=900,h=300,left=14,right=62,top=24,bottom=34,plotW=w-left-right,plotH=h-top-bottom,count=current.length;
+  const x=i=>left+(count<=1?plotW/2:i*plotW/(count-1));
+  const valuesOf=list=>list.map(point=>point.values?Number(point.values[metric.key]||0):null);
+  const currentValues=valuesOf(current),previousValues=valuesOf(previous).slice(0,count);
+  const max=niceTrendMax(Math.max(0,...currentValues.filter(value=>value!=null),...previousValues.filter(value=>value!=null)));
+  const y=value=>top+plotH-(value/max)*plotH;
+  const segments=values=>{const parts=[];let part=[];values.forEach((value,i)=>{if(value==null){if(part.length)parts.push(part);part=[];return}part.push({x:x(i),y:y(value)})});if(part.length)parts.push(part);return parts};
+  const lines=(values,kind)=>segments(values).map(points=>points.length===1?`<circle class="trend-dot ${kind}" cx="${points[0].x}" cy="${points[0].y}" r="3.5"/>`:`<path class="trend-line ${kind}" d="${trendSmoothPath(points)}"/>`).join('');
+  const ticks=[0,.25,.5,.75,1].map(ratio=>`<line class="trend-grid" x1="${left}" x2="${w-right}" y1="${y(max*ratio)}" y2="${y(max*ratio)}"/><text class="trend-axis" x="${w-right+10}" y="${y(max*ratio)+4}">${trendAxisValue(metric,max*ratio)}</text>`).join('');
+  const verticals=current.map((point,i)=>`<line class="trend-grid" x1="${x(i)}" x2="${x(i)}" y1="${top}" y2="${top+plotH}"/>`).join('');
+  const labelStep=Math.max(1,Math.ceil(count/(grouping==='week'?5:8)));
+  const labels=current.map((point,i)=>i%labelStep===0||i===count-1?`<text class="trend-axis" x="${x(i)}" y="${h-10}" text-anchor="${count>1&&i===0?'start':count>1&&i===count-1?'end':'middle'}">${trendBucketLabel(point,grouping)}</text>`:'').join('');
+  chart.innerHTML=`<svg viewBox="0 0 ${w} ${h}" role="img" aria-label="${escapeHtml(metric.label)}">${verticals}${ticks}<text class="trend-axis" x="${w-right+10}" y="${top-10}">${metric.unit}</text>${labels}${lines(previousValues,'previous')}${lines(currentValues,'current')}`+
+    `<g class="trend-hover hidden"><line class="hover-line" y1="${top}" y2="${top+plotH}"/><circle class="trend-hover-point previous" r="4.5"/><circle class="trend-hover-point current" r="5"/></g><rect x="${left}" y="${top}" width="${plotW}" height="${plotH}" fill="transparent"/></svg><div class="chart-tooltip hidden"></div>`;
+  const svg=chart.querySelector('svg'),tip=chart.querySelector('.chart-tooltip'),hover=svg.querySelector('.trend-hover');
+  const partial=bucket=>bucket?.values&&bucket.rows.length<bucket.total?` (есть ${bucket.rows.length} из ${bucket.total} дн.)`:'';
+  svg.onpointermove=event=>{
+    const rect=svg.getBoundingClientRect(),vx=(event.clientX-rect.left)/rect.width*w;
+    let index=0,best=Infinity;current.forEach((point,i)=>{const distance=Math.abs(x(i)-vx);if(distance<best){best=distance;index=i}});
+    const cv=currentValues[index],pv=previousValues[index];
+    hover.classList.remove('hidden');
+    const line=hover.querySelector('line');line.setAttribute('x1',x(index));line.setAttribute('x2',x(index));
+    [['current',cv],['previous',funnelTrend.compare?pv:null]].forEach(([kind,value])=>{const dot=hover.querySelector(`.trend-hover-point.${kind}`);dot.style.display=value==null?'none':'';if(value!=null){dot.setAttribute('cx',x(index));dot.setAttribute('cy',y(value))}});
+    tip.innerHTML=`<strong>${escapeHtml(metric.label)}</strong><span style="--dot:var(--purple)"><i></i>${trendBucketLabel(current[index],grouping)}${partial(current[index])}<b>${trendValue(metric,cv)}</b></span>`+
+      (funnelTrend.compare&&previous[index]?`<span style="--dot:#a78bfa"><i></i>${trendBucketLabel(previous[index],grouping)}${partial(previous[index])}<b>${trendValue(metric,pv)}</b></span>`:'');
+    tip.classList.remove('hidden');
+    const px=x(index)/w*rect.width+svg.offsetLeft-chart.scrollLeft;
+    tip.style.left=`${Math.min(Math.max(px,tip.offsetWidth/2+6),chart.clientWidth-tip.offsetWidth/2-6)}px`;
+  };
+  svg.onpointerleave=()=>{hover.classList.add('hidden');tip.classList.add('hidden')};
+}
+document.addEventListener('change',event=>{
+  if(event.target.id==='funnelCompare'){funnelTrend.compare=event.target.checked;renderFunnelTrend()}
+  if(event.target.id==='funnelGrouping'){funnelTrend.grouping=event.target.value;renderFunnelTrend()}
+});
+// Стикеры товаров для заданий поставки: отмеченные задания или все, если ничего не отмечено.
+async function downloadSupplyOrderStickers(){
+  const orders=state.supplyDetail?.orders||[];
+  const selected=orders.filter(row=>state.supplyOrderSelected.has(String(row.id)));
+  const ids=(selected.length?selected:orders).map(row=>Number(row.id)).filter(Number.isInteger);
+  if(!ids.length)return toast('В поставке нет заданий');
+  try{
+    const data=await api('/api/orders/stickers',{method:'POST',body:JSON.stringify({cabinet:state.cabinet,orders:ids,type:'png'})});
+    offerStickers(selected.length?'Стикеры отмеченных товаров':'Стикеры товаров поставки',(data.stickers||[]).filter(item=>item.file).map(item=>({file:item.file,name:`sticker-${item.orderId}`})),data.type||'png');
+  }catch(e){toast(e.message)}
 }

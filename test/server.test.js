@@ -1,7 +1,7 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { normalizeOrders, normalizeOrderFeed, enrichOrders, extractFunnel, summarizeAdStats, campaignProductDaily, withAdBudgets, normalizeStockPreset, normalizePricePreset, validAdPeriod, historyPeriod, historyChunks, planAdFetch, datesBetween, safeFolderName, normalizeFbsStocks, normalizeFbwStocks, normalizePrices, summarizeStockTotals, normalizeNewOrders, summarizeSupplies, normalizeTrbxes, chunkOrders, stickerType, WB_HOSTS } = require('../server');
+const { normalizeOrders, normalizeOrderFeed, enrichOrders, extractFunnel, summarizeAdStats, campaignProductDaily, withAdBudgets, normalizeStockPreset, normalizePricePreset, validAdPeriod, historyPeriod, historyChunks, planAdFetch, datesBetween, safeFolderName, summarizeFunnelHistory, funnelPeriods, normalizeFbsStocks, normalizeFbwStocks, normalizePrices, summarizeStockTotals, normalizeNewOrders, summarizeSupplies, normalizeTrbxes, chunkOrders, stickerType, WB_HOSTS } = require('../server');
 
 test('объединяет и сортирует FBS и события ленты WB', () => {
   const result = normalizeOrders(
@@ -277,4 +277,29 @@ test('делает из названия кабинета допустимое �
   assert.equal(safeFolderName('  ', 'Кабинет 1'), 'Кабинет 1');
   assert.equal(safeFolderName('CON', 'Кабинет 1'), 'Кабинет 1');
   assert.equal(safeFolderName('123', 'Кабинет 1'), 'Кабинет 123');
+});
+
+test('складывает группы истории воронки в итог по дням', () => {
+  const days = summarizeFunnelHistory([
+    { history: [{ date: '2026-09-08', openCount: 10, cartCount: 2, orderCount: 1, orderSum: 1500 }, { date: '2026-09-07', openCount: 5 }] },
+    { history: [{ date: '2026-09-08', openCount: 4, cartCount: 1, addToWishlistCount: 3 }, { date: 'плохая дата', openCount: 99 }] }
+  ]);
+  assert.deepEqual(days.map(day => day.date), ['2026-09-07', '2026-09-08']);
+  assert.equal(days[1].openCount, 14);
+  assert.equal(days[1].cartCount, 3);
+  assert.equal(days[1].addToWishlistCount, 3);
+  assert.equal(days[1].orderSum, 1500);
+});
+
+test('считает прошлый период воронки той же длины перед текущим', () => {
+  assert.deepEqual(funnelPeriods('2026-09-08', '2026-09-14'), { current: { from: '2026-09-08', to: '2026-09-14' }, previous: { from: '2026-09-01', to: '2026-09-07' } });
+  assert.deepEqual(funnelPeriods('2026-09-01', '2026-09-30').previous, { from: '2026-08-02', to: '2026-08-31' });
+  assert.throws(() => funnelPeriods('2026-09-10', '2026-09-01'), /раньше окончания/);
+});
+
+test('понимает грузоместа с заданиями в поле orders из нового ответа WB', () => {
+  const result = normalizeTrbxes([{ id: 'WB-MP-2', orders: [5758997110, { id: 7 }, 'x'] }, { id: 'WB-MP-1' }]);
+  assert.deepEqual(result.map(item => item.id), ['WB-MP-1', 'WB-MP-2']);
+  assert.deepEqual(result[1].orderIds, [5758997110, 7]);
+  assert.deepEqual(result[0].orderIds, []);
 });

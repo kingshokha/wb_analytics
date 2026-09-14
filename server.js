@@ -11,6 +11,10 @@ loadEnv(path.join(ROOT, '.env'));
 const PORT = Number(process.env.PORT || 4173);
 const DATA_FILE = path.join(ROOT, 'data', 'cabinets.json');
 const ADS_DIR = path.join(ROOT, 'data', 'Ads');
+const FUNNEL_DIR = path.join(ROOT, 'data', 'Funnel');
+const FUNNEL_WINDOW_DAYS = 7;
+const FUNNEL_COUNT_KEYS = ['openCount', 'cartCount', 'orderCount', 'orderSum', 'buyoutCount', 'buyoutSum', 'addToWishlistCount'];
+const FUNNEL_GROUPED_HISTORY_URL = 'https://seller-analytics-api.wildberries.ru/api/analytics/v3/sales-funnel/grouped/history';
 const AD_FRESH_DAYS = 7;
 const BALANCE_HISTORY_FILE = path.join(ROOT, 'data', 'balance-history.json');
 const PUBLIC_DIR = path.join(ROOT, 'public');
@@ -29,6 +33,8 @@ const ALLOWED_METHODS = new Set(['GET', 'POST', 'PUT', 'PATCH', 'DELETE']);
 const MARKETPLACE_API = 'https://marketplace-api.wildberries.ru';
 const STICKER_TYPES = new Set(['png', 'svg', 'zplv', 'zplh']);
 const ORDER_STICKER_CHUNK = 100;
+const SUPPLY_ORDERS_CHUNK = 100;
+const ORDERS_LOOKUP_MAX_PAGES = 30;
 const CARGO_TYPES = { 0: 'Не указан', 1: 'Обычный', 2: 'СГТ', 3: 'КГТ' };
 const STOCK_PRESETS_FILE = path.join(ROOT, 'data', 'stock-presets.json');
 const PRICE_PRESETS_FILE = path.join(ROOT, 'data', 'price-presets.json');
@@ -1037,6 +1043,130 @@ function enrichFunnelProducts(products = [], cards = []) {
   });
 }
 
+// --- История воронки продаж ---
+// WB отдаёт историю воронки только за последние 7 дней, поэтому дни сохраняются
+// в data/Funnel/<кабинет>/<месяц>.json и прошлые периоды берутся оттуда.
+function moscowDate(offsetDays = 0) {
+  const date = new Date(Date.now() + 3 * 3_600_000); date.setUTCDate(date.getUTCDate() + offsetDays);
+  return date.toISOString().slice(0, 10);
+}
+
+function pickFunnelCounts(point = {}) {
+  return Object.fromEntries(FUNNEL_COUNT_KEYS.map(key => [key, Number(point[key] || 0)]));
+}
+
+function funnelDir(cabinetId) {
+  const target = path.join(FUNNEL_DIR, cabinetFolderName(cabinetId));
+  if (fs.existsSync(target)) return target;
+  let entries = [];
+  try { entries = fs.readdirSync(FUNNEL_DIR, { withFileTypes: true }); } catch { return target; }
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue;
+    const dir = path.join(FUNNEL_DIR, entry.name);
+    try {
+      if (String(JSON.parse(fs.readFileSync(path.join(dir, 'cabinet.json'), 'utf8')).id) === String(cabinetId)) { fs.renameSync(dir, target); break; }
+    } catch {}
+  }
+  return target;
+}
+
+function readFunnelMonth(cabinetId, month) {
+  try { return JSON.parse(fs.readFileSync(path.join(funnelDir(cabinetId), `${month}.json`), 'utf8')); } catch { return null; }
+}
+
+function saveFunnelDays(cabinetId, points = []) {
+  if (!points.length) return;
+  const dir = funnelDir(cabinetId); const fetchedAt = new Date().toISOString();
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, 'cabinet.json'), JSON.stringify({ id: String(cabinetId) }, null, 2));
+  const byMonth = new Map();
+  for (const point of points) {
+    if (!byMonth.has(point.date.slice(0, 7))) byMonth.set(point.date.slice(0, 7), []);
+    byMonth.get(point.date.slice(0, 7)).push(point);
+  }
+  for (const [month, monthPoints] of byMonth) {
+    const file = readFunnelMonth(cabinetId, month) || { cabinet: String(cabinetId), month, days: {} };
+    for (const point of monthPoints) file.days[point.date] = { fetchedAt, ...pickFunnelCounts(point) };
+    file.days = Object.fromEntries(Object.entries(file.days).sort(([a], [b]) => a.localeCompare(b)));
+    Object.assign(file, { name: cabinets().find(item => String(item.id) === String(cabinetId))?.name || '', updatedAt: fetchedAt });
+    const target = path.join(dir, `${month}.json`);
+    fs.writeFileSync(`${target}.tmp`, JSON.stringify(file, null, 2));
+    fs.renameSync(`${target}.tmp`, target);
+  }
+}
+
+function loadFunnelDays(cabinetId, from, to) {
+  const days = [];
+  for (const month of [...new Set(datesBetween(from, to).map(date => date.slice(0, 7)))]) {
+    for (const [date, record] of Object.entries(readFunnelMonth(cabinetId, month)?.days || {})) {
+      if (date >= from && date <= to) days.push({ date, ...pickFunnelCounts(record) });
+    }
+  }
+  return days.sort((a, b) => a.date.localeCompare(b.date));
+}
+
+function funnelStoredFrom(cabinetId) {
+  try {
+    const months = fs.readdirSync(funnelDir(cabinetId)).filter(name => /^\d{4}-\d{2}\.json$/.test(name)).sort();
+    return months.length ? Object.keys(readFunnelMonth(cabinetId, months[0].slice(0, 7))?.days || {}).sort()[0] || '' : '';
+  } catch { return ''; }
+}
+
+// Складывает группы ответа WB в итог по дням.
+function summarizeFunnelHistory(groups = []) {
+  const totals = new Map();
+  for (const group of groups) {
+    for (const point of group?.history || []) {
+      const date = String(point.date || '').slice(0, 10);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) continue;
+      const row = totals.get(date) || { date, ...pickFunnelCounts() };
+      for (const key of FUNNEL_COUNT_KEYS) row[key] += Number(point[key] || 0);
+      totals.set(date, row);
+    }
+  }
+  return [...totals.values()].sort((a, b) => a.date.localeCompare(b.date));
+}
+
+async function syncFunnelHistory(id) {
+  const token = tokenFor(id);
+  const start = moscowDate(-(FUNNEL_WINDOW_DAYS - 1)); const end = moscowDate(0);
+  const response = await wbRequest(token, FUNNEL_GROUPED_HISTORY_URL, { method: 'POST',
+    body: { selectedPeriod: { start, end }, brandNames: [], subjectIds: [], tagIds: [], skipDeletedNm: true, aggregationLevel: 'day' } });
+  const days = summarizeFunnelHistory(Array.isArray(response) ? response : response?.data || []);
+  saveFunnelDays(id, days);
+  return { syncedAt: new Date().toISOString(), from: start, to: end, days: days.length };
+}
+
+function funnelPeriods(from, to) {
+  const pattern = /^\d{4}-\d{2}-\d{2}$/;
+  const currentTo = pattern.test(to || '') ? to : moscowDate(0);
+  const currentFrom = pattern.test(from || '') ? from : addDays(currentTo, -6);
+  if (currentFrom > currentTo) throw apiError(400, 'Начало периода должно быть раньше окончания');
+  const length = datesBetween(currentFrom, currentTo).length;
+  if (length > 366) throw apiError(400, 'Для графика воронки выберите период не больше года');
+  return { current: { from: currentFrom, to: currentTo }, previous: { from: addDays(currentFrom, -length), to: addDays(currentFrom, -1) } };
+}
+
+function demoFunnelHistory(periods) {
+  const make = ({ from, to }, shift) => datesBetween(from, to).map((date, index) => {
+    const open = 900 + ((index * 37 + shift) % 11) * 45; const cart = Math.round(open * (0.05 + ((index + shift) % 4) * 0.006));
+    const orders = Math.round(cart * 0.26); const buyouts = Math.round(orders * 0.62);
+    return { date, openCount: open, cartCount: cart, orderCount: orders, orderSum: orders * 1490, buyoutCount: buyouts, buyoutSum: buyouts * 1490, addToWishlistCount: Math.round(open * 0.012) };
+  });
+  return { demo: true, periods, current: make(periods.current, 0), previous: make(periods.previous, 5), storedFrom: periods.previous.from, syncedAt: new Date().toISOString(), warnings: [] };
+}
+
+async function funnelHistory(id, from, to) {
+  const periods = funnelPeriods(from, to);
+  if (id === 'demo' || !cabinets().length) return demoFunnelHistory(periods);
+  const warnings = []; let sync = null;
+  try { sync = await cachedAnalytics(`funnel-history-sync:${id}`, () => syncFunnelHistory(id), 10 * 60_000); }
+  catch (error) { warnings.push(`История воронки: ${error.message}`); }
+  return { demo: false, periods, current: loadFunnelDays(id, periods.current.from, periods.current.to),
+    previous: loadFunnelDays(id, periods.previous.from, periods.previous.to), storedFrom: funnelStoredFrom(id),
+    syncedAt: sync?.syncedAt || '', folder: `data/Funnel/${cabinetFolderName(id)}`, warnings };
+}
+
 async function funnelDetails(id, from, to) {
   if (id === 'demo' || !cabinets().length) return { products: [], history: [], groupedHistory: [] };
   const token = tokenFor(id); const start = /^\d{4}-\d{2}-\d{2}$/.test(from || '') ? from : dateDaysAgo(7); const end = /^\d{4}-\d{2}-\d{2}$/.test(to || '') ? to : dateDaysAgo(0);
@@ -1044,12 +1174,7 @@ async function funnelDetails(id, from, to) {
   const response = await wbRequest(token, 'https://seller-analytics-api.wildberries.ru/api/analytics/v3/sales-funnel/products', { method: 'POST', body });
   const products = enrichFunnelProducts(response?.data?.products || response?.products || [],
     await cachedAnalytics(`product-cards:${id}`, () => loadProductCards(token), 10 * 60_000).catch(() => []));
-  let groupedHistory = [];
-  try {
-    const groupedResponse = await wbRequest(token, 'https://seller-analytics-api.wildberries.ru/api/analytics/v3/sales-funnel/grouped/history', { method: 'POST', body: { selectedPeriod: { start, end }, brandNames: [], subjectIds: [], tagIds: [], skipDeletedNm: true, aggregationLevel: 'day' } });
-    groupedHistory = Array.isArray(groupedResponse) ? groupedResponse : groupedResponse?.data || [];
-  } catch { groupedHistory = []; }
-  return { products, history: groupedHistory, groupedHistory };
+  return { products, history: [], groupedHistory: [] };
 }
 
 async function dashboard(id, from, to) {
@@ -1191,7 +1316,10 @@ async function supplyList(id) {
 }
 
 function normalizeTrbxes(trbxes = []) {
-  return trbxes.map(trbx => ({ id: trbx.id || '', orderIds: (Array.isArray(trbx.orderIds) ? trbx.orderIds : []).map(Number).filter(Number.isInteger) }))
+  return trbxes.map(trbx => {
+    const list = Array.isArray(trbx.orderIds) ? trbx.orderIds : Array.isArray(trbx.orders) ? trbx.orders : [];
+    return { id: trbx.id || '', orderIds: list.map(item => Number(item?.id ?? item)).filter(Number.isInteger) };
+  })
     .sort((a, b) => String(a.id).localeCompare(String(b.id), 'ru', { numeric: true }));
 }
 
@@ -1204,14 +1332,34 @@ async function supplyDetails(id, supplyId) {
   }
   const token = tokenFor(id); const warnings = [];
   const supply = await wbRequest(token, `${MARKETPLACE_API}/api/v3/supplies/${encodeURIComponent(supplyId)}`);
-  const ordersResponse = await wbRequest(token, `${MARKETPLACE_API}/api/v3/supplies/${encodeURIComponent(supplyId)}/orders`)
-    .catch(error => (warnings.push(`Задания поставки: ${error.message}`), { orders: [] }));
+  // Старый метод списка заданий поставки WB удалил: теперь поставка отдаёт только номера заданий,
+  // а сами задания ищутся в списке сборочных заданий за последние 30 дней.
+  const orderIds = await wbRequest(token, `${MARKETPLACE_API}/api/marketplace/v3/supplies/${encodeURIComponent(supplyId)}/order-ids`)
+    .then(response => [...new Set((Array.isArray(response?.orderIds) ? response.orderIds : []).map(Number).filter(Number.isInteger))])
+    .catch(error => (warnings.push(`Задания поставки: ${error.message}`), []));
+  const foundOrders = orderIds.length ? await ordersByIds(token, orderIds).catch(error => (warnings.push(`Данные заданий: ${error.message}`), [])) : [];
   const trbxResponse = await wbRequest(token, `${MARKETPLACE_API}/api/v3/supplies/${encodeURIComponent(supplyId)}/trbx`)
     .catch(error => (warnings.push(`Грузоместа: ${error.message}`), { trbxes: [] }));
   const cards = await cachedAnalytics(`product-cards:${id}`, () => loadProductCards(token), 10 * 60_000).catch(() => []);
-  const orders = normalizeNewOrders(Array.isArray(ordersResponse?.orders) ? ordersResponse.orders : [], cards).rows;
+  const byId = new Map(foundOrders.map(order => [String(order.id), order]));
+  const orders = normalizeNewOrders(orderIds.map(orderId => byId.get(String(orderId)) || { id: orderId, supplyId }), cards).rows
+    .map(row => byId.has(String(row.id)) ? row : { ...row, name: `Задание ${row.id}`, detailsMissing: true });
+  if (orderIds.length > foundOrders.length) warnings.push(`Для ${orderIds.length - foundOrders.length} заданий WB не вернул данные: они старше 30 дней. Стикеры для них скачать можно.`);
   return { demo: false, supply: summarizeSupplies([supply]).rows[0], orders,
     trbxes: normalizeTrbxes(Array.isArray(trbxResponse?.trbxes) ? trbxResponse.trbxes : []), warnings };
+}
+
+async function ordersByIds(token, ids = []) {
+  const wanted = new Set(ids.map(String)); const found = [];
+  for (let next = 0, page = 0; wanted.size && page < ORDERS_LOOKUP_MAX_PAGES; page++) {
+    if (page) await wait(250);
+    const response = await wbRequest(token, `${MARKETPLACE_API}/api/v3/orders?limit=1000&next=${next}`);
+    const batch = Array.isArray(response?.orders) ? response.orders : [];
+    for (const order of batch) if (wanted.delete(String(order.id))) found.push(order);
+    if (batch.length < 1000 || !response?.next) break;
+    next = response.next;
+  }
+  return found;
 }
 
 async function createSupply(body) {
@@ -1244,13 +1392,15 @@ async function assembleOrders(body) {
   if (!supplyId) throw apiError(400, 'Не удалось определить поставку');
   const orders = [...new Set((body.orders || []).map(Number).filter(Number.isInteger))];
   if (!orders.length) throw apiError(400, 'Выберите хотя бы одно сборочное задание');
+  // WB принимает до 100 заданий за один запрос; старый метод по одному заданию удалён.
   const failed = []; let added = 0;
-  for (const [index, orderId] of orders.entries()) {
-    if (index && index % 50 === 0) await wait(400);
+  for (let offset = 0; offset < orders.length; offset += SUPPLY_ORDERS_CHUNK) {
+    if (offset) await wait(250);
+    const chunk = orders.slice(offset, offset + SUPPLY_ORDERS_CHUNK);
     try {
-      await wbRequest(token, `${MARKETPLACE_API}/api/v3/supplies/${encodeURIComponent(supplyId)}/orders/${orderId}`, { method: 'PATCH' });
-      added++;
-    } catch (error) { failed.push({ orderId, message: error.message }); }
+      await wbRequest(token, `${MARKETPLACE_API}/api/marketplace/v3/supplies/${encodeURIComponent(supplyId)}/orders`, { method: 'PATCH', body: { orders: chunk } });
+      added += chunk.length;
+    } catch (error) { chunk.forEach(orderId => failed.push({ orderId, message: error.message })); }
   }
   if (!added) throw apiError(400, `Ни одно задание не добавлено. ${failed[0]?.message || ''}`.trim());
   return { ok: true, supplyId, created, added, failed };
@@ -1358,6 +1508,9 @@ async function handleApi(req, res, url) {
   }
   if (req.method === 'GET' && url.pathname === '/api/advertising') {
     return send(res, 200, await advertising(url.searchParams.get('cabinet') || 'demo', url.searchParams.get('from'), url.searchParams.get('to')));
+  }
+  if (req.method === 'GET' && url.pathname === '/api/funnel/history') {
+    return send(res, 200, await funnelHistory(url.searchParams.get('cabinet') || 'demo', url.searchParams.get('from'), url.searchParams.get('to')));
   }
   if (req.method === 'GET' && url.pathname === '/api/funnel') {
     return send(res, 200, await funnelDetails(url.searchParams.get('cabinet') || 'demo', url.searchParams.get('from'), url.searchParams.get('to')));
@@ -1506,7 +1659,7 @@ const server = http.createServer(async (req, res) => {
 
 if (require.main === module) server.listen(PORT, '127.0.0.1', () => console.log(`WB Analytics: http://127.0.0.1:${PORT}`));
 
-module.exports = { server, cabinets, normalizeOrders, normalizeOrderFeed, enrichOrders, extractFunnel, summarizeAdStats, campaignProductDaily, withAdBudgets, normalizeStockPreset, normalizePricePreset, validAdPeriod, historyPeriod, historyChunks, planAdFetch, datesBetween, safeFolderName, normalizeFbsStocks, normalizeFbwStocks, normalizePrices, summarizeStockTotals, normalizeNewOrders, summarizeSupplies, normalizeTrbxes, chunkOrders, stickerType, WB_HOSTS };
+module.exports = { server, cabinets, normalizeOrders, normalizeOrderFeed, enrichOrders, extractFunnel, summarizeAdStats, campaignProductDaily, withAdBudgets, normalizeStockPreset, normalizePricePreset, validAdPeriod, historyPeriod, historyChunks, planAdFetch, datesBetween, safeFolderName, summarizeFunnelHistory, funnelPeriods, normalizeFbsStocks, normalizeFbwStocks, normalizePrices, summarizeStockTotals, normalizeNewOrders, summarizeSupplies, normalizeTrbxes, chunkOrders, stickerType, WB_HOSTS };
 
 
 
