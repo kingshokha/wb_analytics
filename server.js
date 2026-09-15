@@ -12,9 +12,17 @@ const PORT = Number(process.env.PORT || 4173);
 const DATA_FILE = path.join(ROOT, 'data', 'cabinets.json');
 const ADS_DIR = path.join(ROOT, 'data', 'Ads');
 const FUNNEL_DIR = path.join(ROOT, 'data', 'Funnel');
-const FUNNEL_WINDOW_DAYS = 7;
 const FUNNEL_COUNT_KEYS = ['openCount', 'cartCount', 'orderCount', 'orderSum', 'buyoutCount', 'buyoutSum', 'addToWishlistCount'];
-const FUNNEL_GROUPED_HISTORY_URL = 'https://seller-analytics-api.wildberries.ru/api/analytics/v3/sales-funnel/grouped/history';
+const FUNNEL_PRODUCTS_URL = 'https://seller-analytics-api.wildberries.ru/api/analytics/v3/sales-funnel/products';
+const FUNNEL_BUCKET_SIZE = 3;
+const FUNNEL_BUCKET_INTERVAL = 20_500;
+const FUNNEL_FINAL_AFTER_DAYS = 7;
+const FUNNEL_REFRESH_MINUTES = 60;
+const FUNNEL_MAX_DEPTH_DAYS = 364;
+const FUNNEL_RETRY_FAILED_MS = 10 * 60_000;
+const funnelBuckets = new Map();
+const funnelQueues = new Map();
+const funnelJobs = new Map();
 const AD_FRESH_DAYS = 7;
 const BALANCE_HISTORY_FILE = path.join(ROOT, 'data', 'balance-history.json');
 const PUBLIC_DIR = path.join(ROOT, 'public');
@@ -1099,7 +1107,7 @@ function loadFunnelDays(cabinetId, from, to) {
   const days = [];
   for (const month of [...new Set(datesBetween(from, to).map(date => date.slice(0, 7)))]) {
     for (const [date, record] of Object.entries(readFunnelMonth(cabinetId, month)?.days || {})) {
-      if (date >= from && date <= to) days.push({ date, ...pickFunnelCounts(record) });
+      if (date >= from && date <= to) days.push({ date, fetchedAt: record.fetchedAt || '', ...pickFunnelCounts(record) });
     }
   }
   return days.sort((a, b) => a.date.localeCompare(b.date));
@@ -1112,34 +1120,193 @@ function funnelStoredFrom(cabinetId) {
   } catch { return ''; }
 }
 
-// Складывает группы ответа WB в итог по дням.
-function summarizeFunnelHistory(groups = []) {
-  const totals = new Map();
-  for (const group of groups) {
-    for (const point of group?.history || []) {
-      const date = String(point.date || '').slice(0, 10);
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) continue;
-      const row = totals.get(date) || { date, ...pickFunnelCounts() };
-      for (const key of FUNNEL_COUNT_KEYS) row[key] += Number(point[key] || 0);
-      totals.set(date, row);
-    }
-  }
-  return [...totals.values()].sort((a, b) => a.date.localeCompare(b.date));
+// Итоги недель и месяцев хранятся отдельно от дней, в periods.json папки кабинета.
+function readFunnelRanges(cabinetId) {
+  try { return JSON.parse(fs.readFileSync(path.join(funnelDir(cabinetId), 'periods.json'), 'utf8')).ranges || {}; } catch { return {}; }
 }
 
-async function syncFunnelHistory(id) {
-  const token = tokenFor(id);
-  const start = moscowDate(-(FUNNEL_WINDOW_DAYS - 1)); const end = moscowDate(0);
-  const response = await wbRequest(token, FUNNEL_GROUPED_HISTORY_URL, { method: 'POST',
-    body: { selectedPeriod: { start, end }, brandNames: [], subjectIds: [], tagIds: [], skipDeletedNm: true, aggregationLevel: 'day' } });
-  const days = summarizeFunnelHistory(Array.isArray(response) ? response : response?.data || []);
-  saveFunnelDays(id, days);
-  return { syncedAt: new Date().toISOString(), from: start, to: end, days: days.length };
+function saveFunnelRanges(cabinetId, ranges = []) {
+  if (!ranges.length) return;
+  const dir = funnelDir(cabinetId); const fetchedAt = new Date().toISOString();
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, 'cabinet.json'), JSON.stringify({ id: String(cabinetId) }, null, 2));
+  const stored = readFunnelRanges(cabinetId);
+  for (const range of ranges) stored[`${range.from}_${range.to}`] = { fetchedAt, ...pickFunnelCounts(range) };
+  const target = path.join(dir, 'periods.json');
+  fs.writeFileSync(`${target}.tmp`, JSON.stringify({ cabinet: String(cabinetId), updatedAt: fetchedAt, ranges: stored }, null, 2));
+  fs.renameSync(`${target}.tmp`, target);
+}
+
+// Метод статистики карточек ограничен 3 запросами в минуту со всплеском до 3,
+// поэтому таблица воронки и догрузка графика идут через общую очередь кабинета.
+function funnelProductsRequest(id, token, body) {
+  const task = async () => {
+    let retries = 0;
+    for (;;) {
+      const now = Date.now();
+      const bucket = funnelBuckets.get(id) || { tokens: FUNNEL_BUCKET_SIZE, updatedAt: now };
+      bucket.tokens = Math.min(FUNNEL_BUCKET_SIZE, bucket.tokens + Math.max(0, now - bucket.updatedAt) / FUNNEL_BUCKET_INTERVAL);
+      bucket.updatedAt = now;
+      funnelBuckets.set(id, bucket);
+      if (bucket.tokens < 1) { await wait((1 - bucket.tokens) * FUNNEL_BUCKET_INTERVAL); continue; }
+      bucket.tokens -= 1;
+      try { return await wbRequest(token, FUNNEL_PRODUCTS_URL, { method: 'POST', body }); }
+      catch (error) {
+        if (error.status !== 429 || retries >= 3) throw error;
+        retries++;
+        funnelBuckets.set(id, { tokens: 0, updatedAt: Date.now() });
+        await wait(Math.max(FUNNEL_BUCKET_INTERVAL, (error.retryAfter || 0) * 1000));
+      }
+    }
+  };
+  const run = (funnelQueues.get(id) || Promise.resolve()).then(task);
+  funnelQueues.set(id, run.catch(() => {}));
+  return run;
+}
+
+function addFunnelStatistic(target, statistic = {}) {
+  for (const key of FUNNEL_COUNT_KEYS) {
+    target[key] += Number((key === 'addToWishlistCount' ? statistic?.addToWishlist ?? statistic?.addToWishlistCount : statistic?.[key]) || 0);
+  }
+}
+
+// Один запрос отдаёт два отрезка: выбранный и «прошлый период», который задаётся отдельно.
+async function fetchFunnelRanges(id, token, selected, past = null) {
+  const current = { from: selected.from, to: selected.to, ...pickFunnelCounts() };
+  const previous = past ? { from: past.from, to: past.to, ...pickFunnelCounts() } : null;
+  for (let offset = 0; ; offset += 1000) {
+    const response = await funnelProductsRequest(id, token, { selectedPeriod: { start: selected.from, end: selected.to },
+      ...(past ? { pastPeriod: { start: past.from, end: past.to } } : {}), nmIds: [], brandNames: [], subjectIds: [], tagIds: [],
+      skipDeletedNm: true, orderBy: { field: 'openCard', mode: 'desc' }, limit: 1000, offset });
+    const products = response?.data?.products || response?.products || [];
+    for (const item of products) {
+      addFunnelStatistic(current, item.statistic?.selected);
+      if (previous) addFunnelStatistic(previous, item.statistic?.past);
+    }
+    if (products.length < 1000) break;
+  }
+  return previous ? [current, previous] : [current];
+}
+
+async function fetchFunnelDays(id, token, selected, past = '') {
+  const ranges = await fetchFunnelRanges(id, token, { from: selected, to: selected }, past ? { from: past, to: past } : null);
+  return ranges.map(({ from, to, ...counts }) => ({ date: from, ...counts }));
+}
+
+// Отрезок окончательный, если скачан хотя бы через неделю после своего конца: WB догружает данные несколько дней.
+// Неокончательные отрезки перекачиваются не чаще раза в час.
+function funnelRangeNeedsFetch(to, fetchedAt, now = Date.now()) {
+  const fetched = Date.parse(fetchedAt || '');
+  if (!Number.isFinite(fetched)) return true;
+  if (fetched >= Date.parse(`${addDays(to, FUNNEL_FINAL_AFTER_DAYS)}T00:00:00Z`)) return false;
+  return now - fetched >= FUNNEL_REFRESH_MINUTES * 60_000;
+}
+
+function funnelDaysToFetch(dates = [], fetchedAt = new Map(), now = Date.now(), today = moscowDate(0)) {
+  const earliest = addDays(today, -FUNNEL_MAX_DEPTH_DAYS);
+  return [...new Set(dates)].filter(date => date <= today && date >= earliest && funnelRangeNeedsFetch(date, fetchedAt.get(date), now));
+}
+
+// Пары дней для запросов: сначала самые свежие, более ранний день идёт как прошлый период.
+function pairFunnelDays(dates = []) {
+  const sorted = [...new Set(dates)].sort().reverse(); const pairs = [];
+  for (let index = 0; index < sorted.length; index += 2) pairs.push({ selected: sorted[index], past: sorted[index + 1] || '' });
+  return pairs;
+}
+
+function funnelWeekStart(date) {
+  const value = new Date(`${date}T00:00:00Z`); value.setUTCDate(value.getUTCDate() - (value.getUTCDay() + 6) % 7);
+  return value.toISOString().slice(0, 10);
+}
+
+// Недели (с понедельника) или календарные месяцы внутри периода; прошлый отрезок сдвинут на длину периода.
+function funnelRangeBuckets(period, grouping) {
+  const buckets = []; const index = new Map(); const length = datesBetween(period.from, period.to).length;
+  for (const date of datesBetween(period.from, period.to)) {
+    const key = grouping === 'week' ? funnelWeekStart(date) : date.slice(0, 7);
+    if (!index.has(key)) { const bucket = { key, from: date, to: date }; index.set(key, bucket); buckets.push(bucket); }
+    index.get(key).to = date;
+  }
+  return buckets.map(bucket => ({ ...bucket, previous: { from: addDays(bucket.from, -length), to: addDays(bucket.to, -length) } }));
+}
+
+// Итог отрезка: из сохранённых дней, если все дни есть и достаточно свежие, иначе из сохранённого итога отрезка.
+function funnelRangeValues(range, daysByDate, storedRanges, now = Date.now()) {
+  const dates = datesBetween(range.from, range.to);
+  if (dates.every(date => daysByDate.has(date) && !funnelRangeNeedsFetch(date, daysByDate.get(date).fetchedAt, now))) {
+    const total = pickFunnelCounts();
+    for (const date of dates) for (const key of FUNNEL_COUNT_KEYS) total[key] += Number(daysByDate.get(date)[key] || 0);
+    return { values: total, fresh: true };
+  }
+  const stored = storedRanges[`${range.from}_${range.to}`];
+  if (!stored) return { values: null, fresh: false };
+  return { values: pickFunnelCounts(stored), fresh: !funnelRangeNeedsFetch(range.to, stored.fetchedAt, now) };
+}
+
+function scheduleFunnelSync(id, dates = [], ranges = []) {
+  const job = funnelJobs.get(id) || { pending: new Set(), ranges: new Map(), current: [], currentRange: '', failedAt: new Map(), running: false, lastError: '' };
+  funnelJobs.set(id, job);
+  const now = Date.now();
+  for (const date of dates) {
+    if (job.current.includes(date) || now - (job.failedAt.get(date) || 0) < FUNNEL_RETRY_FAILED_MS) continue;
+    job.pending.add(date);
+  }
+  for (const range of ranges) {
+    const key = `${range.from}_${range.to}`;
+    if (job.currentRange === key || now - (job.failedAt.get(key) || 0) < FUNNEL_RETRY_FAILED_MS) continue;
+    job.ranges.set(key, range);
+  }
+  if (!job.running && (job.pending.size || job.ranges.size)) runFunnelSync(id, job);
+  return job;
+}
+
+async function runFunnelSync(id, job) {
+  job.running = true; job.lastError = '';
+  try {
+    const token = tokenFor(id);
+    while (job.ranges.size || job.pending.size) {
+      if (job.ranges.size) {
+        // Недели и месяцы открытого графика идут первыми: их меньше и пользователь ждёт именно их.
+        const [key, range] = job.ranges.entries().next().value;
+        job.ranges.delete(key); job.currentRange = key;
+        try { saveFunnelRanges(id, await fetchFunnelRanges(id, token, range, range.previous)); }
+        catch (error) {
+          job.lastError = error.message; job.failedAt.set(key, Date.now());
+          if ([401, 403].includes(error.status)) { job.ranges.clear(); job.pending.clear(); }
+        }
+        job.currentRange = '';
+        continue;
+      }
+      const [pair] = pairFunnelDays([...job.pending]);
+      job.current = [pair.selected, pair.past].filter(Boolean);
+      job.current.forEach(date => job.pending.delete(date));
+      try { saveFunnelDays(id, await fetchFunnelDays(id, token, pair.selected, pair.past)); }
+      catch (error) {
+        job.lastError = error.message; job.current.forEach(date => job.failedAt.set(date, Date.now()));
+        if ([401, 403].includes(error.status)) { job.ranges.clear(); job.pending.clear(); }
+      }
+      job.current = [];
+    }
+  } catch (error) { job.lastError = error.message; job.pending.clear(); job.ranges.clear(); }
+  finally { job.running = false; job.current = []; job.currentRange = ''; }
+}
+
+function funnelSyncStatus(id, dates = [], rangeKeys = []) {
+  const job = funnelJobs.get(id); const inRange = new Set(dates); const keys = new Set(rangeKeys);
+  const leftDays = job ? [...job.pending, ...job.current].filter(date => inRange.has(date)).length : 0;
+  const leftRanges = job ? [...job.ranges.keys(), job.currentRange].filter(key => key && keys.has(key)).length : 0;
+  const requests = job ? job.ranges.size + (job.currentRange ? 1 : 0) + Math.ceil((job.pending.size + job.current.length) / 2) : 0;
+  const bucket = funnelBuckets.get(id);
+  const tokens = bucket ? Math.min(FUNNEL_BUCKET_SIZE, bucket.tokens + (Date.now() - bucket.updatedAt) / FUNNEL_BUCKET_INTERVAL) : FUNNEL_BUCKET_SIZE;
+  return { pending: rangeKeys.length ? leftRanges : leftDays, running: Boolean(job?.running), lastError: job?.lastError || '',
+    etaSeconds: Math.ceil(Math.max(0, requests - Math.floor(tokens)) * FUNNEL_BUCKET_INTERVAL / 1000 + requests * 2) };
 }
 
 function funnelPeriods(from, to) {
   const pattern = /^\d{4}-\d{2}-\d{2}$/;
-  const currentTo = pattern.test(to || '') ? to : moscowDate(0);
+  const today = moscowDate(0);
+  const requestedTo = pattern.test(to || '') ? to : today;
+  const currentTo = requestedTo > today ? today : requestedTo;
   const currentFrom = pattern.test(from || '') ? from : addDays(currentTo, -6);
   if (currentFrom > currentTo) throw apiError(400, 'Начало периода должно быть раньше окончания');
   const length = datesBetween(currentFrom, currentTo).length;
@@ -1147,31 +1314,51 @@ function funnelPeriods(from, to) {
   return { current: { from: currentFrom, to: currentTo }, previous: { from: addDays(currentFrom, -length), to: addDays(currentFrom, -1) } };
 }
 
-function demoFunnelHistory(periods) {
+function demoFunnelHistory(periods, grouping = 'day') {
   const make = ({ from, to }, shift) => datesBetween(from, to).map((date, index) => {
     const open = 900 + ((index * 37 + shift) % 11) * 45; const cart = Math.round(open * (0.05 + ((index + shift) % 4) * 0.006));
     const orders = Math.round(cart * 0.26); const buyouts = Math.round(orders * 0.62);
     return { date, openCount: open, cartCount: cart, orderCount: orders, orderSum: orders * 1490, buyoutCount: buyouts, buyoutSum: buyouts * 1490, addToWishlistCount: Math.round(open * 0.012) };
   });
-  return { demo: true, periods, current: make(periods.current, 0), previous: make(periods.previous, 5), storedFrom: periods.previous.from, syncedAt: new Date().toISOString(), warnings: [] };
+  const current = make(periods.current, 0); const previous = make(periods.previous, 5);
+  const byDate = new Map([...current, ...previous].map(day => [day.date, { ...day, fetchedAt: '2100-01-01T00:00:00Z' }]));
+  const buckets = grouping === 'day' ? [] : funnelRangeBuckets(periods.current, grouping).map(bucket => ({ ...bucket,
+    values: funnelRangeValues(bucket, byDate, {}).values, previous: { ...bucket.previous, values: funnelRangeValues(bucket.previous, byDate, {}).values } }));
+  return { demo: true, grouping, periods, current, previous, buckets, storedFrom: periods.previous.from,
+    earliestAvailable: addDays(moscowDate(0), -FUNNEL_MAX_DEPTH_DAYS), sync: { pending: 0, running: false, lastError: '', etaSeconds: 0 }, warnings: [] };
 }
 
-async function funnelHistory(id, from, to) {
+async function funnelHistory(id, from, to, grouping = 'day') {
+  const safeGrouping = ['day', 'week', 'month'].includes(grouping) ? grouping : 'day';
   const periods = funnelPeriods(from, to);
-  if (id === 'demo' || !cabinets().length) return demoFunnelHistory(periods);
-  const warnings = []; let sync = null;
-  try { sync = await cachedAnalytics(`funnel-history-sync:${id}`, () => syncFunnelHistory(id), 10 * 60_000); }
-  catch (error) { warnings.push(`История воронки: ${error.message}`); }
-  return { demo: false, periods, current: loadFunnelDays(id, periods.current.from, periods.current.to),
-    previous: loadFunnelDays(id, periods.previous.from, periods.previous.to), storedFrom: funnelStoredFrom(id),
-    syncedAt: sync?.syncedAt || '', folder: `data/Funnel/${cabinetFolderName(id)}`, warnings };
+  if (id === 'demo' || !cabinets().length) return demoFunnelHistory(periods, safeGrouping);
+  tokenFor(id);
+  const dates = datesBetween(periods.previous.from, periods.current.to);
+  const stored = loadFunnelDays(id, periods.previous.from, periods.current.to);
+  const inPeriod = ({ from: start, to: end }) => stored.filter(day => day.date >= start && day.date <= end);
+  const base = { demo: false, grouping: safeGrouping, periods, current: inPeriod(periods.current), previous: inPeriod(periods.previous),
+    storedFrom: funnelStoredFrom(id), earliestAvailable: addDays(moscowDate(0), -FUNNEL_MAX_DEPTH_DAYS),
+    folder: `data/Funnel/${cabinetFolderName(id)}`, warnings: [] };
+  if (safeGrouping === 'day') {
+    scheduleFunnelSync(id, funnelDaysToFetch(dates, new Map(stored.map(day => [day.date, day.fetchedAt]))));
+    return { ...base, buckets: [], sync: funnelSyncStatus(id, dates) };
+  }
+  const byDate = new Map(stored.map(day => [day.date, day])); const storedRanges = readFunnelRanges(id);
+  const earliest = base.earliestAvailable; const toFetch = [];
+  const buckets = funnelRangeBuckets(periods.current, safeGrouping).map(bucket => {
+    const current = funnelRangeValues(bucket, byDate, storedRanges); const previous = funnelRangeValues(bucket.previous, byDate, storedRanges);
+    if ((!current.fresh || !previous.fresh) && bucket.from >= earliest) toFetch.push({ ...bucket, previous: bucket.previous.from >= earliest ? bucket.previous : null });
+    return { ...bucket, values: current.values, previous: { ...bucket.previous, values: previous.values } };
+  });
+  scheduleFunnelSync(id, [], toFetch);
+  return { ...base, buckets, sync: funnelSyncStatus(id, [], buckets.map(bucket => `${bucket.from}_${bucket.to}`)) };
 }
 
 async function funnelDetails(id, from, to) {
   if (id === 'demo' || !cabinets().length) return { products: [], history: [], groupedHistory: [] };
   const token = tokenFor(id); const start = /^\d{4}-\d{2}-\d{2}$/.test(from || '') ? from : dateDaysAgo(7); const end = /^\d{4}-\d{2}-\d{2}$/.test(to || '') ? to : dateDaysAgo(0);
   const body = { selectedPeriod: { start, end }, nmIds: [], skipDeletedNm: true, orderBy: { field: 'openCard', mode: 'desc' }, limit: 1000, offset: 0 };
-  const response = await wbRequest(token, 'https://seller-analytics-api.wildberries.ru/api/analytics/v3/sales-funnel/products', { method: 'POST', body });
+  const response = await funnelProductsRequest(id, token, body);
   const products = enrichFunnelProducts(response?.data?.products || response?.products || [],
     await cachedAnalytics(`product-cards:${id}`, () => loadProductCards(token), 10 * 60_000).catch(() => []));
   return { products, history: [], groupedHistory: [] };
@@ -1510,7 +1697,7 @@ async function handleApi(req, res, url) {
     return send(res, 200, await advertising(url.searchParams.get('cabinet') || 'demo', url.searchParams.get('from'), url.searchParams.get('to')));
   }
   if (req.method === 'GET' && url.pathname === '/api/funnel/history') {
-    return send(res, 200, await funnelHistory(url.searchParams.get('cabinet') || 'demo', url.searchParams.get('from'), url.searchParams.get('to')));
+    return send(res, 200, await funnelHistory(url.searchParams.get('cabinet') || 'demo', url.searchParams.get('from'), url.searchParams.get('to'), url.searchParams.get('grouping')));
   }
   if (req.method === 'GET' && url.pathname === '/api/funnel') {
     return send(res, 200, await funnelDetails(url.searchParams.get('cabinet') || 'demo', url.searchParams.get('from'), url.searchParams.get('to')));
@@ -1659,7 +1846,7 @@ const server = http.createServer(async (req, res) => {
 
 if (require.main === module) server.listen(PORT, '127.0.0.1', () => console.log(`WB Analytics: http://127.0.0.1:${PORT}`));
 
-module.exports = { server, cabinets, normalizeOrders, normalizeOrderFeed, enrichOrders, extractFunnel, summarizeAdStats, campaignProductDaily, withAdBudgets, normalizeStockPreset, normalizePricePreset, validAdPeriod, historyPeriod, historyChunks, planAdFetch, datesBetween, safeFolderName, summarizeFunnelHistory, funnelPeriods, normalizeFbsStocks, normalizeFbwStocks, normalizePrices, summarizeStockTotals, normalizeNewOrders, summarizeSupplies, normalizeTrbxes, chunkOrders, stickerType, WB_HOSTS };
+module.exports = { server, cabinets, normalizeOrders, normalizeOrderFeed, enrichOrders, extractFunnel, summarizeAdStats, campaignProductDaily, withAdBudgets, normalizeStockPreset, normalizePricePreset, validAdPeriod, historyPeriod, historyChunks, planAdFetch, datesBetween, safeFolderName, funnelDaysToFetch, pairFunnelDays, funnelPeriods, funnelRangeBuckets, normalizeFbsStocks, normalizeFbwStocks, normalizePrices, summarizeStockTotals, normalizeNewOrders, summarizeSupplies, normalizeTrbxes, chunkOrders, stickerType, WB_HOSTS };
 
 
 

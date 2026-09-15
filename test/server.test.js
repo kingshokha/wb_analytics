@@ -1,7 +1,7 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { normalizeOrders, normalizeOrderFeed, enrichOrders, extractFunnel, summarizeAdStats, campaignProductDaily, withAdBudgets, normalizeStockPreset, normalizePricePreset, validAdPeriod, historyPeriod, historyChunks, planAdFetch, datesBetween, safeFolderName, summarizeFunnelHistory, funnelPeriods, normalizeFbsStocks, normalizeFbwStocks, normalizePrices, summarizeStockTotals, normalizeNewOrders, summarizeSupplies, normalizeTrbxes, chunkOrders, stickerType, WB_HOSTS } = require('../server');
+const { normalizeOrders, normalizeOrderFeed, enrichOrders, extractFunnel, summarizeAdStats, campaignProductDaily, withAdBudgets, normalizeStockPreset, normalizePricePreset, validAdPeriod, historyPeriod, historyChunks, planAdFetch, datesBetween, safeFolderName, funnelDaysToFetch, pairFunnelDays, funnelPeriods, funnelRangeBuckets, normalizeFbsStocks, normalizeFbwStocks, normalizePrices, summarizeStockTotals, normalizeNewOrders, summarizeSupplies, normalizeTrbxes, chunkOrders, stickerType, WB_HOSTS } = require('../server');
 
 test('объединяет и сортирует FBS и события ленты WB', () => {
   const result = normalizeOrders(
@@ -279,21 +279,27 @@ test('делает из названия кабинета допустимое �
   assert.equal(safeFolderName('123', 'Кабинет 1'), 'Кабинет 123');
 });
 
-test('складывает группы истории воронки в итог по дням', () => {
-  const days = summarizeFunnelHistory([
-    { history: [{ date: '2026-09-08', openCount: 10, cartCount: 2, orderCount: 1, orderSum: 1500 }, { date: '2026-09-07', openCount: 5 }] },
-    { history: [{ date: '2026-09-08', openCount: 4, cartCount: 1, addToWishlistCount: 3 }, { date: 'плохая дата', openCount: 99 }] }
+test('перекачивает дни воронки, пока они не стали окончательными', () => {
+  const now = Date.parse('2026-09-14T12:00:00Z');
+  const fetched = new Map([
+    ['2026-09-01', '2026-09-09T10:00:00Z'],
+    ['2026-09-05', '2026-09-10T10:00:00Z'],
+    ['2026-09-13', '2026-09-14T11:30:00Z'],
+    ['2026-09-12', '2026-09-14T09:00:00Z']
   ]);
-  assert.deepEqual(days.map(day => day.date), ['2026-09-07', '2026-09-08']);
-  assert.equal(days[1].openCount, 14);
-  assert.equal(days[1].cartCount, 3);
-  assert.equal(days[1].addToWishlistCount, 3);
-  assert.equal(days[1].orderSum, 1500);
+  const days = funnelDaysToFetch(['2026-09-01', '2026-09-05', '2026-09-12', '2026-09-13', '2026-09-14', '2026-09-15', '2025-01-01'], fetched, now, '2026-09-14');
+  assert.deepEqual(days, ['2026-09-05', '2026-09-12', '2026-09-14']);
+});
+
+test('собирает дни воронки в пары для запроса, свежие первыми', () => {
+  assert.deepEqual(pairFunnelDays(['2026-09-01', '2026-09-03', '2026-09-02']), [{ selected: '2026-09-03', past: '2026-09-02' }, { selected: '2026-09-01', past: '' }]);
+  assert.deepEqual(pairFunnelDays([]), []);
 });
 
 test('считает прошлый период воронки той же длины перед текущим', () => {
   assert.deepEqual(funnelPeriods('2026-09-08', '2026-09-14'), { current: { from: '2026-09-08', to: '2026-09-14' }, previous: { from: '2026-09-01', to: '2026-09-07' } });
-  assert.deepEqual(funnelPeriods('2026-09-01', '2026-09-30').previous, { from: '2026-08-02', to: '2026-08-31' });
+  assert.deepEqual(funnelPeriods('2026-08-01', '2026-08-31').previous, { from: '2026-07-01', to: '2026-07-31' });
+  assert.notEqual(funnelPeriods('2026-09-01', '2099-01-01').current.to, '2099-01-01');
   assert.throws(() => funnelPeriods('2026-09-10', '2026-09-01'), /раньше окончания/);
 });
 
@@ -302,4 +308,15 @@ test('понимает грузоместа с заданиями в поле or
   assert.deepEqual(result.map(item => item.id), ['WB-MP-1', 'WB-MP-2']);
   assert.deepEqual(result[1].orderIds, [5758997110, 7]);
   assert.deepEqual(result[0].orderIds, []);
+});
+
+test('делит период воронки на недели и месяцы с таким же прошлым отрезком', () => {
+  const weeks = funnelRangeBuckets({ from: '2026-08-01', to: '2026-09-14' }, 'week');
+  assert.equal(weeks.length, 8);
+  assert.deepEqual([weeks[0].from, weeks[0].to], ['2026-08-01', '2026-08-02']);
+  assert.deepEqual([weeks[1].from, weeks[1].to], ['2026-08-03', '2026-08-09']);
+  assert.deepEqual([weeks[7].from, weeks[7].to], ['2026-09-14', '2026-09-14']);
+  assert.deepEqual(weeks[1].previous, { from: '2026-06-19', to: '2026-06-25' });
+  const months = funnelRangeBuckets({ from: '2026-08-01', to: '2026-09-14' }, 'month');
+  assert.deepEqual(months.map(bucket => [bucket.from, bucket.to]), [['2026-08-01', '2026-08-31'], ['2026-09-01', '2026-09-14']]);
 });

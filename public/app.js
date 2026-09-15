@@ -455,18 +455,23 @@ const FUNNEL_TREND_METRICS=[
   {key:'buyoutCount',label:'Выкупили товаров',unit:'шт'},
   {key:'buyoutSum',label:'Выкупили на сумму',unit:'₽'}];
 const TREND_MONTHS=['янв','фев','мар','апр','май','июн','июл','авг','сен','окт','ноя','дек'];
-const funnelTrend={data:null,metric:'orderCount',compare:true,grouping:'day',loading:false,error:''};
+const funnelTrend={data:null,metric:'orderCount',compare:true,grouping:'day',loading:false,error:'',pollTimer:0};
 const trendShift=(date,days)=>{const d=new Date(`${date}T00:00:00Z`);d.setUTCDate(d.getUTCDate()+days);return d.toISOString().slice(0,10)};
 const trendWeekStart=date=>{const d=new Date(`${date}T00:00:00Z`);d.setUTCDate(d.getUTCDate()-(d.getUTCDay()+6)%7);return d.toISOString().slice(0,10)};
 const trendShortDate=date=>`${date.slice(8,10)}.${date.slice(5,7)}`;
 const trendFullDate=date=>`${date.slice(8,10)}.${date.slice(5,7)}.${date.slice(2,4)}`;
-async function loadFunnelTrend(){
+// Пока сервер догружает дни из WB, график переспрашивает его каждые 5 секунд и дорисовывается.
+async function loadFunnelTrend(silent=false){
   const cabinet=state.cabinet,from=$('#dateFrom').value,to=$('#dateTo').value;
-  funnelTrend.loading=true;funnelTrend.error='';renderFunnelTrend();
+  clearTimeout(funnelTrend.pollTimer);
+  if(!silent){funnelTrend.loading=true;funnelTrend.error='';renderFunnelTrend()}
   try{
-    const data=await api(`/api/funnel/history?${new URLSearchParams({cabinet,from,to})}`);
+    const grouping=funnelTrend.grouping;
+    const data=await api(`/api/funnel/history?${new URLSearchParams({cabinet,from,to,grouping})}`);
+    if(grouping!==funnelTrend.grouping)return;
     if(cabinet!==state.cabinet)return;
-    funnelTrend.data=data;
+    funnelTrend.data=data;funnelTrend.error='';
+    if(data.sync?.pending)funnelTrend.pollTimer=setTimeout(()=>{if(state.activePage==='funnel'&&state.cabinet===cabinet&&funnelTrend.grouping===grouping&&$('#dateFrom').value===from&&$('#dateTo').value===to)loadFunnelTrend(true)},5000);
     if(data.warnings?.length)$('#alertArea').insertAdjacentHTML('beforeend',data.warnings.map(text=>`<div class="alert">${escapeHtml(text)}</div>`).join(''));
   }catch(e){funnelTrend.error=e.message}
   finally{funnelTrend.loading=false;renderFunnelTrend()}
@@ -487,10 +492,20 @@ function funnelTrendPoints(days=[],period,grouping){
     return {...bucket,values};
   });
 }
+function funnelBucketPoint(range){
+  const total=datesBetweenTrend(range.from,range.to);
+  if(!range.values)return {key:range.key||range.from,from:range.from,to:range.to,total,rows:[],values:null};
+  const values={...range.values};
+  values.cartConversion=values.openCount?values.cartCount/values.openCount*100:0;
+  values.orderConversion=values.cartCount?values.orderCount/values.cartCount*100:0;
+  return {key:range.key||range.from,from:range.from,to:range.to,total,rows:Array(total).fill(null),values};
+}
+function datesBetweenTrend(from,to){let count=0;for(let date=from;date<=to;date=trendShift(date,1))count++;return count}
 function trendBucketLabel(bucket,grouping){
   if(!bucket)return '';
+  if(bucket.shifted)return bucket.from===bucket.to?trendShortDate(bucket.from):`${trendShortDate(bucket.from)}–${trendShortDate(bucket.to)}`;
   if(grouping==='month'){const [year,month]=bucket.key.split('-');return `${TREND_MONTHS[Number(month)-1]} ${year}`}
-  if(grouping==='week')return `${trendShortDate(bucket.from)}–${trendShortDate(bucket.to)}`;
+  if(grouping==='week')return bucket.from===bucket.to?trendShortDate(bucket.from):`${trendShortDate(bucket.from)}–${trendShortDate(bucket.to)}`;
   return trendShortDate(bucket.from);
 }
 function trendValue(metric,value){
@@ -527,13 +542,16 @@ function renderFunnelTrend(){
   const currentPeriod=data.periods.current,previousPeriod=data.periods.previous,grouping=funnelTrend.grouping;
   legend.innerHTML=`<span><i class="legend-solid"></i>${trendFullDate(currentPeriod.from)} - ${trendFullDate(currentPeriod.to)}</span>`+
     (funnelTrend.compare?`<span><i class="legend-dashed"></i>${trendFullDate(previousPeriod.from)} - ${trendFullDate(previousPeriod.to)}</span>`:'');
-  const current=funnelTrendPoints(data.current,currentPeriod,grouping);
-  const previous=funnelTrend.compare?funnelTrendPoints(data.previous,previousPeriod,grouping):[];
+  const ranged=grouping!=='day'&&data.grouping===grouping;
+  const current=ranged?(data.buckets||[]).map(funnelBucketPoint):funnelTrendPoints(data.current,currentPeriod,grouping);
+  const previous=!funnelTrend.compare?[]:ranged?(data.buckets||[]).map(bucket=>({...funnelBucketPoint(bucket.previous),shifted:true})):funnelTrendPoints(data.previous,previousPeriod,grouping);
   const notes=[];
   if(!data.demo){
     const earliest=funnelTrend.compare?previousPeriod.from:currentPeriod.from;
-    if(!data.storedFrom)notes.push('История воронки ещё не сохранена. WB отдаёт её только за последние 7 дней, более ранние дни будут копиться с сегодняшнего дня.');
-    else if(earliest<data.storedFrom)notes.push(`История воронки сохраняется с ${trendFullDate(data.storedFrom)}. WB отдаёт её только за последние 7 дней, поэтому более ранние дни на графике пустые.`);
+    const eta=seconds=>seconds>=60?`${Math.ceil(seconds/60)} мин`:`${Math.max(1,seconds)} сек`;
+    if(data.sync?.pending)notes.push(`Загружаем из WB: осталось ${fmtNum(data.sync.pending)} ${grouping==='week'?'нед.':grouping==='month'?'мес.':'дн.'}, примерно ${eta(data.sync.etaSeconds)}. WB разрешает 3 запроса в минуту, график дорисуется сам.`);
+    if(data.sync?.lastError)notes.push(`Часть дней не загрузилась: ${data.sync.lastError}. Повторим позже.`);
+    if(data.earliestAvailable&&earliest<data.earliestAvailable)notes.push(`WB отдаёт воронку не раньше ${trendFullDate(data.earliestAvailable)}.`);
   }
   if(funnelTrend.error)notes.push(`Не удалось обновить: ${funnelTrend.error}`);
   if(funnelTrend.loading)notes.push('Обновляем…');
@@ -565,14 +583,18 @@ function renderFunnelTrend(){
     tip.innerHTML=`<strong>${escapeHtml(metric.label)}</strong><span style="--dot:var(--purple)"><i></i>${trendBucketLabel(current[index],grouping)}${partial(current[index])}<b>${trendValue(metric,cv)}</b></span>`+
       (funnelTrend.compare&&previous[index]?`<span style="--dot:#a78bfa"><i></i>${trendBucketLabel(previous[index],grouping)}${partial(previous[index])}<b>${trendValue(metric,pv)}</b></span>`:'');
     tip.classList.remove('hidden');
-    const px=x(index)/w*rect.width+svg.offsetLeft-chart.scrollLeft;
-    tip.style.left=`${Math.min(Math.max(px,tip.offsetWidth/2+6),chart.clientWidth-tip.offsetWidth/2-6)}px`;
+    // Подсказка лежит внутри прокручиваемого блока графика, поэтому координата считается от его левого края с учётом прокрутки.
+    const chartRect=chart.getBoundingClientRect(),px=rect.left-chartRect.left+chart.scrollLeft+x(index)/w*rect.width,half=tip.offsetWidth/2;
+    tip.style.left=`${Math.min(Math.max(px,chart.scrollLeft+half+6),chart.scrollLeft+chart.clientWidth-half-6)}px`;
+    const highest=Math.min(...[cv,funnelTrend.compare?pv:null].filter(value=>value!=null).map(value=>y(value)),top+plotH);
+    const pointTop=rect.top-chartRect.top+highest/h*rect.height;
+    tip.style.top=`${pointTop<tip.offsetHeight+34?Math.min(pointTop+16,chart.clientHeight-tip.offsetHeight-4):24}px`;
   };
   svg.onpointerleave=()=>{hover.classList.add('hidden');tip.classList.add('hidden')};
 }
 document.addEventListener('change',event=>{
   if(event.target.id==='funnelCompare'){funnelTrend.compare=event.target.checked;renderFunnelTrend()}
-  if(event.target.id==='funnelGrouping'){funnelTrend.grouping=event.target.value;renderFunnelTrend()}
+  if(event.target.id==='funnelGrouping'){funnelTrend.grouping=event.target.value;funnelTrend.data=null;loadFunnelTrend()}
 });
 // Стикеры товаров для заданий поставки: отмеченные задания или все, если ничего не отмечено.
 async function downloadSupplyOrderStickers(){
