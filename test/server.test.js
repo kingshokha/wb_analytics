@@ -1,7 +1,7 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { normalizeOrders, normalizeOrderFeed, enrichOrders, extractFunnel, summarizeAdStats, campaignProductDaily, withAdBudgets, normalizeStockPreset, normalizePricePreset, validAdPeriod, historyPeriod, historyChunks, planAdFetch, datesBetween, safeFolderName, funnelDaysToFetch, pairFunnelDays, funnelPeriods, funnelRangeBuckets, normalizeFbsStocks, normalizeFbwStocks, normalizePrices, summarizeStockTotals, normalizeNewOrders, summarizeSupplies, normalizeTrbxes, chunkOrders, stickerType, WB_HOSTS } = require('../server');
+const { normalizeOrders, normalizeOrderFeed, enrichOrders, extractFunnel, summarizeAdStats, campaignProductDaily, withAdBudgets, normalizeStockPreset, normalizePricePreset, validAdPeriod, historyPeriod, historyChunks, planAdFetch, datesBetween, safeFolderName, funnelDaysToFetch, pairFunnelDays, funnelPeriods, funnelRangeBuckets, funnelRecordCounts, funnelRangeValues, normalizeFbsStocks, normalizeFbwStocks, normalizePrices, summarizeStockTotals, normalizeNewOrders, summarizeSupplies, normalizeTrbxes, chunkOrders, stickerType, WB_HOSTS } = require('../server');
 
 test('объединяет и сортирует FBS и события ленты WB', () => {
   const result = normalizeOrders(
@@ -281,14 +281,16 @@ test('делает из названия кабинета допустимое �
 
 test('перекачивает дни воронки, пока они не стали окончательными', () => {
   const now = Date.parse('2026-09-14T12:00:00Z');
+  const record = fetchedAt => ({ fetchedAt, products: {} });
   const fetched = new Map([
-    ['2026-09-01', '2026-09-09T10:00:00Z'],
-    ['2026-09-05', '2026-09-10T10:00:00Z'],
-    ['2026-09-13', '2026-09-14T11:30:00Z'],
-    ['2026-09-12', '2026-09-14T09:00:00Z']
+    ['2026-09-01', record('2026-09-09T10:00:00Z')],
+    ['2026-09-02', { fetchedAt: '2026-09-12T10:00:00Z' }],
+    ['2026-09-05', record('2026-09-10T10:00:00Z')],
+    ['2026-09-13', record('2026-09-14T11:30:00Z')],
+    ['2026-09-12', record('2026-09-14T09:00:00Z')]
   ]);
-  const days = funnelDaysToFetch(['2026-09-01', '2026-09-05', '2026-09-12', '2026-09-13', '2026-09-14', '2026-09-15', '2025-01-01'], fetched, now, '2026-09-14');
-  assert.deepEqual(days, ['2026-09-05', '2026-09-12', '2026-09-14']);
+  const days = funnelDaysToFetch(['2026-09-01', '2026-09-02', '2026-09-05', '2026-09-12', '2026-09-13', '2026-09-14', '2026-09-15', '2025-01-01'], fetched, now, '2026-09-14');
+  assert.deepEqual(days, ['2026-09-02', '2026-09-05', '2026-09-12', '2026-09-14']);
 });
 
 test('собирает дни воронки в пары для запроса, свежие первыми', () => {
@@ -319,4 +321,24 @@ test('делит период воронки на недели и месяцы �
   assert.deepEqual(weeks[1].previous, { from: '2026-06-19', to: '2026-06-25' });
   const months = funnelRangeBuckets({ from: '2026-08-01', to: '2026-09-14' }, 'month');
   assert.deepEqual(months.map(bucket => [bucket.from, bucket.to]), [['2026-08-01', '2026-08-31'], ['2026-09-01', '2026-09-14']]);
+});
+
+test('считает воронку только по выбранным артикулам', () => {
+  const day = { openCount: 30, cartCount: 6, orderCount: 2, orderSum: 3000, buyoutCount: 1, buyoutSum: 1500, addToWishlistCount: 4,
+    products: { '100': [20, 4, 2, 3000, 1, 1500, 3], '200': [10, 2, 0, 0, 0, 0, 1] } };
+  assert.equal(funnelRecordCounts(day).openCount, 30);
+  assert.deepEqual(funnelRecordCounts(day, ['200']), { openCount: 10, cartCount: 2, orderCount: 0, orderSum: 0, buyoutCount: 0, buyoutSum: 0, addToWishlistCount: 1 });
+  assert.equal(funnelRecordCounts(day, ['300']).openCount, 0);
+  assert.equal(funnelRecordCounts({ openCount: 5 }, ['100']), null);
+});
+
+test('складывает отрезок воронки из дней с учётом фильтра артикулов', () => {
+  const days = new Map([
+    ['2026-09-01', { fetchedAt: '2026-09-10T00:00:00Z', openCount: 5, products: { '100': [3, 1, 0, 0, 0, 0, 0], '200': [2, 0, 0, 0, 0, 0, 0] } }],
+    ['2026-09-02', { fetchedAt: '2026-09-10T00:00:00Z', openCount: 4, products: { '100': [4, 0, 1, 900, 0, 0, 0] } }]
+  ]);
+  const result = funnelRangeValues({ from: '2026-09-01', to: '2026-09-02' }, days, {}, ['100'], Date.parse('2026-09-15T00:00:00Z'));
+  assert.equal(result.fresh, true);
+  assert.equal(result.values.openCount, 7);
+  assert.equal(result.values.orderSum, 900);
 });

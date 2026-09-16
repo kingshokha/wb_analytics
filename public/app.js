@@ -15,7 +15,7 @@ function renderCabinets(){const selected=state.cabinets.find(c=>c.id===state.cab
 
 async function loadDashboard(){const btn=$('#refresh');btn.classList.add('loading');$('#syncText').textContent='Получаем данные…';try{const q=new URLSearchParams({cabinet:state.cabinet,from:$('#dateFrom').value,to:$('#dateTo').value});const data=await api('/api/dashboard?'+q);state.orders=data.orders||[];state.funnel=data.funnel||{};state.balance=data.balance||null;state.demo=data.demo;renderAll();$('#syncText').textContent=`Обновлено ${new Date().toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit'})}`;$('#cabinetMode').textContent=data.demo?'Демо-данные':'Единый токен активен';state.dashboardAlerts=[data.demo?'Сейчас показаны демо-данные. Добавьте <b>WB_TOKEN_1</b> в файл .env и перезапустите сервер.':'',...(data.warnings||[])].filter(Boolean);state.dashboardDemo=Boolean(data.demo);renderDashboardAlerts()}catch(e){$('#syncText').textContent='Ошибка синхронизации';toast(e.message)}finally{btn.classList.remove('loading')}}
 function renderAll(){renderBalance();renderMetrics();renderOrders();renderFunnel();$('#newBadge').textContent=state.orders.filter(o=>o.source==='FBS'&&o.status==='new').length}
-async function loadFunnelDetails(){loadFunnelTrend();try{const q=new URLSearchParams({cabinet:state.cabinet,from:$('#dateFrom').value,to:$('#dateTo').value}),data=await api('/api/funnel?'+q);state.funnelProducts=data.products||[];state.funnelPage=1;if(state.funnelArticlesCabinet!==state.cabinet){state.funnelFilters.articles.clear();state.funnelArticlesCabinet=state.cabinet}state.funnelHistory=data.history||[];state.funnelGroupedHistory=data.groupedHistory||[];const total=state.funnelProducts.reduce((sum,item)=>{const h=item.statistic?.selected||item.history?.[0]||item;return {views:sum.views+Number(h.openCount||0),cart:sum.cart+Number(h.cartCount||0),orders:sum.orders+Number(h.orderCount||0),sales:sum.sales+Number(h.buyoutCount||0),revenue:sum.revenue+Number(h.buyoutSum||0)}},{views:0,cart:0,orders:0,sales:0,revenue:0});if(state.funnelProducts.length)state.funnel=total;renderFunnel();renderFunnelDetails();renderFunnelArticleOptions()}catch(e){toast(e.message)}}
+async function loadFunnelDetails(){if(!funnelFiltersActive())loadFunnelTrend();try{const q=new URLSearchParams({cabinet:state.cabinet,from:$('#dateFrom').value,to:$('#dateTo').value}),data=await api('/api/funnel?'+q);state.funnelProducts=data.products||[];state.funnelPage=1;if(state.funnelArticlesCabinet!==state.cabinet){state.funnelFilters.articles.clear();state.funnelArticlesCabinet=state.cabinet}state.funnelHistory=data.history||[];state.funnelGroupedHistory=data.groupedHistory||[];const total=state.funnelProducts.reduce((sum,item)=>{const h=item.statistic?.selected||item.history?.[0]||item;return {views:sum.views+Number(h.openCount||0),cart:sum.cart+Number(h.cartCount||0),orders:sum.orders+Number(h.orderCount||0),sales:sum.sales+Number(h.buyoutCount||0),revenue:sum.revenue+Number(h.buyoutSum||0)}},{views:0,cart:0,orders:0,sales:0,revenue:0});if(state.funnelProducts.length)state.funnel=total;renderFunnel();renderFunnelDetails();renderFunnelArticleOptions();if(funnelFiltersActive())loadFunnelTrend()}catch(e){toast(e.message)}}
 function balanceMoney(value,currency='RUB'){return new Intl.NumberFormat('ru-RU',{style:'currency',currency,maximumFractionDigits:2}).format(Number(value||0))}
 function renderBalance(){const el=$('#balanceStrip'),b=state.balance;if(!b){el.innerHTML='';el.classList.add('hidden');return}el.classList.remove('hidden');const latest=b.history?.[0],history=(b.history||[]).slice(0,5);const delta=latest?.delta||0;el.innerHTML=`<div class="balance-main"><p class="eyebrow">Баланс кабинета</p><strong>${balanceMoney(b.current,b.currency)}</strong><small class="balance-delta ${delta>0?'positive':delta<0?'negative':''}">${delta?`${delta>0?'+':''}${balanceMoney(delta,b.currency)} с прошлого снимка`:'Без изменений'}</small></div><div class="balance-withdraw"><span>Доступно к выводу</span><b>${balanceMoney(b.forWithdraw,b.currency)}</b></div><div class="balance-history"><span>Последние изменения</span><div>${history.length?history.map((x,i)=>`<button class="balance-event" data-balance-index="${i}"><i class="${x.delta>0?'up':x.delta<0?'down':''}">${i===history.length-1&&x.delta===0?'Первый снимок':`${x.delta>0?'+':''}${balanceMoney(x.delta,x.currency)}`}</i><small>${formatDate(x.timestamp)}</small></button>`).join(''):'<small>История начнёт заполняться после изменения баланса</small>'}</div></div>`}
 function renderMetrics(){const f=state.funnel,items=[['Заказы',f.orders||state.orders.length,'за выбранный период','#7651e5'],['Выкупы',f.sales||state.orders.filter(o=>o.status==='complete').length,`${pct(f.sales,f.orders)}% от заказов`,'#318f68'],['Оборот',fmtMoney((f.revenue||0)*100),f.currency||'RUB','#f0a04b'],['Новые FBS',state.orders.filter(o=>o.source==='FBS'&&o.status==='new').length,'требуют внимания','#e76464']];$('#metrics').innerHTML=items.map(x=>`<article class="metric" style="--accent:${x[3]}"><div class="metric-label">${x[0]}</div><div class="metric-value">${typeof x[1]==='number'?fmtNum(x[1]):x[1]}</div><div class="metric-note">${x[2]}</div></article>`).join('')}
@@ -453,26 +453,29 @@ const FUNNEL_TREND_METRICS=[
   {key:'buyoutCount',label:'Выкупили товаров',unit:'шт'},
   {key:'buyoutSum',label:'Выкупили на сумму',unit:'₽'}];
 const TREND_MONTHS=['янв','фев','мар','апр','май','июн','июл','авг','сен','окт','ноя','дек'];
-const funnelTrend={data:null,metric:'orderCount',compare:true,grouping:'day',loading:false,error:'',pollTimer:0};
+const funnelTrend={data:null,metric:'orderCount',compare:true,grouping:'day',loading:false,error:'',pollTimer:0,filterTimer:0,requestId:0,nmIds:null};
 const trendShift=(date,days)=>{const d=new Date(`${date}T00:00:00Z`);d.setUTCDate(d.getUTCDate()+days);return d.toISOString().slice(0,10)};
 const trendWeekStart=date=>{const d=new Date(`${date}T00:00:00Z`);d.setUTCDate(d.getUTCDate()-(d.getUTCDay()+6)%7);return d.toISOString().slice(0,10)};
 const trendShortDate=date=>`${date.slice(8,10)}.${date.slice(5,7)}`;
 const trendFullDate=date=>`${date.slice(8,10)}.${date.slice(5,7)}.${date.slice(2,4)}`;
 // Пока сервер догружает дни из WB, график переспрашивает его каждые 5 секунд и дорисовывается.
+// Фильтры таблицы товаров сужают и график: на сервер уходят артикулы, которые прошли фильтры.
+function funnelFiltersActive(){const f=state.funnelFilters;return Boolean(f.categories.size||f.articles.size||f.availability.size)}
+function funnelTrendNmIds(){return funnelFiltersActive()?funnelProductRows().map(row=>String(row.nmId)):null}
+function scheduleFunnelTrendReload(){clearTimeout(funnelTrend.filterTimer);funnelTrend.filterTimer=setTimeout(()=>loadFunnelTrend(),400)}
 async function loadFunnelTrend(silent=false){
-  const cabinet=state.cabinet,from=$('#dateFrom').value,to=$('#dateTo').value;
+  const cabinet=state.cabinet,from=$('#dateFrom').value,to=$('#dateTo').value,request=++funnelTrend.requestId;
   clearTimeout(funnelTrend.pollTimer);
   if(!silent){funnelTrend.loading=true;funnelTrend.error='';renderFunnelTrend()}
   try{
-    const grouping=funnelTrend.grouping;
-    const data=await api(`/api/funnel/history?${new URLSearchParams({cabinet,from,to,grouping})}`);
-    if(grouping!==funnelTrend.grouping)return;
-    if(cabinet!==state.cabinet)return;
-    funnelTrend.data=data;funnelTrend.error='';
-    if(data.sync?.pending)funnelTrend.pollTimer=setTimeout(()=>{if(state.activePage==='funnel'&&state.cabinet===cabinet&&funnelTrend.grouping===grouping&&$('#dateFrom').value===from&&$('#dateTo').value===to)loadFunnelTrend(true)},5000);
+    const grouping=funnelTrend.grouping,nmIds=funnelTrendNmIds();
+    const data=await api('/api/funnel/history',{method:'POST',body:JSON.stringify({cabinet,from,to,grouping,nmIds})});
+    if(request!==funnelTrend.requestId||grouping!==funnelTrend.grouping||cabinet!==state.cabinet)return;
+    funnelTrend.data=data;funnelTrend.error='';funnelTrend.nmIds=nmIds;
+    if(data.sync?.pending)funnelTrend.pollTimer=setTimeout(()=>{if(request===funnelTrend.requestId&&state.activePage==='funnel'&&state.cabinet===cabinet&&$('#dateFrom').value===from&&$('#dateTo').value===to)loadFunnelTrend(true)},5000);
     if(data.warnings?.length)$('#alertArea').insertAdjacentHTML('beforeend',data.warnings.map(text=>`<div class="alert">${escapeHtml(text)}</div>`).join(''));
   }catch(e){funnelTrend.error=e.message}
-  finally{funnelTrend.loading=false;renderFunnelTrend()}
+  finally{if(request===funnelTrend.requestId){funnelTrend.loading=false;renderFunnelTrend()}}
 }
 function funnelTrendPoints(days=[],period,grouping){
   const byDate=new Map(days.map(day=>[day.date,day])),buckets=[],index=new Map();
@@ -551,6 +554,7 @@ function renderFunnelTrend(){
     if(data.sync?.lastError)notes.push(`Часть дней не загрузилась: ${data.sync.lastError}. Повторим позже.`);
     if(data.earliestAvailable&&earliest<data.earliestAvailable)notes.push(`WB отдаёт воронку не раньше ${trendFullDate(data.earliestAvailable)}.`);
   }
+  if(data.filtered){const ids=funnelTrend.nmIds||[];const one=ids.length===1?(state.funnelProducts||[]).map(item=>item.product||item).find(p=>String(p.nmId)===ids[0]):null;notes.unshift(ids.length?(one?`График по артикулу ${one.vendorCode||one.nmId} (${one.nmId}).`:`График по ${fmtNum(ids.length)} ${pluralRu(ids.length,['товару','товарам','товарам'])} из фильтров.`):'Под фильтры не попал ни один товар.')}
   if(funnelTrend.error)notes.push(`Не удалось обновить: ${funnelTrend.error}`);
   if(funnelTrend.loading)notes.push('Обновляем…');
   note.textContent=notes.join(' ');
@@ -623,12 +627,13 @@ function renderFunnelDetails(){
   const all=state.funnelProducts||[],rows=funnelProductRows(),f=state.funnelFilters;
   const categories=[...new Set(all.map(item=>(item.product||item).subjectName||'Без категории'))].sort((a,b)=>a.localeCompare(b,'ru'));
   $('#funnelCategoryOptions').innerHTML=categories.map(category=>`<label><input type="checkbox" value="${escapeHtml(category)}"> ${escapeHtml(category)}</label>`).join('')||'<span class="filter-empty">Нет вариантов</span>';
-  $$('#funnelCategoryOptions input').forEach(input=>{input.checked=f.categories.has(input.value);input.onchange=()=>{input.checked?f.categories.add(input.value):f.categories.delete(input.value);state.funnelPage=1;renderFunnelDetails()}});
+  $$('#funnelCategoryOptions input').forEach(input=>{input.checked=f.categories.has(input.value);input.onchange=()=>{input.checked?f.categories.add(input.value):f.categories.delete(input.value);state.funnelPage=1;renderFunnelDetails();scheduleFunnelTrendReload()}});
   $('#funnelCategoryLabel').textContent=f.categories.size?`Категории (${f.categories.size})`:'Категории';
-  $$('#funnelAvailabilityOptions input').forEach(input=>{input.checked=f.availability.has(input.value);input.onchange=()=>{input.checked?f.availability.add(input.value):f.availability.delete(input.value);state.funnelPage=1;renderFunnelDetails()}});
+  $$('#funnelAvailabilityOptions input').forEach(input=>{input.checked=f.availability.has(input.value);input.onchange=()=>{input.checked?f.availability.add(input.value):f.availability.delete(input.value);state.funnelPage=1;renderFunnelDetails();scheduleFunnelTrendReload()}});
   $('#funnelAvailabilityLabel').textContent=f.availability.size?`Наличие (${f.availability.size})`:'Наличие';
   $('#funnelArticleLabel').textContent=f.articles.size?`Артикулы (${f.articles.size})`:'Артикулы';
   $('#funnelProductCount').textContent=`${fmtNum(rows.length)} из ${fmtNum(all.length)} товаров`;
+  if(all.length){state.funnel=rows.reduce((sum,row)=>({views:sum.views+Number(row.openCount||0),cart:sum.cart+Number(row.cartCount||0),orders:sum.orders+Number(row.orderCount||0),sales:sum.sales+Number(row.buyoutCount||0),revenue:sum.revenue+Number(row.buyoutSum||0)}),{views:0,cart:0,orders:0,sales:0,revenue:0});renderFunnel()}
   const pageCount=Math.max(1,Math.ceil(rows.length/state.stockPageSize));
   state.funnelPage=Math.min(Math.max(1,state.funnelPage),pageCount);
   const pageRows=rows.slice((state.funnelPage-1)*state.stockPageSize,state.funnelPage*state.stockPageSize);
@@ -663,14 +668,14 @@ function renderFunnelArticleOptions(){
     label.onmouseenter=()=>{hideFunnelArticleTip();const tip=document.createElement('div');tip.className='article-tip';tip.textContent=label.dataset.tip;document.body.append(tip);const rect=label.getBoundingClientRect();tip.style.left=`${Math.max(8,Math.min(rect.left,window.innerWidth-tip.offsetWidth-8))}px`;tip.style.top=`${Math.max(8,rect.top-tip.offsetHeight-2)}px`;funnelArticleTip=tip};
     label.onmouseleave=hideFunnelArticleTip;
   });
-  box.querySelectorAll('input').forEach(input=>input.onchange=()=>{input.checked?selected.add(input.value):selected.delete(input.value);state.funnelPage=1;updateFunnelArticleSummary();renderFunnelDetails()});
+  box.querySelectorAll('input').forEach(input=>input.onchange=()=>{input.checked?selected.add(input.value):selected.delete(input.value);state.funnelPage=1;updateFunnelArticleSummary();renderFunnelDetails();scheduleFunnelTrendReload()});
   box.onscroll=hideFunnelArticleTip;
   updateFunnelArticleSummary();
 }
 function updateFunnelArticleSummary(){const size=state.funnelFilters.articles.size;const el=$('#funnelArticleSelected');if(el)el.textContent=size?`Выбрано: ${fmtNum(size)}`:'Все артикулы';$('#funnelArticleReset').disabled=!size}
 document.addEventListener('input',event=>{if(event.target.id==='funnelArticleSearch')renderFunnelArticleOptions()});
 document.addEventListener('click',event=>{
-  if(event.target.id==='funnelArticleReset'){state.funnelFilters.articles.clear();state.funnelPage=1;renderFunnelArticleOptions();renderFunnelDetails()}
+  if(event.target.id==='funnelArticleReset'){state.funnelFilters.articles.clear();state.funnelPage=1;renderFunnelArticleOptions();renderFunnelDetails();scheduleFunnelTrendReload()}
   if(!event.target.closest('.article-filter'))hideFunnelArticleTip();
 });
 // Предупреждения общей загрузки (лента заказов, баланс, новые задания) показываются только на ленте заказов.

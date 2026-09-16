@@ -1094,7 +1094,7 @@ function saveFunnelDays(cabinetId, points = []) {
   }
   for (const [month, monthPoints] of byMonth) {
     const file = readFunnelMonth(cabinetId, month) || { cabinet: String(cabinetId), month, days: {} };
-    for (const point of monthPoints) file.days[point.date] = { fetchedAt, ...pickFunnelCounts(point) };
+    for (const point of monthPoints) file.days[point.date] = { fetchedAt, ...pickFunnelCounts(point), ...(point.products ? { products: point.products } : {}) };
     file.days = Object.fromEntries(Object.entries(file.days).sort(([a], [b]) => a.localeCompare(b)));
     Object.assign(file, { name: cabinets().find(item => String(item.id) === String(cabinetId))?.name || '', updatedAt: fetchedAt });
     const target = path.join(dir, `${month}.json`);
@@ -1107,7 +1107,7 @@ function loadFunnelDays(cabinetId, from, to) {
   const days = [];
   for (const month of [...new Set(datesBetween(from, to).map(date => date.slice(0, 7)))]) {
     for (const [date, record] of Object.entries(readFunnelMonth(cabinetId, month)?.days || {})) {
-      if (date >= from && date <= to) days.push({ date, fetchedAt: record.fetchedAt || '', ...pickFunnelCounts(record) });
+      if (date >= from && date <= to) days.push({ date, fetchedAt: record.fetchedAt || '', ...pickFunnelCounts(record), ...(record.products ? { products: record.products } : {}) });
     }
   }
   return days.sort((a, b) => a.date.localeCompare(b.date));
@@ -1131,7 +1131,7 @@ function saveFunnelRanges(cabinetId, ranges = []) {
   fs.mkdirSync(dir, { recursive: true });
   fs.writeFileSync(path.join(dir, 'cabinet.json'), JSON.stringify({ id: String(cabinetId) }, null, 2));
   const stored = readFunnelRanges(cabinetId);
-  for (const range of ranges) stored[`${range.from}_${range.to}`] = { fetchedAt, ...pickFunnelCounts(range) };
+  for (const range of ranges) stored[`${range.from}_${range.to}`] = { fetchedAt, ...pickFunnelCounts(range), ...(range.products ? { products: range.products } : {}) };
   const target = path.join(dir, 'periods.json');
   fs.writeFileSync(`${target}.tmp`, JSON.stringify({ cabinet: String(cabinetId), updatedAt: fetchedAt, ranges: stored }, null, 2));
   fs.renameSync(`${target}.tmp`, target);
@@ -1164,24 +1164,43 @@ function funnelProductsRequest(id, token, body) {
   return run;
 }
 
-function addFunnelStatistic(target, statistic = {}) {
-  for (const key of FUNNEL_COUNT_KEYS) {
-    target[key] += Number((key === 'addToWishlistCount' ? statistic?.addToWishlist ?? statistic?.addToWishlistCount : statistic?.[key]) || 0);
+function funnelStatisticValues(statistic = {}) {
+  return FUNNEL_COUNT_KEYS.map(key => Number((key === 'addToWishlistCount' ? statistic?.addToWishlist ?? statistic?.addToWishlistCount : statistic?.[key]) || 0));
+}
+
+// Итог и разбивка по артикулам; артикулы без активности не сохраняются, чтобы файлы не разрастались.
+function addFunnelStatistic(target, statistic = {}, nmId = '') {
+  const values = funnelStatisticValues(statistic);
+  FUNNEL_COUNT_KEYS.forEach((key, index) => { target[key] += values[index]; });
+  if (target.products && nmId && values.some(Boolean)) target.products[nmId] = values;
+}
+
+// Сумма показателей по выбранным артикулам; для записей без разбивки фильтр применить нельзя.
+function funnelRecordCounts(record, nmIds = null) {
+  if (!record) return null;
+  if (!nmIds) return pickFunnelCounts(record);
+  if (!record.products) return null;
+  const total = pickFunnelCounts();
+  for (const nmId of nmIds) {
+    const values = record.products[nmId];
+    if (values) FUNNEL_COUNT_KEYS.forEach((key, index) => { total[key] += Number(values[index] || 0); });
   }
+  return total;
 }
 
 // Один запрос отдаёт два отрезка: выбранный и «прошлый период», который задаётся отдельно.
 async function fetchFunnelRanges(id, token, selected, past = null) {
-  const current = { from: selected.from, to: selected.to, ...pickFunnelCounts() };
-  const previous = past ? { from: past.from, to: past.to, ...pickFunnelCounts() } : null;
+  const current = { from: selected.from, to: selected.to, ...pickFunnelCounts(), products: {} };
+  const previous = past ? { from: past.from, to: past.to, ...pickFunnelCounts(), products: {} } : null;
   for (let offset = 0; ; offset += 1000) {
     const response = await funnelProductsRequest(id, token, { selectedPeriod: { start: selected.from, end: selected.to },
       ...(past ? { pastPeriod: { start: past.from, end: past.to } } : {}), nmIds: [], brandNames: [], subjectIds: [], tagIds: [],
       skipDeletedNm: true, orderBy: { field: 'openCard', mode: 'desc' }, limit: 1000, offset });
     const products = response?.data?.products || response?.products || [];
     for (const item of products) {
-      addFunnelStatistic(current, item.statistic?.selected);
-      if (previous) addFunnelStatistic(previous, item.statistic?.past);
+      const nmId = String(item.product?.nmId ?? item.nmId ?? '');
+      addFunnelStatistic(current, item.statistic?.selected, nmId);
+      if (previous) addFunnelStatistic(previous, item.statistic?.past, nmId);
     }
     if (products.length < 1000) break;
   }
@@ -1202,9 +1221,13 @@ function funnelRangeNeedsFetch(to, fetchedAt, now = Date.now()) {
   return now - fetched >= FUNNEL_REFRESH_MINUTES * 60_000;
 }
 
-function funnelDaysToFetch(dates = [], fetchedAt = new Map(), now = Date.now(), today = moscowDate(0)) {
+function funnelDaysToFetch(dates = [], records = new Map(), now = Date.now(), today = moscowDate(0)) {
   const earliest = addDays(today, -FUNNEL_MAX_DEPTH_DAYS);
-  return [...new Set(dates)].filter(date => date <= today && date >= earliest && funnelRangeNeedsFetch(date, fetchedAt.get(date), now));
+  return [...new Set(dates)].filter(date => {
+    if (date > today || date < earliest) return false;
+    const record = records.get(date);
+    return !record?.products || funnelRangeNeedsFetch(date, record.fetchedAt, now);
+  });
 }
 
 // Пары дней для запросов: сначала самые свежие, более ранний день идёт как прошлый период.
@@ -1231,16 +1254,19 @@ function funnelRangeBuckets(period, grouping) {
 }
 
 // Итог отрезка: из сохранённых дней, если все дни есть и достаточно свежие, иначе из сохранённого итога отрезка.
-function funnelRangeValues(range, daysByDate, storedRanges, now = Date.now()) {
+function funnelRangeValues(range, daysByDate, storedRanges, nmIds = null, now = Date.now()) {
   const dates = datesBetween(range.from, range.to);
-  if (dates.every(date => daysByDate.has(date) && !funnelRangeNeedsFetch(date, daysByDate.get(date).fetchedAt, now))) {
+  if (dates.every(date => daysByDate.get(date)?.products && !funnelRangeNeedsFetch(date, daysByDate.get(date).fetchedAt, now))) {
     const total = pickFunnelCounts();
-    for (const date of dates) for (const key of FUNNEL_COUNT_KEYS) total[key] += Number(daysByDate.get(date)[key] || 0);
+    for (const date of dates) {
+      const counts = funnelRecordCounts(daysByDate.get(date), nmIds);
+      for (const key of FUNNEL_COUNT_KEYS) total[key] += counts[key];
+    }
     return { values: total, fresh: true };
   }
   const stored = storedRanges[`${range.from}_${range.to}`];
   if (!stored) return { values: null, fresh: false };
-  return { values: pickFunnelCounts(stored), fresh: !funnelRangeNeedsFetch(range.to, stored.fetchedAt, now) };
+  return { values: funnelRecordCounts(stored, nmIds), fresh: Boolean(stored.products) && !funnelRangeNeedsFetch(range.to, stored.fetchedAt, now) };
 }
 
 function scheduleFunnelSync(id, dates = [], ranges = []) {
@@ -1321,32 +1347,39 @@ function demoFunnelHistory(periods, grouping = 'day') {
     return { date, openCount: open, cartCount: cart, orderCount: orders, orderSum: orders * 1490, buyoutCount: buyouts, buyoutSum: buyouts * 1490, addToWishlistCount: Math.round(open * 0.012) };
   });
   const current = make(periods.current, 0); const previous = make(periods.previous, 5);
-  const byDate = new Map([...current, ...previous].map(day => [day.date, { ...day, fetchedAt: '2100-01-01T00:00:00Z' }]));
+  const byDate = new Map([...current, ...previous].map(day => [day.date, { ...day, fetchedAt: '2100-01-01T00:00:00Z', products: {} }]));
   const buckets = grouping === 'day' ? [] : funnelRangeBuckets(periods.current, grouping).map(bucket => ({ ...bucket,
     values: funnelRangeValues(bucket, byDate, {}).values, previous: { ...bucket.previous, values: funnelRangeValues(bucket.previous, byDate, {}).values } }));
   return { demo: true, grouping, periods, current, previous, buckets, storedFrom: periods.previous.from,
     earliestAvailable: addDays(moscowDate(0), -FUNNEL_MAX_DEPTH_DAYS), sync: { pending: 0, running: false, lastError: '', etaSeconds: 0 }, warnings: [] };
 }
 
-async function funnelHistory(id, from, to, grouping = 'day') {
+function normalizeFunnelNmIds(nmIds) {
+  if (!Array.isArray(nmIds)) return null;
+  return [...new Set(nmIds.map(value => String(value)).filter(value => /^\d{1,15}$/.test(value)))].slice(0, 5000);
+}
+
+async function funnelHistory(id, from, to, grouping = 'day', nmIdsInput = null) {
   const safeGrouping = ['day', 'week', 'month'].includes(grouping) ? grouping : 'day';
+  const nmIds = normalizeFunnelNmIds(nmIdsInput);
   const periods = funnelPeriods(from, to);
-  if (id === 'demo' || !cabinets().length) return demoFunnelHistory(periods, safeGrouping);
+  if (id === 'demo' || !cabinets().length) return { ...demoFunnelHistory(periods, safeGrouping), filtered: Boolean(nmIds) };
   tokenFor(id);
   const dates = datesBetween(periods.previous.from, periods.current.to);
   const stored = loadFunnelDays(id, periods.previous.from, periods.current.to);
-  const inPeriod = ({ from: start, to: end }) => stored.filter(day => day.date >= start && day.date <= end);
-  const base = { demo: false, grouping: safeGrouping, periods, current: inPeriod(periods.current), previous: inPeriod(periods.previous),
+  const shown = stored.map(day => { const counts = funnelRecordCounts(day, nmIds); return counts ? { date: day.date, fetchedAt: day.fetchedAt, ...counts } : null; }).filter(Boolean);
+  const inPeriod = ({ from: start, to: end }) => shown.filter(day => day.date >= start && day.date <= end);
+  const base = { demo: false, grouping: safeGrouping, filtered: Boolean(nmIds), productCount: nmIds ? nmIds.length : null, periods, current: inPeriod(periods.current), previous: inPeriod(periods.previous),
     storedFrom: funnelStoredFrom(id), earliestAvailable: addDays(moscowDate(0), -FUNNEL_MAX_DEPTH_DAYS),
     folder: `data/Funnel/${cabinetFolderName(id)}`, warnings: [] };
   if (safeGrouping === 'day') {
-    scheduleFunnelSync(id, funnelDaysToFetch(dates, new Map(stored.map(day => [day.date, day.fetchedAt]))));
+    scheduleFunnelSync(id, funnelDaysToFetch(dates, new Map(stored.map(day => [day.date, day]))));
     return { ...base, buckets: [], sync: funnelSyncStatus(id, dates) };
   }
   const byDate = new Map(stored.map(day => [day.date, day])); const storedRanges = readFunnelRanges(id);
   const earliest = base.earliestAvailable; const toFetch = [];
   const buckets = funnelRangeBuckets(periods.current, safeGrouping).map(bucket => {
-    const current = funnelRangeValues(bucket, byDate, storedRanges); const previous = funnelRangeValues(bucket.previous, byDate, storedRanges);
+    const current = funnelRangeValues(bucket, byDate, storedRanges, nmIds); const previous = funnelRangeValues(bucket.previous, byDate, storedRanges, nmIds);
     if ((!current.fresh || !previous.fresh) && bucket.from >= earliest) toFetch.push({ ...bucket, previous: bucket.previous.from >= earliest ? bucket.previous : null });
     return { ...bucket, values: current.values, previous: { ...bucket.previous, values: previous.values } };
   });
@@ -1696,6 +1729,10 @@ async function handleApi(req, res, url) {
   if (req.method === 'GET' && url.pathname === '/api/advertising') {
     return send(res, 200, await advertising(url.searchParams.get('cabinet') || 'demo', url.searchParams.get('from'), url.searchParams.get('to')));
   }
+  if (req.method === 'POST' && url.pathname === '/api/funnel/history') {
+    const body = await readJson(req);
+    return send(res, 200, await funnelHistory(body.cabinet || 'demo', body.from, body.to, body.grouping, body.nmIds));
+  }
   if (req.method === 'GET' && url.pathname === '/api/funnel/history') {
     return send(res, 200, await funnelHistory(url.searchParams.get('cabinet') || 'demo', url.searchParams.get('from'), url.searchParams.get('to'), url.searchParams.get('grouping')));
   }
@@ -1846,7 +1883,7 @@ const server = http.createServer(async (req, res) => {
 
 if (require.main === module) server.listen(PORT, '127.0.0.1', () => console.log(`WB Analytics: http://127.0.0.1:${PORT}`));
 
-module.exports = { server, cabinets, normalizeOrders, normalizeOrderFeed, enrichOrders, extractFunnel, summarizeAdStats, campaignProductDaily, withAdBudgets, normalizeStockPreset, normalizePricePreset, validAdPeriod, historyPeriod, historyChunks, planAdFetch, datesBetween, safeFolderName, funnelDaysToFetch, pairFunnelDays, funnelPeriods, funnelRangeBuckets, normalizeFbsStocks, normalizeFbwStocks, normalizePrices, summarizeStockTotals, normalizeNewOrders, summarizeSupplies, normalizeTrbxes, chunkOrders, stickerType, WB_HOSTS };
+module.exports = { server, cabinets, normalizeOrders, normalizeOrderFeed, enrichOrders, extractFunnel, summarizeAdStats, campaignProductDaily, withAdBudgets, normalizeStockPreset, normalizePricePreset, validAdPeriod, historyPeriod, historyChunks, planAdFetch, datesBetween, safeFolderName, funnelDaysToFetch, pairFunnelDays, funnelPeriods, funnelRangeBuckets, funnelRecordCounts, funnelRangeValues, normalizeFbsStocks, normalizeFbwStocks, normalizePrices, summarizeStockTotals, normalizeNewOrders, summarizeSupplies, normalizeTrbxes, chunkOrders, stickerType, WB_HOSTS };
 
 
 
