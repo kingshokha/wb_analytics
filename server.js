@@ -1572,6 +1572,49 @@ async function funnelHistory(id, from, to, grouping = 'day', nmIdsInput = null) 
   return { ...base, buckets, sync: funnelSyncStatus(id, [], buckets.map(bucket => `${bucket.from}_${bucket.to}`)) };
 }
 
+// Матрица «товар × день» для вкладки продаж по дням: значения берутся из сохранённой разбивки по артикулам.
+function funnelSalesMatrix(days = [], dates = [], nmIds = null, metric = 'orderCount') {
+  const index = FUNNEL_COUNT_KEYS.indexOf(metric);
+  if (index < 0) throw apiError(400, 'Неизвестный показатель');
+  const byDate = new Map(days.map(day => [day.date, day]));
+  const products = new Map();
+  const addProduct = nmId => products.get(nmId) || products.set(nmId, { nmId, values: dates.map(() => null), total: 0 }).get(nmId);
+  if (nmIds) nmIds.forEach(nmId => addProduct(String(nmId)));
+  dates.forEach((date, column) => {
+    const record = byDate.get(date);
+    if (!record?.products) return;
+    for (const [nmId, values] of Object.entries(record.products)) {
+      if (nmIds && !products.has(nmId)) continue;
+      const product = addProduct(nmId);
+      const value = Number(values[index] || 0);
+      product.values[column] = (product.values[column] || 0) + value;
+      product.total += value;
+    }
+    for (const product of products.values()) if (product.values[column] === null) product.values[column] = 0;
+  });
+  const totals = dates.map((date, column) => byDate.get(date)?.products
+    ? [...products.values()].reduce((sum, product) => sum + Number(product.values[column] || 0), 0) : null);
+  return { products: [...products.values()].sort((a, b) => b.total - a.total || String(a.nmId).localeCompare(String(b.nmId))),
+    totals, total: totals.reduce((sum, value) => sum + Number(value || 0), 0) };
+}
+
+async function funnelSales(id, from, to, nmIdsInput = null, metric = 'orderCount') {
+  const periods = funnelPeriods(from, to);
+  const period = periods.current;
+  const dates = datesBetween(period.from, period.to);
+  const nmIds = normalizeFunnelNmIds(nmIdsInput);
+  if (id === 'demo' || !cabinets().length) {
+    const demo = demoFunnelHistory(periods, 'day');
+    return { demo: true, period, dates, metric, ...funnelSalesMatrix([], dates, nmIds, metric),
+      sync: { pending: 0, running: false, lastError: '', etaSeconds: 0 }, warnings: ['В демо-режиме продажи по дням не заполняются'], days: demo.current.length };
+  }
+  tokenFor(id);
+  const stored = loadFunnelDays(id, period.from, period.to);
+  scheduleFunnelSync(id, funnelDaysToFetch(dates, new Map(stored.map(day => [day.date, day]))));
+  return { demo: false, period, dates, metric, ...funnelSalesMatrix(stored, dates, nmIds, metric),
+    ready: stored.filter(day => day.products).length, sync: funnelSyncStatus(id, dates), warnings: [] };
+}
+
 async function funnelDetails(id, from, to) {
   if (id === 'demo' || !cabinets().length) return { products: [], history: [], groupedHistory: [] };
   const token = tokenFor(id); const start = /^\d{4}-\d{2}-\d{2}$/.test(from || '') ? from : dateDaysAgo(7); const end = /^\d{4}-\d{2}-\d{2}$/.test(to || '') ? to : dateDaysAgo(0);
@@ -1918,6 +1961,10 @@ async function handleApi(req, res, url) {
   if (req.method === 'GET' && url.pathname === '/api/advertising') {
     return send(res, 200, await advertising(url.searchParams.get('cabinet') || 'demo', url.searchParams.get('from'), url.searchParams.get('to')));
   }
+  if (req.method === 'POST' && url.pathname === '/api/funnel/sales') {
+    const body = await readJson(req);
+    return send(res, 200, await funnelSales(body.cabinet || 'demo', body.from, body.to, body.nmIds, body.metric));
+  }
   if (req.method === 'POST' && url.pathname === '/api/funnel/history') {
     const body = await readJson(req);
     return send(res, 200, await funnelHistory(body.cabinet || 'demo', body.from, body.to, body.grouping, body.nmIds));
@@ -2072,7 +2119,7 @@ const server = http.createServer(async (req, res) => {
 
 if (require.main === module) server.listen(PORT, '127.0.0.1', () => console.log(`WB Analytics: http://127.0.0.1:${PORT}`));
 
-module.exports = { server, cabinets, normalizeOrders, normalizeOrderFeed, enrichOrders, extractFunnel, summarizeAdStats, campaignProductDaily, withAdBudgets, summarizeKeywords, normalizeStockPreset, normalizePricePreset, adCampaignMayHaveStats, validAdPeriod, historyPeriod, historyChunks, planAdFetch, datesBetween, safeFolderName, funnelDaysToFetch, pairFunnelDays, funnelPeriods, funnelRangeBuckets, funnelRecordCounts, funnelRangeValues, normalizeFbsStocks, normalizeFbwStocks, normalizePrices, summarizeStockTotals, normalizeNewOrders, summarizeSupplies, normalizeTrbxes, chunkOrders, stickerType, WB_HOSTS };
+module.exports = { server, cabinets, normalizeOrders, normalizeOrderFeed, enrichOrders, extractFunnel, summarizeAdStats, campaignProductDaily, withAdBudgets, summarizeKeywords, normalizeStockPreset, normalizePricePreset, adCampaignMayHaveStats, validAdPeriod, historyPeriod, historyChunks, planAdFetch, datesBetween, safeFolderName, funnelDaysToFetch, pairFunnelDays, funnelPeriods, funnelRangeBuckets, funnelRecordCounts, funnelRangeValues, funnelSalesMatrix, normalizeFbsStocks, normalizeFbwStocks, normalizePrices, summarizeStockTotals, normalizeNewOrders, summarizeSupplies, normalizeTrbxes, chunkOrders, stickerType, WB_HOSTS };
 
 
 

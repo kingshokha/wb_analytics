@@ -1,4 +1,4 @@
-const state={cabinets:[],cabinet:'demo',orders:[],funnel:{},funnelProducts:[],funnelHistory:[],funnelGroupedHistory:[],funnelFilters:{categories:new Set(),articles:new Set(),availability:new Set()},funnelSort:{key:'openCount',dir:'desc'},balance:null,ads:null,stocks:null,fbwStocks:null,prices:null,demo:true,activePage:'orders',adsKey:'',stocksKey:'',fbwStocksKey:'',pricesKey:'',adSort:{key:'spend',dir:'desc'},adStatuses:new Set(['9','11']),adProductSort:{key:'spend',dir:'desc'},stockSelected:new Set(),stockFilters:{warehouses:new Set(),categories:new Set(),availability:new Set()},stockSort:{key:'amount',dir:'desc'},stockPage:1,stockPageSize:100,funnelPage:1,funnelArticlesCabinet:'',dashboardAlerts:[],dashboardDemo:false,priceStocks:null,priceStocksKey:'',fbwFilters:{warehouses:new Set(),categories:new Set(),availability:new Set()},fbwSort:{key:'amount',dir:'desc'},fbwPage:1,fbwPageSize:100,pricePage:1,pricePageSize:100,priceSelected:new Set(),priceFilters:{categories:new Set(),brands:new Set(),discounts:new Set()},priceSort:{key:'name',dir:'desc'},fbsOrders:null,fbsOrdersKey:'',supplies:null,supplyDetail:null,fbsSelected:new Set(),fbsFilters:{warehouses:new Set(),categories:new Set(),assembly:new Set()},fbsSort:{key:'createdAt',dir:'desc'},fbsPage:1,fbsPageSize:100,supplyOrderSelected:new Set()};
+const state={cabinets:[],cabinet:'demo',orders:[],funnel:{},funnelProducts:[],funnelHistory:[],funnelGroupedHistory:[],funnelFilters:{categories:new Set(),articles:new Set(),availability:new Set()},funnelSort:{key:'openCount',dir:'desc'},balance:null,ads:null,stocks:null,fbwStocks:null,prices:null,demo:true,activePage:'orders',adsKey:'',stocksKey:'',fbwStocksKey:'',pricesKey:'',adSort:{key:'spend',dir:'desc'},adStatuses:new Set(['9','11']),adProductSort:{key:'spend',dir:'desc'},stockSelected:new Set(),stockFilters:{warehouses:new Set(),categories:new Set(),availability:new Set()},stockSort:{key:'amount',dir:'desc'},stockPage:1,stockPageSize:100,funnelPage:1,funnelTab:'products',funnelArticlesCabinet:'',dashboardAlerts:[],dashboardDemo:false,priceStocks:null,priceStocksKey:'',fbwFilters:{warehouses:new Set(),categories:new Set(),availability:new Set()},fbwSort:{key:'amount',dir:'desc'},fbwPage:1,fbwPageSize:100,pricePage:1,pricePageSize:100,priceSelected:new Set(),priceFilters:{categories:new Set(),brands:new Set(),discounts:new Set()},priceSort:{key:'name',dir:'desc'},fbsOrders:null,fbsOrdersKey:'',supplies:null,supplyDetail:null,fbsSelected:new Set(),fbsFilters:{warehouses:new Set(),categories:new Set(),assembly:new Set()},fbsSort:{key:'createdAt',dir:'desc'},fbsPage:1,fbsPageSize:100,supplyOrderSelected:new Set()};
 const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)];
 const fmtMoney=(n,c=643)=>new Intl.NumberFormat('ru-RU',{style:'currency',currency:c===933?'BYN':c===398?'KZT':'RUB',maximumFractionDigits:0}).format(Number(n||0)/100);
 const fmtNum=n=>new Intl.NumberFormat('ru-RU').format(Number(n||0));
@@ -15,7 +15,7 @@ function renderCabinets(){const selected=state.cabinets.find(c=>c.id===state.cab
 
 async function loadDashboard(){const btn=$('#refresh');btn.classList.add('loading');$('#syncText').textContent='Получаем данные…';try{const q=new URLSearchParams({cabinet:state.cabinet,from:$('#dateFrom').value,to:$('#dateTo').value});const data=await api('/api/dashboard?'+q);state.orders=data.orders||[];state.funnel=data.funnel||{};state.balance=data.balance||null;state.demo=data.demo;renderAll();$('#syncText').textContent=`Обновлено ${new Date().toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit'})}`;$('#cabinetMode').textContent=data.demo?'Демо-данные':'Единый токен активен';state.dashboardAlerts=[data.demo?'Сейчас показаны демо-данные. Добавьте <b>WB_TOKEN_1</b> в файл .env и перезапустите сервер.':'',...(data.warnings||[])].filter(Boolean);state.dashboardDemo=Boolean(data.demo);renderDashboardAlerts()}catch(e){$('#syncText').textContent='Ошибка синхронизации';toast(e.message)}finally{btn.classList.remove('loading')}}
 function renderAll(){renderBalance();renderMetrics();renderOrders();renderFunnel();$('#newBadge').textContent=state.orders.filter(o=>o.source==='FBS'&&o.status==='new').length}
-async function loadFunnelDetails(){if(!funnelFiltersActive())loadFunnelTrend();try{const q=new URLSearchParams({cabinet:state.cabinet,from:$('#dateFrom').value,to:$('#dateTo').value}),data=await api('/api/funnel?'+q);state.funnelProducts=data.products||[];state.funnelPage=1;if(state.funnelArticlesCabinet!==state.cabinet){state.funnelFilters.articles.clear();state.funnelArticlesCabinet=state.cabinet}state.funnelHistory=data.history||[];state.funnelGroupedHistory=data.groupedHistory||[];const total=state.funnelProducts.reduce((sum,item)=>{const h=item.statistic?.selected||item.history?.[0]||item;return {views:sum.views+Number(h.openCount||0),cart:sum.cart+Number(h.cartCount||0),orders:sum.orders+Number(h.orderCount||0),sales:sum.sales+Number(h.buyoutCount||0),revenue:sum.revenue+Number(h.buyoutSum||0)}},{views:0,cart:0,orders:0,sales:0,revenue:0});if(state.funnelProducts.length)state.funnel=total;renderFunnel();renderFunnelDetails();renderFunnelArticleOptions();if(funnelFiltersActive())loadFunnelTrend()}catch(e){toast(e.message)}}
+async function loadFunnelDetails(){if(!funnelFiltersActive())loadFunnelTrend();try{const q=new URLSearchParams({cabinet:state.cabinet,from:$('#dateFrom').value,to:$('#dateTo').value}),data=await api('/api/funnel?'+q);state.funnelProducts=data.products||[];state.funnelPage=1;if(state.funnelArticlesCabinet!==state.cabinet){state.funnelFilters.articles.clear();state.funnelArticlesCabinet=state.cabinet}state.funnelHistory=data.history||[];state.funnelGroupedHistory=data.groupedHistory||[];const total=state.funnelProducts.reduce((sum,item)=>{const h=item.statistic?.selected||item.history?.[0]||item;return {views:sum.views+Number(h.openCount||0),cart:sum.cart+Number(h.cartCount||0),orders:sum.orders+Number(h.orderCount||0),sales:sum.sales+Number(h.buyoutCount||0),revenue:sum.revenue+Number(h.buyoutSum||0)}},{views:0,cart:0,orders:0,sales:0,revenue:0});if(state.funnelProducts.length)state.funnel=total;renderFunnel();renderFunnelDetails();renderFunnelArticleOptions();if(funnelFiltersActive())loadFunnelTrend();if(state.funnelTab==='sales')loadFunnelSales()}catch(e){toast(e.message)}}
 function balanceMoney(value,currency='RUB'){return new Intl.NumberFormat('ru-RU',{style:'currency',currency,maximumFractionDigits:2}).format(Number(value||0))}
 function renderBalance(){const el=$('#balanceStrip'),b=state.balance;if(!b){el.innerHTML='';el.classList.add('hidden');return}el.classList.remove('hidden');const latest=b.history?.[0],history=(b.history||[]).slice(0,5);const delta=latest?.delta||0;el.innerHTML=`<div class="balance-main"><p class="eyebrow">Баланс кабинета</p><strong>${balanceMoney(b.current,b.currency)}</strong><small class="balance-delta ${delta>0?'positive':delta<0?'negative':''}">${delta?`${delta>0?'+':''}${balanceMoney(delta,b.currency)} с прошлого снимка`:'Без изменений'}</small></div><div class="balance-withdraw"><span>Доступно к выводу</span><b>${balanceMoney(b.forWithdraw,b.currency)}</b></div><div class="balance-history"><span>Последние изменения</span><div>${history.length?history.map((x,i)=>`<button class="balance-event" data-balance-index="${i}"><i class="${x.delta>0?'up':x.delta<0?'down':''}">${i===history.length-1&&x.delta===0?'Первый снимок':`${x.delta>0?'+':''}${balanceMoney(x.delta,x.currency)}`}</i><small>${formatDate(x.timestamp)}</small></button>`).join(''):'<small>История начнёт заполняться после изменения баланса</small>'}</div></div>`}
 function renderMetrics(){const f=state.funnel,items=[['Заказы',f.orders||state.orders.length,'за выбранный период','#7651e5'],['Выкупы',f.sales||state.orders.filter(o=>o.status==='complete').length,`${pct(f.sales,f.orders)}% от заказов`,'#318f68'],['Оборот',fmtMoney((f.revenue||0)*100),f.currency||'RUB','#f0a04b'],['Новые FBS',state.orders.filter(o=>o.source==='FBS'&&o.status==='new').length,'требуют внимания','#e76464']];$('#metrics').innerHTML=items.map(x=>`<article class="metric" style="--accent:${x[3]}"><div class="metric-label">${x[0]}</div><div class="metric-value">${typeof x[1]==='number'?fmtNum(x[1]):x[1]}</div><div class="metric-note">${x[2]}</div></article>`).join('')}
@@ -462,7 +462,7 @@ const trendFullDate=date=>`${date.slice(8,10)}.${date.slice(5,7)}.${date.slice(2
 // Фильтры таблицы товаров сужают и график: на сервер уходят артикулы, которые прошли фильтры.
 function funnelFiltersActive(){const f=state.funnelFilters;return Boolean(f.categories.size||f.articles.size||f.availability.size)}
 function funnelTrendNmIds(){return funnelFiltersActive()?funnelProductRows().map(row=>String(row.nmId)):null}
-function scheduleFunnelTrendReload(){clearTimeout(funnelTrend.filterTimer);funnelTrend.filterTimer=setTimeout(()=>loadFunnelTrend(),400)}
+function scheduleFunnelTrendReload(){clearTimeout(funnelTrend.filterTimer);funnelTrend.filterTimer=setTimeout(()=>{loadFunnelTrend();if(state.funnelTab==='sales'){funnelSales.page=1;loadFunnelSales()}},400)}
 async function loadFunnelTrend(silent=false){
   const cabinet=state.cabinet,from=$('#dateFrom').value,to=$('#dateTo').value,request=++funnelTrend.requestId;
   clearTimeout(funnelTrend.pollTimer);
@@ -685,3 +685,83 @@ function renderDashboardAlerts(){
   const items=(state.dashboardAlerts||[]).filter((text,index)=>state.activePage==='orders'||(state.dashboardDemo&&index===0));
   area.insertAdjacentHTML('afterbegin',items.map(x=>`<div class="alert dashboard-alert">${escapeHtml(x).replace('&lt;b&gt;','<b>').replace('&lt;/b&gt;','</b>')}</div>`).join(''));
 }
+
+// --- Вкладка «Продажи по дням» ---
+const FUNNEL_SALES_METRICS=[
+  {key:'orderCount',label:'Заказали товаров',unit:'шт'},
+  {key:'orderSum',label:'Заказали на сумму',unit:'₽'},
+  {key:'buyoutCount',label:'Выкупили товаров',unit:'шт'},
+  {key:'buyoutSum',label:'Выкупили на сумму',unit:'₽'},
+  {key:'cartCount',label:'Положили в корзину',unit:'шт'},
+  {key:'openCount',label:'Перешли в карточку',unit:'шт'}];
+const funnelSales={data:null,metric:'orderCount',page:1,loading:false,error:'',pollTimer:0,requestId:0};
+function funnelSalesMetric(){return FUNNEL_SALES_METRICS.find(item=>item.key===funnelSales.metric)||FUNNEL_SALES_METRICS[0]}
+function funnelSalesValue(value){if(value==null)return '—';return funnelSalesMetric().unit==='₽'?fmtRub(value):fmtNum(value)}
+function funnelSalesDelta(value,previous){
+  if(value==null||previous==null)return '';
+  if(!previous)return value?'<small class="sales-delta up">новое</small>':'';
+  const change=Math.round((value-previous)/previous*1000)/10;
+  if(!change)return '<small class="sales-delta flat">0%</small>';
+  return `<small class="sales-delta ${change>0?'up':'down'}">${change>0?'+':'−'}${fmtNum(Math.abs(change))}%</small>`;
+}
+function switchFunnelTab(tab){
+  state.funnelTab=tab;
+  $$('[data-funnel-tab]').forEach(button=>button.classList.toggle('active',button.dataset.funnelTab===tab));
+  $('.funnel-products-panel').classList.toggle('hidden',tab!=='products');
+  $('#funnelSalesPanel').classList.toggle('hidden',tab!=='sales');
+  if(tab==='sales'&&!funnelSales.data&&!funnelSales.loading)loadFunnelSales();
+}
+async function loadFunnelSales(){
+  const cabinet=state.cabinet,from=$('#dateFrom').value,to=$('#dateTo').value,request=++funnelSales.requestId;
+  clearTimeout(funnelSales.pollTimer);
+  funnelSales.loading=true;funnelSales.error='';renderFunnelSales();
+  try{
+    const nmIds=funnelProductRows().map(row=>String(row.nmId));
+    const data=await api('/api/funnel/sales',{method:'POST',body:JSON.stringify({cabinet,from,to,metric:funnelSales.metric,nmIds})});
+    if(request!==funnelSales.requestId||cabinet!==state.cabinet)return;
+    funnelSales.data=data;
+    if(data.sync?.pending)funnelSales.pollTimer=setTimeout(()=>{if(request===funnelSales.requestId&&state.activePage==='funnel'&&state.funnelTab==='sales')loadFunnelSales()},5000);
+  }catch(e){funnelSales.error=e.message}
+  finally{if(request===funnelSales.requestId){funnelSales.loading=false;renderFunnelSales()}}
+}
+function renderFunnelSales(){
+  const head=$('#funnelSalesHead'),body=$('#funnelSalesBody'),count=$('#funnelSalesCount');
+  if(!head)return;
+  $('#funnelSalesMetric').innerHTML=FUNNEL_SALES_METRICS.map(item=>`<option value="${item.key}" ${item.key===funnelSales.metric?'selected':''}>${escapeHtml(item.label)}</option>`).join('');
+  const data=funnelSales.data;
+  if(!data){head.innerHTML='';body.innerHTML='';count.textContent=funnelSales.error?`Ошибка: ${funnelSales.error}`:'Загрузка продаж по дням…';return}
+  // Дни идут от свежих к старым, проценты сравнивают день с предыдущим.
+  const order=data.dates.map((date,index)=>index).reverse();
+  const byNmId=new Map((state.funnelProducts||[]).map(item=>{const p=item.product||item;return [String(p.nmId),p]}));
+  const rows=data.products.map(product=>({...product,meta:byNmId.get(String(product.nmId))||{}}));
+  const pageCount=Math.max(1,Math.ceil(rows.length/state.stockPageSize));
+  funnelSales.page=Math.min(Math.max(1,funnelSales.page),pageCount);
+  const pageRows=rows.slice((funnelSales.page-1)*state.stockPageSize,funnelSales.page*state.stockPageSize);
+  const notes=[`${fmtNum(rows.length)} товаров`,`дней: ${fmtNum(data.dates.length)}`];
+  if(data.sync?.pending)notes.push(`догружаем дни: осталось ${fmtNum(data.sync.pending)}`);
+  if(funnelSales.loading)notes.push('обновляем…');
+  if(funnelSales.error)notes.push(`ошибка: ${funnelSales.error}`);
+  (data.warnings||[]).forEach(text=>notes.push(text));
+  count.textContent=notes.join(' · ');
+  head.innerHTML=`<th>Товар</th><th>Артикул продавца</th><th>Артикул WB</th><th>Итого</th>`+
+    order.map(index=>`<th>${escapeHtml(formatShortDate(data.dates[index]))}</th>`).join('');
+  const cell=(values,index)=>`<td>${funnelSalesValue(values[index])}${funnelSalesDelta(values[index],index>0?values[index-1]:null)}</td>`;
+  const totalsRow=`<tr class="sales-total-row"><td><strong>Итого</strong></td><td>—</td><td>—</td><td><strong>${funnelSalesValue(data.total)}</strong></td>`+
+    order.map(index=>cell(data.totals,index)).join('')+'</tr>';
+  body.innerHTML=rows.length?totalsRow+pageRows.map(row=>`<tr><td class="funnel-product-cell">${row.meta.photo?`<img class="stock-product-photo" src="${escapeHtml(row.meta.photo)}" alt="" loading="lazy">`:''}<strong>${escapeHtml(row.meta.title||`Товар ${row.nmId}`)}</strong></td>`+
+    `<td>${escapeHtml(row.meta.vendorCode||'—')}</td><td>${escapeHtml(row.nmId)}</td><td><strong>${funnelSalesValue(row.total)}</strong></td>`+
+    order.map(index=>cell(row.values,index)).join('')+'</tr>').join(''):
+    `<tr><td colspan="${4+data.dates.length}" class="empty-row">Нет данных за выбранный период</td></tr>`;
+  renderFunnelSalesPagination(pageCount);
+  $$('#funnelSalesBody .stock-product-photo').forEach(image=>{if(image.dataset.previewBound)return;image.dataset.previewBound='1';bindPhotoPreview(image)});
+}
+function renderFunnelSalesPagination(pageCount){
+  const el=$('#funnelSalesPagination');if(!el)return;
+  if(pageCount<=1){el.innerHTML='';el.classList.add('hidden');return}
+  const pages=Array.from({length:pageCount},(_,index)=>index+1);el.classList.remove('hidden');
+  el.innerHTML=`<button type="button" class="stock-page-button" data-sales-page="prev" ${funnelSales.page===1?'disabled':''}>Назад</button><div class="stock-page-numbers">${pages.map(page=>`<button type="button" class="stock-page-button ${page===funnelSales.page?'active':''}" data-sales-page="${page}">${page}</button>`).join('')}</div><button type="button" class="stock-page-button" data-sales-page="next" ${funnelSales.page===pageCount?'disabled':''}>Вперёд</button>`;
+  $$('[data-sales-page]').forEach(button=>button.onclick=()=>{const target=button.dataset.salesPage;const page=target==='prev'?funnelSales.page-1:target==='next'?funnelSales.page+1:Number(target);if(!Number.isInteger(page)||page<1||page>pageCount||page===funnelSales.page)return;funnelSales.page=page;renderFunnelSales()});
+}
+function formatShortDate(date){return `${date.slice(8,10)}.${date.slice(5,7)}`}
+document.addEventListener('click',event=>{const button=event.target.closest('[data-funnel-tab]');if(button)switchFunnelTab(button.dataset.funnelTab)});
+document.addEventListener('change',event=>{if(event.target.id==='funnelSalesMetric'){funnelSales.metric=event.target.value;funnelSales.page=1;loadFunnelSales()}});

@@ -1,7 +1,7 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { normalizeOrders, normalizeOrderFeed, enrichOrders, extractFunnel, summarizeAdStats, campaignProductDaily, withAdBudgets, summarizeKeywords, normalizeStockPreset, normalizePricePreset, adCampaignMayHaveStats, validAdPeriod, historyPeriod, historyChunks, planAdFetch, datesBetween, safeFolderName, funnelDaysToFetch, pairFunnelDays, funnelPeriods, funnelRangeBuckets, funnelRecordCounts, funnelRangeValues, normalizeFbsStocks, normalizeFbwStocks, normalizePrices, summarizeStockTotals, normalizeNewOrders, summarizeSupplies, normalizeTrbxes, chunkOrders, stickerType, WB_HOSTS } = require('../server');
+const { normalizeOrders, normalizeOrderFeed, enrichOrders, extractFunnel, summarizeAdStats, campaignProductDaily, withAdBudgets, summarizeKeywords, normalizeStockPreset, normalizePricePreset, adCampaignMayHaveStats, validAdPeriod, historyPeriod, historyChunks, planAdFetch, datesBetween, safeFolderName, funnelDaysToFetch, pairFunnelDays, funnelPeriods, funnelRangeBuckets, funnelRecordCounts, funnelRangeValues, funnelSalesMatrix, normalizeFbsStocks, normalizeFbwStocks, normalizePrices, summarizeStockTotals, normalizeNewOrders, summarizeSupplies, normalizeTrbxes, chunkOrders, stickerType, WB_HOSTS } = require('../server');
 
 test('объединяет и сортирует FBS и события ленты WB', () => {
   const result = normalizeOrders(
@@ -400,4 +400,21 @@ test('добавляет выключенные кластеры без пока
   assert.equal(result.total.find(row => row.query === 'чехол старый').status, 'archived');
   assert.equal(result.total[0].query, 'чехол');
   assert.equal(result.byNmId['100'].length, 3);
+});
+
+test('строит матрицу продаж по дням и артикулам', () => {
+  const days = [
+    { date: '2026-09-01', products: { '100': [10, 2, 3, 4500, 1, 1500, 0], '200': [5, 1, 1, 1500, 0, 0, 0] } },
+    { date: '2026-09-02', products: { '100': [8, 1, 1, 1500, 1, 1500, 0] } }
+  ];
+  const dates = ['2026-09-01', '2026-09-02', '2026-09-03'];
+  const matrix = funnelSalesMatrix(days, dates, null, 'orderCount');
+  assert.deepEqual(matrix.products.map(product => product.nmId), ['100', '200']);
+  assert.deepEqual(matrix.products[0].values, [3, 1, null]);
+  assert.equal(matrix.products[0].total, 4);
+  assert.deepEqual(matrix.totals, [4, 1, null]);
+  assert.equal(matrix.total, 5);
+  const filtered = funnelSalesMatrix(days, dates, ['200'], 'orderSum');
+  assert.deepEqual(filtered.products.map(product => product.nmId), ['200']);
+  assert.deepEqual(filtered.products[0].values, [1500, 0, null]);
 });
