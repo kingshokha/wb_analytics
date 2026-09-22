@@ -418,3 +418,16 @@ test('строит матрицу продаж по дням и артикула
   assert.deepEqual(filtered.products.map(product => product.nmId), ['200']);
   assert.deepEqual(filtered.products[0].values, [1500, 0, null]);
 });
+
+test('возвраты в ленте заказов получают свой статус, а не «новый»', () => {
+  const rows = normalizeOrderFeed({ data: { currency: 'RUB', orders: [
+    { srid: 'a', status: 'return', createdAt: '2026-09-09T19:40:00Z', updatedAt: '2026-09-17T23:12:00Z' },
+    { srid: 'b', status: 'returnDefective', createdAt: '2026-09-14T07:29:00Z', updatedAt: '2026-09-19T12:59:00Z' },
+    { srid: 'c', status: 'created', createdAt: '2026-09-18T07:00:00Z', updatedAt: '2026-09-18T07:00:00Z' }
+  ] } });
+  const byId = Object.fromEntries(rows.map(row => [row.id, row]));
+  assert.equal(byId.a.status, 'return');
+  assert.equal(byId.b.status, 'return');
+  assert.equal(byId.b.rawStatus, 'returnDefective');
+  assert.equal(byId.c.status, 'new');
+});

@@ -41,6 +41,7 @@ const ALLOWED_METHODS = new Set(['GET', 'POST', 'PUT', 'PATCH', 'DELETE']);
 const MARKETPLACE_API = 'https://marketplace-api.wildberries.ru';
 const STICKER_TYPES = new Set(['png', 'svg', 'zplv', 'zplh']);
 const ORDER_STICKER_CHUNK = 100;
+const ORDER_FEED_LIMIT = 10_000;
 const SUPPLY_ORDERS_CHUNK = 100;
 const ORDERS_LOOKUP_MAX_PAGES = 30;
 const CARGO_TYPES = { 0: 'Не указан', 1: 'Обычный', 2: 'СГТ', 3: 'КГТ' };
@@ -563,7 +564,8 @@ function normalizeOrderFeed(payload) {
     chrtId: order.chrtId,
     article: `chrtID ${order.chrtId}`,
     name: `Товар WB ${order.nmId}`,
-    status: order.status === 'buyout' ? 'complete' : order.status === 'cancel' ? 'cancel' : 'new',
+    status: order.status === 'buyout' ? 'complete' : order.status === 'cancel' ? 'cancel'
+      : ['return', 'returnDefective'].includes(order.status) ? 'return' : 'new',
     rawStatus: order.status,
     cancelType: order.cancelType,
     createdAt: order.updatedAt || order.createdAt,
@@ -1633,7 +1635,8 @@ async function dashboard(id, from, to) {
   const jobs = [
     wbRequest(token, 'https://marketplace-api.wildberries.ru/api/v3/orders/new').catch(e => (warnings.push(`FBS: ${e.message}`), { orders: [] })),
     cachedAnalytics(`order-feed:${id}:${safeFrom}:${safeTo}`, () => wbRequest(token, 'https://seller-analytics-api.wildberries.ru/api/analytics/v1/order-feed', { method: 'POST', body: {
-      selectedPeriod: { start: `${safeFrom}T00:00:00Z`, end: `${safeTo}T23:59:59Z` }
+      // Без пагинации WB отдаёт только 50 последних событий, поэтому запрашиваем максимум за один раз.
+      selectedPeriod: { start: `${safeFrom}T00:00:00Z`, end: `${safeTo}T23:59:59Z` }, pagination: { limit: ORDER_FEED_LIMIT }
     }})).catch(e => (warnings.push(`Лента заказов: ${e.message}`), { data: { orders: [] } })),
     cachedAnalytics(`product-cards:${id}`, () => loadProductCards(token), 10 * 60_000)
       .catch(e => (warnings.push(`Карточки товаров: ${e.message}`), [])),
@@ -1641,6 +1644,9 @@ async function dashboard(id, from, to) {
       .catch(e => (warnings.push(`Баланс: ${e.message}`), null))
   ];
   const [fbs, orderFeed, cards, balance] = await Promise.all(jobs);
+  if ((orderFeed?.data?.orders || []).length >= ORDER_FEED_LIMIT) {
+    warnings.push(`Лента заказов: показаны первые ${ORDER_FEED_LIMIT} событий за период, выберите период короче`);
+  }
   const balanceHistory = balance ? saveBalanceSnapshot(id, balance) : (readBalanceHistory()[id] || []);
   return { demo: false, orders: enrichOrders(normalizeOrders(fbs, orderFeed), cards), funnel: extractFunnel({ data: { products: [] } }), funnelProducts: [], funnelHistory: [], funnelGroupedHistory: [],
     balance: balance ? { currency: balance.currency || 'RUB', current: Number(balance.current || 0),
