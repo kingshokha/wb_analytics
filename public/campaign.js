@@ -80,6 +80,68 @@
     renderExportProgress();
     return event.type==='result'?event:null;
   }
+  const keywords={data:null,loading:false,error:'',product:'',search:'',onlyInactive:false,sort:{key:'views',direction:'desc'},limit:200};
+  const KEYWORD_COLUMNS=['query','status','views','clicks','ctr','cpm','cpc','spend','carts','orders','cr','avgPosition'];
+  const KEYWORD_STATUSES={active:'Активен',excluded:'Неактивен',archived:'В архиве'};
+  const keywordStatusCell=row=>row.status?`<span class="keyword-status ${row.status}">${KEYWORD_STATUSES[row.status]}</span>`:'<span class="keyword-status archived">Нет данных</span>';
+  const keywordValue=(key,value)=>key==='query'?String(value??''):['spend','cpc','cpm'].includes(key)?money(value):['ctr','cr'].includes(key)?percent(value):number(value);
+  function keywordRows(){
+    const data=keywords.data;if(!data)return [];
+    const rows=keywords.product?(data.byNmId?.[keywords.product]||[]):(data.total||[]);
+    const term=keywords.search.trim().toLowerCase();
+    const filtered=rows.filter(row=>(!term||row.query.toLowerCase().includes(term))&&(!keywords.onlyInactive||row.status==='excluded'||row.status==='archived'));
+    return sorted(filtered,keywords.sort);
+  }
+  function keywordStatusNote(rows){
+    const off=rows.filter(row=>row.status==='excluded').length,archived=rows.filter(row=>row.status==='archived').length;
+    return [off?`неактивных: ${number(off)}`:'',archived?`в архиве: ${number(archived)}`:''].filter(Boolean);
+  }
+  function keywordTotals(rows){
+    const sum=key=>rows.reduce((total,row)=>total+Number(row[key]||0),0);
+    const views=sum('views'),clicks=sum('clicks'),spend=sum('spend'),orders=sum('orders');
+    const positions=rows.reduce((total,row)=>total+Number(row.avgPosition||0)*Number(row.views||1),0);
+    const base=rows.reduce((total,row)=>total+Number(row.views||1),0);
+    return {views,clicks,spend,orders,carts:sum('carts'),ctr:views?clicks/views*100:0,cpc:clicks?spend/clicks:0,
+      cpm:views?spend/views*1000:0,cr:clicks?orders/clicks*100:0,avgPosition:base?positions/base:0};
+  }
+  async function loadKeywords(period,refresh=false){
+    if(!period)return;
+    keywords.loading=true;keywords.error='';renderKeywords();
+    try{
+      const q=new URLSearchParams({cabinet:params.get('cabinet')||'demo',id:params.get('id')||'',from:period.from,to:period.to,...(refresh?{refresh:'1'}:{})});
+      const response=await fetch(`/api/advertising/campaign/keywords?${q}`);
+      if(!response.ok)throw new Error((await response.json()).error||'Не удалось получить ключевые запросы');
+      keywords.data=await response.json();
+      if(!keywords.data.byNmId?.[keywords.product])keywords.product='';
+    }catch(e){keywords.error=e.message}
+    finally{keywords.loading=false;renderKeywords()}
+  }
+  function renderKeywords(){
+    const note=$('#keywordsNote'),body=$('#keywordsBody'),select=$('#keywordProduct');
+    if(!note)return;
+    const data=keywords.data;
+    select.innerHTML='<option value="">Все артикулы</option>'+(data?.products||[]).map(product=>`<option value="${esc(product.nmId)}" ${String(product.nmId)===keywords.product?'selected':''}>${esc(product.vendorCode||product.name)} · ${esc(product.nmId)}</option>`).join('');
+    if(keywords.loading&&!data){note.textContent='Загрузка ключевых запросов…';body.innerHTML='';return}
+    if(keywords.error&&!data){note.textContent=`Ошибка: ${keywords.error}`;body.innerHTML='';return}
+    if(!data){note.textContent='';body.innerHTML='';return}
+    const rows=keywordRows(),shown=rows.slice(0,keywords.limit),totals=keywordTotals(rows);
+    const notes=[`${date(data.period.from)} — ${date(data.period.to)}`,`запросов: ${number(rows.length)}`,...keywordStatusNote(rows)];
+    if(keywords.product)notes.push('по одному артикулу');
+    if(rows.length>shown.length)notes.push(`показаны первые ${number(shown.length)}`);
+    if(data.fromFile)notes.push('из сохранённого файла');
+    if(keywords.loading)notes.push('обновляем…');
+    if(keywords.error)notes.push(`ошибка обновления: ${keywords.error}`);
+    (data.warnings||[]).forEach(text=>notes.push(text));
+    note.textContent=notes.join(' · ');
+    body.innerHTML=rows.length?`<tr class="total-row"><td>Итого · ${number(rows.length)} запросов</td><td></td>${KEYWORD_COLUMNS.slice(2).map(key=>`<td>${esc(keywordValue(key,totals[key]))}</td>`).join('')}</tr>`+
+      shown.map(row=>`<tr class="${row.status==='excluded'||row.status==='archived'?'keyword-off':''}"><td>${esc(row.query)}</td><td>${keywordStatusCell(row)}</td>${KEYWORD_COLUMNS.slice(2).map(key=>`<td>${esc(keywordValue(key,row[key]))}</td>`).join('')}</tr>`).join(''):
+      `<tr><td colspan="12" class="empty">${keywords.onlyInactive?'Неактивных запросов нет':'WB не вернул поисковые запросы за этот период'}</td></tr>`;
+  }
+  document.querySelectorAll('th[data-keyword-key]').forEach(header=>header.onclick=()=>{const key=header.dataset.keywordKey;keywords.sort=keywords.sort.key===key?{key,direction:keywords.sort.direction==='asc'?'desc':'asc'}:{key,direction:key==='query'?'asc':'desc'};renderKeywords()});
+  $('#keywordProduct').onchange=event=>{keywords.product=event.target.value;renderKeywords()};
+  $('#keywordSearch').oninput=event=>{keywords.search=event.target.value;renderKeywords()};
+  $('#keywordOnlyInactive').onchange=event=>{keywords.onlyInactive=event.target.checked;renderKeywords()};
+  $('#keywordRefresh').onclick=()=>loadKeywords(keywords.data?.period||state.period,true);
   async function exportHistory(){
     const button=$('#exportHistory'),controls=[button,$('#exportPreset'),$('#exportFrom'),$('#exportTo')];
     const from=$('#exportFrom').value,to=$('#exportTo').value;
@@ -104,6 +166,7 @@
       state.rows=result.campaign.daily||[];state.productDaily=result.productDaily||[];
       renderMeta(result.campaign);renderSummary(result.campaign);renderOptions();renderChart();renderTable();renderProductTable();
       $('#campaignTitle').textContent=result.campaign.name||`Кампания #${result.campaign.id}`;
+      state.period=result.period;loadKeywords(result.period);
       $('#periodLabel').textContent=`Кампания #${result.campaign.id} · ${date(result.period.from)} — ${date(result.period.to)}${result.folder?` · ${result.folder}`:''}`;
       clearInterval(exportState.timer);
       const took=formatSeconds(Math.max(1,Math.round((Date.now()-exportState.started)/1000)));
@@ -115,6 +178,52 @@
       clearInterval(exportState.timer);controls.forEach(control=>control.disabled=false);button.textContent='Выгрузить';
     }
   }
+  // Ширину колонок можно тянуть мышью, как в «Ценах и скидках»; значения хранятся в браузере.
+  function initResizableTables(scope=document){
+    scope.querySelectorAll('table').forEach((table,tableIndex)=>{
+      if(table.dataset.resizable==='1')return;
+      const headers=[...table.querySelectorAll('thead th')];
+      if(!headers.length)return;
+      table.dataset.resizable='1';table.classList.add('resizable-table');
+      const bodyId=table.querySelector('tbody[id]')?.id||`campaign-table-${tableIndex}`,storageKey=`wb-campaign-column-widths:${bodyId}`;
+      let saved=[];try{saved=JSON.parse(localStorage.getItem(storageKey)||'[]')}catch{}
+      if(saved.length===headers.length&&saved.every(Number.isFinite)){
+        headers.forEach((header,index)=>header.style.width=`${saved[index]}px`);
+        const total=saved.reduce((sum,width)=>sum+width,0);
+        table.style.width=`${total}px`;table.style.minWidth=`${total}px`;table.style.tableLayout='fixed';
+      }
+      headers.forEach((header,index)=>{
+        const handle=document.createElement('span');
+        handle.className='column-resizer';handle.title='Потяните, чтобы изменить ширину';handle.setAttribute('aria-hidden','true');
+        handle.onclick=event=>{event.preventDefault();event.stopPropagation()};
+        handle.onpointerdown=event=>{
+          if(event.button!==0)return;
+          event.preventDefault();event.stopPropagation();
+          const widths=headers.map(item=>Math.round(item.getBoundingClientRect().width));
+          if(!widths[index])return;
+          headers.forEach((item,column)=>item.style.width=`${widths[column]}px`);
+          const startX=event.clientX,startWidth=widths[index],startTotal=widths.reduce((sum,width)=>sum+width,0);
+          table.style.width=`${startTotal}px`;table.style.minWidth=`${startTotal}px`;table.style.tableLayout='fixed';
+          document.body.classList.add('resizing-column');
+          const move=moveEvent=>{
+            const width=Math.max(48,Math.round(startWidth+moveEvent.clientX-startX)),delta=width-startWidth;
+            header.style.width=`${width}px`;table.style.width=`${startTotal+delta}px`;table.style.minWidth=`${startTotal+delta}px`;
+          };
+          const stop=()=>{
+            document.removeEventListener('pointermove',move);
+            document.body.classList.remove('resizing-column');
+            localStorage.setItem(storageKey,JSON.stringify(headers.map(item=>Math.round(item.getBoundingClientRect().width))));
+          };
+          document.addEventListener('pointermove',move);
+          document.addEventListener('pointerup',stop,{once:true});
+          document.addEventListener('pointercancel',stop,{once:true});
+        };
+        header.append(handle);
+      });
+    });
+  }
+  new MutationObserver(()=>initResizableTables()).observe(document.body,{childList:true,subtree:true});
+  initResizableTables();
   function load(){const from=params.get('from')||'',to=params.get('to')||'',fromInput=$('#exportFrom'),toInput=$('#exportTo');if(/^\d{4}-\d{2}-\d{2}$/.test(from)&&/^\d{4}-\d{2}-\d{2}$/.test(to)&&from<=to&&from>=fromInput.min&&to<=toInput.max){fromInput.value=from;toInput.value=to;fromInput.onchange()}exportHistory()}
   document.querySelectorAll('th[data-key]').forEach(h=>h.onclick=()=>{const k=h.dataset.key;state.sort=state.sort.key===k?{key:k,direction:state.sort.direction==='asc'?'desc':'asc'}:{key:k,direction:'desc'};renderTable()});document.querySelectorAll('th[data-product-key]').forEach(h=>h.onclick=()=>{const k=h.dataset.productKey;state.productSort=state.productSort.key===k?{key:k,direction:state.productSort.direction==='asc'?'desc':'asc'}:{key:k,direction:'desc'};renderProductTable()});buildExportPresets();$('#exportHistory').onclick=exportHistory;document.querySelectorAll('[data-modal-close]').forEach(el=>el.onclick=closeProductModal);document.addEventListener('keydown',event=>{if(event.key==='Escape')closeProductModal()});load();
 })();

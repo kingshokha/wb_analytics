@@ -1,7 +1,7 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { normalizeOrders, normalizeOrderFeed, enrichOrders, extractFunnel, summarizeAdStats, campaignProductDaily, withAdBudgets, normalizeStockPreset, normalizePricePreset, validAdPeriod, historyPeriod, historyChunks, planAdFetch, datesBetween, safeFolderName, funnelDaysToFetch, pairFunnelDays, funnelPeriods, funnelRangeBuckets, funnelRecordCounts, funnelRangeValues, normalizeFbsStocks, normalizeFbwStocks, normalizePrices, summarizeStockTotals, normalizeNewOrders, summarizeSupplies, normalizeTrbxes, chunkOrders, stickerType, WB_HOSTS } = require('../server');
+const { normalizeOrders, normalizeOrderFeed, enrichOrders, extractFunnel, summarizeAdStats, campaignProductDaily, withAdBudgets, summarizeKeywords, normalizeStockPreset, normalizePricePreset, adCampaignMayHaveStats, validAdPeriod, historyPeriod, historyChunks, planAdFetch, datesBetween, safeFolderName, funnelDaysToFetch, pairFunnelDays, funnelPeriods, funnelRangeBuckets, funnelRecordCounts, funnelRangeValues, normalizeFbsStocks, normalizeFbwStocks, normalizePrices, summarizeStockTotals, normalizeNewOrders, summarizeSupplies, normalizeTrbxes, chunkOrders, stickerType, WB_HOSTS } = require('../server');
 
 test('объединяет и сортирует FBS и события ленты WB', () => {
   const result = normalizeOrders(
@@ -341,4 +341,63 @@ test('складывает отрезок воронки из дней с учё
   assert.equal(result.fresh, true);
   assert.equal(result.values.openCount, 7);
   assert.equal(result.values.orderSum, 900);
+});
+
+test('не запрашивает статистику кампаний, закончившихся до периода или начатых после него', () => {
+  const campaign = (started, deleted) => ({ timestamps: { started, deleted } });
+  assert.equal(adCampaignMayHaveStats(campaign('2023-05-06T17:01:19+03:00', '2023-06-24T06:12:49+03:00'), '2026-09-10', '2026-09-16'), false);
+  assert.equal(adCampaignMayHaveStats(campaign('2026-08-01T10:00:00+03:00', '2100-01-01T00:00:00+03:00'), '2026-09-10', '2026-09-16'), true);
+  assert.equal(adCampaignMayHaveStats(campaign(null, '2100-01-01T00:00:00+03:00'), '2026-09-10', '2026-09-16'), true);
+  assert.equal(adCampaignMayHaveStats(campaign('2026-08-01T10:00:00+03:00', '2026-09-12T09:00:00+03:00'), '2026-09-10', '2026-09-16'), true);
+  assert.equal(adCampaignMayHaveStats(campaign('2026-09-20T10:00:00+03:00', '2100-01-01T00:00:00+03:00'), '2026-09-10', '2026-09-16'), false);
+  assert.equal(adCampaignMayHaveStats({}, '2026-09-10', '2026-09-16'), true);
+});
+
+test('складывает поисковые запросы кампании по всем артикулам и по каждому отдельно', () => {
+  const result = summarizeKeywords([
+    { nm_id: 100, stats: [{ norm_query: 'чехол magsafe', views: 1000, clicks: 40, spend: 200, atbs: 8, orders: 4, shks: 2, avg_pos: 4 },
+      { norm_query: 'чехол', views: 500, clicks: 10, spend: 90, atbs: 2, orders: 1, shks: 0, avg_pos: 10 }] },
+    { nm_id: 200, stats: [{ norm_query: 'чехол magsafe', views: 1000, clicks: 60, spend: 300, atbs: 12, orders: 6, shks: 4, avg_pos: 6 }] }
+  ]);
+  assert.deepEqual(result.total.map(row => row.query), ['чехол magsafe', 'чехол']);
+  const top = result.total[0];
+  assert.equal(top.views, 2000);
+  assert.equal(top.clicks, 100);
+  assert.equal(top.ctr, 5);
+  assert.equal(top.cpm, 250);
+  assert.equal(top.avgPosition, 5);
+  assert.equal(result.byNmId['200'].length, 1);
+  assert.equal(result.byNmId['100'][1].query, 'чехол');
+});
+
+test('отмечает неактивные и архивные поисковые запросы', () => {
+  const groups = [
+    { nm_id: 100, stats: [{ norm_query: 'чехол', views: 100 }, { norm_query: 'чехол magsafe', views: 50 }, { norm_query: 'чехол кожаный', views: 10 }] },
+    { nm_id: 200, stats: [{ norm_query: 'чехол', views: 80 }] }
+  ];
+  const statuses = new Map([
+    ['100', { active: new Set(), excluded: new Set(['чехол', 'чехол magsafe']), archived: new Set(['чехол кожаный']) }],
+    ['200', { active: new Set(['чехол']), excluded: new Set(), archived: new Set() }]
+  ]);
+  const result = summarizeKeywords(groups, statuses);
+  const byQuery = Object.fromEntries(result.total.map(row => [row.query, row]));
+  assert.equal(byQuery['чехол'].status, 'active');
+  assert.equal(byQuery['чехол'].excludedIn, 1);
+  assert.equal(byQuery['чехол magsafe'].status, 'excluded');
+  assert.equal(byQuery['чехол кожаный'].status, 'archived');
+  assert.equal(result.byNmId['100'].find(row => row.query === 'чехол').status, 'excluded');
+  assert.equal(summarizeKeywords(groups).total[0].status, '');
+});
+
+test('добавляет выключенные кластеры без показов отдельными строками', () => {
+  const groups = [{ nm_id: 100, stats: [{ norm_query: 'чехол', views: 120, clicks: 5 }] }];
+  const statuses = new Map([['100', { active: new Set(['чехол']), excluded: new Set(['чехол кожаный']), archived: new Set(['чехол старый']) }]]);
+  const result = summarizeKeywords(groups, statuses);
+  assert.equal(result.total.length, 3);
+  const off = result.total.find(row => row.query === 'чехол кожаный');
+  assert.equal(off.status, 'excluded');
+  assert.equal(off.views, 0);
+  assert.equal(result.total.find(row => row.query === 'чехол старый').status, 'archived');
+  assert.equal(result.total[0].query, 'чехол');
+  assert.equal(result.byNmId['100'].length, 3);
 });

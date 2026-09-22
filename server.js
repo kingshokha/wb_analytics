@@ -51,6 +51,14 @@ const PRESET_MAX_COUNT = 50;
 const STOCK_PRESET_MAX_AMOUNT = 100_000;
 const PRICE_PRESET_MAX_PRICE = 1_000_000;
 const STOCKS_REPORT_API = 'https://seller-analytics-api.wildberries.ru/api/analytics/v1/stocks-report';
+const NORMQUERY_URL = 'https://advert-api.wildberries.ru/adv/v0/normquery/stats';
+const NORMQUERY_LIST_URL = 'https://advert-api.wildberries.ru/adv/v0/normquery/list';
+const NORMQUERY_LIST_INTERVAL = 250;
+const NORMQUERY_CHUNK = 100;
+const NORMQUERY_INTERVAL = 6_500;
+const NORMQUERY_BURST = 10;
+const normqueryBuckets = new Map();
+const normqueryQueues = new Map();
 const AD_CAMPAIGNS_URL = 'https://advert-api.wildberries.ru/api/advert/v2/adverts?statuses=7,9,11';
 const FULLSTATS_INTERVAL = 20_500;
 const HISTORY_MAX_MONTHS = 12;
@@ -928,6 +936,173 @@ function hasAdActivity(day = {}) {
   return ['views', 'clicks', 'spend', 'orders', 'revenue', 'carts', 'canceled'].some(key => Number(day[key] || 0) > 0);
 }
 
+// --- Ключевые запросы кампании (поисковые кластеры WB) ---
+// Метод отдаёт кластеры отдельно для каждой пары «кампания + артикул», до 100 пар в запросе,
+// лимит 10 запросов в минуту, поэтому запросы идут через очередь кабинета и сохраняются в файл.
+function normqueryRequest(id, token, body) {
+  const task = async () => {
+    for (;;) {
+      const now = Date.now();
+      const bucket = normqueryBuckets.get(id) || { tokens: NORMQUERY_BURST, updatedAt: now };
+      bucket.tokens = Math.min(NORMQUERY_BURST, bucket.tokens + Math.max(0, now - bucket.updatedAt) / NORMQUERY_INTERVAL);
+      bucket.updatedAt = now;
+      normqueryBuckets.set(id, bucket);
+      if (bucket.tokens < 1) { await wait((1 - bucket.tokens) * NORMQUERY_INTERVAL); continue; }
+      bucket.tokens -= 1;
+      return wbRequest(token, NORMQUERY_URL, { method: 'POST', body });
+    }
+  };
+  const run = (normqueryQueues.get(id) || Promise.resolve()).then(task);
+  normqueryQueues.set(id, run.catch(() => {}));
+  return run;
+}
+
+// Списки активных, неактивных и архивных кластеров кампании по каждому артикулу.
+async function fetchNormqueryStatuses(id, token, campaignId, nmIds = []) {
+  const statuses = new Map();
+  for (let offset = 0; offset < nmIds.length; offset += NORMQUERY_CHUNK) {
+    if (offset) await wait(NORMQUERY_LIST_INTERVAL);
+    const items = nmIds.slice(offset, offset + NORMQUERY_CHUNK).map(nmId => ({ advertId: Number(campaignId), nmId: Number(nmId) }));
+    const response = await wbRequest(token, NORMQUERY_LIST_URL, { method: 'POST', body: { items } });
+    for (const item of Array.isArray(response?.items) ? response.items : []) {
+      const nmId = String(item.nmId ?? item.nm_id ?? '');
+      if (!nmId) continue;
+      const lists = item.normQueries || item.norm_queries || {};
+      statuses.set(nmId, { active: new Set(lists.active || []), excluded: new Set(lists.excluded || []), archived: new Set(lists.archived || []) });
+    }
+  }
+  return statuses;
+}
+
+function keywordStatus(statuses, nmId, query) {
+  const lists = statuses.get(String(nmId));
+  if (!lists) return '';
+  if (lists.excluded.has(query)) return 'excluded';
+  if (lists.archived.has(query)) return 'archived';
+  if (lists.active.has(query)) return 'active';
+  return '';
+}
+
+function emptyKeyword(query) {
+  return { query, views: 0, clicks: 0, spend: 0, carts: 0, orders: 0, sales: 0, positionWeight: 0, activeIn: 0, excludedIn: 0, archivedIn: 0 };
+}
+
+function addKeyword(target, row = {}) {
+  const views = Number(row.views || 0);
+  target.views += views; target.clicks += Number(row.clicks || 0); target.spend += Number(row.spend || 0);
+  target.carts += Number(row.atbs || 0); target.orders += Number(row.orders || 0); target.sales += Number(row.shks || 0);
+  target.positionWeight += Number(row.avg_pos || 0) * (views || 1);
+  target.positionBase = (target.positionBase || 0) + (views || 1);
+}
+
+function finalizeKeyword(row) {
+  const { positionWeight, positionBase, ...rest } = row;
+  // Запрос считается неактивным, если он выключен у всех артикулов, где встречается.
+  const status = rest.activeIn ? 'active' : rest.excludedIn ? 'excluded' : rest.archivedIn ? 'archived' : '';
+  return { ...rest, status, ctr: safeRatio(row.clicks, row.views), cpc: safeRatio(row.spend, row.clicks, 1),
+    cpm: safeRatio(row.spend, row.views, 1000), cr: safeRatio(row.orders, row.clicks),
+    avgPosition: positionBase ? Math.round((positionWeight / positionBase) * 10) / 10 : 0 };
+}
+
+// Складывает ответ WB в итог по кампании и в разбивку по артикулам.
+function summarizeKeywords(groups = [], statuses = new Map()) {
+  const total = new Map(); const byNmId = new Map();
+  for (const group of groups) {
+    const nmId = String(group.nm_id ?? group.nmId ?? '');
+    for (const row of group.stats || []) {
+      const query = String(row.norm_query || row.normQuery || '').trim();
+      if (!query) continue;
+      if (!total.has(query)) total.set(query, emptyKeyword(query));
+      addKeyword(total.get(query), row);
+      if (keywordStatus(statuses, nmId, query) === 'active') total.get(query).activeIn += 1;
+      if (!nmId) continue;
+      if (!byNmId.has(nmId)) byNmId.set(nmId, new Map());
+      const product = byNmId.get(nmId);
+      if (!product.has(query)) product.set(query, emptyKeyword(query));
+      addKeyword(product.get(query), row);
+      if (keywordStatus(statuses, nmId, query) === 'active') product.get(query).activeIn += 1;
+    }
+  }
+  // Выключенные и архивные кластеры показов не набирают, поэтому в статистике их нет:
+  // добавляем их отдельными строками с нулями, чтобы было видно, что они отключены.
+  for (const [nmId, lists] of statuses) {
+    for (const [status, queries] of [['excluded', lists.excluded], ['archived', lists.archived]]) {
+      for (const value of queries) {
+        const query = String(value || '').trim();
+        if (!query) continue;
+        if (!total.has(query)) total.set(query, emptyKeyword(query));
+        total.get(query)[`${status}In`] += 1;
+        if (!byNmId.has(nmId)) byNmId.set(nmId, new Map());
+        const product = byNmId.get(nmId);
+        if (!product.has(query)) product.set(query, emptyKeyword(query));
+        product.get(query)[`${status}In`] += 1;
+      }
+    }
+  }
+  const finalize = map => [...map.values()].map(finalizeKeyword).sort((a, b) => b.views - a.views || a.query.localeCompare(b.query, 'ru'));
+  return { total: finalize(total), byNmId: Object.fromEntries([...byNmId].map(([nmId, map]) => [nmId, finalize(map)])) };
+}
+
+function keywordsFile(cabinetId, campaignId, from, to) {
+  return path.join(campaignDir(cabinetId, campaignId), `keywords-${from}_${to}.json`);
+}
+
+function readCampaignKeywords(cabinetId, campaignId, from, to) {
+  try { return JSON.parse(fs.readFileSync(keywordsFile(cabinetId, campaignId, from, to), 'utf8')); } catch { return null; }
+}
+
+function saveCampaignKeywords(cabinetId, campaignId, from, to, data) {
+  const target = keywordsFile(cabinetId, campaignId, from, to);
+  fs.mkdirSync(path.dirname(target), { recursive: true });
+  fs.writeFileSync(`${target}.tmp`, JSON.stringify(data, null, 2));
+  fs.renameSync(`${target}.tmp`, target);
+}
+
+function demoCampaignKeywords(campaignId, from, to) {
+  const queries = ['чехол на iphone 17 pro', 'чехол magsafe', 'чехол с кольцом', 'силиконовый чехол'];
+  const groups = [{ nm_id: 4210000, stats: queries.map((query, index) => ({ norm_query: query, views: 4200 - index * 900, clicks: 180 - index * 40,
+    spend: 900 - index * 180, atbs: 40 - index * 8, orders: 12 - index * 3, shks: 8 - index * 2, avg_pos: 3 + index })) },
+  { nm_id: 4210001, stats: queries.slice(0, 2).map((query, index) => ({ norm_query: query, views: 2100 - index * 700, clicks: 90 - index * 30,
+    spend: 480 - index * 140, atbs: 18 - index * 6, orders: 5 - index * 2, shks: 3 - index, avg_pos: 5 + index })) }];
+  const demoStatuses = new Map([['4210000', { active: new Set(queries.slice(0, 2)), excluded: new Set(queries.slice(2, 3)), archived: new Set(queries.slice(3)) }],
+    ['4210001', { active: new Set(queries.slice(0, 1)), excluded: new Set(queries.slice(1, 2)), archived: new Set() }]]);
+  return { demo: true, campaignId, period: { from, to }, updatedAt: new Date().toISOString(), ...summarizeKeywords(groups, demoStatuses),
+    products: [{ nmId: 4210000, name: 'Демо-товар 1.1', vendorCode: 'DEMO-1', photo: '' }, { nmId: 4210001, name: 'Демо-товар 1.2', vendorCode: 'DEMO-2', photo: '' }], warnings: [] };
+}
+
+async function campaignKeywords(id, campaignId, from, to, refresh = false) {
+  const period = historyPeriod(from, to);
+  if (id === 'demo' || !cabinets().length) return demoCampaignKeywords(campaignId, period.from, period.to);
+  if (!/^\d{1,15}$/.test(String(campaignId || ''))) throw apiError(400, 'Некорректный номер кампании');
+  const stored = readCampaignKeywords(id, campaignId, period.from, period.to);
+  if (stored && !refresh && !funnelRangeNeedsFetch(period.to, stored.updatedAt)) return { ...stored, fromFile: true };
+  const token = tokenFor(id); const warnings = [];
+  const campaignData = await cachedAnalytics(`ad-campaigns:${id}`, () => wbRequest(token, AD_CAMPAIGNS_URL), 3 * 60_000);
+  const meta = (Array.isArray(campaignData?.adverts) ? campaignData.adverts : []).find(item => String(item.id) === String(campaignId));
+  if (!meta) throw apiError(404, 'Кампания не найдена');
+  const nmIds = campaignProductIds(meta);
+  if (!nmIds.length) return { demo: false, campaignId, period, updatedAt: new Date().toISOString(), total: [], byNmId: {}, products: [],
+    warnings: ['В кампании нет товаров, по которым WB отдаёт поисковые запросы'] };
+  const groups = [];
+  for (let offset = 0; offset < nmIds.length; offset += NORMQUERY_CHUNK) {
+    const items = nmIds.slice(offset, offset + NORMQUERY_CHUNK).map(nmId => ({ advert_id: Number(campaignId), nm_id: Number(nmId) }));
+    try {
+      const response = await normqueryRequest(id, token, { from: period.from, to: period.to, items });
+      groups.push(...(Array.isArray(response?.stats) ? response.stats : []));
+    } catch (error) { warnings.push(`Ключевые запросы: ${error.message}`); }
+  }
+  const statuses = await fetchNormqueryStatuses(id, token, campaignId, nmIds)
+    .catch(error => (warnings.push(`Статусы ключевых запросов: ${error.message}`), new Map()));
+  const cards = await cachedAnalytics(`product-cards:${id}`, () => loadProductCards(token), 10 * 60_000).catch(() => []);
+  const byNmIdCard = new Map(cards.map(card => [String(card.nmID), { name: card.title || `Товар ${card.nmID}`, vendorCode: card.vendorCode || '', photo: cardPhoto(card) }]));
+  const summary = summarizeKeywords(groups, statuses);
+  const result = { demo: false, campaignId, period, updatedAt: new Date().toISOString(), ...summary,
+    products: nmIds.map(nmId => ({ nmId, ...(byNmIdCard.get(String(nmId)) || { name: `Товар ${nmId}`, vendorCode: '', photo: '' }) }))
+      .filter(product => summary.byNmId[String(product.nmId)]?.length), warnings };
+  if (!warnings.length) { try { saveCampaignKeywords(id, campaignId, period.from, period.to, result); } catch (error) { warnings.push(`Не удалось сохранить ключевые запросы: ${error.message}`); } }
+  return result;
+}
+
 async function advertisingCampaignHistory(id, campaignId, from, to, report = () => {}) {
   const whole = historyPeriod(from, to);
   const demo = id === 'demo' || !cabinets().length;
@@ -1001,6 +1176,13 @@ async function advertisingCampaign(id, campaignId, from, to) {
   const productDaily = campaignProductDaily(summary.productDaily || [], campaignId, campaign.nmIds || []);
   return { period: summary.period, campaign, productDaily };
 }
+function adCampaignMayHaveStats(campaign = {}, from, to) {
+  const ended = Date.parse(campaign.timestamps?.deleted || '');
+  if (Number.isFinite(ended) && ended < Date.parse(`${from}T00:00:00+03:00`)) return false;
+  const started = Date.parse(campaign.timestamps?.started || '');
+  return !(Number.isFinite(started) && started > Date.parse(`${to}T23:59:59+03:00`));
+}
+
 async function advertising(id, from, to) {
   const period = validAdPeriod(from, to);
   if (id === 'demo' || !cabinets().length) return demoAds(period.from, period.to);
@@ -1008,8 +1190,11 @@ async function advertising(id, from, to) {
   const campaignData = await cachedAnalytics(`ad-campaigns:${id}`, () => wbRequest(token, AD_CAMPAIGNS_URL), 3 * 60_000);
   const campaigns = Array.isArray(campaignData?.adverts) ? campaignData.adverts : [];
   const stats = [];
-  for (let offset = 0; offset < campaigns.length; offset += 50) {
-    const ids = campaigns.slice(offset, offset + 50).map(item => item.id).join(',');
+  // WB отдаёт статистику максимум по 50 кампаниям за запрос и не чаще раза в 20 секунд,
+  // поэтому кампании, закончившиеся до начала периода, не запрашиваются: статистики у них быть не может.
+  const statCampaigns = campaigns.filter(campaign => adCampaignMayHaveStats(campaign, period.from, period.to));
+  for (let offset = 0; offset < statCampaigns.length; offset += 50) {
+    const ids = statCampaigns.slice(offset, offset + 50).map(item => item.id).join(',');
     if (!ids) continue;
     try {
       const chunk = await fullstatsRequest(id, token, ids, period.from, period.to);
@@ -1713,6 +1898,10 @@ async function handleApi(req, res, url) {
   if (req.method === 'GET' && url.pathname === '/api/advertising/campaign') {
     return send(res, 200, await advertisingCampaign(url.searchParams.get('cabinet') || 'demo', url.searchParams.get('id'), url.searchParams.get('from'), url.searchParams.get('to')));
   }
+  if (req.method === 'GET' && url.pathname === '/api/advertising/campaign/keywords') {
+    return send(res, 200, await campaignKeywords(url.searchParams.get('cabinet') || 'demo', url.searchParams.get('id'),
+      url.searchParams.get('from'), url.searchParams.get('to'), url.searchParams.get('refresh') === '1'));
+  }
   if (req.method === 'GET' && url.pathname === '/api/advertising/campaign/history') {
     // Ответ идёт построчно: события прогресса, затем итог или ошибка.
     res.writeHead(200, { 'Content-Type': 'application/x-ndjson; charset=utf-8', 'Cache-Control': 'no-store' });
@@ -1883,7 +2072,7 @@ const server = http.createServer(async (req, res) => {
 
 if (require.main === module) server.listen(PORT, '127.0.0.1', () => console.log(`WB Analytics: http://127.0.0.1:${PORT}`));
 
-module.exports = { server, cabinets, normalizeOrders, normalizeOrderFeed, enrichOrders, extractFunnel, summarizeAdStats, campaignProductDaily, withAdBudgets, normalizeStockPreset, normalizePricePreset, validAdPeriod, historyPeriod, historyChunks, planAdFetch, datesBetween, safeFolderName, funnelDaysToFetch, pairFunnelDays, funnelPeriods, funnelRangeBuckets, funnelRecordCounts, funnelRangeValues, normalizeFbsStocks, normalizeFbwStocks, normalizePrices, summarizeStockTotals, normalizeNewOrders, summarizeSupplies, normalizeTrbxes, chunkOrders, stickerType, WB_HOSTS };
+module.exports = { server, cabinets, normalizeOrders, normalizeOrderFeed, enrichOrders, extractFunnel, summarizeAdStats, campaignProductDaily, withAdBudgets, summarizeKeywords, normalizeStockPreset, normalizePricePreset, adCampaignMayHaveStats, validAdPeriod, historyPeriod, historyChunks, planAdFetch, datesBetween, safeFolderName, funnelDaysToFetch, pairFunnelDays, funnelPeriods, funnelRangeBuckets, funnelRecordCounts, funnelRangeValues, normalizeFbsStocks, normalizeFbwStocks, normalizePrices, summarizeStockTotals, normalizeNewOrders, summarizeSupplies, normalizeTrbxes, chunkOrders, stickerType, WB_HOSTS };
 
 
 
