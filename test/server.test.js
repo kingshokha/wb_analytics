@@ -1,7 +1,7 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { normalizeOrders, normalizeOrderFeed, enrichOrders, extractFunnel, summarizeAdStats, campaignProductDaily, withAdBudgets, summarizeKeywords, normalizeStockPreset, normalizePricePreset, adCampaignMayHaveStats, validAdPeriod, historyPeriod, historyChunks, planAdFetch, datesBetween, safeFolderName, funnelDaysToFetch, pairFunnelDays, funnelPeriods, funnelRangeBuckets, funnelRecordCounts, funnelRangeValues, funnelSalesMatrix, summaryTopProducts, summaryDrops, summaryProducts, normalizeFbsStocks, normalizeFbwStocks, normalizePrices, summarizeStockTotals, normalizeNewOrders, summarizeSupplies, normalizeTrbxes, chunkOrders, stickerType, WB_HOSTS } = require('../server');
+const { campaignActivePeriod, normalizeOrders, normalizeOrderFeed, enrichOrders, extractFunnel, summarizeAdStats, campaignProductDaily, withAdBudgets, summarizeKeywords, normalizeStockPreset, normalizePricePreset, adCampaignMayHaveStats, validAdPeriod, historyPeriod, historyChunks, planAdFetch, datesBetween, safeFolderName, funnelDaysToFetch, pairFunnelDays, funnelPeriods, funnelRangeBuckets, funnelRecordCounts, funnelRangeValues, funnelSalesMatrix, summaryTopProducts, summaryDrops, summaryProducts, normalizeFbsStocks, normalizeFbwStocks, normalizePrices, summarizeStockTotals, normalizeNewOrders, summarizeSupplies, normalizeTrbxes, chunkOrders, stickerType, WB_HOSTS } = require('../server');
 
 test('объединяет и сортирует FBS и события ленты WB', () => {
   const result = normalizeOrders(
@@ -476,4 +476,15 @@ test('просадки: падение заказов, переходов и к�
   assert.deepEqual(drops.items[0].reasons.map(reason => reason.metric).sort(), ['orderConversion', 'orderCount']);
   assert.deepEqual(drops.items[1].reasons.map(reason => reason.metric), ['openCount']);
   assert.equal(drops.items[1].severity, 'high');
+});
+
+test('выгрузка кампании обрезается по дате создания и настоящей дате удаления', () => {
+  const period = { from: '2026-06-01', to: '2026-09-23' };
+  const active = { timestamps: { created: '2026-07-13T23:40:00+03:00', deleted: '2100-01-01T00:00:00+03:00' } };
+  assert.deepEqual(campaignActivePeriod(active, period), { from: '2026-07-13', to: '2026-09-23' });
+  const finished = { timestamps: { created: '2026-05-10T10:00:00+03:00', deleted: '2026-08-04T08:45:00+03:00' } };
+  assert.deepEqual(campaignActivePeriod(finished, period), { from: '2026-06-01', to: '2026-08-04' });
+  assert.equal(campaignActivePeriod({ timestamps: { created: '2026-09-30T10:00:00+03:00' } }, period), null);
+  assert.equal(campaignActivePeriod({ timestamps: { created: '2026-01-01T10:00:00+03:00', deleted: '2026-03-01T10:00:00+03:00' } }, period), null);
+  assert.deepEqual(campaignActivePeriod({}, period), period);
 });

@@ -3,7 +3,6 @@
 
   const FILTER_OPTIONS = '.multi-filter > div[id]';
   const NON_TEXT_COLUMNS = /^(?:дата|date|сумма|цена|скидка|остаток|показы|клики|ctr|cpc|заказы|выкупы|ддр|roas|status|статус|id|sku|шт|руб|%)/i;
-  const observedTables = new WeakSet();
 
   function visibleLabels(options, query) {
     const normalized = query.trim().toLocaleLowerCase('ru-RU');
@@ -54,34 +53,60 @@
     return cell.querySelector('.ad-product-name > span, .product > span, strong') || cell;
   }
 
+  // Ячейка только размечается классами. Обрезан ли текст, проверяется при наведении (см. showFullText):
+  // замер ширины в каждой ячейке сразу после смены классов заставлял браузер пересчитывать раскладку тысячи раз,
+  // и сортировка таблицы на 300+ строк занимала секунды.
   function decorateCell(cell, headerText) {
     if (!cell || NON_TEXT_COLUMNS.test(headerText.trim())) return;
     const target = textTarget(cell);
-    if (!target) return;
-    const fullText = target.textContent.trim();
-    if (!fullText) return;
+    if (!target || !target.textContent.trim()) return;
     target.classList.add('table-cell');
     if (target !== cell) target.classList.add('truncate-content');
-    const overflowing = target.scrollWidth > target.clientWidth;
-    if (overflowing) {
-      target.title = fullText;
-      target.setAttribute('aria-label', fullText);
-    } else {
-      target.removeAttribute('title');
-      target.removeAttribute('aria-label');
-    }
+  }
+
+  function decorateTable(table) {
+    const headers = [...table.querySelectorAll('thead th')].map((header) => header.textContent);
+    table.querySelectorAll('tbody tr').forEach((row) => {
+      [...row.cells].forEach((cell, index) => decorateCell(cell, headers[index] || ''));
+    });
   }
 
   function initTruncation(root = document) {
-    root.querySelectorAll('table').forEach((table) => {
-      const headers = [...table.querySelectorAll('thead th')].map((header) => header.textContent);
-      table.querySelectorAll('tbody tr').forEach((row) => {
-        [...row.cells].forEach((cell, index) => decorateCell(cell, headers[index] || ''));
-      });
-      if (!observedTables.has(table) && typeof ResizeObserver === 'function') {
-        observedTables.add(table);
-        new ResizeObserver(() => initTruncation(table)).observe(table);
-      }
+    root.querySelectorAll('table').forEach(decorateTable);
+  }
+
+  // Подсказка с полным текстом ставится только на обрезанную ячейку под курсором; свои title ячеек не трогаются.
+  function showFullText(event) {
+    const target = event.target.closest && event.target.closest('.table-cell');
+    if (!target || (target.title && !target.dataset.truncateTitle)) return;
+    const fullText = (target.innerText || target.textContent).trim();
+    if (fullText && target.scrollWidth > target.clientWidth) {
+      target.title = fullText;
+      target.setAttribute('aria-label', fullText);
+      target.dataset.truncateTitle = '1';
+    } else if (target.dataset.truncateTitle) {
+      target.removeAttribute('title');
+      target.removeAttribute('aria-label');
+      delete target.dataset.truncateTitle;
+    }
+  }
+
+  // Изменения страницы собираются до следующего кадра: размечаются только таблицы, в которых что-то поменялось.
+  const pendingTables = new Set();
+  let pendingFrame = 0;
+  function scheduleTables(records) {
+    for (const record of records) {
+      const node = record.target.nodeType === 1 ? record.target : record.target.parentElement;
+      const table = node && node.closest('table');
+      if (table) pendingTables.add(table);
+      else if (node) record.addedNodes.forEach((added) => { if (added.nodeType === 1) (added.matches('table') ? [added] : added.querySelectorAll('table')).forEach((item) => pendingTables.add(item)); });
+    }
+    if (pendingFrame) return;
+    pendingFrame = requestAnimationFrame(() => {
+      pendingFrame = 0;
+      initFilters();
+      pendingTables.forEach((table) => { if (table.isConnected) decorateTable(table); });
+      pendingTables.clear();
     });
   }
 
@@ -92,6 +117,7 @@
   document.addEventListener('DOMContentLoaded', () => {
     initFilters();
     initTruncation();
-    new MutationObserver(() => { initFilters(); initTruncation(); }).observe(document.body, { childList: true, subtree: true });
+    document.addEventListener('mouseover', showFullText);
+    new MutationObserver(scheduleTables).observe(document.body, { childList: true, subtree: true });
   });
 })();

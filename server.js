@@ -660,7 +660,7 @@ function summarizeAdStats(campaigns = [], stats = [], from, to) {
     const nmIds = [...new Set([...campaignProductIds(campaign), ...(stat.days || []).flatMap(day => (day.apps || []).flatMap(app => (app.nms || []).map(nm => Number(nm.nmId || nm.nm)).filter(Number.isInteger)))])];
     rows.push({ id: stat.advertId, name: campaign?.settings?.name || `Кампания #${stat.advertId}`,
       status: campaign?.status, type: campaign?.type ?? null, paymentType: campaign?.settings?.payment_type || '', bidType: campaign?.bid_type || '',
-      createdAt: campaign?.timestamps?.created || '', updatedAt: campaign?.timestamps?.updated || '', nmIds, daily: (stat.days || []).map(day => ({ date: String(day.date || '').slice(0, 10), ...adMetrics(day) })), ...adMetrics(stat) });
+      createdAt: campaign?.timestamps?.created || '', startedAt: campaign?.timestamps?.started || '', updatedAt: campaign?.timestamps?.updated || '', nmIds, daily: (stat.days || []).map(day => ({ date: String(day.date || '').slice(0, 10), ...adMetrics(day) })), ...adMetrics(stat) });
     for (const day of stat.days || []) {
       const date = String(day.date || '').slice(0, 10);
       if (!daily.has(date)) daily.set(date, emptyAdMetrics({ date }));
@@ -683,7 +683,7 @@ function summarizeAdStats(campaigns = [], stats = [], from, to) {
   for (const campaign of campaigns) {
     if (!rows.some(row => String(row.id) === String(campaign.id))) rows.push({ id: campaign.id,
       name: campaign.settings?.name || `Кампания #${campaign.id}`, status: campaign.status, type: campaign.type ?? null,
-      paymentType: campaign.settings?.payment_type || '', bidType: campaign.bid_type || '', createdAt: campaign.timestamps?.created || '', updatedAt: campaign.timestamps?.updated || '', nmIds: campaignProductIds(campaign),
+      paymentType: campaign.settings?.payment_type || '', bidType: campaign.bid_type || '', createdAt: campaign.timestamps?.created || '', startedAt: campaign.timestamps?.started || '', updatedAt: campaign.timestamps?.updated || '', nmIds: campaignProductIds(campaign),
       ...finalizeAdMetrics(emptyAdMetrics()) });
   }
   const total = emptyAdMetrics(); rows.forEach(row => addAdMetrics(total, row));
@@ -721,9 +721,9 @@ function demoAdProducts(campaignIndex, views, clicks, spend, orders, revenue) {
 
 function demoAds(from, to) {
   const campaigns = [
-    { id: 101, status: 9, type: 9, bid_type: 'manual', timestamps: { created: '2026-03-12T09:15:00+03:00' }, settings: { name: 'Поиск · базовая коллекция', payment_type: 'cpm' } },
-    { id: 102, status: 11, type: 8, bid_type: 'unified', timestamps: { created: '2026-06-02T14:40:00+03:00' }, settings: { name: 'Автокампания · хиты', payment_type: 'cpm' } },
-    { id: 103, status: 7, type: 5, bid_type: 'manual', timestamps: { created: '2025-11-20T11:05:00+03:00' }, settings: { name: 'Карточка товара · новинки', payment_type: 'cpc' } }
+    { id: 101, status: 9, type: 9, bid_type: 'manual', timestamps: { created: '2026-03-12T09:15:00+03:00', started: '2026-09-01T10:00:00+03:00', updated: '2026-09-20T18:42:00+03:00' }, settings: { name: 'Поиск · базовая коллекция', payment_type: 'cpm' } },
+    { id: 102, status: 11, type: 8, bid_type: 'unified', timestamps: { created: '2026-06-02T14:40:00+03:00', started: null, updated: '2026-09-18T09:05:00+03:00' }, settings: { name: 'Автокампания · хиты', payment_type: 'cpm' } },
+    { id: 103, status: 7, type: 5, bid_type: 'manual', timestamps: { created: '2025-11-20T11:05:00+03:00', started: '2026-01-15T12:30:00+03:00', updated: '2026-08-30T21:10:00+03:00' }, settings: { name: 'Карточка товара · новинки', payment_type: 'cpc' } }
   ];
   const demoBudgets = new Map([['101', 18400], ['102', 7250]]);
   const stats = campaigns.map((campaign, campaignIndex) => {
@@ -1105,16 +1105,22 @@ async function campaignKeywords(id, campaignId, from, to, refresh = false) {
   return result;
 }
 
+// Дни, за которые у кампании может быть статистика: не раньше создания и не позже удаления.
+// У действующих кампаний WB ставит в deleted заглушку 2100-01-01, она сама отсекается сравнением с концом периода.
+// Даты WB отдаёт по Москве, поэтому день берётся прямо из строки.
+function campaignActivePeriod(campaign = {}, period) {
+  const day = value => /^\d{4}-\d{2}-\d{2}/.test(value || '') ? String(value).slice(0, 10) : '';
+  const created = day(campaign.timestamps?.created), deleted = day(campaign.timestamps?.deleted);
+  const from = created > period.from ? created : period.from;
+  const to = deleted && deleted < period.to ? deleted : period.to;
+  return from <= to ? { from, to } : null;
+}
+
 async function advertisingCampaignHistory(id, campaignId, from, to, report = () => {}) {
   const whole = historyPeriod(from, to);
   const demo = id === 'demo' || !cabinets().length;
   if (!demo && !/^\d{1,15}$/.test(String(campaignId || ''))) throw apiError(400, 'Некорректный номер кампании');
   const token = demo ? null : tokenFor(id);
-  const dates = datesBetween(whole.from, whole.to);
-  const stored = demo ? new Map() : loadStoredAdDays(id, campaignId, whole.from, whole.to);
-  const plan = demo ? { missing: dates, chunks: historyChunks(whole) } : planAdFetch(dates, new Set(stored.keys()));
-  const storedDays = dates.length - plan.missing.length;
-  report({ type: 'start', chunks: plan.chunks.length, period: whole, days: dates.length, storedDays });
   let meta = null; let cardsPromise = Promise.resolve([]); let campaign = null;
   if (!demo) {
     // Карточки нужны только для названий и фото, поэтому грузятся параллельно и не задерживают запросы статистики.
@@ -1124,6 +1130,13 @@ async function advertisingCampaignHistory(id, campaignId, from, to, report = () 
     if (!meta) throw apiError(404, 'Кампания не найдена');
     campaign = summarizeAdStats([meta], [], whole.from, whole.to).campaigns[0];
   }
+  // Запрашиваются только дни жизни кампании: до создания WB статистику не отдаёт, и запросы по ним — пустая трата лимита.
+  const active = demo ? whole : campaignActivePeriod(meta, whole);
+  const dates = active ? datesBetween(active.from, active.to) : [];
+  const stored = demo || !active ? new Map() : loadStoredAdDays(id, campaignId, active.from, active.to);
+  const plan = demo ? { missing: dates, chunks: historyChunks(whole) } : planAdFetch(dates, new Set(stored.keys()));
+  const storedDays = dates.length - plan.missing.length;
+  report({ type: 'start', chunks: plan.chunks.length, period: whole, activePeriod: active, createdAt: meta?.timestamps?.created || '', days: dates.length, storedDays });
   const daily = new Map(); const productsByDate = new Map(); const warnings = [];
   const missing = new Set(plan.missing);
   for (const [date, record] of stored) {
@@ -1167,7 +1180,7 @@ async function advertisingCampaignHistory(id, campaignId, from, to, report = () 
   const total = emptyAdMetrics(); days.forEach(day => addAdMetrics(total, day));
   const enriched = enrichAdvertising({ campaigns: [{ ...campaign, ...finalizeAdMetrics(total), daily: days }], products: [],
     productDaily: [...productsByDate.values()].flat() }, await cardsPromise);
-  return { generatedAt: new Date().toISOString(), cabinet: id, campaignId, period: whole, warnings, storedDays, requests: plan.chunks.length,
+  return { generatedAt: new Date().toISOString(), cabinet: id, campaignId, period: whole, activePeriod: active, warnings, storedDays, requests: plan.chunks.length,
     folder: demo ? '' : `data/Ads/${cabinetFolderName(id)}/${campaignId}`, campaign: enriched.campaigns[0],
     productDaily: enriched.productDaily.sort((a, b) => `${a.date}:${a.nmId}`.localeCompare(`${b.date}:${b.nmId}`)) };
 }
@@ -2286,7 +2299,7 @@ const server = http.createServer(async (req, res) => {
 
 if (require.main === module) server.listen(PORT, '127.0.0.1', () => console.log(`WB Analytics: http://127.0.0.1:${PORT}`));
 
-module.exports = { server, cabinets, normalizeOrders, normalizeOrderFeed, enrichOrders, extractFunnel, summarizeAdStats, campaignProductDaily, withAdBudgets, summarizeKeywords, normalizeStockPreset, normalizePricePreset, adCampaignMayHaveStats, validAdPeriod, historyPeriod, historyChunks, planAdFetch, datesBetween, safeFolderName, funnelDaysToFetch, pairFunnelDays, funnelPeriods, funnelRangeBuckets, funnelRecordCounts, funnelRangeValues, funnelSalesMatrix, summaryTopProducts, summaryDrops, summaryProducts, normalizeFbsStocks, normalizeFbwStocks, normalizePrices, summarizeStockTotals, normalizeNewOrders, summarizeSupplies, normalizeTrbxes, chunkOrders, stickerType, WB_HOSTS };
+module.exports = { server, cabinets, campaignActivePeriod, normalizeOrders, normalizeOrderFeed, enrichOrders, extractFunnel, summarizeAdStats, campaignProductDaily, withAdBudgets, summarizeKeywords, normalizeStockPreset, normalizePricePreset, adCampaignMayHaveStats, validAdPeriod, historyPeriod, historyChunks, planAdFetch, datesBetween, safeFolderName, funnelDaysToFetch, pairFunnelDays, funnelPeriods, funnelRangeBuckets, funnelRecordCounts, funnelRangeValues, funnelSalesMatrix, summaryTopProducts, summaryDrops, summaryProducts, normalizeFbsStocks, normalizeFbwStocks, normalizePrices, summarizeStockTotals, normalizeNewOrders, summarizeSupplies, normalizeTrbxes, chunkOrders, stickerType, WB_HOSTS };
 
 
 
