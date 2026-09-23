@@ -1,7 +1,7 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { normalizeOrders, normalizeOrderFeed, enrichOrders, extractFunnel, summarizeAdStats, campaignProductDaily, withAdBudgets, summarizeKeywords, normalizeStockPreset, normalizePricePreset, adCampaignMayHaveStats, validAdPeriod, historyPeriod, historyChunks, planAdFetch, datesBetween, safeFolderName, funnelDaysToFetch, pairFunnelDays, funnelPeriods, funnelRangeBuckets, funnelRecordCounts, funnelRangeValues, funnelSalesMatrix, normalizeFbsStocks, normalizeFbwStocks, normalizePrices, summarizeStockTotals, normalizeNewOrders, summarizeSupplies, normalizeTrbxes, chunkOrders, stickerType, WB_HOSTS } = require('../server');
+const { normalizeOrders, normalizeOrderFeed, enrichOrders, extractFunnel, summarizeAdStats, campaignProductDaily, withAdBudgets, summarizeKeywords, normalizeStockPreset, normalizePricePreset, adCampaignMayHaveStats, validAdPeriod, historyPeriod, historyChunks, planAdFetch, datesBetween, safeFolderName, funnelDaysToFetch, pairFunnelDays, funnelPeriods, funnelRangeBuckets, funnelRecordCounts, funnelRangeValues, funnelSalesMatrix, summaryTopProducts, summaryDrops, summaryProducts, normalizeFbsStocks, normalizeFbwStocks, normalizePrices, summarizeStockTotals, normalizeNewOrders, summarizeSupplies, normalizeTrbxes, chunkOrders, stickerType, WB_HOSTS } = require('../server');
 
 test('объединяет и сортирует FBS и события ленты WB', () => {
   const result = normalizeOrders(
@@ -430,4 +430,50 @@ test('возвраты в ленте заказов получают свой с
   assert.equal(byId.b.status, 'return');
   assert.equal(byId.b.rawStatus, 'returnDefective');
   assert.equal(byId.c.status, 'new');
+});
+
+const summaryItem = (nmId, current, previous) => ({ nmId, name: `Товар ${nmId}`, vendorCode: `V-${nmId}`, photo: '',
+  current: { openCount: 0, cartCount: 0, orderCount: 0, orderSum: 0, buyoutCount: 0, buyoutSum: 0, addToWishlistCount: 0, ...current },
+  previous: { openCount: 0, cartCount: 0, orderCount: 0, orderSum: 0, buyoutCount: 0, buyoutSum: 0, addToWishlistCount: 0, ...previous } });
+
+test('сводка собирает товары из разбивки воронки и подставляет карточки', () => {
+  const products = summaryProducts({ products: { 11: [100, 10, 4, 4000, 2, 2000, 1] } }, { products: { 12: [50, 5, 2, 900, 1, 450, 0] } },
+    [{ nmID: 11, title: 'Худи', vendorCode: 'H-1', photos: [{ c246x328: 'photo.webp' }] }]);
+  const byId = Object.fromEntries(products.map(item => [item.nmId, item]));
+  assert.equal(byId[11].name, 'Худи');
+  assert.equal(byId[11].photo, 'photo.webp');
+  assert.equal(byId[11].current.orderSum, 4000);
+  assert.equal(byId[11].previous.orderCount, 0);
+  assert.equal(byId[12].name, 'Товар 12');
+  assert.equal(byId[12].previous.orderSum, 900);
+});
+
+test('структура заказов: лидеры, «Прочие» и доли прошлого периода', () => {
+  const products = [1, 2, 3, 4, 5, 6, 7].map(nmId => summaryItem(nmId, { orderSum: nmId * 100, orderCount: nmId }, { orderSum: 100, orderCount: 1 }));
+  products.push(summaryItem(8, {}, { orderSum: 300 }));
+  const top = summaryTopProducts(products, 5);
+  assert.equal(top.total, 2800);
+  assert.equal(top.previousTotal, 1000);
+  assert.deepEqual(top.items.map(item => item.nmId), [7, 6, 5, 4, 3]);
+  assert.equal(Math.round(top.items[0].share * 100) / 100, 25);
+  assert.equal(top.items[0].previousShare, 10);
+  assert.equal(top.other.count, 2);
+  assert.equal(top.other.orderSum, 300);
+  assert.equal(top.other.previousShare, 50);
+});
+
+test('просадки: падение заказов, переходов и конверсии, без шума на малых числах', () => {
+  const drops = summaryDrops([
+    summaryItem(1, { openCount: 400, orderCount: 4, orderSum: 4000 }, { openCount: 420, orderCount: 12, orderSum: 12000 }),
+    summaryItem(2, { openCount: 90, orderCount: 5, orderSum: 5000 }, { openCount: 300, orderCount: 5, orderSum: 5000 }),
+    summaryItem(3, { openCount: 10, orderCount: 1, orderSum: 100 }, { openCount: 20, orderCount: 2, orderSum: 200 }),
+    summaryItem(4, { openCount: 500, orderCount: 20, orderSum: 20000 }, { openCount: 480, orderCount: 21, orderSum: 21000 })
+  ]);
+  assert.equal(drops.total, 2);
+  assert.deepEqual(drops.items.map(item => item.nmId), [1, 2]);
+  assert.equal(drops.items[0].lostSum, 8000);
+  assert.equal(drops.items[0].severity, 'high');
+  assert.deepEqual(drops.items[0].reasons.map(reason => reason.metric).sort(), ['orderConversion', 'orderCount']);
+  assert.deepEqual(drops.items[1].reasons.map(reason => reason.metric), ['openCount']);
+  assert.equal(drops.items[1].severity, 'high');
 });

@@ -660,7 +660,7 @@ function summarizeAdStats(campaigns = [], stats = [], from, to) {
     const nmIds = [...new Set([...campaignProductIds(campaign), ...(stat.days || []).flatMap(day => (day.apps || []).flatMap(app => (app.nms || []).map(nm => Number(nm.nmId || nm.nm)).filter(Number.isInteger)))])];
     rows.push({ id: stat.advertId, name: campaign?.settings?.name || `Кампания #${stat.advertId}`,
       status: campaign?.status, type: campaign?.type ?? null, paymentType: campaign?.settings?.payment_type || '', bidType: campaign?.bid_type || '',
-      updatedAt: campaign?.timestamps?.updated || '', nmIds, daily: (stat.days || []).map(day => ({ date: String(day.date || '').slice(0, 10), ...adMetrics(day) })), ...adMetrics(stat) });
+      createdAt: campaign?.timestamps?.created || '', updatedAt: campaign?.timestamps?.updated || '', nmIds, daily: (stat.days || []).map(day => ({ date: String(day.date || '').slice(0, 10), ...adMetrics(day) })), ...adMetrics(stat) });
     for (const day of stat.days || []) {
       const date = String(day.date || '').slice(0, 10);
       if (!daily.has(date)) daily.set(date, emptyAdMetrics({ date }));
@@ -683,7 +683,7 @@ function summarizeAdStats(campaigns = [], stats = [], from, to) {
   for (const campaign of campaigns) {
     if (!rows.some(row => String(row.id) === String(campaign.id))) rows.push({ id: campaign.id,
       name: campaign.settings?.name || `Кампания #${campaign.id}`, status: campaign.status, type: campaign.type ?? null,
-      paymentType: campaign.settings?.payment_type || '', bidType: campaign.bid_type || '', updatedAt: campaign.timestamps?.updated || '', nmIds: campaignProductIds(campaign),
+      paymentType: campaign.settings?.payment_type || '', bidType: campaign.bid_type || '', createdAt: campaign.timestamps?.created || '', updatedAt: campaign.timestamps?.updated || '', nmIds: campaignProductIds(campaign),
       ...finalizeAdMetrics(emptyAdMetrics()) });
   }
   const total = emptyAdMetrics(); rows.forEach(row => addAdMetrics(total, row));
@@ -721,9 +721,9 @@ function demoAdProducts(campaignIndex, views, clicks, spend, orders, revenue) {
 
 function demoAds(from, to) {
   const campaigns = [
-    { id: 101, status: 9, type: 9, bid_type: 'manual', settings: { name: 'Поиск · базовая коллекция', payment_type: 'cpm' } },
-    { id: 102, status: 11, type: 8, bid_type: 'unified', settings: { name: 'Автокампания · хиты', payment_type: 'cpm' } },
-    { id: 103, status: 7, type: 5, bid_type: 'manual', settings: { name: 'Карточка товара · новинки', payment_type: 'cpc' } }
+    { id: 101, status: 9, type: 9, bid_type: 'manual', timestamps: { created: '2026-03-12T09:15:00+03:00' }, settings: { name: 'Поиск · базовая коллекция', payment_type: 'cpm' } },
+    { id: 102, status: 11, type: 8, bid_type: 'unified', timestamps: { created: '2026-06-02T14:40:00+03:00' }, settings: { name: 'Автокампания · хиты', payment_type: 'cpm' } },
+    { id: 103, status: 7, type: 5, bid_type: 'manual', timestamps: { created: '2025-11-20T11:05:00+03:00' }, settings: { name: 'Карточка товара · новинки', payment_type: 'cpc' } }
   ];
   const demoBudgets = new Map([['101', 18400], ['102', 7250]]);
   const stats = campaigns.map((campaign, campaignIndex) => {
@@ -1189,6 +1189,14 @@ async function advertising(id, from, to) {
   const period = validAdPeriod(from, to);
   if (id === 'demo' || !cabinets().length) return demoAds(period.from, period.to);
   const token = tokenFor(id); const warnings = [];
+  const { campaigns, stats } = await loadAdStats(id, token, period, warnings);
+  const cards = await cachedAnalytics(`product-cards:${id}`, () => loadProductCards(token), 10 * 60_000);
+  const budgets = await advertBudgets(id, token, campaigns, warnings);
+  const summary = enrichAdvertising(summarizeAdStats(campaigns, stats, period.from, period.to), cards);
+  return { demo: false, ...summary, campaigns: withAdBudgets(summary.campaigns, budgets), warnings };
+}
+
+async function loadAdStats(id, token, period, warnings = []) {
   const campaignData = await cachedAnalytics(`ad-campaigns:${id}`, () => wbRequest(token, AD_CAMPAIGNS_URL), 3 * 60_000);
   const campaigns = Array.isArray(campaignData?.adverts) ? campaignData.adverts : [];
   const stats = [];
@@ -1203,10 +1211,7 @@ async function advertising(id, from, to) {
       if (Array.isArray(chunk)) stats.push(...chunk);
     } catch (error) { warnings.push(`Статистика рекламы: ${error.message}`); }
   }
-  const cards = await cachedAnalytics(`product-cards:${id}`, () => loadProductCards(token), 10 * 60_000);
-  const budgets = await advertBudgets(id, token, campaigns, warnings);
-  const summary = enrichAdvertising(summarizeAdStats(campaigns, stats, period.from, period.to), cards);
-  return { demo: false, ...summary, campaigns: withAdBudgets(summary.campaigns, budgets), warnings };
+  return { campaigns, stats };
 }
 
 function withAdBudgets(campaigns = [], budgets = new Map()) {
@@ -1627,6 +1632,156 @@ async function funnelDetails(id, from, to) {
   return { products, history: [], groupedHistory: [] };
 }
 
+// --- Общая сводка ---
+// Итоги выбранного и прошлого периода с разбивкой по артикулам приходят одним запросом воронки
+// и сохраняются в periods.json рядом с отрезками графика; дневная динамика берётся из истории воронки.
+const SUMMARY_TOP_PRODUCTS = 5;
+const SUMMARY_DROP_LIMIT = 6;
+const SUMMARY_REFRESH_MS = 2 * 60_000;
+const DROP_MIN_ORDERS = 3;
+const DROP_MIN_OPENS = 100;
+const DROP_RATIO = 0.7;
+
+function funnelCountsFromValues(values = []) {
+  return Object.fromEntries(FUNNEL_COUNT_KEYS.map((key, index) => [key, Number(values?.[index] || 0)]));
+}
+
+function summaryProducts(current = {}, previous = null, cards = []) {
+  const byNmId = new Map(cards.map(card => [String(card.nmID), card]));
+  const ids = new Set([...Object.keys(current?.products || {}), ...Object.keys(previous?.products || {})]);
+  return [...ids].map(nmId => {
+    const card = byNmId.get(nmId) || {};
+    return { nmId: Number(nmId), name: card.title || `Товар ${nmId}`, vendorCode: card.vendorCode || '', subjectName: card.subjectName || '',
+      photo: cardPhoto(card), current: funnelCountsFromValues(current?.products?.[nmId]), previous: funnelCountsFromValues(previous?.products?.[nmId]) };
+  });
+}
+
+function productBrief(product) {
+  return { nmId: product.nmId, name: product.name, vendorCode: product.vendorCode, photo: product.photo };
+}
+
+// Лидеры по сумме заказов и «Прочие»; доля прошлого периода нужна, чтобы показать сдвиг в п.п.
+function summaryTopProducts(products = [], limit = SUMMARY_TOP_PRODUCTS) {
+  const total = products.reduce((sum, item) => sum + item.current.orderSum, 0);
+  const previousTotal = products.reduce((sum, item) => sum + item.previous.orderSum, 0);
+  const share = (value, base) => base ? value / base * 100 : 0;
+  const sorted = products.filter(item => item.current.orderSum > 0).sort((a, b) => b.current.orderSum - a.current.orderSum || a.nmId - b.nmId);
+  const items = sorted.slice(0, limit).map(item => ({ ...productBrief(item), orderSum: item.current.orderSum, orderCount: item.current.orderCount,
+    share: share(item.current.orderSum, total), previousShare: share(item.previous.orderSum, previousTotal) }));
+  const rest = sorted.slice(limit);
+  const restSum = rest.reduce((sum, item) => sum + item.current.orderSum, 0);
+  const restPrevious = previousTotal - items.reduce((sum, item) => sum + products.find(p => p.nmId === item.nmId).previous.orderSum, 0);
+  return { total, previousTotal, items, other: rest.length ? { count: rest.length, orderSum: restSum,
+    orderCount: rest.reduce((sum, item) => sum + item.current.orderCount, 0), share: share(restSum, total), previousShare: share(restPrevious, previousTotal) } : null };
+}
+
+// Товар попадает в просадки, если заказы, переходы или конверсия в заказ упали на 30% и больше.
+// Пороги по количеству отсекают шум: падение с 2 заказов до 1 ничего не значит.
+function summaryDrops(products = [], limit = SUMMARY_DROP_LIMIT) {
+  const change = (from, to) => from ? (to - from) / from * 100 : 0;
+  const drops = [];
+  for (const product of products) {
+    const now = product.current, before = product.previous, reasons = [];
+    if (before.orderCount >= DROP_MIN_ORDERS && now.orderCount <= before.orderCount * DROP_RATIO) {
+      reasons.push({ metric: 'orderCount', label: 'Заказы', from: before.orderCount, to: now.orderCount, change: change(before.orderCount, now.orderCount) });
+    }
+    if (before.openCount >= DROP_MIN_OPENS && now.openCount <= before.openCount * DROP_RATIO) {
+      reasons.push({ metric: 'openCount', label: 'Переходы в карточку', from: before.openCount, to: now.openCount, change: change(before.openCount, now.openCount) });
+    }
+    if (before.openCount >= DROP_MIN_OPENS && now.openCount >= DROP_MIN_OPENS && before.orderCount >= DROP_MIN_ORDERS) {
+      const was = before.orderCount / before.openCount * 100, is = now.orderCount / now.openCount * 100;
+      if (is <= was * DROP_RATIO) reasons.push({ metric: 'orderConversion', label: 'Конверсия в заказ', from: was, to: is, change: change(was, is), unit: '%' });
+    }
+    if (!reasons.length) continue;
+    const worst = Math.min(...reasons.map(reason => reason.change));
+    drops.push({ ...productBrief(product), severity: worst <= -60 ? 'high' : worst <= -45 ? 'medium' : 'low', worst,
+      lostSum: Math.max(0, before.orderSum - now.orderSum), reasons: reasons.sort((a, b) => a.change - b.change) });
+  }
+  drops.sort((a, b) => b.lostSum - a.lostSum || a.worst - b.worst);
+  return { total: drops.length, items: drops.slice(0, limit) };
+}
+
+async function summaryFunnelRanges(id, token, periods, refresh = false) {
+  const now = Date.now(); const stored = readFunnelRanges(id);
+  const withPrevious = periods.previous.from >= addDays(moscowDate(0), -FUNNEL_MAX_DEPTH_DAYS);
+  const pick = range => { const record = stored[`${range.from}_${range.to}`]; return record?.products ? record : null; };
+  const fresh = (record, range) => Boolean(record) && (refresh ? now - Date.parse(record.fetchedAt || '') < SUMMARY_REFRESH_MS : !funnelRangeNeedsFetch(range.to, record.fetchedAt, now));
+  const current = pick(periods.current), previous = withPrevious ? pick(periods.previous) : null;
+  if (fresh(current, periods.current) && (!withPrevious || fresh(previous, periods.previous))) return { current, previous, fetchedAt: current.fetchedAt };
+  try {
+    const [loaded, loadedPrevious = null] = await fetchFunnelRanges(id, token, periods.current, withPrevious ? periods.previous : null);
+    saveFunnelRanges(id, [loaded, loadedPrevious].filter(Boolean));
+    return { current: loaded, previous: loadedPrevious, fetchedAt: new Date().toISOString() };
+  } catch (error) {
+    if (current) return { current, previous, fetchedAt: current.fetchedAt, staleError: error.message };
+    throw error;
+  }
+}
+
+function summaryPayload(periods, current, previous, products, history) {
+  const day = item => ({ date: item.date, ...pickFunnelCounts(item) });
+  return { periods, totals: { current: pickFunnelCounts(current), previous: previous ? pickFunnelCounts(previous) : null },
+    daily: { current: (history.current || []).map(day), previous: (history.previous || []).map(day) }, sync: history.sync,
+    top: summaryTopProducts(products), drops: previous ? summaryDrops(products) : { total: 0, items: [] },
+    productCount: products.filter(item => item.current.orderCount || item.current.openCount).length };
+}
+
+const DEMO_SUMMARY_PRODUCTS = [
+  ['Худи оверсайз с капюшоном', 'HOODIE-01', .26, .22], ['Футболка базовая хлопок', 'TEE-BASE', .19, .17], ['Свитшот с начёсом', 'SWEAT-02', .14, .10],
+  ['Джоггеры утеплённые', 'JOG-05', .11, .09], ['Лонгслив в рубчик', 'LONG-11', .08, .15], ['Шорты спортивные', 'SHORT-07', .07, .06],
+  ['Кепка с вышивкой', 'CAP-03', .06, .05], ['Носки, набор 5 пар', 'SOCKS-5', .05, .12], ['Панама хлопковая', 'PANAMA-1', .04, .04]
+];
+
+function demoSummary(periods) {
+  const history = demoFunnelHistory(periods, 'day');
+  const sum = days => { const total = pickFunnelCounts(); days.forEach(item => FUNNEL_COUNT_KEYS.forEach(key => { total[key] += Number(item[key] || 0); })); return total; };
+  const current = sum(history.current), previous = sum(history.previous);
+  const part = (total, weight) => Object.fromEntries(FUNNEL_COUNT_KEYS.map(key => [key, Math.round(total[key] * weight)]));
+  const products = DEMO_SUMMARY_PRODUCTS.map(([name, vendorCode, now, before], index) => ({ nmId: 100001 + index, name, vendorCode, subjectName: '', photo: '',
+    current: part(current, now), previous: part(previous, before) }));
+  return { demo: true, ...summaryPayload(periods, current, previous, products, history), fetchedAt: new Date().toISOString(), warnings: [] };
+}
+
+async function summary(id, from, to, refresh = false) {
+  const periods = funnelPeriods(from, to);
+  if (id === 'demo' || !cabinets().length) return demoSummary(periods);
+  const token = tokenFor(id); const warnings = [];
+  // Запрос итогов ставится в очередь воронки раньше догрузки дней, чтобы карточки появились первыми.
+  const rangesJob = summaryFunnelRanges(id, token, periods, refresh);
+  rangesJob.catch(() => {});
+  const history = await funnelHistory(id, periods.current.from, periods.current.to, 'day');
+  const cards = await cachedAnalytics(`product-cards:${id}`, () => loadProductCards(token), 10 * 60_000)
+    .catch(error => (warnings.push(`Карточки товаров: ${error.message}`), []));
+  const ranges = await rangesJob;
+  if (ranges.staleError) warnings.push(`Воронка: ${ranges.staleError}. Показаны сохранённые данные`);
+  if (!ranges.previous) warnings.push('WB отдаёт воронку только за последний год, поэтому сравнения с прошлым периодом нет');
+  const products = summaryProducts(ranges.current, ranges.previous, cards);
+  return { demo: false, ...summaryPayload(periods, ranges.current, ranges.previous, products, history), fetchedAt: ranges.fetchedAt, warnings };
+}
+
+function summaryAdPeriod(days = [], range) {
+  const daily = days.filter(day => day.date >= range.from && day.date <= range.to);
+  const total = emptyAdMetrics(); daily.forEach(day => addAdMetrics(total, day));
+  return { totals: finalizeAdMetrics(total), daily };
+}
+
+// Реклама идёт отдельным запросом: fullstats отвечает не чаще раза в 20 секунд и не дольше чем за 31 день.
+// Если выбранный и прошлый период вместе укладываются в 31 день, хватает одного запроса на пачку кампаний.
+async function summaryAds(id, from, to) {
+  const periods = funnelPeriods(from, to);
+  const length = datesBetween(periods.current.from, periods.current.to).length;
+  if (length > 31) return { available: false, periods, reason: 'Реклама в сводке доступна за период до 31 дня — это ограничение WB API', warnings: [] };
+  const ranges = length * 2 <= 31 ? [{ from: periods.previous.from, to: periods.current.to }] : [periods.previous, periods.current];
+  const demo = id === 'demo' || !cabinets().length; const warnings = []; const days = [];
+  for (const range of ranges) {
+    // Демо-реклама рассчитана на вкладку «Реклама» и крупнее демо-воронки, поэтому для сводки она уменьшена.
+    if (demo) { days.push(...demoAds(range.from, range.to).daily.map(day => finalizeAdMetrics({ ...day, ...Object.fromEntries(['views', 'clicks', 'spend', 'orders', 'revenue', 'carts', 'sales'].map(key => [key, day[key] * 0.08])) }))); continue; }
+    const { campaigns, stats } = await loadAdStats(id, tokenFor(id), range, warnings);
+    days.push(...summarizeAdStats(campaigns, stats, range.from, range.to).daily);
+  }
+  return { demo, available: true, periods, current: summaryAdPeriod(days, periods.current), previous: summaryAdPeriod(days, periods.previous), warnings };
+}
+
 async function dashboard(id, from, to) {
   if (id === 'demo' || !cabinets().length) return demoDashboard();
   const token = tokenFor(id); const warnings = [];
@@ -1944,6 +2099,12 @@ async function handleApi(req, res, url) {
   if (req.method === 'GET' && url.pathname === '/api/dashboard') {
     return send(res, 200, await dashboard(url.searchParams.get('cabinet') || 'demo', url.searchParams.get('from'), url.searchParams.get('to')));
   }
+  if (req.method === 'GET' && url.pathname === '/api/summary') {
+    return send(res, 200, await summary(url.searchParams.get('cabinet') || 'demo', url.searchParams.get('from'), url.searchParams.get('to'), url.searchParams.get('refresh') === '1'));
+  }
+  if (req.method === 'GET' && url.pathname === '/api/summary/ads') {
+    return send(res, 200, await summaryAds(url.searchParams.get('cabinet') || 'demo', url.searchParams.get('from'), url.searchParams.get('to')));
+  }
   if (req.method === 'GET' && url.pathname === '/api/advertising/campaign') {
     return send(res, 200, await advertisingCampaign(url.searchParams.get('cabinet') || 'demo', url.searchParams.get('id'), url.searchParams.get('from'), url.searchParams.get('to')));
   }
@@ -2125,7 +2286,7 @@ const server = http.createServer(async (req, res) => {
 
 if (require.main === module) server.listen(PORT, '127.0.0.1', () => console.log(`WB Analytics: http://127.0.0.1:${PORT}`));
 
-module.exports = { server, cabinets, normalizeOrders, normalizeOrderFeed, enrichOrders, extractFunnel, summarizeAdStats, campaignProductDaily, withAdBudgets, summarizeKeywords, normalizeStockPreset, normalizePricePreset, adCampaignMayHaveStats, validAdPeriod, historyPeriod, historyChunks, planAdFetch, datesBetween, safeFolderName, funnelDaysToFetch, pairFunnelDays, funnelPeriods, funnelRangeBuckets, funnelRecordCounts, funnelRangeValues, funnelSalesMatrix, normalizeFbsStocks, normalizeFbwStocks, normalizePrices, summarizeStockTotals, normalizeNewOrders, summarizeSupplies, normalizeTrbxes, chunkOrders, stickerType, WB_HOSTS };
+module.exports = { server, cabinets, normalizeOrders, normalizeOrderFeed, enrichOrders, extractFunnel, summarizeAdStats, campaignProductDaily, withAdBudgets, summarizeKeywords, normalizeStockPreset, normalizePricePreset, adCampaignMayHaveStats, validAdPeriod, historyPeriod, historyChunks, planAdFetch, datesBetween, safeFolderName, funnelDaysToFetch, pairFunnelDays, funnelPeriods, funnelRangeBuckets, funnelRecordCounts, funnelRangeValues, funnelSalesMatrix, summaryTopProducts, summaryDrops, summaryProducts, normalizeFbsStocks, normalizeFbwStocks, normalizePrices, summarizeStockTotals, normalizeNewOrders, summarizeSupplies, normalizeTrbxes, chunkOrders, stickerType, WB_HOSTS };
 
 
 

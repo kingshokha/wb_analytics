@@ -13,7 +13,8 @@
     <aside class="sidebar">
       <a class="brand" href="#"><span class="brand-mark">W</span><span>WB Pulse</span></a>
       <nav>
-        <button class="nav-item active" data-page="orders"><span class="nav-icon" aria-hidden="true">▤</span> Лента заказов <b id="newBadge">0</b></button>
+        <button class="nav-item active" data-page="summary"><span class="nav-icon" aria-hidden="true">◎</span> Сводка</button>
+        <button class="nav-item" data-page="orders"><span class="nav-icon" aria-hidden="true">▤</span> Лента заказов <b id="newBadge">0</b></button>
         <button class="nav-item" data-page="fbs-orders"><span class="nav-icon" aria-hidden="true">◈</span> Новые заказы <b id="fbsBadge">0</b></button>
         <button class="nav-item" data-page="fbw-stocks"><span class="nav-icon" aria-hidden="true">◇</span> Остатки FBW</button>
         <button class="nav-item" data-page="stocks"><span class="nav-icon" aria-hidden="true">◇</span> Остатки FBS</button>
@@ -38,7 +39,7 @@
 
     <main>
       <header>
-        <div><p class="eyebrow">Операционный центр</p><h1 id="pageTitle">Лента заказов</h1></div>
+        <div><p class="eyebrow">Операционный центр</p><h1 id="pageTitle">Общая сводка</h1></div>
         <div class="header-actions">
           <label class="date"><span>Период</span><input id="dateFrom" type="date"><b>—</b><input id="dateTo" type="date"></label>
           <select class="month-select hidden" id="adMonth" aria-label="Выбрать месяц"></select>
@@ -48,7 +49,28 @@
 
       <div id="alertArea"></div>
 
-      <section class="page active" id="page-orders">
+      <section class="page active" id="page-summary">
+        <div class="panel summary-kpis" id="summaryKpis"></div>
+        <div class="summary-grid">
+          <div class="panel summary-chart-panel">
+            <div class="panel-head"><div><h2>Динамика продаж</h2><p id="summaryChartNote">По дням в сравнении с прошлым периодом</p></div><div class="summary-legend" id="summaryChartLegend"></div></div>
+            <div class="funnel-metric-list summary-metric-list" id="summaryChartMetrics"></div>
+            <div class="summary-chart" id="summaryChart"></div>
+          </div>
+          <div class="panel summary-mix-panel">
+            <div class="panel-head"><div><h2>Структура заказов</h2><p id="summaryMixNote">Доля товаров в сумме заказов</p></div><button type="button" class="summary-link" data-summary-go="funnel">Все товары →</button></div>
+            <div class="summary-mix" id="summaryMix"></div>
+          </div>
+        </div>
+        <div class="summary-bottom">
+          <div class="panel"><div class="panel-head"><div><h2>Коротко о периоде</h2><p id="summaryTextNote">Главное по цифрам</p></div></div><ul class="summary-text" id="summaryText"></ul></div>
+          <div class="panel"><div class="panel-head"><div><h2>Ключевые тренды</h2><p>К прошлому периоду</p></div></div><div class="summary-trends" id="summaryTrends"></div></div>
+          <div class="panel"><div class="panel-head"><div><h2>Что проверить</h2><p id="summaryDropsNote">Товары с просадкой</p></div></div><div class="summary-drops" id="summaryDrops"></div></div>
+        </div>
+        <p class="summary-foot" id="summaryFoot"></p>
+      </section>
+
+      <section class="page" id="page-orders">
         <div class="balance-strip" id="balanceStrip"></div>
         <div class="metrics" id="metrics"></div>
         <div class="panel">
@@ -189,7 +211,7 @@
         </div>
         <div class="panel ad-table-panel">
           <div class="panel-head"><div><h2>Рекламные кампании</h2><p id="adCampaignCount">Загрузка данных…</p></div><div class="filters"><label class="search">⌕ <input id="adSearch" placeholder="Название или ID кампании"></label><select id="adStatus" hidden><option value=""></option></select><details class="multi-filter"><summary id="adStatusLabel">Статусы (2)</summary><div id="adStatusOptions"><label><input type="checkbox" value="9" checked> Активные</label><label><input type="checkbox" value="11" checked> На паузе</label><label><input type="checkbox" value="7"> Завершённые</label></div></details></div></div>
-          <div class="table-wrap"><table class="ad-table"><thead><tr><th data-ad-sort="name">Кампания ↕</th><th data-ad-sort="status">Статус ↕</th><th data-ad-sort="budget">Остаток бюджета ↕</th><th data-ad-sort="spend">Расход ↕</th><th data-ad-sort="views">Показы ↕</th><th data-ad-sort="clicks">Клики ↕</th><th data-ad-sort="ctr">CTR ↕</th><th data-ad-sort="cpc">CPC ↕</th><th data-ad-sort="orders">Заказы ↕</th><th data-ad-sort="revenue">Выручка ↕</th><th data-ad-sort="drr">ДРР ↕</th><th data-ad-sort="roas">ROAS ↕</th></tr></thead><tbody id="adCampaignsBody"></tbody></table></div>
+          <div class="table-wrap"><table class="ad-table"><thead><tr><th data-ad-sort="name">Кампания ↕</th><th data-ad-sort="status">Статус ↕</th><th data-ad-sort="createdAt">Создана ↕</th><th data-ad-sort="budget">Остаток бюджета ↕</th><th data-ad-sort="spend">Расход ↕</th><th data-ad-sort="views">Показы ↕</th><th data-ad-sort="clicks">Клики ↕</th><th data-ad-sort="ctr">CTR ↕</th><th data-ad-sort="cpc">CPC ↕</th><th data-ad-sort="orders">Заказы ↕</th><th data-ad-sort="revenue">Выручка ↕</th><th data-ad-sort="drr">ДРР ↕</th><th data-ad-sort="roas">ROAS ↕</th></tr></thead><tbody id="adCampaignsBody"></tbody></table></div>
           <div class="empty hidden" id="emptyAds"><span>↗</span><h3>Нет рекламных данных</h3><p>Измените период или фильтры.</p></div>
         </div>
         <div class="panel ad-products-panel">
@@ -206,6 +228,7 @@
   <div class="loading-overlay" id="loadingOverlay"><div class="loading-spinner" aria-label="Загрузка"></div></div>
   <button id="runApi" hidden></button><button id="copyResponse" hidden></button>
   <script src="/table-ui.js"></script>
+  <script src="/summary.js"></script>
   <script src="/app.js"></script>
 </body>
 </html>
