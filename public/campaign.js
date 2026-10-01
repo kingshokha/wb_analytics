@@ -34,7 +34,8 @@
   const isoDate=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
   const exportState={presets:[],started:0,timer:0,chunks:0,index:0,phase:'',reason:'',waitUntil:0,failed:0};
   function buildExportPresets(){
-    const today=new Date();today.setHours(0,0,0,0);
+    // «Сегодня» — по Москве (UTC+3), как в кабинете WB; дальше календарная арифметика идёт по этой дате.
+    const msk=new Date(Date.now()+3*3_600_000),today=new Date(msk.getUTCFullYear(),msk.getUTCMonth(),msk.getUTCDate());
     const start31=new Date(today);start31.setDate(start31.getDate()-30);
     const list=[{value:'last31',label:'Последние 31 день',from:isoDate(start31),to:isoDate(today)},
       {value:'this-month',label:'Этот месяц',from:isoDate(new Date(today.getFullYear(),today.getMonth(),1)),to:isoDate(today)}];

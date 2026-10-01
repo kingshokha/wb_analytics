@@ -250,8 +250,9 @@ async function wbRequest(token, url, options = {}) {
   } finally { clearTimeout(timeout); }
 }
 
+// Все даты по умолчанию считаются по Москве (UTC+3), как в кабинете WB.
 function dateDaysAgo(days) {
-  const date = new Date(); date.setDate(date.getDate() - days); return date.toISOString().slice(0, 10);
+  return moscowDate(-days);
 }
 
 function wait(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
@@ -760,18 +761,14 @@ function demoAds(from, to) {
 function validAdPeriod(from, to) {
   const pattern = /^\d{4}-\d{2}-\d{2}$/;
   const safeTo = pattern.test(to || '') ? to : dateDaysAgo(0);
-  const safeFrom = pattern.test(from || '') ? from : dateDaysAgo(7);
+  const safeFrom = pattern.test(from || '') ? from : dateDaysAgo(6);
   const days = Math.floor((new Date(`${safeTo}T00:00:00Z`) - new Date(`${safeFrom}T00:00:00Z`)) / 86_400_000) + 1;
   if (!Number.isFinite(days) || days < 1) throw apiError(400, 'Начало периода должно быть раньше окончания');
   if (days > 31) throw apiError(400, 'Для рекламы выберите период не более 31 дня — это ограничение WB API');
   return { from: safeFrom, to: safeTo };
 }
 
-function localDate(date = new Date()) {
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
-}
-
-function historyPeriod(from, to, today = localDate()) {
+function historyPeriod(from, to, today = moscowDate(0)) {
   const pattern = /^\d{4}-\d{2}-\d{2}$/;
   if (!pattern.test(from || '') || !pattern.test(to || '')) throw apiError(400, 'Укажите даты начала и конца выгрузки');
   if (from > to) throw apiError(400, 'Дата начала должна быть не позже даты конца');
@@ -837,7 +834,7 @@ function datesBetween(from, to) {
 
 // Какие дни нужно запросить у WB: несохранённые и свежие (WB ещё пересчитывает их статистику).
 // Соседние дни собираются в запросы не длиннее 31 дня, чтобы тратить меньше запросов.
-function planAdFetch(dates = [], storedDates = new Set(), today = localDate(), freshDays = AD_FRESH_DAYS) {
+function planAdFetch(dates = [], storedDates = new Set(), today = moscowDate(0), freshDays = AD_FRESH_DAYS) {
   const freshFrom = addDays(today, -freshDays);
   const missing = dates.filter(date => !storedDates.has(date) || date >= freshFrom);
   const chunks = [];
@@ -1666,7 +1663,7 @@ async function funnelSales(id, from, to, nmIdsInput = null, metric = 'orderCount
 
 async function funnelDetails(id, from, to) {
   if (id === 'demo' || !cabinets().length) return { products: [], history: [], groupedHistory: [] };
-  const token = tokenFor(id); const start = /^\d{4}-\d{2}-\d{2}$/.test(from || '') ? from : dateDaysAgo(7); const end = /^\d{4}-\d{2}-\d{2}$/.test(to || '') ? to : dateDaysAgo(0);
+  const token = tokenFor(id); const start = /^\d{4}-\d{2}-\d{2}$/.test(from || '') ? from : dateDaysAgo(6); const end = /^\d{4}-\d{2}-\d{2}$/.test(to || '') ? to : dateDaysAgo(0);
   const body = { selectedPeriod: { start, end }, nmIds: [], skipDeletedNm: true, orderBy: { field: 'openCard', mode: 'desc' }, limit: 1000, offset: 0 };
   const response = await funnelProductsRequest(id, token, body);
   const products = enrichFunnelProducts(response?.data?.products || response?.products || [],
@@ -1827,7 +1824,7 @@ async function summaryAds(id, from, to) {
 async function dashboard(id, from, to) {
   if (id === 'demo' || !cabinets().length) return demoDashboard();
   const token = tokenFor(id); const warnings = [];
-  const safeFrom = /^\d{4}-\d{2}-\d{2}$/.test(from || '') ? from : dateDaysAgo(7);
+  const safeFrom = /^\d{4}-\d{2}-\d{2}$/.test(from || '') ? from : dateDaysAgo(6);
   const safeTo = /^\d{4}-\d{2}-\d{2}$/.test(to || '') ? to : dateDaysAgo(0);
   const jobs = [
     wbRequest(token, 'https://marketplace-api.wildberries.ru/api/v3/orders/new').catch(e => (warnings.push(`FBS: ${e.message}`), { orders: [] })),
