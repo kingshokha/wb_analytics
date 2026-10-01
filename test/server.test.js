@@ -343,14 +343,22 @@ test('складывает отрезок воронки из дней с учё
   assert.equal(result.values.orderSum, 900);
 });
 
-test('не запрашивает статистику кампаний, закончившихся до периода или начатых после него', () => {
-  const campaign = (started, deleted) => ({ timestamps: { started, deleted } });
+test('не запрашивает статистику кампаний, закончившихся до периода или созданных после него', () => {
+  const campaign = (created, deleted, extra = {}) => ({ status: extra.status ?? 9, timestamps: { created, deleted, started: extra.started ?? null, updated: extra.updated ?? created } });
   assert.equal(adCampaignMayHaveStats(campaign('2023-05-06T17:01:19+03:00', '2023-06-24T06:12:49+03:00'), '2026-09-10', '2026-09-16'), false);
   assert.equal(adCampaignMayHaveStats(campaign('2026-08-01T10:00:00+03:00', '2100-01-01T00:00:00+03:00'), '2026-09-10', '2026-09-16'), true);
   assert.equal(adCampaignMayHaveStats(campaign(null, '2100-01-01T00:00:00+03:00'), '2026-09-10', '2026-09-16'), true);
   assert.equal(adCampaignMayHaveStats(campaign('2026-08-01T10:00:00+03:00', '2026-09-12T09:00:00+03:00'), '2026-09-10', '2026-09-16'), true);
   assert.equal(adCampaignMayHaveStats(campaign('2026-09-20T10:00:00+03:00', '2100-01-01T00:00:00+03:00'), '2026-09-10', '2026-09-16'), false);
   assert.equal(adCampaignMayHaveStats({}, '2026-09-10', '2026-09-16'), true);
+  // Перезапуск после конца периода не отменяет показы внутри периода: started — последний запуск.
+  assert.equal(adCampaignMayHaveStats(campaign('2026-08-01T10:00:00+03:00', '2100-01-01T00:00:00+03:00', { started: '2026-09-20T10:00:00+03:00' }), '2026-09-10', '2026-09-16'), true);
+  // Завершённая кампания с заглушкой в deleted заканчивается датой последнего изменения.
+  const finished = updated => campaign('2025-05-02T08:23:29+03:00', '2100-01-01T00:00:00+03:00', { status: 7, updated });
+  assert.equal(adCampaignMayHaveStats(finished('2026-01-28T08:48:34+03:00'), '2026-09-10', '2026-09-16'), false);
+  assert.equal(adCampaignMayHaveStats(finished('2026-09-12T08:48:34+03:00'), '2026-09-10', '2026-09-16'), true);
+  // У действующей кампании updated меняется от любой правки и концом не считается.
+  assert.equal(adCampaignMayHaveStats(campaign('2025-05-02T08:23:29+03:00', '2100-01-01T00:00:00+03:00', { updated: '2026-01-28T08:48:34+03:00' }), '2026-09-10', '2026-09-16'), true);
 });
 
 test('складывает поисковые запросы кампании по всем артикулам и по каждому отдельно', () => {

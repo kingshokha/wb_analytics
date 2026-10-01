@@ -48,9 +48,12 @@
     syncSelectAll(filter);
   }
 
+  // У ячейки «товар/кампания» обрезается только текстовая часть: кнопки и иконки рядом с ней не мешают.
   function textTarget(cell) {
+    const named = cell.querySelector('.ad-product-name > span, .product > span');
+    if (named) return named;
     if (cell.querySelector('button, input, svg, [role="button"]')) return null;
-    return cell.querySelector('.ad-product-name > span, .product > span, strong') || cell;
+    return cell.querySelector('strong') || cell;
   }
 
   // Ячейка только размечается классами. Обрезан ли текст, проверяется при наведении (см. showFullText):

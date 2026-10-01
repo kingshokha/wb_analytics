@@ -256,13 +256,22 @@ function dateDaysAgo(days) {
 
 function wait(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
 
+// Одновременные запросы с одним ключом ждут одну общую загрузку, а не идут в WB параллельно.
+const analyticsPending = new Map();
 async function cachedAnalytics(key, loader, ttl = 60_000) {
   const cached = analyticsCache.get(key);
   if (cached && Date.now() - cached.savedAt < ttl) return cached.value;
+  if (!analyticsPending.has(key)) {
+    analyticsPending.set(key, (async () => {
+      try {
+        const value = await loader();
+        analyticsCache.set(key, { value, savedAt: Date.now() });
+        return value;
+      } finally { analyticsPending.delete(key); }
+    })());
+  }
   try {
-    const value = await loader();
-    analyticsCache.set(key, { value, savedAt: Date.now() });
-    return value;
+    return await analyticsPending.get(key);
   } catch (error) {
     if (cached) return cached.value;
     throw error;
@@ -1105,14 +1114,13 @@ async function campaignKeywords(id, campaignId, from, to, refresh = false) {
   return result;
 }
 
-// Дни, за которые у кампании может быть статистика: не раньше создания и не позже удаления.
-// У действующих кампаний WB ставит в deleted заглушку 2100-01-01, она сама отсекается сравнением с концом периода.
+// Дни, за которые у кампании может быть статистика: не раньше создания и не позже завершения (см. campaignEndStamp).
 // Даты WB отдаёт по Москве, поэтому день берётся прямо из строки.
 function campaignActivePeriod(campaign = {}, period) {
   const day = value => /^\d{4}-\d{2}-\d{2}/.test(value || '') ? String(value).slice(0, 10) : '';
-  const created = day(campaign.timestamps?.created), deleted = day(campaign.timestamps?.deleted);
+  const created = day(campaign.timestamps?.created), ended = day(campaignEndStamp(campaign));
   const from = created > period.from ? created : period.from;
-  const to = deleted && deleted < period.to ? deleted : period.to;
+  const to = ended && ended < period.to ? ended : period.to;
   return from <= to ? { from, to } : null;
 }
 
@@ -1191,38 +1199,59 @@ async function advertisingCampaign(id, campaignId, from, to) {
   const productDaily = campaignProductDaily(summary.productDaily || [], campaignId, campaign.nmIds || []);
   return { period: summary.period, campaign, productDaily };
 }
-function adCampaignMayHaveStats(campaign = {}, from, to) {
-  const ended = Date.parse(campaign.timestamps?.deleted || '');
-  if (Number.isFinite(ended) && ended < Date.parse(`${from}T00:00:00+03:00`)) return false;
-  const started = Date.parse(campaign.timestamps?.started || '');
-  return !(Number.isFinite(started) && started > Date.parse(`${to}T23:59:59+03:00`));
+// Момент, после которого у кампании не может быть статистики. У действующих WB ставит в deleted заглушку 2100-01-01,
+// и у многих завершённых тоже; тогда для завершённой (статус 7) берётся updated: завершение само меняет эту дату.
+function campaignEndStamp(campaign = {}) {
+  const deleted = campaign.timestamps?.deleted || '';
+  // Заглушка приходит как 2100-01-01T00:00:00+03:00, то есть в UTC это ещё 2099 год, поэтому граница с запасом.
+  if (Date.parse(deleted) < Date.parse('2099-01-01T00:00:00Z')) return deleted;
+  return Number(campaign.status) === 7 ? campaign.timestamps?.updated || '' : '';
 }
 
-async function advertising(id, from, to) {
+// Начало берётся из created, а не из started: started — последний запуск, и кампания могла крутиться в периоде до перезапуска.
+function adCampaignMayHaveStats(campaign = {}, from, to) {
+  const ended = Date.parse(campaignEndStamp(campaign));
+  if (Number.isFinite(ended) && ended < Date.parse(`${from}T00:00:00+03:00`)) return false;
+  const created = Date.parse(campaign.timestamps?.created || '');
+  return !(Number.isFinite(created) && created > Date.parse(`${to}T23:59:59+03:00`));
+}
+
+// part=active — быстрый первый ответ вкладки: статистика только действующих и приостановленных кампаний, без остатков бюджета.
+// Полный ответ вкладка запрашивает следом в фоне; пачки действующих кампаний при этом берутся из кэша fullstats.
+async function advertising(id, from, to, part = 'all') {
   const period = validAdPeriod(from, to);
   if (id === 'demo' || !cabinets().length) return demoAds(period.from, period.to);
-  const token = tokenFor(id); const warnings = [];
-  const { campaigns, stats } = await loadAdStats(id, token, period, warnings);
-  const cards = await cachedAnalytics(`product-cards:${id}`, () => loadProductCards(token), 10 * 60_000);
-  const budgets = await advertBudgets(id, token, campaigns, warnings);
+  const token = tokenFor(id); const warnings = []; const partial = part === 'active';
+  const { campaigns, stats } = await loadAdStats(id, token, period, warnings, partial ? 'running' : 'all');
+  // Карточки нужны только для фото и названий товаров. Быстрый ответ их не ждёт: если в кэше их нет,
+  // загрузка идёт в фоне, и фото с названиями приходят вместе с полным ответом.
+  const cardsJob = cachedAnalytics(`product-cards:${id}`, () => loadProductCards(token), 10 * 60_000);
+  const cards = partial ? (await Promise.race([cardsJob.catch(() => []), wait(0).then(() => null)]) ?? []) : await cardsJob;
+  const budgets = partial ? new Map() : await advertBudgets(id, token, campaigns, warnings);
   const summary = enrichAdvertising(summarizeAdStats(campaigns, stats, period.from, period.to), cards);
-  return { demo: false, ...summary, campaigns: withAdBudgets(summary.campaigns, budgets), warnings };
+  return { demo: false, partial, ...summary, campaigns: withAdBudgets(summary.campaigns, budgets), warnings };
 }
 
-async function loadAdStats(id, token, period, warnings = []) {
+async function loadAdStats(id, token, period, warnings = [], part = 'all') {
   const campaignData = await cachedAnalytics(`ad-campaigns:${id}`, () => wbRequest(token, AD_CAMPAIGNS_URL), 3 * 60_000);
   const campaigns = Array.isArray(campaignData?.adverts) ? campaignData.adverts : [];
   const stats = [];
   // WB отдаёт статистику максимум по 50 кампаниям за запрос и не чаще раза в 20 секунд,
   // поэтому кампании, закончившиеся до начала периода, не запрашиваются: статистики у них быть не может.
+  // Действующие и завершённые идут разными пачками: пачки одинаковы во всех вызовах за период
+  // (вкладка, её фоновая догрузка, сводка) и повторно берутся из кэша fullstats.
   const statCampaigns = campaigns.filter(campaign => adCampaignMayHaveStats(campaign, period.from, period.to));
-  for (let offset = 0; offset < statCampaigns.length; offset += 50) {
-    const ids = statCampaigns.slice(offset, offset + 50).map(item => item.id).join(',');
-    if (!ids) continue;
-    try {
-      const chunk = await fullstatsRequest(id, token, ids, period.from, period.to);
-      if (Array.isArray(chunk)) stats.push(...chunk);
-    } catch (error) { warnings.push(`Статистика рекламы: ${error.message}`); }
+  const running = statCampaigns.filter(campaign => Number(campaign.status) !== 7);
+  const finished = statCampaigns.filter(campaign => Number(campaign.status) === 7);
+  for (const group of part === 'running' ? [running] : [running, finished]) {
+    for (let offset = 0; offset < group.length; offset += 50) {
+      const ids = group.slice(offset, offset + 50).map(item => item.id).join(',');
+      if (!ids) continue;
+      try {
+        const chunk = await fullstatsRequest(id, token, ids, period.from, period.to);
+        if (Array.isArray(chunk)) stats.push(...chunk);
+      } catch (error) { warnings.push(`Статистика рекламы: ${error.message}`); }
+    }
   }
   return { campaigns, stats };
 }
@@ -1779,12 +1808,12 @@ function summaryAdPeriod(days = [], range) {
 }
 
 // Реклама идёт отдельным запросом: fullstats отвечает не чаще раза в 20 секунд и не дольше чем за 31 день.
-// Если выбранный и прошлый период вместе укладываются в 31 день, хватает одного запроса на пачку кампаний.
+// Текущий период запрашивается первым и теми же пачками, что и вкладка «Реклама»: открытая следом вкладка берёт их из кэша.
 async function summaryAds(id, from, to) {
   const periods = funnelPeriods(from, to);
   const length = datesBetween(periods.current.from, periods.current.to).length;
   if (length > 31) return { available: false, periods, reason: 'Реклама в сводке доступна за период до 31 дня — это ограничение WB API', warnings: [] };
-  const ranges = length * 2 <= 31 ? [{ from: periods.previous.from, to: periods.current.to }] : [periods.previous, periods.current];
+  const ranges = [periods.current, periods.previous];
   const demo = id === 'demo' || !cabinets().length; const warnings = []; const days = [];
   for (const range of ranges) {
     // Демо-реклама рассчитана на вкладку «Реклама» и крупнее демо-воронки, поэтому для сводки она уменьшена.
@@ -2139,7 +2168,7 @@ async function handleApi(req, res, url) {
     return res.end();
   }
   if (req.method === 'GET' && url.pathname === '/api/advertising') {
-    return send(res, 200, await advertising(url.searchParams.get('cabinet') || 'demo', url.searchParams.get('from'), url.searchParams.get('to')));
+    return send(res, 200, await advertising(url.searchParams.get('cabinet') || 'demo', url.searchParams.get('from'), url.searchParams.get('to'), url.searchParams.get('part') || 'all'));
   }
   if (req.method === 'POST' && url.pathname === '/api/funnel/sales') {
     const body = await readJson(req);
