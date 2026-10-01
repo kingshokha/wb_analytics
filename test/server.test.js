@@ -496,3 +496,19 @@ test('выгрузка кампании обрезается по дате со�
   assert.equal(campaignActivePeriod({ timestamps: { created: '2026-01-01T10:00:00+03:00', deleted: '2026-03-01T10:00:00+03:00' } }, period), null);
   assert.deepEqual(campaignActivePeriod({}, period), period);
 });
+
+test('рекламные кампании и товары получают CPO, CR, CPM и добавления в корзину', () => {
+  const stats = [{ advertId: 1, views: 2000, clicks: 50, sum: 600, orders: 4, sum_price: 8000, atbs: 12,
+    days: [{ date: '2026-09-20T00:00:00+03:00', views: 2000, clicks: 50, sum: 600, orders: 4, sum_price: 8000, atbs: 12,
+      apps: [{ appType: 32, views: 2000, clicks: 50, sum: 600, orders: 4, sum_price: 8000, atbs: 12,
+        nms: [{ nmId: 11, name: 'Товар', views: 2000, clicks: 50, sum: 600, orders: 4, sum_price: 8000, atbs: 12 }] }] }] }];
+  const summary = summarizeAdStats([{ id: 1, status: 9, settings: { name: 'Кампания' } }], stats, '2026-09-20', '2026-09-20');
+  for (const row of [summary.campaigns[0], summary.products[0]]) {
+    assert.equal(row.cpo, 150);
+    assert.equal(row.cr, 8);
+    assert.equal(row.cpm, 300);
+    assert.equal(row.carts, 12);
+  }
+  const empty = summarizeAdStats([{ id: 2, status: 9 }], [], '2026-09-20', '2026-09-20').campaigns[0];
+  assert.equal(empty.cpo, 0);
+});

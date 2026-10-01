@@ -627,7 +627,7 @@ function adMetrics(source = {}) {
     views, clicks, spend, orders, revenue,
     carts: Number(source.atbs || 0), sales: Number(source.shks || 0), canceled: Number(source.canceled || 0),
     ctr: safeRatio(clicks, views), cpc: safeRatio(spend, clicks, 1), cpm: safeRatio(spend, views, 1000),
-    cr: safeRatio(orders, clicks), drr: safeRatio(spend, revenue), roas: safeRatio(revenue, spend, 1)
+    cr: safeRatio(orders, clicks), cpo: safeRatio(spend, orders, 1), drr: safeRatio(spend, revenue), roas: safeRatio(revenue, spend, 1)
   };
 }
 
@@ -640,7 +640,7 @@ function addAdMetrics(target, source = {}) {
 
 function finalizeAdMetrics(target) {
   return { ...target, ctr: safeRatio(target.clicks, target.views), cpc: safeRatio(target.spend, target.clicks, 1),
-    cpm: safeRatio(target.spend, target.views, 1000), cr: safeRatio(target.orders, target.clicks),
+    cpm: safeRatio(target.spend, target.views, 1000), cr: safeRatio(target.orders, target.clicks), cpo: safeRatio(target.spend, target.orders, 1),
     drr: safeRatio(target.spend, target.revenue), roas: safeRatio(target.revenue, target.spend, 1) };
 }
 

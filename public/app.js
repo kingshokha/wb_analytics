@@ -69,6 +69,13 @@ function shortMoney(value){return new Intl.NumberFormat('ru-RU',{notation:'compa
 function renderAdPlatforms(items){const total=Math.max(1,...items.map(x=>x.spend));$('#adPlatforms').innerHTML=items.map(x=>`<div class="platform-row"><div><strong>${escapeHtml(x.name)}</strong><span>${fmtPercent(x.spend/(state.ads.totals.spend||1)*100)} расходов</span></div><div class="platform-bar"><i style="width:${x.spend/total*100}%"></i></div><b>${fmtRub(x.spend)}</b><small>${fmtNum(x.clicks)} кликов · ${fmtNum(x.orders)} заказов</small></div>`).join('')}
 function renderAdDetails(t){const items=[['Показы',fmtNum(t.views)],['Клики',fmtNum(t.clicks)],['Добавления в корзину',fmtNum(t.carts)],['Рекламные заказы',fmtNum(t.orders)],['Продажи, шт.',fmtNum(t.sales)],['Технические отмены',fmtNum(t.canceled)],['Конверсия клика в заказ',fmtPercent(t.cr)],['CPM',fmtRub(t.cpm)]];$('#adDetails').innerHTML=items.map(x=>`<div class="ad-detail"><span>${x[0]}</span><strong>${x[1]}</strong></div>`).join('')}
 // --- Таблица «Рекламные кампании»: набор и порядок столбцов выбираются в фильтре «Столбцы» и запоминаются в браузере ---
+// Подсказки к метрикам рекламы — общие для «Рекламных кампаний» и «Товаров в рекламе».
+const AD_TIPS={
+  cpo:'Средняя стоимость одного заказа.\nРассчитываем по формуле: затраты ÷ количество заказов.',
+  cr:'Доля кликов, после которых покупатели заказали товар.\nРассчитываем по формуле: заказы ÷ клики × 100%',
+  cpm:'Стоимость тысячи показов.\nРассчитываем по формуле: затраты ÷ показы × 1000.'};
+// Без заказов стоимость заказа не определена — показываем прочерк, а не 0 ₽.
+function adCpo(x){return Number(x.orders)?fmtRub(x.cpo):'—'}
 function adDateTime(value){const match=String(value||'').match(/^(\d{4})-(\d{2})-(\d{2})(?:T(\d{2}):(\d{2}))?/);return match?`<strong>${match[3]}.${match[2]}.${match[1]}</strong>${match[4]?`<small>${match[4]}:${match[5]}</small>`:''}`:'—'}
 const AD_CAMPAIGN_COLUMNS=[
   // Детализация открывается только иконкой слева от названия, клик по ID копирует его в буфер (общий обработчик [data-copy]).
@@ -83,7 +90,11 @@ const AD_CAMPAIGN_COLUMNS=[
   {key:'clicks',width:90,label:'Клики',cell:x=>fmtNum(x.clicks)},
   {key:'ctr',width:80,label:'CTR',cell:x=>fmtPercent(x.ctr)},
   {key:'cpc',width:95,label:'CPC',cell:x=>fmtRub(x.cpc)},
+  {key:'cpm',width:95,label:'CPM',tip:AD_TIPS.cpm,cell:x=>fmtRub(x.cpm)},
+  {key:'carts',width:190,label:'Добавления в корзину',cell:x=>fmtNum(x.carts)},
   {key:'orders',width:90,label:'Заказы',cell:x=>fmtNum(x.orders)},
+  {key:'cr',width:80,label:'CR',tip:AD_TIPS.cr,cell:x=>fmtPercent(x.cr)},
+  {key:'cpo',width:100,label:'CPO',tip:AD_TIPS.cpo,cell:x=>adCpo(x)},
   {key:'revenue',width:130,label:'Выручка',cell:x=>`<strong>${fmtRub(x.revenue)}</strong>`},
   {key:'drr',width:80,label:'ДРР',cell:x=>`<strong class="${x.drr>30?'bad-rate':''}">${fmtPercent(x.drr)}</strong>`},
   {key:'roas',width:80,label:'ROAS',cell:x=>`${Number(x.roas||0).toLocaleString('ru-RU',{maximumFractionDigits:2})}×`}];
@@ -95,7 +106,8 @@ function adColumns(){
   let saved=[];try{saved=JSON.parse(localStorage.getItem(AD_COLUMNS_STORAGE)||'[]')}catch{}
   const defaults=adDefaultColumns(),known=new Set(defaults.map(c=>c.key));
   const layout=(Array.isArray(saved)?saved:[]).filter(item=>known.has(item?.key)).map(item=>({key:item.key,visible:item.visible!==false}));
-  defaults.forEach(item=>{if(!layout.some(c=>c.key===item.key))layout.push(item)});
+  // Столбцы, которых не было в сохранённом наборе, встают после своего соседа по умолчанию, а не в конец.
+  defaults.forEach((item,index)=>{if(layout.some(c=>c.key===item.key))return;const before=defaults.slice(0,index).reverse().find(c=>layout.some(l=>l.key===c.key)),at=before?layout.findIndex(l=>l.key===before.key)+1:0;layout.splice(at,0,item)});
   return state.adColumns=layout;
 }
 function saveAdColumns(){try{localStorage.setItem(AD_COLUMNS_STORAGE,JSON.stringify(state.adColumns))}catch{}}
@@ -122,7 +134,7 @@ function renderAdCampaignsHead(){
   if(!table||table.dataset.columns===key)return;
   if(!$('#adColumnOptions').children.length)renderAdColumnOptions();
   table.dataset.columns=key;table.dataset.widthKey='adCampaigns';table.dataset.resizable='';table.removeAttribute('style');
-  $('#adCampaignsHead').innerHTML=columns.map(c=>`<th data-ad-sort="${c.key}" data-col-key="${c.key}" data-col-width="${c.width}"${c.hint?` title="${escapeHtml(c.hint[0].toUpperCase()+c.hint.slice(1))}"`:''}>${escapeHtml(c.label)} ↕</th>`).join('');
+  $('#adCampaignsHead').innerHTML=columns.map(c=>{const title=c.tip||(c.hint?c.hint[0].toUpperCase()+c.hint.slice(1):'');return `<th data-ad-sort="${c.key}" data-col-key="${c.key}" data-col-width="${c.width}"${title?` title="${escapeHtml(title)}"`:''}${c.tip?' class="has-tip"':''}>${escapeHtml(c.label)} ↕</th>`}).join('');
   initResizableTables(table.parentNode);
 }
 function renderAdCampaigns(){renderAdCampaignsHead();const columns=adVisibleColumns(),items=state.ads?.campaigns||[],term=$('#adSearch').value.toLowerCase();const rows=items.filter(x=>state.adStatuses.has(String(x.status))&&(!term||`${x.name} ${x.id}`.toLowerCase().includes(term))).sort((a,b)=>{const key=state.adSort.key,av=a[key]??'',bv=b[key]??'',result=typeof av==='number'&&typeof bv==='number'?av-bv:String(av).localeCompare(String(bv),'ru',{numeric:true});return state.adSort.dir==='asc'?result:-result});$('#adCampaignCount').textContent=`${rows.length} из ${items.length} кампаний`;$('#emptyAds').classList.toggle('hidden',rows.length>0);$('#adCampaignsBody').innerHTML=rows.map(x=>`<tr data-campaign-id="${escapeHtml(x.id)}">${columns.map(c=>`<td>${c.cell(x)}</td>`).join('')}</tr>`).join('');bindAdPhotoPreviews('#adCampaignsBody');$$('[data-ad-sort]').forEach(header=>header.onclick=()=>{const key=header.dataset.adSort;state.adSort=state.adSort.key===key?{key,dir:state.adSort.dir==='asc'?'desc':'asc'}:{key,dir:'desc'};renderAdCampaigns()}) }
@@ -143,7 +155,7 @@ document.addEventListener('dragstart',event=>{const item=event.target.closest?.(
 document.addEventListener('dragover',event=>{const item=event.target.closest?.('[data-ad-column]');if(!item||!adColumnDrag.key)return;event.preventDefault();const rect=item.getBoundingClientRect(),after=event.clientY>rect.top+rect.height/2;$$('.column-option').forEach(option=>option.classList.remove('drop-before','drop-after'));if(item.dataset.adColumn!==adColumnDrag.key)item.classList.add(after?'drop-after':'drop-before')});
 document.addEventListener('drop',event=>{const item=event.target.closest?.('[data-ad-column]');if(!item||!adColumnDrag.key)return;event.preventDefault();const rect=item.getBoundingClientRect();placeAdColumn(adColumnDrag.key,item.dataset.adColumn,event.clientY>rect.top+rect.height/2);clearAdColumnDrop();adColumnDrag.key=''});
 document.addEventListener('dragend',()=>{clearAdColumnDrop();adColumnDrag.key=''});
-function renderAdProducts(items){const rows=[...items].sort((a,b)=>{const key=state.adProductSort.key,av=a[key]??'',bv=b[key]??'',result=typeof av==='number'&&typeof bv==='number'?av-bv:String(av).localeCompare(String(bv),'ru',{numeric:true});return state.adProductSort.dir==='asc'?result:-result});$('#adProductsBody').innerHTML=rows.length?rows.map(x=>{const photo=x.photo?`<img class="ad-product-photo" src="${escapeHtml(x.photo)}" alt="" loading="lazy">`:'';return `<tr><td><div class="ad-product-name">${photo}<span><strong>${escapeHtml(x.name)}</strong><small><button class="copy-article" data-copy="${escapeHtml(x.nmId||'')}">Артикул WB ${escapeHtml(x.nmId||'—')}</button>${x.vendorCode?` · <button class="copy-article" data-copy="${escapeHtml(x.vendorCode)}">${escapeHtml(x.vendorCode)}</button>`:''}${x.barcode?` · <button class="copy-article" data-copy="${escapeHtml(x.barcode)}">${escapeHtml(x.barcode)}</button>`:''}</small></span></div></td><td>${fmtRub(x.spend)}</td><td>${fmtNum(x.views)}</td><td>${fmtNum(x.clicks)}</td><td>${fmtPercent(x.ctr)}</td><td>${fmtNum(x.orders)}</td><td>${fmtRub(x.revenue)}</td><td>${fmtPercent(x.drr)}</td></tr>`}).join(''):'<tr><td colspan="8" class="empty-row">WB не вернул детализацию по товарам за этот период</td></tr>';bindAdPhotoPreviews('#adProductsBody');$$('[data-ad-product-sort]').forEach(header=>header.onclick=()=>{const key=header.dataset.adProductSort;state.adProductSort=state.adProductSort.key===key?{key,dir:state.adProductSort.dir==='asc'?'desc':'asc'}:{key,dir:'desc'};renderAdProducts(items)})}
+function renderAdProducts(items){const rows=[...items].sort((a,b)=>{const key=state.adProductSort.key,av=a[key]??'',bv=b[key]??'',result=typeof av==='number'&&typeof bv==='number'?av-bv:String(av).localeCompare(String(bv),'ru',{numeric:true});return state.adProductSort.dir==='asc'?result:-result});$('#adProductsBody').innerHTML=rows.length?rows.map(x=>{const photo=x.photo?`<img class="ad-product-photo" src="${escapeHtml(x.photo)}" alt="" loading="lazy">`:'';return `<tr><td><div class="ad-product-name">${photo}<span><strong>${escapeHtml(x.name)}</strong><small><button class="copy-article" data-copy="${escapeHtml(x.nmId||'')}">Артикул WB ${escapeHtml(x.nmId||'—')}</button>${x.vendorCode?` · <button class="copy-article" data-copy="${escapeHtml(x.vendorCode)}">${escapeHtml(x.vendorCode)}</button>`:''}${x.barcode?` · <button class="copy-article" data-copy="${escapeHtml(x.barcode)}">${escapeHtml(x.barcode)}</button>`:''}</small></span></div></td><td>${fmtRub(x.spend)}</td><td>${fmtNum(x.views)}</td><td>${fmtNum(x.clicks)}</td><td>${fmtPercent(x.ctr)}</td><td>${fmtRub(x.cpm)}</td><td>${fmtNum(x.carts)}</td><td>${fmtNum(x.orders)}</td><td>${fmtPercent(x.cr)}</td><td>${adCpo(x)}</td><td>${fmtRub(x.revenue)}</td><td>${fmtPercent(x.drr)}</td></tr>`}).join(''):'<tr><td colspan="12" class="empty-row">WB не вернул детализацию по товарам за этот период</td></tr>';bindAdPhotoPreviews('#adProductsBody');$$('[data-ad-product-sort]').forEach(header=>{const tip=AD_TIPS[header.dataset.adProductSort];if(tip){header.title=tip;header.classList.add('has-tip')}});$$('[data-ad-product-sort]').forEach(header=>header.onclick=()=>{const key=header.dataset.adProductSort;state.adProductSort=state.adProductSort.key===key?{key,dir:state.adProductSort.dir==='asc'?'desc':'asc'}:{key,dir:'desc'};renderAdProducts(items)})}
 function pct(a,b){return b?Math.round(Number(a||0)/Number(b)*100):0}
 function formatDate(v){if(!v)return 'Дата неизвестна';const d=new Date(v);return Number.isNaN(d.getTime())?v:d.toLocaleString('ru-RU',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'})}
 function escapeHtml(v){return String(v??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}
