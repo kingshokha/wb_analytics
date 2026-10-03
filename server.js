@@ -1771,11 +1771,11 @@ function summaryDrops(products = [], limit = SUMMARY_DROP_LIMIT) {
       reasons.push({ metric: 'orderCount', label: 'Заказы', from: before.orderCount, to: now.orderCount, change: change(before.orderCount, now.orderCount) });
     }
     if (before.openCount >= DROP_MIN_OPENS && now.openCount <= before.openCount * DROP_RATIO) {
-      reasons.push({ metric: 'openCount', label: 'Переходы в карточку', from: before.openCount, to: now.openCount, change: change(before.openCount, now.openCount) });
+      reasons.push({ metric: 'openCount', label: 'Переходы', from: before.openCount, to: now.openCount, change: change(before.openCount, now.openCount) });
     }
     if (before.openCount >= DROP_MIN_OPENS && now.openCount >= DROP_MIN_OPENS && before.orderCount >= DROP_MIN_ORDERS) {
       const was = before.orderCount / before.openCount * 100, is = now.orderCount / now.openCount * 100;
-      if (is <= was * DROP_RATIO) reasons.push({ metric: 'orderConversion', label: 'Конверсия в заказ', from: was, to: is, change: change(was, is), unit: '%' });
+      if (is <= was * DROP_RATIO) reasons.push({ metric: 'orderConversion', label: 'Конв. в заказ', from: was, to: is, change: change(was, is), unit: '%' });
     }
     if (!reasons.length) continue;
     const worst = Math.min(...reasons.map(reason => reason.change));

@@ -9,13 +9,14 @@ const SUMMARY_METRICS={
   orderCount:{label:'Заказы, шт',chart:'Заказы, шт',unit:'шт'},
   buyoutSum:{label:'Выкупы',chart:'Выкупы, ₽',unit:'₽'},
   buyoutCount:{label:'Выкупы, шт',unit:'шт'},
-  openCount:{label:'Переходы в карточку',chart:'Переходы',unit:'шт'},
+  openCount:{label:'Переходы',unit:'шт'},
   cartCount:{label:'Корзины',unit:'шт'},
-  wishlist:{label:'Добавили в «Отложенные»',unit:'шт'},
-  orderConversion:{label:'Конверсия в заказ',unit:'%'},
-  cartConversion:{label:'Конверсия в корзину',unit:'%'},
+  wishlist:{label:'Отложено',unit:'шт'},
+  // phrase — полное название для текстовых выводов «Коротко о периоде», label — короткое для карточек и списков.
+  orderConversion:{label:'Конв. в заказ',phrase:'конверсия в заказ',unit:'%'},
+  cartConversion:{label:'Конв. в корзину',phrase:'конверсия в корзину',unit:'%'},
   cartToOrder:{label:'Из корзины в заказ',unit:'%'},
-  buyoutPercent:{label:'Процент выкупа',unit:'%'},
+  buyoutPercent:{label:'Выкуп, %',phrase:'процент выкупа',unit:'%'},
   avgCheck:{label:'Средний чек',unit:'₽'},
   adSpend:{label:'Расходы на рекламу',chart:'Реклама, ₽',unit:'₽',neutral:true,ads:true},
   drr:{label:'ДРР',unit:'%',lowerBetter:true,ads:true},
@@ -268,7 +269,7 @@ function summaryInsights(now,before,data){
     const d=has('openCount');
     const stages=['cartConversion','cartToOrder'].map(key=>({key,delta:has(key)})).filter(item=>item.delta&&item.delta.value<=-0.3).sort((a,b)=>a.delta.value-b.delta.value);
     let text=`Переходов в карточки ${fmtNum(now.openCount)}${d?` (${d.text})`:''}, конверсия в заказ ${summaryFormat('orderConversion',now.orderConversion)}.`;
-    if(stages.length)text+=` Сильнее всего просел этап «${SUMMARY_METRICS[stages[0].key].label.toLowerCase()}»: ${stages[0].delta.text}.`;
+    if(stages.length)text+=` Сильнее всего просел этап «${(SUMMARY_METRICS[stages[0].key].phrase||SUMMARY_METRICS[stages[0].key].label).toLowerCase()}»: ${stages[0].delta.text}.`;
     items.push([stages.length?'down':d?summaryTone('openCount',d):'flat',text]);
   }
   if(now.buyoutCount){const d=has('buyoutPercent');items.push([d?summaryTone('buyoutPercent',d):'flat',`Выкуплено ${fmtNum(now.buyoutCount)} шт на ${summaryFormat('buyoutSum',now.buyoutSum)}, процент выкупа ${summaryFormat('buyoutPercent',now.buyoutPercent)}${d?` (${d.text})`:''}.`])}
