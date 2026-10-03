@@ -13,14 +13,15 @@
     <aside class="sidebar">
       <a class="brand" href="#"><span class="brand-mark">W</span><span>WB Pulse</span></a>
       <nav>
-        <button class="nav-item active" data-page="summary"><span class="nav-icon" aria-hidden="true">◎</span> Сводка</button>
-        <button class="nav-item" data-page="orders"><span class="nav-icon" aria-hidden="true">▤</span> Лента заказов <b id="newBadge">0</b></button>
-        <button class="nav-item" data-page="fbs-orders"><span class="nav-icon" aria-hidden="true">◈</span> Новые заказы <b id="fbsBadge">0</b></button>
-        <button class="nav-item" data-page="fbw-stocks"><span class="nav-icon" aria-hidden="true">◇</span> Остатки FBW</button>
-        <button class="nav-item" data-page="stocks"><span class="nav-icon" aria-hidden="true">◇</span> Остатки FBS</button>
-        <button class="nav-item" data-page="prices"><span class="nav-icon" aria-hidden="true">₽</span> Цены и скидки</button>
-        <button class="nav-item" data-page="funnel"><span class="nav-icon" aria-hidden="true">◫</span> Воронка</button>
-        <button class="nav-item" data-page="ads"><span class="nav-icon" aria-hidden="true">↗</span> Реклама</button>
+        <!-- Пункты меню — ссылки: их можно открыть в новой вкладке колесом мыши, Ctrl+кликом или через контекстное меню. -->
+        <a class="nav-item active" href="?page=summary" data-page="summary"><span class="nav-icon" aria-hidden="true">◎</span> Сводка</a>
+        <a class="nav-item" href="?page=orders" data-page="orders"><span class="nav-icon" aria-hidden="true">▤</span> Лента заказов <b id="newBadge">0</b></a>
+        <a class="nav-item" href="?page=fbs-orders" data-page="fbs-orders"><span class="nav-icon" aria-hidden="true">◈</span> Новые заказы <b id="fbsBadge">0</b></a>
+        <a class="nav-item" href="?page=fbw-stocks" data-page="fbw-stocks"><span class="nav-icon" aria-hidden="true">◇</span> Остатки FBW</a>
+        <a class="nav-item" href="?page=stocks" data-page="stocks"><span class="nav-icon" aria-hidden="true">◇</span> Остатки FBS</a>
+        <a class="nav-item" href="?page=prices" data-page="prices"><span class="nav-icon" aria-hidden="true">₽</span> Цены и скидки</a>
+        <a class="nav-item" href="?page=funnel" data-page="funnel"><span class="nav-icon" aria-hidden="true">◫</span> Воронка</a>
+        <a class="nav-item" href="?page=ads" data-page="ads"><span class="nav-icon" aria-hidden="true">↗</span> Реклама</a>
       </nav>
       <div class="sync-state"><i></i><span><strong>WB API</strong><small id="syncText">Подключение…</small></span></div>
       <div class="cabinet-wrap">
