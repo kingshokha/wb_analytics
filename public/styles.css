@@ -92,6 +92,10 @@ small,th,.status,.live,.response button,.chart-legend,.platform-row span,.ad-det
 .column-filter>div{min-width:280px;max-height:380px}.column-option{gap:8px!important}.column-option.dragging{opacity:.45}.column-option.drop-before{box-shadow:inset 0 2px 0 var(--purple)}.column-option.drop-after{box-shadow:inset 0 -2px 0 var(--purple)}.column-grip{color:#aab1ad;cursor:grab;letter-spacing:-2px;font-size:12px;user-select:none}.column-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis}.column-name small{margin-left:6px;color:var(--muted)}.column-move{display:flex;gap:3px}.column-move button{width:24px;height:24px;padding:0;border:1px solid var(--line);border-radius:6px;background:white;color:var(--ink);font:700 12px Manrope;cursor:pointer}.column-move button:hover:not(:disabled){border-color:var(--purple);color:var(--purple)}.column-move button:disabled{opacity:.35;cursor:default}.column-reset{width:100%;margin-top:4px;padding:9px 7px;border:0;border-top:1px solid var(--line);background:none;color:var(--muted);font:700 11px Manrope;text-align:left;cursor:pointer}.column-reset:hover{color:var(--purple)}#adCampaignsTable td>small{display:block;margin-top:2px;color:var(--muted)}
 /* Заголовки рекламных таблиц с подсказкой о формуле */
 th.has-tip{text-decoration:underline dotted;text-underline-offset:3px}
+/* «Итого по товарам» в «Товарах в воронке» */
+.funnel-products-table tbody tr.funnel-total-row td{background:#f4f2ff;font-weight:700;vertical-align:top}.funnel-total-row td small:not(.sales-delta){display:block;margin-top:2px;font-weight:500;color:var(--muted)}.funnel-products-table .sales-delta{font-size:11px}
+/* «Перекачать» в шапке воронки — второстепенная кнопка рядом с «Обновить» */
+.refresh.refetch{background:white;color:var(--ink)}.refresh.refetch:hover{border-color:var(--purple);color:var(--purple)}
 /* Пункты меню — ссылки, выглядят как раньше */
 a.nav-item{text-decoration:none}a.nav-item:focus-visible{outline:2px solid var(--lime);outline-offset:-2px}
 /* Название кампании — ссылка в кабинет WB */

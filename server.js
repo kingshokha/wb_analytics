@@ -1513,6 +1513,30 @@ function funnelRangeValues(range, daysByDate, storedRanges, nmIds = null, now = 
   return { values: funnelRecordCounts(stored, nmIds), fresh: Boolean(stored.products) && !funnelRangeNeedsFetch(range.to, stored.fetchedAt, now) };
 }
 
+// Кнопка «Перекачать» в воронке: дни выбранного периода (или его недели и месяцы, если график сгруппирован)
+// ставятся в очередь заново и перезаписываются, даже если уже считаются окончательными.
+// Дни сохраняются целиком, поэтому перекачка обновляет и итоги, и разбивку по артикулам.
+function refetchFunnel(id, from, to, grouping = 'day') {
+  if (id === 'demo' || !cabinets().length) throw apiError(400, 'В демо-режиме перекачивать нечего');
+  tokenFor(id);
+  const periods = funnelPeriods(from, to);
+  const earliest = addDays(moscowDate(0), -FUNNEL_MAX_DEPTH_DAYS);
+  const job = funnelJobs.get(id);
+  if (grouping === 'week' || grouping === 'month') {
+    const ranges = funnelRangeBuckets(periods.current, grouping).filter(bucket => bucket.from >= earliest)
+      .map(bucket => ({ ...bucket, previous: bucket.previous.from >= earliest ? bucket.previous : null }));
+    // Недавние ошибки не должны откладывать явный запрос пользователя.
+    ranges.forEach(range => job?.failedAt.delete(`${range.from}_${range.to}`));
+    scheduleFunnelSync(id, [], ranges);
+    const keys = ranges.map(range => `${range.from}_${range.to}`);
+    return { grouping, scheduled: ranges.length, sync: funnelSyncStatus(id, [], keys) };
+  }
+  const dates = datesBetween(periods.current.from, periods.current.to).filter(date => date >= earliest);
+  dates.forEach(date => job?.failedAt.delete(date));
+  scheduleFunnelSync(id, dates);
+  return { grouping: 'day', scheduled: dates.length, sync: funnelSyncStatus(id, dates) };
+}
+
 function scheduleFunnelSync(id, dates = [], ranges = []) {
   const job = funnelJobs.get(id) || { pending: new Set(), ranges: new Map(), current: [], currentRange: '', failedAt: new Map(), running: false, lastError: '' };
   funnelJobs.set(id, job);
@@ -1676,12 +1700,21 @@ async function funnelSales(id, from, to, nmIdsInput = null, metric = 'orderCount
 
 async function funnelDetails(id, from, to) {
   if (id === 'demo' || !cabinets().length) return { products: [], history: [], groupedHistory: [] };
-  const token = tokenFor(id); const start = /^\d{4}-\d{2}-\d{2}$/.test(from || '') ? from : dateDaysAgo(6); const end = /^\d{4}-\d{2}-\d{2}$/.test(to || '') ? to : dateDaysAgo(0);
-  const body = { selectedPeriod: { start, end }, nmIds: [], skipDeletedNm: true, orderBy: { field: 'openCard', mode: 'desc' }, limit: 1000, offset: 0 };
-  const response = await funnelProductsRequest(id, token, body);
-  const products = enrichFunnelProducts(response?.data?.products || response?.products || [],
-    await cachedAnalytics(`product-cards:${id}`, () => loadProductCards(token), 10 * 60_000).catch(() => []));
-  return { products, history: [], groupedHistory: [] };
+  const token = tokenFor(id); const periods = funnelPeriods(from, to);
+  // Прошлый период той же длины нужен для изменений в процентах; старше года WB его не отдаёт.
+  const past = periods.previous.from >= addDays(moscowDate(0), -FUNNEL_MAX_DEPTH_DAYS) ? periods.previous : null;
+  const raw = [];
+  // WB отдаёт до 1000 товаров за запрос: остальные догружаются следующими страницами, иначе итог по товарам неполный.
+  for (let offset = 0; ; offset += 1000) {
+    const response = await funnelProductsRequest(id, token, { selectedPeriod: { start: periods.current.from, end: periods.current.to },
+      ...(past ? { pastPeriod: { start: past.from, end: past.to } } : {}), nmIds: [], skipDeletedNm: true,
+      orderBy: { field: 'openCard', mode: 'desc' }, limit: 1000, offset });
+    const page = response?.data?.products || response?.products || [];
+    raw.push(...page);
+    if (page.length < 1000) break;
+  }
+  const products = enrichFunnelProducts(raw, await cachedAnalytics(`product-cards:${id}`, () => loadProductCards(token), 10 * 60_000).catch(() => []));
+  return { periods: { current: periods.current, previous: past }, products, history: [], groupedHistory: [] };
 }
 
 // --- Общая сводка ---
@@ -2187,6 +2220,10 @@ async function handleApi(req, res, url) {
   if (req.method === 'POST' && url.pathname === '/api/funnel/history') {
     const body = await readJson(req);
     return send(res, 200, await funnelHistory(body.cabinet || 'demo', body.from, body.to, body.grouping, body.nmIds));
+  }
+  if (req.method === 'POST' && url.pathname === '/api/funnel/refetch') {
+    const body = await readJson(req);
+    return send(res, 200, refetchFunnel(body.cabinet || 'demo', body.from, body.to, body.grouping));
   }
   if (req.method === 'GET' && url.pathname === '/api/funnel/history') {
     return send(res, 200, await funnelHistory(url.searchParams.get('cabinet') || 'demo', url.searchParams.get('from'), url.searchParams.get('to'), url.searchParams.get('grouping')));
