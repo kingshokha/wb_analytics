@@ -992,10 +992,13 @@ function keywordStatus(statuses, nmId, query) {
 }
 
 function emptyKeyword(query) {
-  return { query, views: 0, clicks: 0, spend: 0, carts: 0, orders: 0, sales: 0, positionWeight: 0, activeIn: 0, excludedIn: 0, archivedIn: 0 };
+  return { query, views: 0, clicks: 0, spend: 0, carts: 0, orders: 0, sales: 0, positionWeight: 0, activeIn: 0, excludedIn: 0, archivedIn: 0, viewsKnown: false };
 }
 
+// По кампаниям с оплатой за клики WB не присылает в статистике запросов показы (а значит, и CTR с CPM):
+// поля views в строках просто нет. Такие показатели помечаются неизвестными, а не нулевыми.
 function addKeyword(target, row = {}) {
+  if (row.views !== undefined && row.views !== null) target.viewsKnown = true;
   const views = Number(row.views || 0);
   target.views += views; target.clicks += Number(row.clicks || 0); target.spend += Number(row.spend || 0);
   target.carts += Number(row.atbs || 0); target.orders += Number(row.orders || 0); target.sales += Number(row.shks || 0);
@@ -1007,14 +1010,17 @@ function finalizeKeyword(row) {
   const { positionWeight, positionBase, ...rest } = row;
   // Запрос считается неактивным, если он выключен у всех артикулов, где встречается.
   const status = rest.activeIn ? 'active' : rest.excludedIn ? 'excluded' : rest.archivedIn ? 'archived' : '';
-  return { ...rest, status, ctr: safeRatio(row.clicks, row.views), cpc: safeRatio(row.spend, row.clicks, 1),
-    cpm: safeRatio(row.spend, row.views, 1000), cr: safeRatio(row.orders, row.clicks),
+  const known = rest.viewsKnown;
+  return { ...rest, status, views: known ? rest.views : null, ctr: known ? safeRatio(row.clicks, row.views) : null, cpc: safeRatio(row.spend, row.clicks, 1),
+    cpm: known ? safeRatio(row.spend, row.views, 1000) : null, cr: safeRatio(row.orders, row.clicks),
     avgPosition: positionBase ? Math.round((positionWeight / positionBase) * 10) / 10 : 0 };
 }
 
 // Складывает ответ WB в итог по кампании и в разбивку по артикулам.
 function summarizeKeywords(groups = [], statuses = new Map()) {
   const total = new Map(); const byNmId = new Map();
+  // Присылает ли WB показы по этой кампании вообще: тогда у выключенных кластеров показы — честный 0, иначе неизвестны.
+  const viewsAvailable = groups.some(group => (group.stats || []).some(row => row.views !== undefined && row.views !== null));
   for (const group of groups) {
     const nmId = String(group.nm_id ?? group.nmId ?? '');
     for (const row of group.stats || []) {
@@ -1040,16 +1046,22 @@ function summarizeKeywords(groups = [], statuses = new Map()) {
         if (!query) continue;
         if (!total.has(query)) total.set(query, emptyKeyword(query));
         total.get(query)[`${status}In`] += 1;
+        if (viewsAvailable) total.get(query).viewsKnown = true;
         if (!byNmId.has(nmId)) byNmId.set(nmId, new Map());
         const product = byNmId.get(nmId);
         if (!product.has(query)) product.set(query, emptyKeyword(query));
         product.get(query)[`${status}In`] += 1;
+        if (viewsAvailable) product.get(query).viewsKnown = true;
       }
     }
   }
   const finalize = map => [...map.values()].map(finalizeKeyword).sort((a, b) => b.views - a.views || a.query.localeCompare(b.query, 'ru'));
   return { total: finalize(total), byNmId: Object.fromEntries([...byNmId].map(([nmId, map]) => [nmId, finalize(map)])) };
 }
+
+// Версия формата сохранённых ключевых запросов: файлы старых версий перекачиваются.
+// 2 — показы, CTR и CPM пустые (null), если WB их не прислал (кампании с оплатой за клики), а не 0.
+const KEYWORDS_FORMAT = 2;
 
 function keywordsFile(cabinetId, campaignId, from, to) {
   return path.join(campaignDir(cabinetId, campaignId), `keywords-${from}_${to}.json`);
@@ -1074,7 +1086,7 @@ function demoCampaignKeywords(campaignId, from, to) {
     spend: 480 - index * 140, atbs: 18 - index * 6, orders: 5 - index * 2, shks: 3 - index, avg_pos: 5 + index })) }];
   const demoStatuses = new Map([['4210000', { active: new Set(queries.slice(0, 2)), excluded: new Set(queries.slice(2, 3)), archived: new Set(queries.slice(3)) }],
     ['4210001', { active: new Set(queries.slice(0, 1)), excluded: new Set(queries.slice(1, 2)), archived: new Set() }]]);
-  return { demo: true, campaignId, period: { from, to }, updatedAt: new Date().toISOString(), ...summarizeKeywords(groups, demoStatuses),
+  return { demo: true, campaignId, period: { from, to }, updatedAt: new Date().toISOString(), viewsAvailable: true, ...summarizeKeywords(groups, demoStatuses),
     products: [{ nmId: 4210000, name: 'Демо-товар 1.1', vendorCode: 'DEMO-1', photo: '' }, { nmId: 4210001, name: 'Демо-товар 1.2', vendorCode: 'DEMO-2', photo: '' }], warnings: [] };
 }
 
@@ -1083,7 +1095,7 @@ async function campaignKeywords(id, campaignId, from, to, refresh = false) {
   if (id === 'demo' || !cabinets().length) return demoCampaignKeywords(campaignId, period.from, period.to);
   if (!/^\d{1,15}$/.test(String(campaignId || ''))) throw apiError(400, 'Некорректный номер кампании');
   const stored = readCampaignKeywords(id, campaignId, period.from, period.to);
-  if (stored && !refresh && !funnelRangeNeedsFetch(period.to, stored.updatedAt)) return { ...stored, fromFile: true };
+  if (stored?.format === KEYWORDS_FORMAT && !refresh && !funnelRangeNeedsFetch(period.to, stored.updatedAt)) return { ...stored, fromFile: true };
   const token = tokenFor(id); const warnings = [];
   const campaignData = await cachedAnalytics(`ad-campaigns:${id}`, () => wbRequest(token, AD_CAMPAIGNS_URL), 3 * 60_000);
   const meta = (Array.isArray(campaignData?.adverts) ? campaignData.adverts : []).find(item => String(item.id) === String(campaignId));
@@ -1104,7 +1116,8 @@ async function campaignKeywords(id, campaignId, from, to, refresh = false) {
   const cards = await cachedAnalytics(`product-cards:${id}`, () => loadProductCards(token), 10 * 60_000).catch(() => []);
   const byNmIdCard = new Map(cards.map(card => [String(card.nmID), { name: card.title || `Товар ${card.nmID}`, vendorCode: card.vendorCode || '', photo: cardPhoto(card) }]));
   const summary = summarizeKeywords(groups, statuses);
-  const result = { demo: false, campaignId, period, updatedAt: new Date().toISOString(), ...summary,
+  const result = { demo: false, format: KEYWORDS_FORMAT, campaignId, period, updatedAt: new Date().toISOString(), ...summary,
+    viewsAvailable: summary.total.some(row => row.viewsKnown),
     products: nmIds.map(nmId => ({ nmId, ...(byNmIdCard.get(String(nmId)) || { name: `Товар ${nmId}`, vendorCode: '', photo: '' }) }))
       .filter(product => summary.byNmId[String(product.nmId)]?.length), warnings };
   if (!warnings.length) { try { saveCampaignKeywords(id, campaignId, period.from, period.to, result); } catch (error) { warnings.push(`Не удалось сохранить ключевые запросы: ${error.message}`); } }

@@ -410,6 +410,20 @@ test('добавляет выключенные кластеры без пока
   assert.equal(result.byNmId['100'].length, 3);
 });
 
+test('по CPC-кампаниям показы, CTR и CPM ключевых запросов неизвестны, а не нулевые', () => {
+  // Так WB отвечает по кампаниям с оплатой за клики: полей views, ctr и cpm в строках нет.
+  const groups = [{ nm_id: 100, stats: [{ norm_query: 'утюжок', clicks: 52, spend: 529.13, atbs: 8, orders: 0, avg_pos: 32.9 }] }];
+  const statuses = new Map([['100', { active: new Set(['утюжок']), excluded: new Set(['плойка']), archived: new Set() }]]);
+  const result = summarizeKeywords(groups, statuses);
+  const row = result.total.find(item => item.query === 'утюжок');
+  assert.equal(row.views, null);
+  assert.equal(row.ctr, null);
+  assert.equal(row.cpm, null);
+  assert.equal(row.clicks, 52);
+  assert.equal(Math.round(row.cpc * 100) / 100, 10.18);
+  assert.equal(result.total.find(item => item.query === 'плойка').views, null);
+});
+
 test('строит матрицу продаж по дням и артикулам', () => {
   const days = [
     { date: '2026-09-01', products: { '100': [10, 2, 3, 4500, 1, 1500, 0], '200': [5, 1, 1, 1500, 0, 0, 0] } },

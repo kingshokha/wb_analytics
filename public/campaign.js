@@ -127,13 +127,16 @@
   const KEYWORD_COLUMNS=['query','status','views','clicks','ctr','cpm','cpc','spend','carts','orders','cr','avgPosition'];
   const KEYWORD_STATUSES={active:'Активен',excluded:'Неактивен',archived:'В архиве'};
   const keywordStatusCell=row=>row.status?`<span class="keyword-status ${row.status}">${KEYWORD_STATUSES[row.status]}</span>`:'<span class="keyword-status archived">Нет данных</span>';
-  const keywordValue=(key,value)=>key==='query'?String(value??''):['spend','cpc','cpm'].includes(key)?money(value):['ctr','cr'].includes(key)?percent(value):number(value);
+  // null — WB этот показатель не прислал (показы, CTR и CPM по CPC-кампаниям), поэтому прочерк, а не 0.
+  const keywordValue=(key,value)=>key==='query'?String(value??''):value==null?'—':['spend','cpc','cpm'].includes(key)?money(value):['ctr','cr'].includes(key)?percent(value):number(value);
   function keywordRows(){
     const data=keywords.data;if(!data)return [];
     const rows=keywords.product?(data.byNmId?.[keywords.product]||[]):(data.total||[]);
     const term=keywords.search.trim().toLowerCase();
     const filtered=rows.filter(row=>(!term||row.query.toLowerCase().includes(term))&&(!keywords.onlyInactive||row.status==='excluded'||row.status==='archived'));
-    return sorted(filtered,keywords.sort);
+    // Без показов (CPC-кампании) сортировка по показам, CTR или CPM ничего не упорядочит — тогда сортируем по кликам.
+    const unknown=data.viewsAvailable===false&&['views','ctr','cpm'].includes(keywords.sort.key);
+    return sorted(filtered,unknown?{key:'clicks',direction:keywords.sort.direction}:keywords.sort);
   }
   function keywordStatusNote(rows){
     const off=rows.filter(row=>row.status==='excluded').length,archived=rows.filter(row=>row.status==='archived').length;
@@ -141,11 +144,11 @@
   }
   function keywordTotals(rows){
     const sum=key=>rows.reduce((total,row)=>total+Number(row[key]||0),0);
-    const views=sum('views'),clicks=sum('clicks'),spend=sum('spend'),orders=sum('orders');
+    const viewsKnown=rows.some(row=>row.views!=null),views=viewsKnown?sum('views'):null,clicks=sum('clicks'),spend=sum('spend'),orders=sum('orders');
     const positions=rows.reduce((total,row)=>total+Number(row.avgPosition||0)*Number(row.views||1),0);
     const base=rows.reduce((total,row)=>total+Number(row.views||1),0);
-    return {views,clicks,spend,orders,carts:sum('carts'),ctr:views?clicks/views*100:0,cpc:clicks?spend/clicks:0,
-      cpm:views?spend/views*1000:0,cr:clicks?orders/clicks*100:0,avgPosition:base?positions/base:0};
+    return {views,clicks,spend,orders,carts:sum('carts'),ctr:viewsKnown?(views?clicks/views*100:0):null,cpc:clicks?spend/clicks:0,
+      cpm:viewsKnown?(views?spend/views*1000:0):null,cr:clicks?orders/clicks*100:0,avgPosition:base?positions/base:0};
   }
   async function loadKeywords(period,refresh=false){
     if(!period)return;
@@ -171,6 +174,7 @@
     const notes=[`${date(data.period.from)} — ${date(data.period.to)}`,`запросов: ${number(rows.length)}`,...keywordStatusNote(rows)];
     if(keywords.product)notes.push('по одному артикулу');
     if(rows.length>shown.length)notes.push(`показаны первые ${number(shown.length)}`);
+    if(data.viewsAvailable===false)notes.push('показы, CTR и CPM по запросам WB не отдаёт для кампаний с оплатой за клики');
     if(data.fromFile)notes.push('из сохранённого файла');
     if(keywords.loading)notes.push('обновляем…');
     if(keywords.error)notes.push(`ошибка обновления: ${keywords.error}`);
