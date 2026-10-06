@@ -1,9 +1,11 @@
 (() => {
   'use strict';
   const params = new URLSearchParams(location.search);
-  const state = { rows: [], productDaily: [], sort: { key: 'date', direction: 'desc' }, productSort: { key: 'spend', direction: 'desc' }, visibleMetrics: new Set(['views', 'clicks', 'orders', 'spend']), visibleCards: new Set() };
+  const state = { rows: [], productDaily: [], sort: { key: 'date', direction: 'desc' }, productSort: { key: 'spend', direction: 'desc' }, visibleMetrics: new Set(['views', 'clicks', 'orders', 'spend', 'drr']), visibleCards: new Set() };
   const columns = ['date','views','clicks','ctr','cpc','carts','orders','canceled','revenue','spend','drr'];
-  const chartMetrics = [{key:'views',label:'Показы',color:'#277a70'},{key:'clicks',label:'Клики',color:'#d77b28'},{key:'carts',label:'Корзины',color:'#4d8f63'},{key:'orders',label:'Заказы',color:'#b35b45'},{key:'spend',label:'Затраты',color:'#5a7d9a'},{key:'revenue',label:'Сумма заказов',color:'#8b6b3f'}];
+  const chartMetrics = [{key:'views',label:'Показы',color:'#277a70'},{key:'clicks',label:'Клики',color:'#d77b28'},{key:'carts',label:'Корзины',color:'#4d8f63'},{key:'orders',label:'Заказы',color:'#b35b45'},{key:'spend',label:'Затраты',color:'#5a7d9a'},{key:'revenue',label:'Сумма заказов',color:'#8b6b3f'},{key:'drr',label:'ДРР',color:'#7651e5'}];
+  // Значение линии графика за день. ДРР без рекламной выручки не определён (расход есть, заказов нет) — на графике разрыв, а не 0.
+  function chartValue(s,row,byDay){if(s.card)return Number(byDay.get(`${s.card}:${row.date}`)?.spend||0);if(s.key==='drr'&&!Number(row.revenue))return null;return Number(row[s.key]||0)}
   const $=s=>document.querySelector(s), number=v=>Number(v||0).toLocaleString('ru-RU',{maximumFractionDigits:2}), money=v=>`${number(v)} ₽`, percent=v=>`${number(v)}%`, date=v=>{const d=new Date(`${v}T00:00:00Z`);return Number.isNaN(d.getTime())?v:d.toLocaleDateString('ru-RU')}, esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c])), total=k=>state.rows.reduce((s,r)=>s+Number(r[k]||0),0), average=k=>state.rows.length?total(k)/state.rows.length:0;
   const fmt=(k,v)=>k==='date'?date(v):['spend','revenue','cpc'].includes(k)?money(v):['ctr','drr'].includes(k)?percent(v):number(v);
   function sorted(rows, sort){return [...rows].sort((a,b)=>{const av=a[sort.key]??'',bv=b[sort.key]??'',r=typeof av==='number'&&typeof bv==='number'?av-bv:String(av).localeCompare(String(bv),'ru',{numeric:true});return sort.direction==='asc'?r:-r})}
@@ -18,7 +20,7 @@
   const createdDate=value=>{const match=String(value||'').match(/^(\d{4})-(\d{2})-(\d{2})/);return match?`${match[3]}.${match[2]}.${match[1]}`:''};
   function renderMeta(c){const tags=[c.paymentType?String(c.paymentType).toUpperCase():'',AD_BIDS[String(c.bidType)]||c.bidType||'',AD_STATUSES[Number(c.status)]||''],created=createdDate(c.createdAt);$('#campaignMeta').innerHTML=tags.filter(Boolean).map(x=>`<b>${esc(x)}</b>`).join('')+(created?`<span class="campaign-created">Создана ${created}</span>`:'')}
   function renderSummary(c){const cards=[['Показы',number(c.views)],['Клики',number(c.clicks)],['Рекламные заказы',number(c.orders)],['Сумма заказов',money(c.revenue)],['Затраты',money(c.spend)],['ДРР за период',percent(Number(c.revenue)?Number(c.spend||0)/Number(c.revenue)*100:0)],['Средний CTR',percent(average('ctr'))],['Средний CPC',money(average('cpc'))],['Добавления в корзину',number(total('carts'))],['Отмены',number(total('canceled'))]];$('#summary').innerHTML=cards.map(x=>`<div class="metric"><span>${x[0]}</span><strong>${x[1]}</strong></div>`).join('')}
-  function renderTable(){const rows=sorted(state.rows,state.sort);const sum=totals(state.rows);const head=`<tr class="total-row"><td>Итого · ${number(state.rows.length)} дн.</td>${columns.slice(1).map(k=>`<td>${esc(fmt(k,sum[k]))}</td>`).join('')}</tr>`;$('#dailyBody').innerHTML=rows.length?head+rows.map(r=>`<tr>${columns.map(k=>`<td>${esc(fmt(k,r[k]))}</td>`).join('')}</tr>`).join(''):'<tr><td colspan="11" class="empty">Нет дневных данных за выбранный период</td></tr>'}
+  function renderTable(){const rows=sorted(state.rows,state.sort);const sum=totals(state.rows);const head=`<tr class="total-row"><td>Итого · ${number(state.rows.length)} дн.</td>${columns.slice(1).map(k=>`<td>${esc(fmt(k,sum[k]))}</td>`).join('')}</tr>`;$('#dailyBody').innerHTML=rows.length?head+rows.map(r=>`<tr>${columns.map(k=>`<td>${k==='drr'&&!Number(r.revenue)&&Number(r.spend)?'<span title="Нет рекламной выручки — ДРР не определён">—</span>':esc(fmt(k,r[k]))}</td>`).join('')}</tr>`).join(''):'<tr><td colspan="11" class="empty">Нет дневных данных за выбранный период</td></tr>'}
   function aggregateProducts(){
     const totals=new Map(), sumKeys=['views','clicks','carts','orders','canceled','revenue','spend'];
     for(const row of state.productDaily){const key=String(row.nmId||'');if(!key)continue;let total=totals.get(key);if(!total){total={nmId:row.nmId,name:'',photo:'',vendorCode:''};sumKeys.forEach(k=>total[k]=0);totals.set(key,total)}if(!total.name&&row.name)total.name=row.name;if(!total.photo&&row.photo)total.photo=row.photo;if(!total.vendorCode&&row.vendorCode)total.vendorCode=row.vendorCode;sumKeys.forEach(k=>total[k]+=Number(row[k]||0));}
@@ -45,7 +47,7 @@
     const series=[...selected,...cards.filter(c=>state.visibleCards.has(String(c.nmId))).map((c,i)=>({key:`card:${c.nmId}`,label:`Артикул ${c.nmId}`,color:['#b35b45','#5a7d9a','#8b6b3f','#277a70','#d77b28'][i%5],card:c.nmId}))];
     if(!rows.length||!series.length){svg.innerHTML='<text x="600" y="145" text-anchor="middle" class="chart-axis">Выберите данные для отображения</text>';note.innerHTML='';return}
     const byDay=new Map(state.productDaily.map(r=>[`${r.nmId}:${r.date}`,r]));
-    const value=(s,r)=>Number(s.card?byDay.get(`${s.card}:${r.date}`)?.spend||0:r[s.key]||0),maxOf=s=>Math.max(0,...rows.map(r=>value(s,r)));
+    const value=(s,r)=>chartValue(s,r,byDay),maxOf=s=>Math.max(0,...rows.map(r=>value(s,r)).filter(v=>v!=null));
     const groups=chartGroups(series,maxOf),scale=new Map(groups.flatMap(group=>group.series.map(s=>[s.key,group.max]))),[leftAxis,rightAxis]=groups;
     const x=i=>left+(rows.length===1?pw/2:i*pw/(rows.length-1)),y=(s,v)=>top+ph-Number(v||0)/scale.get(s.key)*ph;
     // Подписи оси — цветом её линии; если на оси несколько линий, цвет нейтральный, а линии перечислены над осью своими цветами.
@@ -53,13 +55,15 @@
     const caption=(group,side)=>`<text class="chart-axis-caption" x="${side==='left'?left:w-right}" y="${top-8}" text-anchor="${side==='left'?'start':'end'}">${group.series.map(s=>`<tspan style="fill:${s.color}">${esc(s.label)}</tspan>`).join('<tspan style="fill:#9aaba8"> · </tspan>')}</text>`;
     const grid=[0,.25,.5,.75,1].map(r=>{const gy=top+ph-r*ph;return `<line class="chart-grid" x1="${left}" x2="${w-right}" y1="${gy}" y2="${gy}"/><text class="chart-axis" x="${left-8}" y="${gy+4}" text-anchor="end" style="fill:${axisColor(leftAxis)}">${esc(chartAxisNumber(leftAxis.max*r))}</text>`+(rightAxis?`<text class="chart-axis" x="${w-right+8}" y="${gy+4}" style="fill:${axisColor(rightAxis)}">${esc(chartAxisNumber(rightAxis.max*r))}</text>`:'')}).join('');
     const labels=rows.map((r,i)=>i%Math.max(1,Math.ceil(rows.length/8))===0?`<text class="chart-axis" x="${x(i)}" y="${h-14}" text-anchor="middle">${esc(date(r.date))}</text>`:'').join('');
-    const lines=series.map(s=>`<polyline class="chart-line" points="${rows.map((r,i)=>`${x(i)},${y(s,value(s,r))}`).join(' ')}" stroke="${s.color}"/>`).join('');
+    // Дни без значения (null) рвут линию: отрезки рисуются отдельно, одиночная точка — кружком.
+    const lines=series.map(s=>{const parts=[];let part=[];rows.forEach((r,i)=>{const v=value(s,r);if(v==null){if(part.length)parts.push(part);part=[];return}part.push([x(i),y(s,v)])});if(part.length)parts.push(part);
+      return parts.map(points=>points.length===1?`<circle class="chart-dot" cx="${points[0][0]}" cy="${points[0][1]}" r="3.5" fill="${s.color}"/>`:`<polyline class="chart-line" points="${points.map(p=>p.join(',')).join(' ')}" stroke="${s.color}"/>`).join('')}).join('');
     svg.innerHTML=`${grid}${rightAxis?caption(leftAxis,'left')+caption(rightAxis,'right'):''}${labels}${lines}<rect class="chart-hit-area" x="${left}" y="${top}" width="${pw}" height="${ph}" fill="transparent"/>`;
-    const own=groups.slice(2).flatMap(group=>group.series.map(s=>`<span><i style="background:${s.color}"></i>${esc(s.label)} — до ${esc(chartAxisNumber(group.max))}</span>`));
+    const own=groups.slice(2).flatMap(group=>group.series.map(s=>`<span><i style="background:${s.color}"></i>${esc(s.label)} — до ${esc(chartAxisNumber(group.max))}${s.key==='drr'?'%':''}</span>`));
     note.innerHTML=own.length?`Со своей шкалой, без оси: ${own.join(' ')}`:'';
     bindHover(rows,x,series,byDay,w,top,top+ph);
   }
-  function bindHover(rows,x,series,byDay,w,top,bottom){const svg=$('#dailyChart'),tip=$('#chartTooltip'),wrap=$('.chart-wrap');svg.onpointermove=e=>{const point=svg.createSVGPoint();point.x=e.clientX;point.y=e.clientY;const matrix=svg.getScreenCTM();if(!matrix)return;const local=point.matrixTransform(matrix.inverse()),vx=Math.max(0,Math.min(w,local.x));let idx=0,best=Infinity;rows.forEach((_,i)=>{const d=Math.abs(x(i)-vx);if(d<best){best=d;idx=i}});const row=rows[idx];tip.innerHTML=`<strong>${esc(date(row.date))}</strong>`+series.map(s=>{const v=s.card?(byDay.get(`${s.card}:${row.date}`)?.spend||0):row[s.key];return `<span><i style="background:${s.color}"></i>${s.label}: <b>${esc(fmt(s.card?'spend':s.key,v))}</b></span>`}).join('');tip.hidden=false;const wrapRect=wrap.getBoundingClientRect(),svgRect=svg.getBoundingClientRect(),px=svgRect.left-wrapRect.left+(x(idx)/w)*svgRect.width;tip.style.left=`${Math.max(12,Math.min(wrap.clientWidth-tip.offsetWidth-12,px))}px`;let line=svg.querySelector('.chart-hover-line');if(!line){svg.insertAdjacentHTML('beforeend','<line class="chart-hover-line" y1="20" y2="248"/>');line=svg.querySelector('.chart-hover-line')}line.setAttribute('x1',x(idx));line.setAttribute('x2',x(idx))};svg.onpointerleave=()=>tip.hidden=true}
+  function bindHover(rows,x,series,byDay,w,top,bottom){const svg=$('#dailyChart'),tip=$('#chartTooltip'),wrap=$('.chart-wrap');svg.onpointermove=e=>{const point=svg.createSVGPoint();point.x=e.clientX;point.y=e.clientY;const matrix=svg.getScreenCTM();if(!matrix)return;const local=point.matrixTransform(matrix.inverse()),vx=Math.max(0,Math.min(w,local.x));let idx=0,best=Infinity;rows.forEach((_,i)=>{const d=Math.abs(x(i)-vx);if(d<best){best=d;idx=i}});const row=rows[idx];tip.innerHTML=`<strong>${esc(date(row.date))}</strong>`+series.map(s=>{const v=chartValue(s,row,byDay);return `<span><i style="background:${s.color}"></i>${s.label}: <b>${v==null?'— (нет рекламной выручки)':esc(fmt(s.card?'spend':s.key,v))}</b></span>`}).join('');tip.hidden=false;const wrapRect=wrap.getBoundingClientRect(),svgRect=svg.getBoundingClientRect(),px=svgRect.left-wrapRect.left+(x(idx)/w)*svgRect.width;tip.style.left=`${Math.max(12,Math.min(wrap.clientWidth-tip.offsetWidth-12,px))}px`;let line=svg.querySelector('.chart-hover-line');if(!line){svg.insertAdjacentHTML('beforeend','<line class="chart-hover-line" y1="20" y2="248"/>');line=svg.querySelector('.chart-hover-line')}line.setAttribute('x1',x(idx));line.setAttribute('x2',x(idx))};svg.onpointerleave=()=>tip.hidden=true}
   const MONTH_NAMES=['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
   const isoDate=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
   const exportState={presets:[],started:0,timer:0,chunks:0,index:0,phase:'',reason:'',waitUntil:0,failed:0};
@@ -123,20 +127,78 @@
     renderExportProgress();
     return event.type==='result'?event:null;
   }
-  const keywords={data:null,loading:false,error:'',product:'',search:'',onlyInactive:false,sort:{key:'views',direction:'desc'},limit:200};
-  const KEYWORD_COLUMNS=['query','status','views','clicks','ctr','cpm','cpc','spend','carts','orders','cr','avgPosition'];
+  const keywords={data:null,loading:false,error:'',product:'',search:'',onlyInactive:false,grade:'',sort:{key:'views',direction:'desc'},limit:200};
+  // Первые три столбца (запрос, статус, оценка) рисуются отдельно, остальные — через keywordValue.
+  const KEYWORD_COLUMNS=['query','status','gradeScore','views','clicks','ctr','cpm','cpc','spend','spendShare','carts','cartCost','orders','cr','cpo','avgPosition'];
+  // --- Оценка ключевых запросов по правилам: каждый запрос сравнивается со средним по кампании за период ---
+  // Основа — стоимость заказа (CPO). Если заказов в кампании меньше десяти, по ним мало что видно (почти всё уйдёт
+  // в «Мало данных»), поэтому сравнение идёт по стоимости корзины: корзин обычно в разы больше.
+  // Запрос без заказов считается плохим, только когда кликов у него вдвое больше, чем в среднем нужно на один заказ,
+  // и потрачено не меньше средней стоимости заказа; иначе это «Мало данных», а не провал.
+  const KEYWORD_GRADES={good:{label:'Хороший',plural:'Хорошие',rank:4},watch:{label:'Наблюдать',plural:'Наблюдать',rank:3},little:{label:'Мало данных',plural:'Мало данных',rank:2},bad:{label:'Плохой',plural:'Плохие',rank:1}};
+  const KEYWORD_MIN_ORDERS=10,KEYWORD_WATCH_RATIO=1.5;
+  const ratioText=value=>Number(value).toLocaleString('ru-RU',{maximumFractionDigits:1});
+  const plural=(count,forms)=>{const n=Math.abs(Number(count)||0)%100,d=n%10;return forms[n>10&&n<20?2:d===1?0:d>1&&d<5?1:2]};
+  const clicksText=count=>`${number(count)} ${plural(count,['клик','клика','кликов'])}`;
+  function keywordBenchmark(rows){
+    const sum=key=>rows.reduce((total,row)=>total+Number(row[key]||0),0),spend=sum('spend'),clicks=sum('clicks'),orders=sum('orders'),carts=sum('carts');
+    const byOrders=orders>=KEYWORD_MIN_ORDERS,count=byOrders?orders:carts;
+    return {spend,clicks,byOrders,count,key:byOrders?'orders':'carts',cost:byOrders?'CPO':'Цена корзины',unit:byOrders?'заказ':'корзина',none:byOrders?'заказов':'корзин',
+      unitCost:count?spend/count:null,clicksPerUnit:count?clicks/count:null};
+  }
+  function gradeKeyword(row,b){
+    const spend=Number(row.spend||0),clicks=Number(row.clicks||0),count=Number(row[b.key]||0);
+    if(!spend&&!clicks)return null;
+    if(!b.unitCost)return {grade:'little',reason:`В кампании пока нет ${b.none} — сравнивать не с чем`};
+    const average=money(b.unitCost);
+    if(count){
+      const cost=spend/count,ratio=cost/b.unitCost,diff=Math.round(Math.abs(1-ratio)*100);
+      const versus=diff<5?`на уровне среднего (${average})`:ratio<1?`на ${diff}% ниже среднего (${average})`:ratio<=2?`на ${diff}% выше среднего (${average})`:`в ${ratioText(ratio)} раза выше среднего (${average})`;
+      return {grade:ratio<=1?'good':ratio<=KEYWORD_WATCH_RATIO?'watch':'bad',reason:`${b.cost} ${money(cost)} — ${versus}`};
+    }
+    const need=Math.round(b.clicksPerUnit);
+    if(clicks>=2*b.clicksPerUnit&&spend>=b.unitCost)return {grade:'bad',reason:`0 ${b.none} за ${clicksText(clicks)} (в среднем ${b.unit} на ${clicksText(need)}), потрачено ${money(spend)}`};
+    return {grade:'little',reason:`${clicksText(clicks)} без ${b.none} — мало для вывода (в среднем ${b.unit} на ${clicksText(need)})`};
+  }
+  // Строки текущего артикула (или всех) с долей расходов, ценой корзины, CPO и оценкой; среднее — по всем строкам вида.
+  function keywordView(){
+    const data=keywords.data;if(!data)return {rows:[],benchmark:null};
+    const base=keywords.product?(data.byNmId?.[keywords.product]||[]):(data.total||[]),benchmark=keywordBenchmark(base);
+    const rows=base.map(row=>{
+      const spend=Number(row.spend||0),graded=gradeKeyword(row,benchmark);
+      return {...row,spendShare:benchmark.spend?spend/benchmark.spend*100:0,cartCost:row.carts?spend/row.carts:null,cpo:row.orders?spend/row.orders:null,
+        grade:graded?.grade||'',gradeReason:graded?.reason||'',gradeScore:graded?KEYWORD_GRADES[graded.grade].rank:null};
+    });
+    return {rows,benchmark};
+  }
   const KEYWORD_STATUSES={active:'Активен',excluded:'Неактивен',archived:'В архиве'};
   const keywordStatusCell=row=>row.status?`<span class="keyword-status ${row.status}">${KEYWORD_STATUSES[row.status]}</span>`:'<span class="keyword-status archived">Нет данных</span>';
   // null — WB этот показатель не прислал (показы, CTR и CPM по CPC-кампаниям), поэтому прочерк, а не 0.
-  const keywordValue=(key,value)=>key==='query'?String(value??''):value==null?'—':['spend','cpc','cpm'].includes(key)?money(value):['ctr','cr'].includes(key)?percent(value):number(value);
-  function keywordRows(){
+  const keywordValue=(key,value)=>key==='query'?String(value??''):value==null?'—':['spend','cpc','cpm','cartCost','cpo'].includes(key)?money(value):['ctr','cr','spendShare'].includes(key)?percent(value):number(value);
+  function keywordRows(view){
     const data=keywords.data;if(!data)return [];
-    const rows=keywords.product?(data.byNmId?.[keywords.product]||[]):(data.total||[]);
     const term=keywords.search.trim().toLowerCase();
-    const filtered=rows.filter(row=>(!term||row.query.toLowerCase().includes(term))&&(!keywords.onlyInactive||row.status==='excluded'||row.status==='archived'));
+    const filtered=view.rows.filter(row=>(!term||row.query.toLowerCase().includes(term))&&(!keywords.onlyInactive||row.status==='excluded'||row.status==='archived')&&(!keywords.grade||row.grade===keywords.grade));
     // Без показов (CPC-кампании) сортировка по показам, CTR или CPM ничего не упорядочит — тогда сортируем по кликам.
-    const unknown=data.viewsAvailable===false&&['views','ctr','cpm'].includes(keywords.sort.key);
-    return sorted(filtered,unknown?{key:'clicks',direction:keywords.sort.direction}:keywords.sort);
+    const unknown=data.viewsAvailable===false&&['views','ctr','cpm'].includes(keywords.sort.key),sort=unknown?{key:'clicks',direction:keywords.sort.direction}:keywords.sort;
+    // Строки без значения (нет заказов для CPO, нет корзин для их цены, нет оценки) всегда в конце, в любом направлении.
+    return [...sorted(filtered.filter(row=>row[sort.key]!=null),sort),...filtered.filter(row=>row[sort.key]==null)];
+  }
+  // Блок над таблицей: сколько запросов в каждой оценке, сколько денег на них ушло, кандидаты на отключение.
+  function renderKeywordInsights(view){
+    const box=$('#keywordInsights');if(!box)return;
+    const b=view.benchmark,graded=view.rows.filter(row=>row.grade);
+    if(!b||!graded.length){box.innerHTML='';return}
+    const cards=['good','watch','bad','little'].map(grade=>{
+      const list=graded.filter(row=>row.grade===grade),spend=list.reduce((total,row)=>total+Number(row.spend||0),0);
+      return `<button type="button" class="keyword-grade-card ${grade} ${keywords.grade===grade?'active':''}" data-keyword-grade="${grade}"><b>${number(list.length)}</b><span>${KEYWORD_GRADES[grade].plural}</span><small>${money(spend)} · ${percent(b.spend?spend/b.spend*100:0)} расходов</small></button>`;
+    }).join('');
+    const cost=b.byOrders?b.cost:b.cost.toLowerCase();
+    const basis=b.unitCost?`Сравнение со средним по кампании: ${cost} ${money(b.unitCost)}, ${b.unit} в среднем на ${clicksText(Math.round(b.clicksPerUnit))}${b.byOrders?'':` (заказов меньше ${KEYWORD_MIN_ORDERS} — по ним выводы ненадёжны, поэтому оценка по корзинам)`}. Хороший — ${cost} не выше среднего; наблюдать — до ${ratioText(KEYWORD_WATCH_RATIO)}× среднего; плохой — выше или 0 ${b.none} при вдвое большем числе кликов, чем обычно нужно.`:`В кампании пока нет ${b.none} — оценивать запросы не с чем.`;
+    const bad=graded.filter(row=>row.grade==='bad').sort((x,y)=>Number(y.spend||0)-Number(x.spend||0)).slice(0,5);
+    box.innerHTML=`<div class="keyword-grade-cards">${cards}</div><p class="keyword-basis">${esc(basis)}</p>`+
+      (bad.length?`<div class="keyword-candidates"><strong>Кандидаты на отключение</strong>${bad.map(row=>`<span><b>${esc(row.query)}</b> — ${esc(money(row.spend))} · ${esc(row.gradeReason)}</span>`).join('')}</div>`:'');
+    box.querySelectorAll('[data-keyword-grade]').forEach(button=>button.onclick=()=>{const grade=button.dataset.keywordGrade;keywords.grade=keywords.grade===grade?'':grade;$('#keywordGrade').value=keywords.grade;renderKeywords()});
   }
   function keywordStatusNote(rows){
     const off=rows.filter(row=>row.status==='excluded').length,archived=rows.filter(row=>row.status==='archived').length;
@@ -147,8 +209,10 @@
     const viewsKnown=rows.some(row=>row.views!=null),views=viewsKnown?sum('views'):null,clicks=sum('clicks'),spend=sum('spend'),orders=sum('orders');
     const positions=rows.reduce((total,row)=>total+Number(row.avgPosition||0)*Number(row.views||1),0);
     const base=rows.reduce((total,row)=>total+Number(row.views||1),0);
-    return {views,clicks,spend,orders,carts:sum('carts'),ctr:viewsKnown?(views?clicks/views*100:0):null,cpc:clicks?spend/clicks:0,
-      cpm:viewsKnown?(views?spend/views*1000:0):null,cr:clicks?orders/clicks*100:0,avgPosition:base?positions/base:0};
+    const carts=sum('carts');
+    return {views,clicks,spend,orders,carts,ctr:viewsKnown?(views?clicks/views*100:0):null,cpc:clicks?spend/clicks:0,
+      cpm:viewsKnown?(views?spend/views*1000:0):null,cr:clicks?orders/clicks*100:0,avgPosition:base?positions/base:0,
+      spendShare:sum('spendShare'),cartCost:carts?spend/carts:null,cpo:orders?spend/orders:null};
   }
   async function loadKeywords(period,refresh=false){
     if(!period)return;
@@ -167,10 +231,11 @@
     if(!note)return;
     const data=keywords.data;
     select.innerHTML='<option value="">Все артикулы</option>'+(data?.products||[]).map(product=>`<option value="${esc(product.nmId)}" ${String(product.nmId)===keywords.product?'selected':''}>${esc(product.vendorCode||product.name)} · ${esc(product.nmId)}</option>`).join('');
-    if(keywords.loading&&!data){note.textContent='Загрузка ключевых запросов…';body.innerHTML='';return}
-    if(keywords.error&&!data){note.textContent=`Ошибка: ${keywords.error}`;body.innerHTML='';return}
-    if(!data){note.textContent='';body.innerHTML='';return}
-    const rows=keywordRows(),shown=rows.slice(0,keywords.limit),totals=keywordTotals(rows);
+    if(keywords.loading&&!data){note.textContent='Загрузка ключевых запросов…';body.innerHTML='';renderKeywordInsights({rows:[],benchmark:null});return}
+    if(keywords.error&&!data){note.textContent=`Ошибка: ${keywords.error}`;body.innerHTML='';renderKeywordInsights({rows:[],benchmark:null});return}
+    if(!data){note.textContent='';body.innerHTML='';renderKeywordInsights({rows:[],benchmark:null});return}
+    const view=keywordView(),rows=keywordRows(view),shown=rows.slice(0,keywords.limit),totals=keywordTotals(rows);
+    renderKeywordInsights(view);
     const notes=[`${date(data.period.from)} — ${date(data.period.to)}`,`запросов: ${number(rows.length)}`,...keywordStatusNote(rows)];
     if(keywords.product)notes.push('по одному артикулу');
     if(rows.length>shown.length)notes.push(`показаны первые ${number(shown.length)}`);
@@ -180,14 +245,17 @@
     if(keywords.error)notes.push(`ошибка обновления: ${keywords.error}`);
     (data.warnings||[]).forEach(text=>notes.push(text));
     note.textContent=notes.join(' · ');
-    body.innerHTML=rows.length?`<tr class="total-row"><td>Итого · ${number(rows.length)} запросов</td><td></td>${KEYWORD_COLUMNS.slice(2).map(key=>`<td>${esc(keywordValue(key,totals[key]))}</td>`).join('')}</tr>`+
-      shown.map(row=>`<tr class="${row.status==='excluded'||row.status==='archived'?'keyword-off':''}"><td>${esc(row.query)}</td><td>${keywordStatusCell(row)}</td>${KEYWORD_COLUMNS.slice(2).map(key=>`<td>${esc(keywordValue(key,row[key]))}</td>`).join('')}</tr>`).join(''):
-      `<tr><td colspan="12" class="empty">${keywords.onlyInactive?'Неактивных запросов нет':'WB не вернул поисковые запросы за этот период'}</td></tr>`;
+    const gradeCell=row=>row.grade?`<span class="keyword-grade ${row.grade}" title="${esc(row.gradeReason)}">${KEYWORD_GRADES[row.grade].label}</span>`:'<span class="keyword-grade none" title="Нет кликов и затрат за период">—</span>';
+    const empty=keywords.grade?`Запросов с оценкой «${KEYWORD_GRADES[keywords.grade].label}» нет`:keywords.onlyInactive?'Неактивных запросов нет':'WB не вернул поисковые запросы за этот период';
+    body.innerHTML=rows.length?`<tr class="total-row"><td>Итого · ${number(rows.length)} запросов</td><td></td><td></td>${KEYWORD_COLUMNS.slice(3).map(key=>`<td>${esc(keywordValue(key,totals[key]))}</td>`).join('')}</tr>`+
+      shown.map(row=>`<tr class="${row.status==='excluded'||row.status==='archived'?'keyword-off':''}"><td>${esc(row.query)}</td><td>${keywordStatusCell(row)}</td><td>${gradeCell(row)}</td>${KEYWORD_COLUMNS.slice(3).map(key=>`<td>${esc(keywordValue(key,row[key]))}</td>`).join('')}</tr>`).join(''):
+      `<tr><td colspan="${KEYWORD_COLUMNS.length}" class="empty">${empty}</td></tr>`;
   }
   document.querySelectorAll('th[data-keyword-key]').forEach(header=>header.onclick=()=>{const key=header.dataset.keywordKey;keywords.sort=keywords.sort.key===key?{key,direction:keywords.sort.direction==='asc'?'desc':'asc'}:{key,direction:key==='query'?'asc':'desc'};renderKeywords()});
   $('#keywordProduct').onchange=event=>{keywords.product=event.target.value;renderKeywords()};
   $('#keywordSearch').oninput=event=>{keywords.search=event.target.value;renderKeywords()};
   $('#keywordOnlyInactive').onchange=event=>{keywords.onlyInactive=event.target.checked;renderKeywords()};
+  $('#keywordGrade').onchange=event=>{keywords.grade=event.target.value;renderKeywords()};
   $('#keywordRefresh').onclick=()=>loadKeywords(keywords.data?.period||state.period,true);
   async function exportHistory(){
     const button=$('#exportHistory'),controls=[button,$('#exportPreset'),$('#exportFrom'),$('#exportTo')];
