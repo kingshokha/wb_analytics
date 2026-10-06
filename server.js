@@ -54,6 +54,9 @@ const PRICE_PRESET_MAX_PRICE = 1_000_000;
 const STOCKS_REPORT_API = 'https://seller-analytics-api.wildberries.ru/api/analytics/v1/stocks-report';
 const NORMQUERY_URL = 'https://advert-api.wildberries.ru/adv/v0/normquery/stats';
 const NORMQUERY_LIST_URL = 'https://advert-api.wildberries.ru/adv/v0/normquery/list';
+const NORMQUERY_GET_MINUS_URL = 'https://advert-api.wildberries.ru/adv/v0/normquery/get-minus';
+const NORMQUERY_SET_MINUS_URL = 'https://advert-api.wildberries.ru/adv/v0/normquery/set-minus';
+const NORMQUERY_MINUS_LIMIT = 1000;
 const NORMQUERY_LIST_INTERVAL = 250;
 const NORMQUERY_CHUNK = 100;
 const NORMQUERY_INTERVAL = 6_500;
@@ -966,6 +969,58 @@ function normqueryRequest(id, token, body) {
 }
 
 // Списки активных, неактивных и архивных кластеров кампании по каждому артикулу.
+// --- Исключение и включение ключевых запросов (минус-фразы WB) ---
+// Новый список минус-фраз товара: set-minus у WB перезаписывает список целиком, поэтому к текущему списку
+// добавляются выбранные запросы (исключить) или из него убираются (включить); остальные фразы не трогаются.
+function mergeMinusList(before = [], queries = [], action = 'exclude') {
+  const selected = new Set(queries);
+  return action === 'exclude' ? [...new Set([...before, ...queries])] : before.filter(query => !selected.has(query));
+}
+
+async function readMinusList(token, campaignId, nmId) {
+  const response = await wbRequest(token, NORMQUERY_GET_MINUS_URL, { method: 'POST', body: { items: [{ advert_id: Number(campaignId), nm_id: Number(nmId) }] } });
+  const item = (response?.items || []).find(entry => String(entry.nm_id ?? entry.nmId) === String(nmId));
+  return (item?.norm_queries || item?.normQueries || []).map(String);
+}
+
+// Для каждого товара: прочитать текущий список, объединить, записать и перечитать для проверки.
+// WB отклоняет весь запрос, если в нём есть кластер, которого у товара нет, поэтому каждому товару уходят только его кластеры.
+async function campaignMinus(id, campaignId, action, queriesInput, nmIdsInput) {
+  if (id === 'demo' || !cabinets().length) throw apiError(400, 'В демо-режиме исключать запросы нельзя');
+  if (!/^\d{1,15}$/.test(String(campaignId || ''))) throw apiError(400, 'Некорректный номер кампании');
+  if (!['exclude', 'include'].includes(action)) throw apiError(400, 'Неизвестное действие');
+  const queries = [...new Set((Array.isArray(queriesInput) ? queriesInput : []).map(query => String(query || '').trim()).filter(Boolean))].slice(0, 500);
+  if (!queries.length) throw apiError(400, 'Не выбраны запросы');
+  const token = tokenFor(id);
+  const campaignData = await cachedAnalytics(`ad-campaigns:${id}`, () => wbRequest(token, AD_CAMPAIGNS_URL), 3 * 60_000);
+  const meta = (Array.isArray(campaignData?.adverts) ? campaignData.adverts : []).find(item => String(item.id) === String(campaignId));
+  if (!meta) throw apiError(404, 'Кампания не найдена');
+  const campaignNms = campaignProductIds(meta).map(String);
+  const requested = Array.isArray(nmIdsInput) && nmIdsInput.length ? nmIdsInput.map(String).filter(nmId => campaignNms.includes(nmId)) : campaignNms;
+  if (!requested.length) throw apiError(400, 'В кампании нет выбранных товаров');
+  const statuses = await fetchNormqueryStatuses(id, token, campaignId, requested);
+  const results = [];
+  for (const nmId of requested) {
+    const lists = statuses.get(nmId);
+    const own = new Set(lists ? [...lists.active, ...lists.excluded, ...lists.archived] : []);
+    const mine = queries.filter(query => own.has(query));
+    if (!mine.length) continue;
+    if (results.length) await wait(NORMQUERY_LIST_INTERVAL);
+    try {
+      const before = await readMinusList(token, campaignId, nmId);
+      const next = mergeMinusList(before, mine, action);
+      if (next.length === before.length && next.every(query => before.includes(query))) { results.push({ nmId, ok: true, changed: 0, queries: mine }); continue; }
+      if (next.length > NORMQUERY_MINUS_LIMIT) throw apiError(400, `у товара было бы больше ${NORMQUERY_MINUS_LIMIT} минус-фраз — это предел WB`);
+      await wbRequest(token, NORMQUERY_SET_MINUS_URL, { method: 'POST', body: { advert_id: Number(campaignId), nm_id: Number(nmId), norm_queries: next } });
+      const after = await readMinusList(token, campaignId, nmId);
+      const ok = mine.every(query => action === 'exclude' ? after.includes(query) : !after.includes(query));
+      results.push({ nmId, ok, changed: Math.abs(after.length - before.length), queries: mine, error: ok ? '' : 'WB принял запрос, но список минус-фраз не изменился' });
+    } catch (error) { results.push({ nmId, ok: false, changed: 0, queries: mine, error: error.message }); }
+  }
+  if (!results.length) throw apiError(400, 'Выбранные запросы не относятся к товарам кампании');
+  return { action, results };
+}
+
 async function fetchNormqueryStatuses(id, token, campaignId, nmIds = []) {
   const statuses = new Map();
   for (let offset = 0; offset < nmIds.length; offset += NORMQUERY_CHUNK) {
@@ -2207,6 +2262,10 @@ async function handleApi(req, res, url) {
   if (req.method === 'GET' && url.pathname === '/api/advertising/campaign') {
     return send(res, 200, await advertisingCampaign(url.searchParams.get('cabinet') || 'demo', url.searchParams.get('id'), url.searchParams.get('from'), url.searchParams.get('to')));
   }
+  if (req.method === 'POST' && url.pathname === '/api/advertising/campaign/minus') {
+    const body = await readJson(req);
+    return send(res, 200, await campaignMinus(body.cabinet || 'demo', body.id, body.action, body.queries, body.nmIds));
+  }
   if (req.method === 'GET' && url.pathname === '/api/advertising/campaign/keywords') {
     return send(res, 200, await campaignKeywords(url.searchParams.get('cabinet') || 'demo', url.searchParams.get('id'),
       url.searchParams.get('from'), url.searchParams.get('to'), url.searchParams.get('refresh') === '1'));
@@ -2392,7 +2451,7 @@ const server = http.createServer(async (req, res) => {
 
 if (require.main === module) server.listen(PORT, '127.0.0.1', () => console.log(`WB Analytics: http://127.0.0.1:${PORT}`));
 
-module.exports = { server, cabinets, campaignActivePeriod, normalizeOrders, normalizeOrderFeed, enrichOrders, extractFunnel, summarizeAdStats, campaignProductDaily, withAdBudgets, summarizeKeywords, normalizeStockPreset, normalizePricePreset, adCampaignMayHaveStats, validAdPeriod, historyPeriod, historyChunks, planAdFetch, datesBetween, safeFolderName, funnelDaysToFetch, pairFunnelDays, funnelPeriods, funnelRangeBuckets, funnelRecordCounts, funnelRangeValues, funnelSalesMatrix, summaryTopProducts, summaryDrops, summaryProducts, normalizeFbsStocks, normalizeFbwStocks, normalizePrices, summarizeStockTotals, normalizeNewOrders, summarizeSupplies, normalizeTrbxes, chunkOrders, stickerType, WB_HOSTS };
+module.exports = { server, cabinets, campaignActivePeriod, mergeMinusList, normalizeOrders, normalizeOrderFeed, enrichOrders, extractFunnel, summarizeAdStats, campaignProductDaily, withAdBudgets, summarizeKeywords, normalizeStockPreset, normalizePricePreset, adCampaignMayHaveStats, validAdPeriod, historyPeriod, historyChunks, planAdFetch, datesBetween, safeFolderName, funnelDaysToFetch, pairFunnelDays, funnelPeriods, funnelRangeBuckets, funnelRecordCounts, funnelRangeValues, funnelSalesMatrix, summaryTopProducts, summaryDrops, summaryProducts, normalizeFbsStocks, normalizeFbwStocks, normalizePrices, summarizeStockTotals, normalizeNewOrders, summarizeSupplies, normalizeTrbxes, chunkOrders, stickerType, WB_HOSTS };
 
 
 

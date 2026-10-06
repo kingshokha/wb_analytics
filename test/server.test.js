@@ -1,7 +1,7 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { campaignActivePeriod, normalizeOrders, normalizeOrderFeed, enrichOrders, extractFunnel, summarizeAdStats, campaignProductDaily, withAdBudgets, summarizeKeywords, normalizeStockPreset, normalizePricePreset, adCampaignMayHaveStats, validAdPeriod, historyPeriod, historyChunks, planAdFetch, datesBetween, safeFolderName, funnelDaysToFetch, pairFunnelDays, funnelPeriods, funnelRangeBuckets, funnelRecordCounts, funnelRangeValues, funnelSalesMatrix, summaryTopProducts, summaryDrops, summaryProducts, normalizeFbsStocks, normalizeFbwStocks, normalizePrices, summarizeStockTotals, normalizeNewOrders, summarizeSupplies, normalizeTrbxes, chunkOrders, stickerType, WB_HOSTS } = require('../server');
+const { campaignActivePeriod, mergeMinusList, normalizeOrders, normalizeOrderFeed, enrichOrders, extractFunnel, summarizeAdStats, campaignProductDaily, withAdBudgets, summarizeKeywords, normalizeStockPreset, normalizePricePreset, adCampaignMayHaveStats, validAdPeriod, historyPeriod, historyChunks, planAdFetch, datesBetween, safeFolderName, funnelDaysToFetch, pairFunnelDays, funnelPeriods, funnelRangeBuckets, funnelRecordCounts, funnelRangeValues, funnelSalesMatrix, summaryTopProducts, summaryDrops, summaryProducts, normalizeFbsStocks, normalizeFbwStocks, normalizePrices, summarizeStockTotals, normalizeNewOrders, summarizeSupplies, normalizeTrbxes, chunkOrders, stickerType, WB_HOSTS } = require('../server');
 
 test('объединяет и сортирует FBS и события ленты WB', () => {
   const result = normalizeOrders(
@@ -525,4 +525,11 @@ test('рекламные кампании и товары получают CPO, 
   }
   const empty = summarizeAdStats([{ id: 2, status: 9 }], [], '2026-09-20', '2026-09-20').campaigns[0];
   assert.equal(empty.cpo, 0);
+});
+
+test('минус-фразы: исключение добавляет к текущему списку, включение убирает только выбранные', () => {
+  const before = ['расческа выпрямитель', 'плойка детская'];
+  assert.deepEqual(mergeMinusList(before, ['плойки', 'расческа выпрямитель'], 'exclude'), ['расческа выпрямитель', 'плойка детская', 'плойки']);
+  assert.deepEqual(mergeMinusList(before, ['плойка детская', 'фен'], 'include'), ['расческа выпрямитель']);
+  assert.deepEqual(mergeMinusList([], ['фен'], 'include'), []);
 });

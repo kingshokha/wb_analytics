@@ -3,46 +3,256 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
   <link rel="icon" type="image/svg+xml" href="/favicon.svg">
-  <title>Детализация рекламной кампании</title>
+  <title>Детализация рекламной кампании — WB Pulse</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Unbounded:wght@600;700&display=swap">
   <style>
-    :root{font-family:Arial,sans-serif;color:#173b3a;background:#f4f8f7}*{box-sizing:border-box}body{margin:0;padding:28px;min-width:320px}main{max-width:1600px;margin:0 auto}.eyebrow{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:#277a70;font-weight:700;margin:0 0 8px}h1{font-size:25px;margin:0 0 6px}p{font-size:13px;color:#58716e}.summary{display:grid;grid-template-columns:repeat(5,minmax(130px,1fr));gap:12px;margin:22px 0}.metric{background:#fff;border:1px solid #d8e6e3;border-radius:10px;padding:14px}.metric span{display:block;font-size:11px;color:#58716e;margin-bottom:8px}.metric strong{font-size:18px}.panel{background:#fff;border:1px solid #d8e6e3;border-radius:10px;overflow:hidden;margin-bottom:16px}.panel-head{padding:15px 18px;border-bottom:1px solid #d8e6e3}.panel-head h2{font-size:16px;margin:0}.chart-controls{display:flex;flex-wrap:wrap;gap:8px;padding:12px 18px;border-bottom:1px solid #d8e6e3}.chart-controls label{display:flex;align-items:center;gap:6px;padding:7px 9px;border:1px solid #c9ddd9;border-radius:7px;color:#315a56;font-size:11px;cursor:pointer}.chart-controls input{accent-color:#277a70}.chart-wrap{position:relative;padding:14px 18px;overflow:auto}.chart-wrap svg{display:block;width:100%;min-width:720px;height:290px}.chart-grid{stroke:#dce9e6;stroke-width:1}.chart-line{fill:none;stroke-width:2.5;stroke-linejoin:round;stroke-linecap:round}.chart-dot{stroke:#fff;stroke-width:1.5}.chart-hover-line{stroke:#315a56;stroke-width:1;stroke-dasharray:4 4;pointer-events:none}.chart-tooltip{position:absolute;z-index:4;top:18px;min-width:190px;max-width:270px;padding:10px 12px;border:1px solid #c9ddd9;border-radius:8px;background:#fff;color:#173b3a;box-shadow:0 8px 25px #173b3a24;pointer-events:none;font-size:11px}.chart-tooltip strong{display:block;margin-bottom:6px;font-size:11px}.chart-tooltip span{display:flex;align-items:center;gap:6px;padding:2px 0;color:#58716e;font-size:11px}.chart-tooltip span i{width:7px;height:7px;border-radius:50%;flex:0 0 auto}.chart-tooltip span b{margin-left:auto;color:#173b3a;font-size:11px}.chart-axis{fill:#58716e;font-size:10px}.chart-axis-caption{font-size:11px;font-weight:700}.chart-scale-note{margin:0;padding:0 18px 12px;font-size:11px;color:#58716e}.chart-scale-note:empty{display:none}.chart-scale-note span{white-space:nowrap}.chart-scale-note i{display:inline-block;width:8px;height:8px;border-radius:50%;margin:0 5px 0 10px}.table-wrap{overflow:auto}table{width:100%;min-width:1080px;border-collapse:collapse;table-layout:fixed}th,td{height:42px;padding:9px 10px;border-bottom:1px solid #e5eeec;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:11px;text-align:right}th{background:#eaf3f1;color:#315a56;text-transform:uppercase;letter-spacing:.05em;cursor:pointer}th:first-child,td:first-child{text-align:left}th:hover{background:#d9ebe7}tbody tr:hover{background:#f4faf8}.empty{padding:35px;text-align:center;color:#58716e;font-size:12px}.product-link{border:0;background:none;color:#277a70;padding:0;font:inherit;text-decoration:underline;cursor:pointer}.modal[hidden]{display:none}.modal{position:fixed;inset:0;z-index:20;display:grid;place-items:center;padding:20px}.modal-backdrop{position:absolute;inset:0;background:#173b3a66}.modal-dialog{position:relative;z-index:1;width:min(1200px,100%);max-height:min(760px,90vh);overflow:hidden;background:#fff;border:1px solid #d8e6e3;border-radius:10px;box-shadow:0 18px 55px #173b3a33}.modal-head{display:flex;align-items:center;justify-content:space-between;padding:15px 18px;border-bottom:1px solid #d8e6e3}.modal-head h2{font-size:16px;margin:0}.modal-close{padding:2px 9px;background:transparent;color:#315a56;border:0;font-size:24px;line-height:1}.modal-close:hover{background:#eaf3f1}.modal-table-wrap{overflow:auto;max-height:calc(min(760px,90vh) - 60px)}@media(max-width:700px){body{padding:16px}h1{font-size:21px}.summary{grid-template-columns:repeat(2,1fr)}.metric strong{font-size:15px}.chart-wrap{padding:10px}.chart-wrap svg{min-width:680px}}
-  button{padding:9px 14px;border:1px solid #277a70;border-radius:7px;background:#277a70;color:#fff;font-size:12px;cursor:pointer}button:disabled{opacity:.65;cursor:wait}.export-controls{display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin:0 0 14px}.export-controls p{margin:0 14px 0 0}.export-controls label{font-size:12px;color:#315a56}.export-controls select{padding:8px 10px;border:1px solid #c9ddd9;border-radius:7px;background:#fff;color:#173b3a;font-size:12px}.export-progress{color:#58716e;font-size:12px}.export-range{display:inline-flex;align-items:center;gap:8px;height:34px;padding:0 12px;border:1px solid #c9ddd9;border-radius:9px;background:#fff}.export-range:focus-within{border-color:#277a70}.export-range span{font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:#58716e}.export-range input{width:118px;padding:0;border:0;background:transparent;color:#173b3a;font:600 12px Arial,sans-serif}.export-range input:focus{outline:0}.export-range b{color:#b7c9c6;font-weight:400}.export-controls input:disabled,.export-controls select:disabled{opacity:.6}.chart-hit-area{cursor:crosshair}.resizable-table th{position:relative}.column-resizer{position:absolute;z-index:3;top:0;right:-4px;width:9px;height:100%;cursor:col-resize;touch-action:none}.column-resizer:after{content:"";position:absolute;top:20%;bottom:20%;left:4px;width:2px;border-radius:2px;background:transparent;transition:background .15s}.column-resizer:hover:after,.resizing-column .column-resizer:after{background:#277a70}.resizing-column{cursor:col-resize!important;user-select:none!important}.resizing-column *{cursor:col-resize!important}.keywords-head{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}.keywords-controls{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.keywords-controls select,.keywords-controls input:not([type=checkbox]){height:34px;padding:0 10px;border:1px solid #c9ddd9;border-radius:8px;background:#fff;color:#173b3a;font:12px Arial,sans-serif}.keywords-controls input:not([type=checkbox]){width:190px}.keywords-controls select{max-width:260px}.keywords-note{margin:0;padding:12px 18px 0;font-size:12px}.keyword-toggle{display:inline-flex;align-items:center;gap:7px;height:34px;padding:0 12px;border:1px solid #c9ddd9;border-radius:8px;background:#fff;font-size:12px;color:#315a56;cursor:pointer;user-select:none;transition:border-color .15s,background .15s}.keyword-toggle:hover{border-color:#277a70}.keyword-toggle:has(input:checked){border-color:#277a70;background:#eaf3f1;color:#1d5c55;font-weight:700}.keyword-toggle input{width:14px;height:14px;margin:0}.keyword-toggle input{accent-color:#277a70}.keyword-status{display:inline-block;padding:2px 8px;border-radius:6px;font-size:10px;font-weight:700;white-space:nowrap}.keyword-status.active{background:#e4f3ec;color:#1d6b4f}.keyword-status.excluded{background:#fbe7e4;color:#b4432c}.keyword-status.archived{background:#eceeed;color:#58716e}tbody tr.keyword-off td{background:#fdf6f4}tbody tr.keyword-off:hover td{background:#fbeee9}.keywords-table{min-width:1600px}.keywords-table th:nth-child(1){width:240px}.keywords-table th:nth-child(2){width:105px}.keywords-table th:nth-child(3){width:120px}.keywords-table th:nth-child(10),.keywords-table th:nth-child(12){width:120px}.keyword-grade{display:inline-block;padding:2px 8px;border-radius:6px;font-size:11px;font-weight:700;white-space:nowrap;cursor:help}.keyword-grade.good{background:#e4f3ec;color:#1d6b4f}.keyword-grade.watch{background:#fff1dc;color:#9b5e16}.keyword-grade.bad{background:#fbe7e4;color:#b4432c}.keyword-grade.little,.keyword-grade.none{background:#eceeed;color:#58716e}.keyword-grade.none{cursor:default}.keyword-insights:empty{display:none}.keyword-insights{padding:12px 18px 4px}.keyword-grade-cards{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}.keyword-grade-card{display:grid;gap:2px;padding:10px 12px;border:1px solid #c9ddd9;border-left-width:4px;border-radius:8px;background:#fff;color:#173b3a;text-align:left;cursor:pointer}.keyword-grade-card b{font-size:20px}.keyword-grade-card span{font-size:12px;font-weight:700}.keyword-grade-card small{font-size:11px;color:#58716e}.keyword-grade-card.good{border-left-color:#2f8f62}.keyword-grade-card.watch{border-left-color:#d99a3b}.keyword-grade-card.bad{border-left-color:#d4553f}.keyword-grade-card.little{border-left-color:#a7b4b1}.keyword-grade-card:hover,.keyword-grade-card.active{background:#eaf3f1;border-color:#277a70}.keyword-basis{margin:10px 0 0;font-size:11px;line-height:1.5}.keyword-candidates{display:grid;gap:4px;margin-top:10px;padding:10px 12px;border-radius:8px;background:#fdf6f4;font-size:12px}.keyword-candidates strong{color:#b4432c;font-size:12px}.keyword-candidates span{color:#58716e}.keyword-candidates b{color:#173b3a}@media(max-width:800px){.keyword-grade-cards{grid-template-columns:1fr 1fr}}.campaign-meta{margin:0 0 4px}.campaign-created{display:inline-block;color:#5f6f6b;font-size:12px}.campaign-meta b{display:inline-block;margin-right:8px;padding:3px 8px;border:1px solid #c9ddd9;border-radius:6px;background:#eaf3f1;color:#1d5c55;font-size:11px;font-weight:700}tbody tr.total-row td{background:#eaf3f1;font-weight:700;color:#173b3a;border-bottom:2px solid #c9ddd9}tbody tr.total-row:hover td{background:#e1eeeb}.product-table th:nth-child(1),.product-table td:nth-child(1){width:120px}.product-table th:nth-child(2),.product-table td:nth-child(2){width:300px;text-align:left}.product-cell{display:flex;align-items:center;gap:9px;min-width:0;text-align:left}.product-cell span{display:flex;flex-direction:column;align-items:flex-start;min-width:0}.product-cell b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px}.product-cell small{color:#58716e;font-size:10px;overflow:hidden;text-overflow:ellipsis}.product-photo{width:38px;height:38px;flex:0 0 38px;object-fit:cover;border-radius:7px;background:#eaf3f1;transition:transform .22s ease}.product-photo-stub{width:38px;height:38px;flex:0 0 38px;border-radius:7px;background:#eaf3f1}.product-photo-preview{position:fixed;z-index:100;width:180px;height:220px;padding:6px;border:1px solid #c9ddd9;border-radius:10px;background:#fff;box-shadow:0 12px 35px #17211d38;object-fit:contain;pointer-events:none}</style>
+    /* Оформление детализации — как у основного сайта WB Pulse: те же цвета, шрифты, панели и боковое меню. */
+    :root{--ink:#17211d;--muted:#6f7974;--line:#e4e8e5;--bg:#f5f6f3;--purple:#7651e5;--violet:#9d77ff;--lime:#c9f27c;--red:#e76464;--orange:#f0a04b;--green:#318f68;--shadow:0 15px 50px rgba(29,42,35,.07)}
+    *{box-sizing:border-box}
+    body{margin:0;min-width:320px;background:var(--bg);color:var(--ink);font:500 13px Manrope,Arial,sans-serif}
+    button,input,select{font-family:Manrope,Arial,sans-serif}
+    .shell{min-height:100vh;display:grid;grid-template-columns:238px 1fr}
+    .sidebar{position:fixed;inset:0 auto 0 0;z-index:10;width:238px;padding:26px 15px 14px;display:flex;flex-direction:column;background:#17211d;color:white}
+    .brand{display:flex;align-items:center;gap:11px;padding:0 9px 31px;color:white;text-decoration:none;font:700 17px Unbounded,sans-serif}
+    .brand-mark{width:32px;height:32px;display:grid;place-items:center;border-radius:11px;background:linear-gradient(135deg,var(--violet),var(--purple));font-size:16px;box-shadow:0 7px 18px #7651e55c}
+    .sidebar nav{display:grid;gap:5px}
+    .nav-item{display:flex;align-items:center;gap:12px;padding:12px 13px;border-radius:9px;color:#aeb8b3;text-decoration:none;font:600 13px Manrope}
+    .nav-item:hover,.nav-item.active{background:#27332e;color:white}
+    .nav-icon{width:24px;height:24px;display:inline-grid;place-items:center;flex:0 0 24px;font:700 18px "Segoe UI Symbol",Arial,sans-serif;color:inherit}
+    .sidebar-note{margin:auto 11px 0;color:#77847e;font-size:11px;line-height:1.5}
+    main{grid-column:2;min-width:0;padding:34px 42px 90px}
+    .page-head{display:flex;justify-content:space-between;align-items:flex-start;gap:20px;margin-bottom:18px}
+    .eyebrow{margin:0 0 8px;color:var(--purple);font-size:11px;font-weight:800;letter-spacing:.16em;text-transform:uppercase}
+    h1{margin:0 0 10px;font:700 26px Unbounded,sans-serif;letter-spacing:-.03em;line-height:1.25}
+    h2{margin:0;font-size:17px;font-weight:800}
+    p{margin:0;color:var(--muted)}
+    .campaign-meta{display:flex;flex-wrap:wrap;align-items:center;gap:7px}
+    .campaign-meta b{display:inline-block;padding:4px 9px;border-radius:20px;background:#f0ebff;color:#6740d2;font-size:11px;font-weight:800}
+    .campaign-created{color:var(--muted);font-size:12px}
+    /* Выгрузка периода */
+    .export-controls{display:flex;flex-wrap:wrap;align-items:center;gap:9px;margin:0 0 16px;padding:12px 14px;border:1px solid var(--line);border-radius:14px;background:white;box-shadow:var(--shadow)}
+    .export-controls p{flex-basis:100%;font-size:12px}
+    .export-controls label{font-size:11px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+    .export-controls select{height:40px;padding:0 12px;border:1px solid var(--line);border-radius:11px;background:white;color:var(--ink);font-size:12px;font-weight:700}
+    .export-range{display:inline-flex;align-items:center;gap:8px;height:40px;padding:0 12px;border:1px solid var(--line);border-radius:11px;background:white}
+    .export-range:focus-within{border-color:var(--purple)}
+    .export-range span{font-size:11px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+    .export-range input{width:118px;padding:0;border:0;background:transparent;color:var(--ink);font-size:12px;font-weight:700}
+    .export-range input:focus{outline:0}
+    .export-range b{color:#bbc1bd;font-weight:400}
+    .export-controls input:disabled,.export-controls select:disabled{opacity:.6}
+    .export-progress{flex-basis:100%;color:var(--muted);font-size:12px}
+    .export-progress:empty{display:none}
+    button{height:40px;padding:0 16px;border:1px solid var(--ink);border-radius:11px;background:var(--ink);color:white;font-size:12px;font-weight:800;cursor:pointer}
+    button:disabled{opacity:.6;cursor:wait}
+    /* Карточки показателей */
+    .summary{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:13px;margin:0 0 16px}
+    .metric{position:relative;overflow:hidden;padding:18px 19px;border:1px solid var(--line);border-radius:13px;background:white}
+    .metric:before{content:"";position:absolute;top:0;left:19px;width:56px;height:4px;border-radius:4px;background:var(--purple)}
+    .metric:nth-child(5n+2):before{background:var(--green)}.metric:nth-child(5n+3):before{background:var(--orange)}.metric:nth-child(5n+4):before{background:var(--violet)}.metric:nth-child(5n+5):before{background:var(--red)}
+    .metric span{display:block;margin-bottom:9px;color:var(--muted);font-size:11px;font-weight:800;letter-spacing:.08em;text-transform:uppercase}
+    .metric strong{font:700 19px Unbounded,sans-serif}
+    /* Панели */
+    .panel{margin-bottom:16px;overflow:hidden;border:1px solid var(--line);border-radius:14px;background:white;box-shadow:var(--shadow)}
+    .panel-head{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:19px 20px 15px;border-bottom:1px solid var(--line)}
+    /* График */
+    .chart-controls{display:flex;flex-wrap:wrap;gap:8px;padding:14px 20px;border-bottom:1px solid var(--line)}
+    .chart-controls label{display:flex;align-items:center;gap:7px;padding:7px 11px;border:1px solid var(--line);border-radius:20px;background:#fafbfa;color:var(--ink);font-size:11px;font-weight:700;cursor:pointer}
+    .chart-controls label:has(input:checked){border-color:#d9cffb;background:#f0ebff;color:#5b36c8}
+    .chart-controls input{accent-color:var(--purple)}
+    .chart-wrap{position:relative;padding:14px 20px;overflow:auto}
+    .chart-wrap svg{display:block;width:100%;min-width:720px;height:290px}
+    .chart-grid{stroke:#eceeed;stroke-width:1}
+    .chart-line{fill:none;stroke-width:2.5;stroke-linejoin:round;stroke-linecap:round}
+    .chart-dot{stroke:#fff;stroke-width:1.5}
+    .chart-hover-line{stroke:#7c8580;stroke-width:1;stroke-dasharray:4 4;pointer-events:none}
+    .chart-hit-area{cursor:crosshair}
+    .chart-tooltip{position:absolute;z-index:4;top:18px;min-width:190px;max-width:280px;padding:11px 12px;border-radius:11px;background:#17211df2;color:white;box-shadow:0 12px 35px #17211d38;pointer-events:none;font-size:11px}
+    .chart-tooltip strong{display:block;margin-bottom:7px;font-size:11px}
+    .chart-tooltip span{display:flex;align-items:center;gap:6px;padding:3px 0;color:#cbd3cf;font-size:11px}
+    .chart-tooltip span i{width:7px;height:7px;border-radius:50%;flex:0 0 auto}
+    .chart-tooltip span b{margin-left:auto;color:white;font-size:11px}
+    .chart-axis{fill:#8a938f;font-size:11px}
+    .chart-axis-caption{font-size:11px;font-weight:800}
+    .chart-scale-note{padding:0 20px 14px;font-size:11px}
+    .chart-scale-note:empty{display:none}
+    .chart-scale-note span{white-space:nowrap}
+    .chart-scale-note i{display:inline-block;width:8px;height:8px;margin:0 5px 0 10px;border-radius:50%}
+    /* Таблицы */
+    .table-wrap{overflow:auto}
+    table{width:100%;min-width:1080px;border-collapse:collapse;table-layout:fixed}
+    th,td{height:44px;padding:10px 12px;border-bottom:1px solid #eef0ee;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:12px;text-align:right}
+    th{background:#fafbfa;color:var(--muted);font-size:11px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;cursor:pointer;user-select:none}
+    th:hover{background:#eeeafd;color:var(--purple)}
+    th:first-child,td:first-child{text-align:left}
+    tbody tr:hover td{background:#faf9ff}
+    tbody tr.total-row td{background:#f4f2ff;font-weight:800;border-bottom:1px solid #e3dcfb}
+    tbody tr.total-row:hover td{background:#efebfe}
+    .empty{padding:35px;text-align:center;color:var(--muted);font-size:12px}
+    .product-link{height:auto;padding:0;border:0;background:none;color:var(--purple);font:inherit;font-weight:700;text-decoration:underline;cursor:pointer}
+    .resizable-table th{position:relative}
+    .column-resizer{position:absolute;z-index:3;top:0;right:-4px;width:9px;height:100%;cursor:col-resize;touch-action:none}
+    .column-resizer:after{content:"";position:absolute;top:20%;bottom:20%;left:4px;width:2px;border-radius:2px;background:transparent;transition:background .15s}
+    .column-resizer:hover:after,.resizing-column .column-resizer:after{background:var(--purple)}
+    .resizing-column{cursor:col-resize!important;user-select:none!important}
+    .resizing-column *{cursor:col-resize!important}
+    .product-table th:nth-child(1),.product-table td:nth-child(1){width:120px}
+    .product-table th:nth-child(2),.product-table td:nth-child(2){width:300px;text-align:left}
+    .product-cell{display:flex;align-items:center;gap:9px;min-width:0;text-align:left}
+    .product-cell span{display:flex;flex-direction:column;align-items:flex-start;min-width:0}
+    .product-cell b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px}
+    .product-cell small{overflow:hidden;text-overflow:ellipsis;color:var(--muted);font-size:11px}
+    .product-photo,.product-photo-stub{width:38px;height:38px;flex:0 0 38px;border-radius:7px;background:#eef0ed;object-fit:cover}
+    .product-photo{transition:transform .22s ease}
+    .product-photo-preview{position:fixed;z-index:100;width:180px;height:220px;padding:6px;border:1px solid var(--line);border-radius:10px;background:#fff;box-shadow:0 12px 35px #17211d38;object-fit:contain;pointer-events:none}
+    /* Ключевые запросы */
+    .keywords-controls{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+    .keywords-controls select,.keywords-controls input:not([type=checkbox]){height:38px;padding:0 11px;border:1px solid var(--line);border-radius:9px;background:#fafbfa;color:var(--ink);font-size:12px;font-weight:600}
+    .keywords-controls input:not([type=checkbox]){width:200px}
+    .keywords-controls select{max-width:260px}
+    .keywords-controls input:focus,.keywords-controls select:focus{border-color:var(--purple);outline:0}
+    .keyword-toggle{display:inline-flex;align-items:center;gap:7px;height:38px;padding:0 12px;border:1px solid var(--line);border-radius:9px;background:#fafbfa;color:var(--ink);font-size:12px;font-weight:700;cursor:pointer;user-select:none}
+    .keyword-toggle:hover{border-color:var(--purple)}
+    .keyword-toggle:has(input:checked){border-color:#d9cffb;background:#f0ebff;color:#5b36c8}
+    .keyword-toggle input{width:14px;height:14px;margin:0;accent-color:var(--purple)}
+    #keywordRefresh,#keywordRangeReset{height:38px;border-radius:9px}
+    .secondary-button{background:white;color:var(--ink);border-color:var(--line)}
+    .secondary-button:hover{border-color:var(--purple);color:var(--purple)}
+    /* Поля «От» и «До» над названиями числовых столбцов ключевых запросов */
+    .keywords-table thead th{vertical-align:bottom}
+    .keyword-range{display:grid;gap:4px;margin-bottom:6px}
+    .keyword-range input{width:100%;max-width:96px;height:24px;margin-left:auto;padding:0 7px;border:1px solid var(--line);border-radius:6px;background:white;color:var(--ink);font:600 11px Manrope,Arial,sans-serif;text-transform:none;letter-spacing:0;text-align:left}
+    .keyword-range input:focus{border-color:var(--purple);outline:0}
+    .keyword-range input.filled{border-color:var(--purple);background:#f4f2ff}
+    .keyword-range input.invalid{border-color:var(--red);background:#fdecec}
+    .keywords-note{padding:12px 20px 0;font-size:12px}
+    .keyword-message{margin:12px 20px 0;padding:10px 14px;border-radius:10px;font-size:12px;font-weight:600}
+    .keyword-message:empty{display:none}
+    .keyword-message.ok{background:#e7f5ee;color:#277653}
+    .keyword-message.error{background:#fdecec;color:#b84949}
+    .keyword-status,.keyword-grade{display:inline-block;padding:4px 9px;border-radius:20px;font-size:11px;font-weight:800;white-space:nowrap}
+    .keyword-status.active{background:#e7f5ee;color:#277653}
+    .keyword-status.excluded{background:#fdecec;color:#b84949}
+    .keyword-status.archived{background:#f0f1ef;color:var(--muted)}
+    .keyword-grade{cursor:help}
+    .keyword-grade.good{background:#e7f5ee;color:#277653}
+    .keyword-grade.watch{background:#fff1dc;color:#9b5e16}
+    .keyword-grade.bad{background:#fdecec;color:#b84949}
+    .keyword-grade.little,.keyword-grade.none{background:#f0f1ef;color:var(--muted)}
+    .keyword-grade.none{cursor:default}
+    tbody tr.keyword-off td{background:#fdf7f6}
+    tbody tr.keyword-off:hover td{background:#fbefed}
+    tbody tr.keyword-selected td{background:#f4f2ff}
+    .keywords-table{min-width:1820px}
+    .keywords-table th:nth-child(1),.keywords-table td:nth-child(1){width:44px;padding-left:16px;padding-right:6px;text-align:center;cursor:default}
+    .keywords-table th:nth-child(1):hover{background:#fafbfa}
+    .keywords-table th:nth-child(2),.keywords-table td:nth-child(2){width:240px;text-align:left}
+    .keywords-table th:nth-child(3){width:110px}.keywords-table th:nth-child(4){width:120px}
+    .keywords-table th:nth-child(11),.keywords-table th:nth-child(13){width:125px}
+    .keywords-table input[type=checkbox]{width:16px;height:16px;margin:0;accent-color:var(--purple);cursor:pointer}
+    .keyword-insights{padding:14px 20px 4px}
+    .keyword-insights:empty{display:none}
+    .keyword-grade-cards{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+    .keyword-grade-card{height:auto;display:grid;gap:3px;padding:12px 14px;border:1px solid var(--line);border-left-width:4px;border-radius:11px;background:white;color:var(--ink);text-align:left;cursor:pointer}
+    .keyword-grade-card b{font:700 20px Unbounded,sans-serif}
+    .keyword-grade-card span{font-size:12px;font-weight:800}
+    .keyword-grade-card small{color:var(--muted);font-size:11px;font-weight:600}
+    .keyword-grade-card.good{border-left-color:var(--green)}.keyword-grade-card.watch{border-left-color:var(--orange)}.keyword-grade-card.bad{border-left-color:var(--red)}.keyword-grade-card.little{border-left-color:#b9c0bc}
+    .keyword-grade-card:hover,.keyword-grade-card.active{border-color:var(--purple);background:#faf9ff}
+    .keyword-basis{margin:10px 0 0;font-size:11px;line-height:1.55}
+    .keyword-candidates{display:grid;gap:4px;margin-top:10px;padding:11px 14px;border-radius:11px;background:#fdf3f2;font-size:12px}
+    .keyword-candidates strong{color:#b84949;font-size:12px}
+    .keyword-candidates span{color:var(--muted)}
+    .keyword-candidates b{color:var(--ink)}
+    /* Нижняя панель действий с выбранными запросами — как на основном сайте */
+    .keyword-actions{position:fixed;z-index:20;left:calc(238px + 50%);bottom:24px;transform:translateX(-50%);display:flex;align-items:center;gap:10px;padding:11px 12px;border-radius:12px;background:#17211d;color:white;box-shadow:0 15px 45px #17211d55}
+    .keyword-actions[hidden]{display:none}
+    .keyword-actions strong{margin:0 6px;font-size:12px}
+    .keyword-actions button{height:38px;border:0;border-radius:8px;font-size:12px}
+    .keyword-actions .danger{background:var(--red)}
+    .keyword-actions .include{background:var(--lime);color:#24351a}
+    .keyword-actions .ghost{background:#33423b}
+    .keyword-actions button:disabled{opacity:.4;cursor:default}
+    /* Окна */
+    .modal[hidden]{display:none}
+    .modal{position:fixed;inset:0;z-index:30;display:grid;place-items:center;padding:20px}
+    .modal-backdrop{position:absolute;inset:0;background:#17211d66;backdrop-filter:blur(2px)}
+    .modal-dialog{position:relative;z-index:1;width:min(1200px,100%);max-height:min(760px,90vh);overflow:hidden;border-radius:16px;background:#fff;box-shadow:0 18px 60px #17211d40}
+    .modal-dialog.small{width:min(560px,100%)}
+    .modal-head{display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid var(--line)}
+    .modal-close{height:auto;padding:2px 9px;border:0;background:transparent;color:var(--muted);font-size:24px;line-height:1}
+    .modal-close:hover{background:#f0f1ef;color:var(--ink)}
+    .modal-table-wrap{overflow:auto;max-height:calc(min(760px,90vh) - 60px)}
+    .confirm-body{padding:16px 20px 20px;font-size:13px;line-height:1.55}
+    .confirm-body p{margin-bottom:10px;color:var(--ink)}
+    .confirm-body ul{max-height:220px;overflow:auto;margin:0 0 12px;padding:10px 14px 10px 30px;border-radius:10px;background:#fafbfa;color:var(--ink);font-size:12px}
+    .confirm-body small{display:block;margin-bottom:14px;color:var(--muted);font-size:11px}
+    .confirm-buttons{display:flex;justify-content:flex-end;gap:8px}
+    .confirm-buttons .secondary{background:white;color:var(--ink);border-color:var(--line)}
+    .confirm-buttons .danger{background:var(--red);border-color:var(--red)}
+    .confirm-buttons .include{background:var(--green);border-color:var(--green)}
+    @media(max-width:1200px){.summary{grid-template-columns:repeat(3,minmax(0,1fr))}}
+    @media(max-width:980px){.shell{grid-template-columns:78px 1fr}.sidebar{width:78px;padding:22px 10px}.brand span:last-child,.nav-item span:last-child,.sidebar-note{display:none}.brand{padding:0 4px 26px;justify-content:center}.nav-item{justify-content:center;padding:11px}main{padding:28px 24px 90px}.keyword-actions{left:calc(78px + 50%)}.keyword-grade-cards{grid-template-columns:1fr 1fr}}
+    @media(max-width:680px){.shell{display:block}.sidebar{display:none}main{padding:20px 14px 100px}h1{font-size:21px}.summary{grid-template-columns:1fr 1fr}.metric strong{font-size:15px}.chart-wrap{padding:10px}.chart-wrap svg{min-width:680px}.keyword-actions{left:50%;width:calc(100% - 20px);flex-wrap:wrap;justify-content:center}}
+  </style>
 </head>
 <body>
-<main>
-  <p class="eyebrow">WB Продвижение</p>
-  <h1 id="campaignTitle">Детализация кампании</h1>
-  <p id="campaignMeta" class="campaign-meta"></p>
-  <div class="export-controls"><p id="periodLabel">Загрузка данных…</p><label for="exportPreset">Выгрузить за</label><select id="exportPreset"></select><label class="export-range"><span>Период</span><input id="exportFrom" type="date" aria-label="Дата начала"><b>—</b><input id="exportTo" type="date" aria-label="Дата конца"></label><button id="exportHistory" type="button">Выгрузить</button><span id="exportProgress" class="export-progress" role="status" aria-live="polite"></span></div>
-  <section class="summary" id="summary"></section>
-  <section class="panel chart-panel">
-    <div class="panel-head"><h2>График по датам</h2></div>
-    <div class="chart-controls" id="chartOptions" aria-label="Данные графика"></div>
-    <div class="chart-wrap"><svg id="dailyChart" viewBox="0 0 1200 290" role="img" aria-label="Линейный график рекламной кампании"></svg><div id="chartTooltip" class="chart-tooltip" hidden></div></div>
-    <p class="chart-scale-note" id="chartScaleNote"></p>
-  </section>
-  <section class="panel">
-    <div class="panel-head"><h2>Статистика по датам</h2></div>
-    <div class="table-wrap"><table><thead><tr>
-      <th data-key="date">Дата ↕</th><th data-key="views">Показы ↕</th><th data-key="clicks">Клики ↕</th><th data-key="ctr">CTR ↕</th><th data-key="cpc">CPC ↕</th><th data-key="carts">Добавления в корзину ↕</th><th data-key="orders">Рекламные заказы ↕</th><th data-key="canceled">Отмены ↕</th><th data-key="revenue">Сумма заказов ↕</th><th data-key="spend">Затраты ↕</th><th data-key="drr">ДРР, % ↕</th>
-    </tr></thead><tbody id="dailyBody"></tbody></table></div>
-  </section>
-  <section class="panel">
-    <div class="panel-head"><h2>Статистика по дням каждого артикула</h2></div>
-    <div class="table-wrap"><table class="product-table"><thead><tr><th data-product-key="nmId" title="Артикул WB">Арт. WB ↕</th><th data-product-key="name">Название ↕</th><th data-product-key="views">Показы ↕</th><th data-product-key="clicks">Клики ↕</th><th data-product-key="ctr">CTR ↕</th><th data-product-key="cpc">CPC ↕</th><th data-product-key="carts">Корзины ↕</th><th data-product-key="orders">Заказы ↕</th><th data-product-key="canceled">Отмены ↕</th><th data-product-key="revenue">Сумма заказов ↕</th><th data-product-key="spend">Затраты ↕</th><th data-product-key="drr">ДРР, % ↕</th></tr></thead><tbody id="productDailyBody"></tbody></table></div></section>
-  <section class="panel">
-    <div class="panel-head keywords-head"><h2>Ключевые запросы</h2><div class="keywords-controls"><label class="keyword-toggle"><input type="checkbox" id="keywordOnlyInactive"> Только неактивные</label><select id="keywordGrade" aria-label="Оценка запроса"><option value="">Все оценки</option><option value="good">Хорошие</option><option value="watch">Наблюдать</option><option value="bad">Плохие</option><option value="little">Мало данных</option></select><select id="keywordProduct" aria-label="Артикул"><option value="">Все артикулы</option></select><input id="keywordSearch" type="search" placeholder="Поиск по запросу" autocomplete="off"><button id="keywordRefresh" type="button">Обновить</button></div></div>
-    <p id="keywordsNote" class="keywords-note">Загрузка ключевых запросов…</p>
-    <div id="keywordInsights" class="keyword-insights"></div>
-    <div class="table-wrap"><table class="keywords-table"><thead><tr><th data-keyword-key="query">Запрос ↕</th><th data-keyword-key="status">Статус ↕</th><th data-keyword-key="gradeScore" title="Оценка запроса по сравнению со средним по кампании; причина — при наведении на оценку">Оценка ↕</th><th data-keyword-key="views">Показы ↕</th><th data-keyword-key="clicks">Клики ↕</th><th data-keyword-key="ctr">CTR ↕</th><th data-keyword-key="cpm">CPM ↕</th><th data-keyword-key="cpc">CPC ↕</th><th data-keyword-key="spend">Затраты ↕</th><th data-keyword-key="spendShare" title="Доля затрат запроса в затратах всех запросов">Доля расходов ↕</th><th data-keyword-key="carts">Корзины ↕</th><th data-keyword-key="cartCost" title="Затраты ÷ корзины">Цена корзины ↕</th><th data-keyword-key="orders">Заказы ↕</th><th data-keyword-key="cr">CR ↕</th><th data-keyword-key="cpo" title="Затраты ÷ заказы">CPO ↕</th><th data-keyword-key="avgPosition">Средняя позиция ↕</th></tr></thead><tbody id="keywordsBody"></tbody></table></div>
-  </section>
-  <div id="productModal" class="modal" hidden><div class="modal-backdrop" data-modal-close></div><div class="modal-dialog" role="dialog" aria-modal="true" aria-labelledby="productModalTitle"><div class="modal-head"><h2 id="productModalTitle">Статистика артикула</h2><button type="button" class="modal-close" data-modal-close aria-label="Закрыть">×</button></div><div class="modal-table-wrap"><table><thead><tr><th>Дата</th><th>Показы</th><th>Клики</th><th>CTR</th><th>CPC</th><th>Корзины</th><th>Заказы</th><th>Отмены</th><th>Сумма заказов</th><th>Затраты</th><th>ДРР, %</th></tr></thead><tbody id="productModalBody"></tbody></table></div></div></div></main>
+<div class="shell">
+  <aside class="sidebar">
+    <a class="brand" href="/"><span class="brand-mark">W</span><span>WB Pulse</span></a>
+    <nav>
+      <a class="nav-item" href="/?page=summary"><span class="nav-icon" aria-hidden="true">◎</span><span>Сводка</span></a>
+      <a class="nav-item" href="/?page=orders"><span class="nav-icon" aria-hidden="true">▤</span><span>Лента заказов</span></a>
+      <a class="nav-item" href="/?page=fbs-orders"><span class="nav-icon" aria-hidden="true">◈</span><span>Новые заказы</span></a>
+      <a class="nav-item" href="/?page=fbw-stocks"><span class="nav-icon" aria-hidden="true">◇</span><span>Остатки FBW</span></a>
+      <a class="nav-item" href="/?page=stocks"><span class="nav-icon" aria-hidden="true">◇</span><span>Остатки FBS</span></a>
+      <a class="nav-item" href="/?page=prices"><span class="nav-icon" aria-hidden="true">₽</span><span>Цены и скидки</span></a>
+      <a class="nav-item" href="/?page=funnel"><span class="nav-icon" aria-hidden="true">◫</span><span>Воронка</span></a>
+      <a class="nav-item active" href="/?page=ads"><span class="nav-icon" aria-hidden="true">↗</span><span>Реклама</span></a>
+    </nav>
+    <p class="sidebar-note">Детализация рекламной кампании</p>
+  </aside>
+  <main>
+    <header class="page-head">
+      <div>
+        <p class="eyebrow">Реклама · детализация кампании</p>
+        <h1 id="campaignTitle">Детализация кампании</h1>
+        <p id="campaignMeta" class="campaign-meta"></p>
+      </div>
+    </header>
+    <div class="export-controls"><p id="periodLabel">Загрузка данных…</p><label for="exportPreset">Выгрузить за</label><select id="exportPreset"></select><label class="export-range"><span>Период</span><input id="exportFrom" type="date" aria-label="Дата начала"><b>—</b><input id="exportTo" type="date" aria-label="Дата конца"></label><button id="exportHistory" type="button">Выгрузить</button><span id="exportProgress" class="export-progress" role="status" aria-live="polite"></span></div>
+    <section class="summary" id="summary"></section>
+    <section class="panel chart-panel">
+      <div class="panel-head"><h2>График по датам</h2></div>
+      <div class="chart-controls" id="chartOptions" aria-label="Данные графика"></div>
+      <div class="chart-wrap"><svg id="dailyChart" viewBox="0 0 1200 290" role="img" aria-label="Линейный график рекламной кампании"></svg><div id="chartTooltip" class="chart-tooltip" hidden></div></div>
+      <p class="chart-scale-note" id="chartScaleNote"></p>
+    </section>
+    <section class="panel">
+      <div class="panel-head"><h2>Статистика по датам</h2></div>
+      <div class="table-wrap"><table><thead><tr>
+        <th data-key="date">Дата ↕</th><th data-key="views">Показы ↕</th><th data-key="clicks">Клики ↕</th><th data-key="ctr">CTR ↕</th><th data-key="cpc">CPC ↕</th><th data-key="carts">Добавления в корзину ↕</th><th data-key="orders">Рекламные заказы ↕</th><th data-key="canceled">Отмены ↕</th><th data-key="revenue">Сумма заказов ↕</th><th data-key="spend">Затраты ↕</th><th data-key="drr">ДРР, % ↕</th>
+      </tr></thead><tbody id="dailyBody"></tbody></table></div>
+    </section>
+    <section class="panel">
+      <div class="panel-head"><h2>Статистика по дням каждого артикула</h2></div>
+      <div class="table-wrap"><table class="product-table"><thead><tr><th data-product-key="nmId" title="Артикул WB">Арт. WB ↕</th><th data-product-key="name">Название ↕</th><th data-product-key="views">Показы ↕</th><th data-product-key="clicks">Клики ↕</th><th data-product-key="ctr">CTR ↕</th><th data-product-key="cpc">CPC ↕</th><th data-product-key="carts">Корзины ↕</th><th data-product-key="orders">Заказы ↕</th><th data-product-key="canceled">Отмены ↕</th><th data-product-key="revenue">Сумма заказов ↕</th><th data-product-key="spend">Затраты ↕</th><th data-product-key="drr">ДРР, % ↕</th></tr></thead><tbody id="productDailyBody"></tbody></table></div>
+    </section>
+    <section class="panel">
+      <div class="panel-head keywords-head"><h2>Ключевые запросы</h2><div class="keywords-controls"><label class="keyword-toggle"><input type="checkbox" id="keywordOnlyInactive"> Только неактивные</label><select id="keywordGrade" aria-label="Оценка запроса"><option value="">Все оценки</option><option value="good">Хорошие</option><option value="watch">Наблюдать</option><option value="bad">Плохие</option><option value="little">Мало данных</option></select><select id="keywordProduct" aria-label="Артикул"><option value="">Все артикулы</option></select><input id="keywordSearch" type="search" placeholder="Поиск по запросу" autocomplete="off"><button id="keywordRangeReset" class="secondary-button" type="button" hidden>Сбросить «от — до»</button><button id="keywordRefresh" type="button">Обновить</button></div></div>
+      <p id="keywordsNote" class="keywords-note">Загрузка ключевых запросов…</p>
+      <div id="keywordMessage" class="keyword-message" role="status" aria-live="polite"></div>
+      <div id="keywordInsights" class="keyword-insights"></div>
+      <div class="table-wrap"><table class="keywords-table"><thead><tr><th><input type="checkbox" id="keywordSelectAll" aria-label="Выбрать все показанные запросы"></th><th data-keyword-key="query">Запрос ↕</th><th data-keyword-key="status">Статус ↕</th><th data-keyword-key="gradeScore" title="Оценка запроса по сравнению со средним по кампании; причина — при наведении на оценку">Оценка ↕</th><th data-keyword-key="views">Показы ↕</th><th data-keyword-key="clicks">Клики ↕</th><th data-keyword-key="ctr">CTR ↕</th><th data-keyword-key="cpm">CPM ↕</th><th data-keyword-key="cpc">CPC ↕</th><th data-keyword-key="spend">Затраты ↕</th><th data-keyword-key="spendShare" title="Доля затрат запроса в затратах всех запросов">Доля расходов ↕</th><th data-keyword-key="carts">Корзины ↕</th><th data-keyword-key="cartCost" title="Затраты ÷ корзины">Цена корзины ↕</th><th data-keyword-key="orders">Заказы ↕</th><th data-keyword-key="cr">CR ↕</th><th data-keyword-key="cpo" title="Затраты ÷ заказы">CPO ↕</th><th data-keyword-key="avgPosition">Средняя позиция ↕</th></tr></thead><tbody id="keywordsBody"></tbody></table></div>
+    </section>
+  </main>
+</div>
+<div id="keywordActions" class="keyword-actions" hidden><strong id="keywordSelectedCount">Выбрано: 0</strong><button type="button" class="danger" id="keywordExclude">Исключить</button><button type="button" class="include" id="keywordInclude">Включить</button><button type="button" class="ghost" id="keywordClearSelection">Сбросить</button></div>
+<div id="confirmModal" class="modal" hidden><div class="modal-backdrop" data-confirm-close></div><div class="modal-dialog small" role="dialog" aria-modal="true" aria-labelledby="confirmTitle"><div class="modal-head"><h2 id="confirmTitle">Исключить запросы?</h2><button type="button" class="modal-close" data-confirm-close aria-label="Закрыть">×</button></div><div class="confirm-body" id="confirmBody"></div></div></div>
+<div id="productModal" class="modal" hidden><div class="modal-backdrop" data-modal-close></div><div class="modal-dialog" role="dialog" aria-modal="true" aria-labelledby="productModalTitle"><div class="modal-head"><h2 id="productModalTitle">Статистика артикула</h2><button type="button" class="modal-close" data-modal-close aria-label="Закрыть">×</button></div><div class="modal-table-wrap"><table><thead><tr><th>Дата</th><th>Показы</th><th>Клики</th><th>CTR</th><th>CPC</th><th>Корзины</th><th>Заказы</th><th>Отмены</th><th>Сумма заказов</th><th>Затраты</th><th>ДРР, %</th></tr></thead><tbody id="productModalBody"></tbody></table></div></div></div>
 <script src="/campaign.js"></script>
 </body>
 </html>
-
-
-
-
-

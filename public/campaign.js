@@ -127,7 +127,7 @@
     renderExportProgress();
     return event.type==='result'?event:null;
   }
-  const keywords={data:null,loading:false,error:'',product:'',search:'',onlyInactive:false,grade:'',sort:{key:'views',direction:'desc'},limit:200};
+  const keywords={data:null,loading:false,error:'',product:'',search:'',onlyInactive:false,grade:'',sort:{key:'views',direction:'desc'},limit:200,selected:new Set(),busy:false,shown:[],ranges:{}};
   // Первые три столбца (запрос, статус, оценка) рисуются отдельно, остальные — через keywordValue.
   const KEYWORD_COLUMNS=['query','status','gradeScore','views','clicks','ctr','cpm','cpc','spend','spendShare','carts','cartCost','orders','cr','cpo','avgPosition'];
   // --- Оценка ключевых запросов по правилам: каждый запрос сравнивается со средним по кампании за период ---
@@ -178,7 +178,10 @@
   function keywordRows(view){
     const data=keywords.data;if(!data)return [];
     const term=keywords.search.trim().toLowerCase();
-    const filtered=view.rows.filter(row=>(!term||row.query.toLowerCase().includes(term))&&(!keywords.onlyInactive||row.status==='excluded'||row.status==='archived')&&(!keywords.grade||row.grade===keywords.grade));
+    // Фильтры «от — до» над столбцами: строка без значения (прочерк) при заданной границе не проходит.
+    const ranges=Object.entries(keywords.ranges).filter(([,range])=>range.min!=null||range.max!=null);
+    const inRanges=row=>ranges.every(([key,range])=>{const value=row[key];if(value==null)return false;return (range.min==null||value>=range.min)&&(range.max==null||value<=range.max)});
+    const filtered=view.rows.filter(row=>(!term||row.query.toLowerCase().includes(term))&&(!keywords.onlyInactive||row.status==='excluded'||row.status==='archived')&&(!keywords.grade||row.grade===keywords.grade)&&inRanges(row));
     // Без показов (CPC-кампании) сортировка по показам, CTR или CPM ничего не упорядочит — тогда сортируем по кликам.
     const unknown=data.viewsAvailable===false&&['views','ctr','cpm'].includes(keywords.sort.key),sort=unknown?{key:'clicks',direction:keywords.sort.direction}:keywords.sort;
     // Строки без значения (нет заказов для CPO, нет корзин для их цены, нет оценки) всегда в конце, в любом направлении.
@@ -221,7 +224,7 @@
       const q=new URLSearchParams({cabinet:params.get('cabinet')||'demo',id:params.get('id')||'',from:period.from,to:period.to,...(refresh?{refresh:'1'}:{})});
       const response=await fetch(`/api/advertising/campaign/keywords?${q}`);
       if(!response.ok)throw new Error((await response.json()).error||'Не удалось получить ключевые запросы');
-      keywords.data=await response.json();
+      keywords.data=await response.json();keywords.selected.clear();
       if(!keywords.data.byNmId?.[keywords.product])keywords.product='';
     }catch(e){keywords.error=e.message}
     finally{keywords.loading=false;renderKeywords()}
@@ -238,6 +241,9 @@
     renderKeywordInsights(view);
     const notes=[`${date(data.period.from)} — ${date(data.period.to)}`,`запросов: ${number(rows.length)}`,...keywordStatusNote(rows)];
     if(keywords.product)notes.push('по одному артикулу');
+    const rangeCount=Object.values(keywords.ranges).filter(range=>range.min!=null||range.max!=null).length;
+    if(rangeCount)notes.push(`фильтров по столбцам: ${number(rangeCount)}`);
+    $('#keywordRangeReset').hidden=!rangeCount;
     if(rows.length>shown.length)notes.push(`показаны первые ${number(shown.length)}`);
     if(data.viewsAvailable===false)notes.push('показы, CTR и CPM по запросам WB не отдаёт для кампаний с оплатой за клики');
     if(data.fromFile)notes.push('из сохранённого файла');
@@ -247,12 +253,87 @@
     note.textContent=notes.join(' · ');
     const gradeCell=row=>row.grade?`<span class="keyword-grade ${row.grade}" title="${esc(row.gradeReason)}">${KEYWORD_GRADES[row.grade].label}</span>`:'<span class="keyword-grade none" title="Нет кликов и затрат за период">—</span>';
     const empty=keywords.grade?`Запросов с оценкой «${KEYWORD_GRADES[keywords.grade].label}» нет`:keywords.onlyInactive?'Неактивных запросов нет':'WB не вернул поисковые запросы за этот период';
-    body.innerHTML=rows.length?`<tr class="total-row"><td>Итого · ${number(rows.length)} запросов</td><td></td><td></td>${KEYWORD_COLUMNS.slice(3).map(key=>`<td>${esc(keywordValue(key,totals[key]))}</td>`).join('')}</tr>`+
-      shown.map(row=>`<tr class="${row.status==='excluded'||row.status==='archived'?'keyword-off':''}"><td>${esc(row.query)}</td><td>${keywordStatusCell(row)}</td><td>${gradeCell(row)}</td>${KEYWORD_COLUMNS.slice(3).map(key=>`<td>${esc(keywordValue(key,row[key]))}</td>`).join('')}</tr>`).join(''):
-      `<tr><td colspan="${KEYWORD_COLUMNS.length}" class="empty">${empty}</td></tr>`;
+    keywords.shown=shown;
+    const rowClass=row=>[row.status==='excluded'||row.status==='archived'?'keyword-off':'',keywords.selected.has(row.query)?'keyword-selected':''].filter(Boolean).join(' ');
+    body.innerHTML=rows.length?`<tr class="total-row"><td></td><td>Итого · ${number(rows.length)} запросов</td><td></td><td></td>${KEYWORD_COLUMNS.slice(3).map(key=>`<td>${esc(keywordValue(key,totals[key]))}</td>`).join('')}</tr>`+
+      shown.map(row=>`<tr class="${rowClass(row)}"><td><input type="checkbox" data-keyword-select="${esc(row.query)}" ${keywords.selected.has(row.query)?'checked':''} aria-label="Выбрать запрос «${esc(row.query)}»"></td><td>${esc(row.query)}</td><td>${keywordStatusCell(row)}</td><td>${gradeCell(row)}</td>${KEYWORD_COLUMNS.slice(3).map(key=>`<td>${esc(keywordValue(key,row[key]))}</td>`).join('')}</tr>`).join(''):
+      `<tr><td colspan="${KEYWORD_COLUMNS.length+1}" class="empty">${empty}</td></tr>`;
+    renderKeywordActions();
   }
   document.querySelectorAll('th[data-keyword-key]').forEach(header=>header.onclick=()=>{const key=header.dataset.keywordKey;keywords.sort=keywords.sort.key===key?{key,direction:keywords.sort.direction==='asc'?'desc':'asc'}:{key,direction:key==='query'?'asc':'desc'};renderKeywords()});
-  $('#keywordProduct').onchange=event=>{keywords.product=event.target.value;renderKeywords()};
+  $('#keywordProduct').onchange=event=>{keywords.product=event.target.value;keywords.selected.clear();renderKeywords()};
+  // Поля «От» и «До» в заголовках числовых столбцов. Клик по ним не сортирует таблицу; ввод применяется с короткой задержкой.
+  // Проценты и рубли вводятся как в ячейках: «5» в CTR — это 5%, «150» в CPO — 150 ₽; запятая и точка равноценны.
+  let keywordRangeTimer=0;
+  document.querySelectorAll('th[data-keyword-key]').forEach(header=>{
+    const key=header.dataset.keywordKey;if(!KEYWORD_COLUMNS.slice(3).includes(key))return;
+    const box=document.createElement('span');box.className='keyword-range';
+    const name=header.textContent.replace('↕','').trim();
+    box.innerHTML=`<input type="text" inputmode="decimal" placeholder="От" data-range-key="${key}" data-range-side="min" aria-label="${esc(name)}: от"><input type="text" inputmode="decimal" placeholder="До" data-range-key="${key}" data-range-side="max" aria-label="${esc(name)}: до">`;
+    box.addEventListener('click',event=>event.stopPropagation());
+    header.prepend(box);
+  });
+  document.querySelector('.keywords-table thead').addEventListener('input',event=>{
+    const input=event.target.closest('[data-range-key]');if(!input)return;
+    const raw=input.value.replace(/\s/g,'').replace(',','.'),value=raw===''?null:Number(raw);
+    input.classList.toggle('invalid',raw!==''&&!Number.isFinite(value));
+    const range=keywords.ranges[input.dataset.rangeKey]||(keywords.ranges[input.dataset.rangeKey]={min:null,max:null});
+    range[input.dataset.rangeSide]=Number.isFinite(value)?value:null;
+    input.classList.toggle('filled',range[input.dataset.rangeSide]!=null);
+    clearTimeout(keywordRangeTimer);keywordRangeTimer=setTimeout(renderKeywords,250);
+  });
+  $('#keywordRangeReset').onclick=()=>{keywords.ranges={};document.querySelectorAll('[data-range-key]').forEach(input=>{input.value='';input.classList.remove('filled','invalid')});renderKeywords()};
+  // --- Исключение и включение выбранных запросов: галочки слева, нижняя панель действий, подтверждение ---
+  // Сервер читает текущие минус-фразы каждого товара, добавляет или убирает выбранные запросы и перепроверяет результат.
+  function selectedKeywordRows(){const rows=keywordView().rows;return rows.filter(row=>keywords.selected.has(row.query))}
+  function renderKeywordActions(){
+    const bar=$('#keywordActions'),all=$('#keywordSelectAll'),selected=selectedKeywordRows();
+    bar.hidden=!selected.length;
+    $('#keywordSelectedCount').textContent=`Выбрано: ${number(selected.length)}`;
+    $('#keywordExclude').disabled=keywords.busy||!selected.some(row=>row.status!=='excluded');
+    $('#keywordInclude').disabled=keywords.busy||!selected.some(row=>row.status==='excluded');
+    const shownSelected=keywords.shown.filter(row=>keywords.selected.has(row.query)).length;
+    all.checked=keywords.shown.length>0&&shownSelected===keywords.shown.length;
+    all.indeterminate=shownSelected>0&&shownSelected<keywords.shown.length;
+  }
+  function keywordMessage(text,kind='ok'){const box=$('#keywordMessage');box.className=`keyword-message ${kind}`;box.textContent=text}
+  function closeConfirm(){$('#confirmModal').hidden=true}
+  function openKeywordConfirm(action){
+    const exclude=action==='exclude',rows=selectedKeywordRows().filter(row=>exclude?row.status!=='excluded':row.status==='excluded');
+    if(!rows.length)return;
+    const product=(keywords.data?.products||[]).find(item=>String(item.nmId)===keywords.product);
+    const scope=product?`только для артикула ${esc(product.vendorCode||product.name)} · ${esc(product.nmId)}`:'для всех артикулов кампании, у которых есть эти запросы';
+    const list=rows.slice(0,15).map(row=>`<li>${esc(row.query)}${row.spend?` — ${esc(money(row.spend))}`:''}</li>`).join('')+(rows.length>15?`<li>и ещё ${number(rows.length-15)}</li>`:'');
+    $('#confirmTitle').textContent=exclude?`Исключить ${number(rows.length)} ${plural(rows.length,['запрос','запроса','запросов'])}?`:`Включить ${number(rows.length)} ${plural(rows.length,['запрос','запроса','запросов'])}?`;
+    $('#confirmBody').innerHTML=`<p>${exclude?'Запросы будут добавлены в минус-фразы кампании в WB: товар перестанет показываться по ним':'Запросы будут убраны из минус-фраз кампании в WB: товар снова начнёт показываться по ним'} ${scope}.</p><ul>${list}</ul>`+
+      `<small>Остальные минус-фразы не изменятся. Изменение сразу применяется в кабинете WB; отменить его можно здесь же${exclude?' кнопкой «Включить»':' кнопкой «Исключить»'}.</small>`+
+      `<div class="confirm-buttons"><button type="button" class="secondary" data-confirm-close>Отмена</button><button type="button" class="${exclude?'danger':'include'}" id="confirmRun">${exclude?'Исключить':'Включить'}</button></div>`;
+    $('#confirmModal').hidden=false;
+    $('#confirmRun').onclick=()=>runKeywordMinus(action,rows.map(row=>row.query));
+  }
+  async function runKeywordMinus(action,queries){
+    const button=$('#confirmRun');button.disabled=true;button.textContent='Отправляем в WB…';keywords.busy=true;renderKeywordActions();
+    try{
+      const response=await fetch('/api/advertising/campaign/minus',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({cabinet:params.get('cabinet')||'demo',id:params.get('id')||'',action,queries,nmIds:keywords.product?[keywords.product]:[]})});
+      const result=await response.json();
+      if(!response.ok)throw new Error(result.error||'WB не принял изменение');
+      const failed=result.results.filter(item=>!item.ok),changed=result.results.filter(item=>item.ok&&item.changed);
+      const verb=action==='exclude'?'Исключено':'Включено';
+      keywordMessage(failed.length?`${verb} для ${number(changed.length)} из ${number(result.results.length)} артикулов. Не получилось: ${failed.map(item=>`${item.nmId} — ${item.error}`).join('; ')}`:
+        changed.length?`${verb} ${number(queries.length)} ${plural(queries.length,['запрос','запроса','запросов'])} для ${number(changed.length)} ${plural(changed.length,['артикула','артикулов','артикулов'])}. Статусы обновляются…`:'Изменений не потребовалось: запросы уже в нужном состоянии',failed.length?'error':'ok');
+      closeConfirm();keywords.selected.clear();
+      loadKeywords(keywords.data?.period||state.period,true);
+    }catch(e){keywordMessage(`Не удалось: ${e.message}`,'error');closeConfirm()}
+    finally{keywords.busy=false;renderKeywordActions()}
+  }
+  $('#keywordsBody').addEventListener('change',event=>{const box=event.target.closest('[data-keyword-select]');if(!box)return;box.checked?keywords.selected.add(box.dataset.keywordSelect):keywords.selected.delete(box.dataset.keywordSelect);box.closest('tr').classList.toggle('keyword-selected',box.checked);renderKeywordActions()});
+  $('#keywordSelectAll').onchange=event=>{keywords.shown.forEach(row=>event.target.checked?keywords.selected.add(row.query):keywords.selected.delete(row.query));renderKeywords()};
+  $('#keywordExclude').onclick=()=>openKeywordConfirm('exclude');
+  $('#keywordInclude').onclick=()=>openKeywordConfirm('include');
+  $('#keywordClearSelection').onclick=()=>{keywords.selected.clear();renderKeywords()};
+  document.addEventListener('click',event=>{if(event.target.closest('[data-confirm-close]'))closeConfirm()});
+  document.addEventListener('keydown',event=>{if(event.key==='Escape'&&!$('#confirmModal').hidden)closeConfirm()});
   $('#keywordSearch').oninput=event=>{keywords.search=event.target.value;renderKeywords()};
   $('#keywordOnlyInactive').onchange=event=>{keywords.onlyInactive=event.target.checked;renderKeywords()};
   $('#keywordGrade').onchange=event=>{keywords.grade=event.target.value;renderKeywords()};
