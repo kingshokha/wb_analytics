@@ -1,7 +1,7 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { campaignActivePeriod, mergeMinusList, normalizeOrders, normalizeOrderFeed, enrichOrders, extractFunnel, summarizeAdStats, campaignProductDaily, withAdBudgets, summarizeKeywords, normalizeStockPreset, normalizePricePreset, adCampaignMayHaveStats, validAdPeriod, historyPeriod, historyChunks, planAdFetch, datesBetween, safeFolderName, funnelDaysToFetch, pairFunnelDays, funnelPeriods, funnelRangeBuckets, funnelRecordCounts, funnelRangeValues, funnelSalesMatrix, summaryTopProducts, summaryDrops, summaryProducts, normalizeFbsStocks, normalizeFbwStocks, normalizePrices, summarizeStockTotals, normalizeNewOrders, summarizeSupplies, normalizeTrbxes, chunkOrders, stickerType, WB_HOSTS } = require('../server');
+const { campaignActivePeriod, mergeMinusList, summarizeKeywordDaily, normalizeOrders, normalizeOrderFeed, enrichOrders, extractFunnel, summarizeAdStats, campaignProductDaily, withAdBudgets, summarizeKeywords, normalizeStockPreset, normalizePricePreset, adCampaignMayHaveStats, validAdPeriod, historyPeriod, historyChunks, planAdFetch, datesBetween, safeFolderName, funnelDaysToFetch, pairFunnelDays, funnelPeriods, funnelRangeBuckets, funnelRecordCounts, funnelRangeValues, funnelSalesMatrix, summaryTopProducts, summaryDrops, summaryProducts, normalizeFbsStocks, normalizeFbwStocks, normalizePrices, summarizeStockTotals, normalizeNewOrders, summarizeSupplies, normalizeTrbxes, chunkOrders, stickerType, WB_HOSTS } = require('../server');
 
 test('объединяет и сортирует FBS и события ленты WB', () => {
   const result = normalizeOrders(
@@ -532,4 +532,20 @@ test('минус-фразы: исключение добавляет к теку
   assert.deepEqual(mergeMinusList(before, ['плойки', 'расческа выпрямитель'], 'exclude'), ['расческа выпрямитель', 'плойка детская', 'плойки']);
   assert.deepEqual(mergeMinusList(before, ['плойка детская', 'фен'], 'include'), ['расческа выпрямитель']);
   assert.deepEqual(mergeMinusList([], ['фен'], 'include'), []);
+});
+
+test('статистика ключевого запроса по дням: суммирует товары, заполняет пустые дни, без показов у CPC', () => {
+  const items = [
+    { nmId: 1, dailyStats: [{ date: '2026-10-01', stat: { normQuery: 'фен', views: 100, clicks: 10, spend: 50, atbs: 2, orders: 1, avgPos: 4 } },
+      { date: '2026-10-01', stat: { normQuery: 'утюжок', views: 999, clicks: 99 } }] },
+    { nmId: 2, dailyStats: [{ date: '2026-10-01', stat: { normQuery: 'фен', views: 300, clicks: 20, spend: 70, atbs: 1, orders: 0, avgPos: 8 } }] }];
+  const result = summarizeKeywordDaily(items, 'фен', ['2026-10-01', '2026-10-02']);
+  assert.equal(result.days.length, 2);
+  assert.deepEqual([result.days[0].views, result.days[0].clicks, result.days[0].spend, result.days[0].carts], [400, 30, 120, 3]);
+  assert.equal(result.days[0].avgPosition, 7);
+  assert.equal(result.days[1].clicks, 0);
+  const cpc = summarizeKeywordDaily([{ dailyStats: [{ date: '2026-10-01', stat: { normQuery: 'фен', clicks: 5, spend: 40 } }] }], 'фен', ['2026-10-01']);
+  assert.equal(cpc.viewsAvailable, false);
+  assert.equal(cpc.days[0].views, null);
+  assert.equal(cpc.days[0].cpc, 8);
 });

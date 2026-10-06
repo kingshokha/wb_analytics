@@ -32,10 +32,10 @@
     .campaign-meta{display:flex;flex-wrap:wrap;align-items:center;gap:7px}
     .campaign-meta b{display:inline-block;padding:4px 9px;border-radius:20px;background:#f0ebff;color:#6740d2;font-size:11px;font-weight:800}
     .campaign-created{color:var(--muted);font-size:12px}
-    /* Выгрузка периода */
-    .export-controls{display:flex;flex-wrap:wrap;align-items:center;gap:9px;margin:0 0 16px;padding:12px 14px;border:1px solid var(--line);border-radius:14px;background:white;box-shadow:var(--shadow)}
-    .export-controls p{flex-basis:100%;font-size:12px}
-    .export-controls label{font-size:11px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+    /* Выгрузка периода — в правом верхнем углу, как поля дат на остальных страницах */
+    .page-title{min-width:0}
+    .period-label{margin-top:8px;font-size:12px}
+    .export-controls{display:flex;flex-wrap:wrap;justify-content:flex-end;align-items:center;gap:8px;flex:0 0 auto}
     .export-controls select{height:40px;padding:0 12px;border:1px solid var(--line);border-radius:11px;background:white;color:var(--ink);font-size:12px;font-weight:700}
     .export-range{display:inline-flex;align-items:center;gap:8px;height:40px;padding:0 12px;border:1px solid var(--line);border-radius:11px;background:white}
     .export-range:focus-within{border-color:var(--purple)}
@@ -44,8 +44,42 @@
     .export-range input:focus{outline:0}
     .export-range b{color:#bbc1bd;font-weight:400}
     .export-controls input:disabled,.export-controls select:disabled{opacity:.6}
-    .export-progress{flex-basis:100%;color:var(--muted);font-size:12px}
+    .export-progress{display:block;margin-top:4px;color:var(--muted);font-size:12px}
     .export-progress:empty{display:none}
+    /* Размещение и ставки */
+    .setup-head{display:flex;flex-wrap:wrap;align-items:center;justify-content:flex-end;gap:8px 14px}
+    .setup-head p{font-size:12px}
+    .setup-chips{display:flex;flex-wrap:wrap;gap:6px}
+    .placement{display:inline-flex;align-items:center;gap:7px;padding:5px 11px;border-radius:20px;font-size:11px;font-weight:800;white-space:nowrap}
+    .placement i{width:7px;height:7px;border-radius:50%;background:currentColor}
+    .placement.on{background:#e7f5ee;color:#277653}
+    .placement.off{background:#f0f1ef;color:var(--muted)}
+    .setup-table{min-width:0}
+    .bid-cell small{margin-left:6px;color:var(--muted);font-size:11px;font-weight:600}
+    .setup-table th,.setup-table td{height:40px}
+    .setup-table th{cursor:default}
+    .setup-table th:hover{background:#fafbfa;color:var(--muted)}
+    .setup-table th:nth-child(1),.setup-table td:nth-child(1){width:44%;padding-left:20px;text-align:left}
+    .setup-table th:last-child,.setup-table td:last-child{padding-right:20px}
+    .setup-table th:nth-child(2),.setup-table td:nth-child(2){text-align:left}
+    .bid-off{color:var(--muted)}
+    /* Кнопка графика у ключевого запроса и окно статистики по дням */
+    .keyword-query{display:flex;align-items:center;gap:9px;min-width:0}
+    .keyword-query span{overflow:hidden;text-overflow:ellipsis}
+    .keyword-chart-button{flex:0 0 26px;width:26px;height:26px;padding:0;display:grid;place-items:center;border:1px solid var(--line);border-radius:7px;background:white;color:var(--muted)}
+    .keyword-chart-button:hover,.keyword-chart-button:focus-visible{border-color:var(--purple);color:var(--purple);background:#f6f4fd;outline:0}
+    .keyword-chart-button svg{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+    .keywords-table.no-views th:nth-child(5),.keywords-table.no-views td:nth-child(5),.keywords-table.no-views th:nth-child(7),.keywords-table.no-views td:nth-child(7),.keywords-table.no-views th:nth-child(8),.keywords-table.no-views td:nth-child(8){display:none}
+    .kwday-note{margin-top:3px;font-size:12px}
+    .kwday-metrics{display:flex;flex-wrap:wrap;gap:6px;padding:14px 20px 0}
+    .kwday-metrics button{height:30px;padding:0 12px;border:1px solid var(--line);border-radius:20px;background:#fafbfa;color:var(--ink);font-size:11px}
+    .kwday-metrics button.active{border-color:#d9cffb;background:#f0ebff;color:#5b36c8}
+    .kwday-chart{position:relative;padding:10px 20px 4px}
+    .kwday-chart svg{display:block;width:100%;height:auto}
+    .kwday-chart .chart-empty{padding:40px;text-align:center;color:var(--muted)}
+    .kwday-table{min-width:900px}
+    .kwday-table th{cursor:default}
+    .kwday-table.no-views .views-col,.kwday-table.no-views td.views-col{display:none}
     button{height:40px;padding:0 16px;border:1px solid var(--ink);border-radius:11px;background:var(--ink);color:white;font-size:12px;font-weight:800;cursor:pointer}
     button:disabled{opacity:.6;cursor:wait}
     /* Карточки показателей */
@@ -194,7 +228,8 @@
     .confirm-buttons .secondary{background:white;color:var(--ink);border-color:var(--line)}
     .confirm-buttons .danger{background:var(--red);border-color:var(--red)}
     .confirm-buttons .include{background:var(--green);border-color:var(--green)}
-    @media(max-width:1200px){.summary{grid-template-columns:repeat(3,minmax(0,1fr))}}
+    @media(max-width:1200px){.summary{grid-template-columns:repeat(3,minmax(0,1fr))}.page-head{flex-wrap:wrap}.export-controls{justify-content:flex-start}}
+    @media(max-width:800px){.setup-panel .panel-head{flex-wrap:wrap}.setup-head{justify-content:flex-start}}
     @media(max-width:980px){.shell{grid-template-columns:78px 1fr}.sidebar{width:78px;padding:22px 10px}.brand span:last-child,.nav-item span:last-child,.sidebar-note{display:none}.brand{padding:0 4px 26px;justify-content:center}.nav-item{justify-content:center;padding:11px}main{padding:28px 24px 90px}.keyword-actions{left:calc(78px + 50%)}.keyword-grade-cards{grid-template-columns:1fr 1fr}}
     @media(max-width:680px){.shell{display:block}.sidebar{display:none}main{padding:20px 14px 100px}h1{font-size:21px}.summary{grid-template-columns:1fr 1fr}.metric strong{font-size:15px}.chart-wrap{padding:10px}.chart-wrap svg{min-width:680px}.keyword-actions{left:50%;width:calc(100% - 20px);flex-wrap:wrap;justify-content:center}}
   </style>
@@ -217,14 +252,19 @@
   </aside>
   <main>
     <header class="page-head">
-      <div>
-        <p class="eyebrow">Реклама · детализация кампании</p>
+      <div class="page-title">
         <h1 id="campaignTitle">Детализация кампании</h1>
         <p id="campaignMeta" class="campaign-meta"></p>
+        <p id="periodLabel" class="period-label">Загрузка данных…</p>
+        <span id="exportProgress" class="export-progress" role="status" aria-live="polite"></span>
       </div>
+      <div class="export-controls"><select id="exportPreset" aria-label="Выгрузить за"></select><label class="export-range"><span>Период</span><input id="exportFrom" type="date" aria-label="Дата начала"><b>—</b><input id="exportTo" type="date" aria-label="Дата конца"></label><button id="exportHistory" type="button">Выгрузить</button></div>
     </header>
-    <div class="export-controls"><p id="periodLabel">Загрузка данных…</p><label for="exportPreset">Выгрузить за</label><select id="exportPreset"></select><label class="export-range"><span>Период</span><input id="exportFrom" type="date" aria-label="Дата начала"><b>—</b><input id="exportTo" type="date" aria-label="Дата конца"></label><button id="exportHistory" type="button">Выгрузить</button><span id="exportProgress" class="export-progress" role="status" aria-live="polite"></span></div>
     <section class="summary" id="summary"></section>
+    <section class="panel setup-panel" id="setupPanel" hidden>
+      <div class="panel-head"><h2>Размещение и ставки</h2><div class="setup-head"><div class="setup-chips" id="setupPlacements"></div><p id="setupNote"></p></div></div>
+      <div class="table-wrap"><table class="setup-table"><thead><tr><th>Товар</th><th>Предмет</th><th>Ставка в поиске</th><th>Ставка в рекомендациях</th></tr></thead><tbody id="setupBids"></tbody></table></div>
+    </section>
     <section class="panel chart-panel">
       <div class="panel-head"><h2>График по датам</h2></div>
       <div class="chart-controls" id="chartOptions" aria-label="Данные графика"></div>
@@ -252,6 +292,7 @@
 </div>
 <div id="keywordActions" class="keyword-actions" hidden><strong id="keywordSelectedCount">Выбрано: 0</strong><button type="button" class="danger" id="keywordExclude">Исключить</button><button type="button" class="include" id="keywordInclude">Включить</button><button type="button" class="ghost" id="keywordClearSelection">Сбросить</button></div>
 <div id="confirmModal" class="modal" hidden><div class="modal-backdrop" data-confirm-close></div><div class="modal-dialog small" role="dialog" aria-modal="true" aria-labelledby="confirmTitle"><div class="modal-head"><h2 id="confirmTitle">Исключить запросы?</h2><button type="button" class="modal-close" data-confirm-close aria-label="Закрыть">×</button></div><div class="confirm-body" id="confirmBody"></div></div></div>
+<div id="keywordDailyModal" class="modal" hidden><div class="modal-backdrop" data-kwday-close></div><div class="modal-dialog" role="dialog" aria-modal="true" aria-labelledby="keywordDailyTitle"><div class="modal-head"><div><h2 id="keywordDailyTitle">Запрос по дням</h2><p id="keywordDailyNote" class="kwday-note"></p></div><button type="button" class="modal-close" data-kwday-close aria-label="Закрыть">×</button></div><div class="modal-table-wrap"><div class="kwday-metrics" id="keywordDailyMetrics"></div><div class="kwday-chart" id="keywordDailyChart"></div><table class="kwday-table"><thead><tr><th>Дата</th><th class="views-col">Показы</th><th>Клики</th><th class="views-col">CTR</th><th class="views-col">CPM</th><th>CPC</th><th>Затраты</th><th>Корзины</th><th>Заказы</th><th>CR</th><th>Ср. позиция</th></tr></thead><tbody id="keywordDailyBody"></tbody></table></div></div></div>
 <div id="productModal" class="modal" hidden><div class="modal-backdrop" data-modal-close></div><div class="modal-dialog" role="dialog" aria-modal="true" aria-labelledby="productModalTitle"><div class="modal-head"><h2 id="productModalTitle">Статистика артикула</h2><button type="button" class="modal-close" data-modal-close aria-label="Закрыть">×</button></div><div class="modal-table-wrap"><table><thead><tr><th>Дата</th><th>Показы</th><th>Клики</th><th>CTR</th><th>CPC</th><th>Корзины</th><th>Заказы</th><th>Отмены</th><th>Сумма заказов</th><th>Затраты</th><th>ДРР, %</th></tr></thead><tbody id="productModalBody"></tbody></table></div></div></div>
 <script src="/campaign.js"></script>
 </body>
