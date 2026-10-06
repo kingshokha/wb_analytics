@@ -1242,6 +1242,20 @@ async function advertising(id, from, to, part = 'all') {
   return { demo: false, partial, ...summary, campaigns: withAdBudgets(summary.campaigns, budgets), warnings };
 }
 
+// Статистика кампаний за прошлый период той же длины — для изменений в процентах в таблице «Рекламные кампании».
+// Вкладка запрашивает её последней, в фоне: это ещё один проход по fullstats (раз в 20 секунд на пачку).
+const AD_COMPARE_KEYS = ['spend', 'views', 'clicks', 'ctr', 'cpc', 'cpm', 'carts', 'orders', 'cr', 'cpo', 'revenue', 'drr', 'roas'];
+async function advertisingPrevious(id, from, to) {
+  const period = validAdPeriod(from, to);
+  const length = datesBetween(period.from, period.to).length;
+  const previous = { from: addDays(period.from, -length), to: addDays(period.from, -1) };
+  const pick = campaign => ({ id: campaign.id, ...Object.fromEntries(AD_COMPARE_KEYS.map(key => [key, Number(campaign[key] || 0)])) });
+  if (id === 'demo' || !cabinets().length) return { demo: true, period: previous, campaigns: demoAds(previous.from, previous.to).campaigns.map(pick), warnings: [] };
+  const warnings = [];
+  const { campaigns, stats } = await loadAdStats(id, tokenFor(id), previous, warnings);
+  return { demo: false, period: previous, campaigns: summarizeAdStats(campaigns, stats, previous.from, previous.to).campaigns.map(pick), warnings };
+}
+
 async function loadAdStats(id, token, period, warnings = [], part = 'all') {
   const campaignData = await cachedAnalytics(`ad-campaigns:${id}`, () => wbRequest(token, AD_CAMPAIGNS_URL), 3 * 60_000);
   const campaigns = Array.isArray(campaignData?.adverts) ? campaignData.adverts : [];
@@ -2209,6 +2223,9 @@ async function handleApi(req, res, url) {
       write({ type: 'error', error: error.message || 'Не удалось выгрузить статистику' });
     }
     return res.end();
+  }
+  if (req.method === 'GET' && url.pathname === '/api/advertising/previous') {
+    return send(res, 200, await advertisingPrevious(url.searchParams.get('cabinet') || 'demo', url.searchParams.get('from'), url.searchParams.get('to')));
   }
   if (req.method === 'GET' && url.pathname === '/api/advertising') {
     return send(res, 200, await advertising(url.searchParams.get('cabinet') || 'demo', url.searchParams.get('from'), url.searchParams.get('to'), url.searchParams.get('part') || 'all'));
