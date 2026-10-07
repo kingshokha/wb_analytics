@@ -651,7 +651,7 @@
       if(!result)throw new Error('Выгрузка прервалась без результата');
       state.rows=result.campaign.daily||[];state.productDaily=result.productDaily||[];
       renderMeta(result.campaign);renderSummary(result.campaign);renderSetup(result.setup);renderOptions();renderChart();renderTable();renderProductTable();loadPositions(result.activePeriod||result.period);
-      $('#campaignTitle').textContent=result.campaign.name||`Кампания #${result.campaign.id}`;renderCampaignHeader(result);
+      $('#campaignTitle').textContent=result.campaign.name||`Кампания #${result.campaign.id}`;document.title=`${$('#campaignTitle').textContent} — WB Pulse`;renderCampaignHeader(result);
       state.period=result.activePeriod||result.period;loadKeywords(state.period);
       $('#periodLabel').textContent=`${date(result.period.from)} — ${date(result.period.to)}${result.folder?` · ${result.folder}`:''}`;
       clearInterval(exportState.timer);
