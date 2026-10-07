@@ -10,18 +10,21 @@
 </head>
 <body>
   <div class="shell">
-    <aside class="sidebar">
-      <a class="brand" href="#"><span class="brand-mark">W</span><span>WB Pulse</span></a>
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-head">
+        <button type="button" class="sidebar-toggle" aria-controls="sidebar" aria-expanded="false" aria-label="Развернуть меню"><span></span><span></span><span></span></button>
+        <a class="brand" href="#"><span class="brand-mark">W</span><span>WB Pulse</span></a>
+      </div>
       <nav>
         <!-- Пункты меню — ссылки: их можно открыть в новой вкладке колесом мыши, Ctrl+кликом или через контекстное меню. -->
-        <a class="nav-item active" href="?page=summary" data-page="summary"><span class="nav-icon" aria-hidden="true">◎</span> Сводка</a>
-        <a class="nav-item" href="?page=orders" data-page="orders"><span class="nav-icon" aria-hidden="true">▤</span> Лента заказов <b id="newBadge">0</b></a>
-        <a class="nav-item" href="?page=fbs-orders" data-page="fbs-orders"><span class="nav-icon" aria-hidden="true">◈</span> Новые заказы <b id="fbsBadge">0</b></a>
-        <a class="nav-item" href="?page=fbw-stocks" data-page="fbw-stocks"><span class="nav-icon" aria-hidden="true">◇</span> Остатки FBW</a>
-        <a class="nav-item" href="?page=stocks" data-page="stocks"><span class="nav-icon" aria-hidden="true">◇</span> Остатки FBS</a>
-        <a class="nav-item" href="?page=prices" data-page="prices"><span class="nav-icon" aria-hidden="true">₽</span> Цены и скидки</a>
-        <a class="nav-item" href="?page=funnel" data-page="funnel"><span class="nav-icon" aria-hidden="true">◫</span> Воронка</a>
-        <a class="nav-item" href="?page=ads" data-page="ads"><span class="nav-icon" aria-hidden="true">↗</span> Реклама</a>
+        <a class="nav-item active" href="?page=summary" data-page="summary"><span class="nav-icon" aria-hidden="true">◎</span><span class="nav-label">Сводка</span></a>
+        <a class="nav-item" href="?page=orders" data-page="orders"><span class="nav-icon" aria-hidden="true">▤</span><span class="nav-label">Лента заказов</span><b id="newBadge">0</b></a>
+        <a class="nav-item" href="?page=fbs-orders" data-page="fbs-orders"><span class="nav-icon" aria-hidden="true">◈</span><span class="nav-label">Новые заказы</span><b id="fbsBadge">0</b></a>
+        <a class="nav-item" href="?page=fbw-stocks" data-page="fbw-stocks"><span class="nav-icon" aria-hidden="true">◇</span><span class="nav-label">Остатки FBW</span></a>
+        <a class="nav-item" href="?page=stocks" data-page="stocks"><span class="nav-icon" aria-hidden="true">◇</span><span class="nav-label">Остатки FBS</span></a>
+        <a class="nav-item" href="?page=prices" data-page="prices"><span class="nav-icon" aria-hidden="true">₽</span><span class="nav-label">Цены и скидки</span></a>
+        <a class="nav-item" href="?page=funnel" data-page="funnel"><span class="nav-icon" aria-hidden="true">◫</span><span class="nav-label">Воронка</span></a>
+        <a class="nav-item" href="?page=ads" data-page="ads"><span class="nav-icon" aria-hidden="true">↗</span><span class="nav-label">Реклама</span></a>
       </nav>
       <div class="sync-state"><i></i><span><strong>WB API</strong><small id="syncText">Подключение…</small></span></div>
       <div class="cabinet-wrap">
@@ -230,6 +233,7 @@
   <div class="toast" id="toast"></div>
   <div class="loading-overlay" id="loadingOverlay"><div class="loading-spinner" aria-label="Загрузка"></div></div>
   <button id="runApi" hidden></button><button id="copyResponse" hidden></button>
+  <script src="/sidebar.js"></script>
   <script src="/table-ui.js"></script>
   <script src="/summary.js"></script>
   <script src="/app.js"></script>

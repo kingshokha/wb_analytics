@@ -14,15 +14,28 @@
     *{box-sizing:border-box}
     body{margin:0;min-width:320px;background:var(--bg);color:var(--ink);font:500 13px Manrope,Arial,sans-serif}
     button,input,select{font-family:Manrope,Arial,sans-serif}
-    .shell{min-height:100vh;display:grid;grid-template-columns:238px 1fr}
-    .sidebar{position:fixed;inset:0 auto 0 0;z-index:10;width:238px;padding:26px 15px 14px;display:flex;flex-direction:column;background:#17211d;color:white}
-    .brand{display:flex;align-items:center;gap:11px;padding:0 9px 31px;color:white;text-decoration:none;font:700 17px Unbounded,sans-serif}
+    /* Боковое меню: свёрнуто до полосы иконок, кнопка ≡ разворачивает его поверх страницы (sidebar.js) */
+    .shell{min-height:100vh;display:grid;grid-template-columns:78px 1fr}
+    .sidebar{position:fixed;inset:0 auto 0 0;z-index:10;width:78px;padding:18px 11px 14px;display:flex;flex-direction:column;background:#17211d;color:white;transition:width .2s ease,box-shadow .2s ease}
+    .sidebar.expanded{z-index:50;width:238px;box-shadow:16px 0 50px #0d14104d}
+    .sidebar-head{display:flex;align-items:center;gap:6px;margin-bottom:22px}
+    .sidebar-toggle{flex:0 0 56px;width:56px;height:44px;padding:0;display:grid;place-content:center;gap:4px;border:0;border-radius:10px;background:transparent;cursor:pointer}
+    .sidebar-toggle span{display:block;width:20px;height:2px;border-radius:2px;background:#cdd4d0}
+    .sidebar-toggle:hover,.sidebar-toggle:focus-visible{background:#27332e;outline:0}
+    .sidebar-toggle:hover span,.sidebar-toggle:focus-visible span{background:white}
+    .brand{display:flex;align-items:center;gap:11px;color:white;text-decoration:none;font:700 17px Unbounded,sans-serif;white-space:nowrap;opacity:0;visibility:hidden;transition:opacity .15s}
+    .sidebar.expanded .brand{opacity:1;visibility:visible}
     .brand-mark{width:32px;height:32px;display:grid;place-items:center;border-radius:11px;background:linear-gradient(135deg,var(--violet),var(--purple));font-size:16px;box-shadow:0 7px 18px #7651e55c}
     .sidebar nav{display:grid;gap:5px}
-    .nav-item{display:flex;align-items:center;gap:12px;padding:12px 13px;border-radius:9px;color:#aeb8b3;text-decoration:none;font:600 13px Manrope}
+    .nav-item{display:flex;align-items:center;gap:12px;padding:12px 16px;border-radius:9px;color:#aeb8b3;text-decoration:none;font:600 13px Manrope;white-space:nowrap;overflow:hidden}
     .nav-item:hover,.nav-item.active{background:#27332e;color:white}
     .nav-icon{width:24px;height:24px;display:inline-grid;place-items:center;flex:0 0 24px;font:700 18px "Segoe UI Symbol",Arial,sans-serif;color:inherit}
-    .sidebar-note{margin:auto 11px 0;color:#77847e;font-size:11px;line-height:1.5}
+    .nav-label{opacity:0;transition:opacity .15s}
+    .sidebar.expanded .nav-label{opacity:1}
+    .sidebar-note{margin:auto 11px 0;color:#77847e;font-size:11px;line-height:1.5;opacity:0;visibility:hidden;transition:opacity .15s}
+    .sidebar.expanded .sidebar-note{opacity:1;visibility:visible}
+    .sidebar-backdrop{position:fixed;inset:0;z-index:49;background:#17211d59;opacity:0;pointer-events:none;transition:opacity .2s ease}
+    body.sidebar-open .sidebar-backdrop{opacity:1;pointer-events:auto}
     main{grid-column:2;min-width:0;padding:34px 42px 90px}
     .page-head{display:flex;justify-content:space-between;align-items:flex-start;gap:20px;margin-bottom:18px}
     .eyebrow{margin:0 0 8px;color:var(--purple);font-size:11px;font-weight:800;letter-spacing:.16em;text-transform:uppercase}
@@ -235,7 +248,7 @@
     .page-button.active{border-color:var(--purple);background:var(--purple);color:#fff}
     .page-button:disabled{opacity:.45;cursor:not-allowed}
     /* Нижняя панель действий с выбранными запросами — как на основном сайте */
-    .keyword-actions{position:fixed;z-index:20;left:calc(238px + 50%);bottom:24px;transform:translateX(-50%);display:flex;align-items:center;gap:10px;padding:11px 12px;border-radius:12px;background:#17211d;color:white;box-shadow:0 15px 45px #17211d55}
+    .keyword-actions{position:fixed;z-index:20;left:calc(39px + 50%);bottom:24px;transform:translateX(-50%);display:flex;align-items:center;gap:10px;padding:11px 12px;border-radius:12px;background:#17211d;color:white;box-shadow:0 15px 45px #17211d55}
     .keyword-actions[hidden]{display:none}
     .keyword-actions strong{margin:0 6px;font-size:12px}
     .keyword-actions button{height:38px;border:0;border-radius:8px;font-size:12px}
@@ -263,23 +276,26 @@
     .confirm-buttons .include{background:var(--green);border-color:var(--green)}
     @media(max-width:1200px){.summary{grid-template-columns:repeat(3,minmax(0,1fr))}.page-head{flex-wrap:wrap}.export-controls{justify-content:flex-start}}
     @media(max-width:800px){.setup-panel .panel-head{flex-wrap:wrap}.setup-head{justify-content:flex-start}}
-    @media(max-width:980px){.shell{grid-template-columns:78px 1fr}.sidebar{width:78px;padding:22px 10px}.brand span:last-child,.nav-item span:last-child,.sidebar-note{display:none}.brand{padding:0 4px 26px;justify-content:center}.nav-item{justify-content:center;padding:11px}main{padding:28px 24px 90px}.keyword-actions{left:calc(78px + 50%)}}
+    @media(max-width:980px){main{padding:28px 24px 90px}}
     @media(max-width:680px){.shell{display:block}.sidebar{display:none}main{padding:20px 14px 100px}h1{font-size:21px}.summary{grid-template-columns:1fr 1fr}.metric strong{font-size:15px}.chart-wrap{padding:10px}.chart-wrap svg{min-width:680px}.keyword-actions{left:50%;width:calc(100% - 20px);flex-wrap:wrap;justify-content:center}}
   </style>
 </head>
 <body>
 <div class="shell">
-  <aside class="sidebar">
-    <a class="brand" href="/"><span class="brand-mark">W</span><span>WB Pulse</span></a>
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-head">
+      <button type="button" class="sidebar-toggle" aria-controls="sidebar" aria-expanded="false" aria-label="Развернуть меню"><span></span><span></span><span></span></button>
+      <a class="brand" href="/"><span class="brand-mark">W</span><span>WB Pulse</span></a>
+    </div>
     <nav>
-      <a class="nav-item" href="/?page=summary"><span class="nav-icon" aria-hidden="true">◎</span><span>Сводка</span></a>
-      <a class="nav-item" href="/?page=orders"><span class="nav-icon" aria-hidden="true">▤</span><span>Лента заказов</span></a>
-      <a class="nav-item" href="/?page=fbs-orders"><span class="nav-icon" aria-hidden="true">◈</span><span>Новые заказы</span></a>
-      <a class="nav-item" href="/?page=fbw-stocks"><span class="nav-icon" aria-hidden="true">◇</span><span>Остатки FBW</span></a>
-      <a class="nav-item" href="/?page=stocks"><span class="nav-icon" aria-hidden="true">◇</span><span>Остатки FBS</span></a>
-      <a class="nav-item" href="/?page=prices"><span class="nav-icon" aria-hidden="true">₽</span><span>Цены и скидки</span></a>
-      <a class="nav-item" href="/?page=funnel"><span class="nav-icon" aria-hidden="true">◫</span><span>Воронка</span></a>
-      <a class="nav-item active" href="/?page=ads"><span class="nav-icon" aria-hidden="true">↗</span><span>Реклама</span></a>
+      <a class="nav-item" href="/?page=summary"><span class="nav-icon" aria-hidden="true">◎</span><span class="nav-label">Сводка</span></a>
+      <a class="nav-item" href="/?page=orders"><span class="nav-icon" aria-hidden="true">▤</span><span class="nav-label">Лента заказов</span></a>
+      <a class="nav-item" href="/?page=fbs-orders"><span class="nav-icon" aria-hidden="true">◈</span><span class="nav-label">Новые заказы</span></a>
+      <a class="nav-item" href="/?page=fbw-stocks"><span class="nav-icon" aria-hidden="true">◇</span><span class="nav-label">Остатки FBW</span></a>
+      <a class="nav-item" href="/?page=stocks"><span class="nav-icon" aria-hidden="true">◇</span><span class="nav-label">Остатки FBS</span></a>
+      <a class="nav-item" href="/?page=prices"><span class="nav-icon" aria-hidden="true">₽</span><span class="nav-label">Цены и скидки</span></a>
+      <a class="nav-item" href="/?page=funnel"><span class="nav-icon" aria-hidden="true">◫</span><span class="nav-label">Воронка</span></a>
+      <a class="nav-item active" href="/?page=ads"><span class="nav-icon" aria-hidden="true">↗</span><span class="nav-label">Реклама</span></a>
     </nav>
     <p class="sidebar-note">Детализация рекламной кампании</p>
   </aside>
@@ -330,6 +346,7 @@
 <div id="tagColorsModal" class="modal" hidden><div class="modal-backdrop" data-tag-colors-close></div><div class="modal-dialog small" role="dialog" aria-modal="true" aria-labelledby="tagColorsTitle"><div class="modal-head"><h2 id="tagColorsTitle">Цвета отметок</h2><button type="button" class="modal-close" data-tag-colors-close aria-label="Закрыть">×</button></div><div class="confirm-body" id="tagColorsBody"></div></div></div>
 <div id="keywordDailyModal" class="modal" hidden><div class="modal-backdrop" data-kwday-close></div><div class="modal-dialog" role="dialog" aria-modal="true" aria-labelledby="keywordDailyTitle"><div class="modal-head"><div><h2 id="keywordDailyTitle">Запрос по дням</h2><p id="keywordDailyNote" class="kwday-note"></p></div><button type="button" class="modal-close" data-kwday-close aria-label="Закрыть">×</button></div><div class="modal-table-wrap"><div class="kwday-metrics" id="keywordDailyMetrics"></div><div class="kwday-chart" id="keywordDailyChart"></div><table class="kwday-table"><thead><tr><th>Дата</th><th class="views-col">Показы</th><th>Клики</th><th class="views-col">CTR</th><th class="views-col">CPM</th><th>CPC</th><th>Затраты</th><th>Корзины</th><th>Заказы</th><th>CR</th><th>Ср. позиция</th></tr></thead><tbody id="keywordDailyBody"></tbody></table></div></div></div>
 <div id="productModal" class="modal" hidden><div class="modal-backdrop" data-modal-close></div><div class="modal-dialog" role="dialog" aria-modal="true" aria-labelledby="productModalTitle"><div class="modal-head"><h2 id="productModalTitle">Статистика артикула</h2><button type="button" class="modal-close" data-modal-close aria-label="Закрыть">×</button></div><div class="modal-table-wrap"><table><thead><tr><th>Дата</th><th>Показы</th><th>Клики</th><th>CTR</th><th>CPC</th><th>Корзины</th><th>Заказы</th><th>Отмены</th><th>Сумма заказов</th><th>Затраты</th><th>ДРР, %</th></tr></thead><tbody id="productModalBody"></tbody></table></div></div></div>
+<script src="/sidebar.js"></script>
 <script src="/campaign.js"></script>
 </body>
 </html>
