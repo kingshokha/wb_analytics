@@ -1,11 +1,12 @@
 (() => {
   'use strict';
   const params = new URLSearchParams(location.search);
-  const state = { rows: [], productDaily: [], sort: { key: 'date', direction: 'desc' }, productSort: { key: 'spend', direction: 'desc' }, visibleMetrics: new Set(['views', 'clicks', 'orders', 'spend', 'drr']), visibleCards: new Set() };
+  const state = { rows: [], productDaily: [], sort: { key: 'date', direction: 'desc' }, productSort: { key: 'spend', direction: 'desc' }, visibleMetrics: new Set(['views', 'clicks', 'orders', 'spend', 'drr', 'avgPosition']), visibleCards: new Set(), positions: new Map() };
   const columns = ['date','views','clicks','ctr','cpc','carts','orders','canceled','revenue','spend','drr'];
-  const chartMetrics = [{key:'views',label:'Показы',color:'#277a70'},{key:'clicks',label:'Клики',color:'#d77b28'},{key:'carts',label:'Корзины',color:'#4d8f63'},{key:'orders',label:'Заказы',color:'#b35b45'},{key:'spend',label:'Затраты',color:'#5a7d9a'},{key:'revenue',label:'Сумма заказов',color:'#8b6b3f'},{key:'drr',label:'ДРР',color:'#7651e5'}];
+  const chartMetrics = [{key:'views',label:'Показы',color:'#277a70'},{key:'clicks',label:'Клики',color:'#d77b28'},{key:'carts',label:'Корзины',color:'#4d8f63'},{key:'orders',label:'Заказы',color:'#b35b45'},{key:'spend',label:'Затраты',color:'#5a7d9a'},{key:'revenue',label:'Сумма заказов',color:'#8b6b3f'},{key:'drr',label:'ДРР',color:'#7651e5'},{key:'avgPosition',label:'Ср. позиция',color:'#c35fb8'}];
   // Значение линии графика за день. ДРР без рекламной выручки не определён (расход есть, заказов нет) — на графике разрыв, а не 0.
-  function chartValue(s,row,byDay){if(s.card)return Number(byDay.get(`${s.card}:${row.date}`)?.spend||0);if(s.key==='drr'&&!Number(row.revenue))return null;return Number(row[s.key]||0)}
+  // Средняя позиция приходит отдельно (статистика поисковых кластеров по дням); дни без неё — тоже разрыв.
+  function chartValue(s,row,byDay){if(s.card)return Number(byDay.get(`${s.card}:${row.date}`)?.spend||0);if(s.key==='drr'&&!Number(row.revenue))return null;if(s.key==='avgPosition')return state.positions.get(row.date)??null;return Number(row[s.key]||0)}
   const $=s=>document.querySelector(s), number=v=>Number(v||0).toLocaleString('ru-RU',{maximumFractionDigits:2}), money=v=>`${number(v)} ₽`, percent=v=>`${number(v)}%`, date=v=>{const d=new Date(`${v}T00:00:00Z`);return Number.isNaN(d.getTime())?v:d.toLocaleDateString('ru-RU')}, esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c])), total=k=>state.rows.reduce((s,r)=>s+Number(r[k]||0),0), average=k=>state.rows.length?total(k)/state.rows.length:0;
   const fmt=(k,v)=>k==='date'?date(v):['spend','revenue','cpc'].includes(k)?money(v):['ctr','drr'].includes(k)?percent(v):number(v);
   function sorted(rows, sort){return [...rows].sort((a,b)=>{const av=a[sort.key]??'',bv=b[sort.key]??'',r=typeof av==='number'&&typeof bv==='number'?av-bv:String(av).localeCompare(String(bv),'ru',{numeric:true});return sort.direction==='asc'?r:-r})}
@@ -18,7 +19,9 @@
   function bindPhotoPreviews(selector){document.querySelectorAll(`${selector} .product-photo`).forEach(image=>{if(image.dataset.previewBound)return;image.dataset.previewBound='1';bindPhotoPreview(image)})}
   // Дата создания берётся из строки WB (время московское), чтобы часовой пояс браузера не сдвигал день.
   const createdDate=value=>{const match=String(value||'').match(/^(\d{4})-(\d{2})-(\d{2})/);return match?`${match[3]}.${match[2]}.${match[1]}`:''};
-  function renderMeta(c){const tags=[c.paymentType?String(c.paymentType).toUpperCase():'',AD_BIDS[String(c.bidType)]||c.bidType||'',AD_STATUSES[Number(c.status)]||''],created=createdDate(c.createdAt);$('#campaignMeta').innerHTML=tags.filter(Boolean).map(x=>`<b>${esc(x)}</b>`).join('')+(created?`<span class="campaign-created">Создана ${created}</span>`:'')}
+  // Идут показы — зеленоватая плашка, на паузе — красноватая.
+  const AD_STATUS_CLASSES={9:'status-running',11:'status-paused'};
+  function renderMeta(c){state.paymentType=String(c.paymentType||'').toLowerCase();const status=AD_STATUSES[Number(c.status)]||'',tags=[c.paymentType?String(c.paymentType).toUpperCase():'',AD_BIDS[String(c.bidType)]||c.bidType||''],created=createdDate(c.createdAt);$('#campaignMeta').innerHTML=tags.filter(Boolean).map(x=>`<b>${esc(x)}</b>`).join('')+(status?`<b class="${AD_STATUS_CLASSES[Number(c.status)]||''}">${esc(status)}</b>`:'')+(created?`<span class="campaign-created">Создана ${created}</span>`:'')}
   function renderSummary(c){const cards=[['Показы',number(c.views)],['Клики',number(c.clicks)],['Рекламные заказы',number(c.orders)],['Сумма заказов',money(c.revenue)],['Затраты',money(c.spend)],['ДРР за период',percent(Number(c.revenue)?Number(c.spend||0)/Number(c.revenue)*100:0)],['Средний CTR',percent(average('ctr'))],['Средний CPC',money(average('cpc'))],['Добавления в корзину',number(total('carts'))],['Отмены',number(total('canceled'))]];$('#summary').innerHTML=cards.map(x=>`<div class="metric"><span>${x[0]}</span><strong>${x[1]}</strong></div>`).join('')}
   function renderTable(){const rows=sorted(state.rows,state.sort);const sum=totals(state.rows);const head=`<tr class="total-row"><td>Итого · ${number(state.rows.length)} дн.</td>${columns.slice(1).map(k=>`<td>${esc(fmt(k,sum[k]))}</td>`).join('')}</tr>`;$('#dailyBody').innerHTML=rows.length?head+rows.map(r=>`<tr>${columns.map(k=>`<td>${k==='drr'&&!Number(r.revenue)&&Number(r.spend)?'<span title="Нет рекламной выручки — ДРР не определён">—</span>':esc(fmt(k,r[k]))}</td>`).join('')}</tr>`).join(''):'<tr><td colspan="11" class="empty">Нет дневных данных за выбранный период</td></tr>'}
   function aggregateProducts(){
@@ -26,7 +29,9 @@
     for(const row of state.productDaily){const key=String(row.nmId||'');if(!key)continue;let total=totals.get(key);if(!total){total={nmId:row.nmId,name:'',photo:'',vendorCode:''};sumKeys.forEach(k=>total[k]=0);totals.set(key,total)}if(!total.name&&row.name)total.name=row.name;if(!total.photo&&row.photo)total.photo=row.photo;if(!total.vendorCode&&row.vendorCode)total.vendorCode=row.vendorCode;sumKeys.forEach(k=>total[k]+=Number(row[k]||0));}
     return [...totals.values()].map(row=>({...row,name:row.name||`Товар ${row.nmId}`,ctr:row.views?row.clicks/row.views*100:0,cpc:row.clicks?row.spend/row.clicks:0,drr:row.revenue?row.spend/row.revenue*100:0}));
   }
-  function renderProductTable(){const rows=sorted(aggregateProducts(),state.productSort);const sum=totals(rows);const head=`<tr class="total-row"><td>Итого</td><td>${number(rows.length)} артикулов</td>${['views','clicks','ctr','cpc','carts','orders','canceled','revenue','spend','drr'].map(k=>`<td>${esc(fmt(k,sum[k]))}</td>`).join('')}</tr>`;$('#productDailyBody').innerHTML=rows.length?head+rows.map(r=>`<tr><td><button class="product-link" type="button" data-product-id="${esc(r.nmId)}">${esc(r.nmId||'—')}</button></td><td>${photoCell(r)}</td>${['views','clicks','ctr','cpc','carts','orders','canceled','revenue','spend','drr'].map(k=>`<td>${esc(fmt(k,r[k]))}</td>`).join('')}</tr>`).join(''):'<tr><td colspan="12" class="empty">Нет данных по артикулам за выбранный период</td></tr>';$('#productDailyBody').querySelectorAll('[data-product-id]').forEach(button=>button.onclick=()=>openProductModal(button.dataset.productId));bindPhotoPreviews('#productDailyBody')}
+  // Детализация артикула по дням открывается кнопкой со стрелкой слева от названия.
+  const productOpenButton=row=>`<button class="product-open" type="button" data-product-id="${esc(row.nmId)}" title="Статистика артикула по дням" aria-label="Статистика артикула ${esc(row.nmId)} по дням"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5.5 10.5l5-5M6.5 5.5h4v4"/></svg></button>`;
+  function renderProductTable(){const rows=sorted(aggregateProducts(),state.productSort);const sum=totals(rows);const head=`<tr class="total-row"><td>Итого · ${number(rows.length)} ${plural(rows.length,['артикул','артикула','артикулов'])}</td><td></td>${['views','clicks','ctr','cpc','carts','orders','canceled','revenue','spend','drr'].map(k=>`<td>${esc(fmt(k,sum[k]))}</td>`).join('')}</tr>`;$('#productDailyBody').innerHTML=rows.length?head+rows.map(r=>`<tr><td><div class="product-name-cell">${productOpenButton(r)}${photoCell(r)}</div></td><td>${esc(r.nmId||'—')}</td>${['views','clicks','ctr','cpc','carts','orders','canceled','revenue','spend','drr'].map(k=>`<td>${esc(fmt(k,r[k]))}</td>`).join('')}</tr>`).join(''):'<tr><td colspan="12" class="empty">Нет данных по артикулам за выбранный период</td></tr>';$('#productDailyBody').querySelectorAll('[data-product-id]').forEach(button=>button.onclick=()=>openProductModal(button.dataset.productId));bindPhotoPreviews('#productDailyBody')}
   function openProductModal(nmId){const rows=state.productDaily.filter(row=>String(row.nmId)===String(nmId)).sort((a,b)=>String(a.date).localeCompare(String(b.date)));const first=rows.find(row=>row.name)||rows[0]||{};$('#productModalTitle').textContent=`Артикул ${nmId} · ${first.name||'Статистика по дням'}`;$('#productModalBody').innerHTML=rows.length?`<tr class="total-row"><td>Итого · ${number(rows.length)} дн.</td>${['views','clicks','ctr','cpc','carts','orders','canceled','revenue','spend','drr'].map(k=>`<td>${esc(fmt(k,totals(rows)[k]))}</td>`).join('')}</tr>`+rows.map(r=>`<tr>${['date','views','clicks','ctr','cpc','carts','orders','canceled','revenue','spend','drr'].map(k=>`<td>${esc(fmt(k,r[k]))}</td>`).join('')}</tr>`).join(''):'<tr><td colspan="11" class="empty">Нет дневных данных по этому артикулу</td></tr>';$('#productModal').hidden=false}
   function closeProductModal(){$('#productModal').hidden=true}
   function renderOptions(){const cards=[...new Map(state.productDaily.map(r=>[String(r.nmId),r])).values()];$('#chartOptions').innerHTML=chartMetrics.map(m=>`<label><input type="checkbox" data-chart-key="${m.key}" ${state.visibleMetrics.has(m.key)?'checked':''}> ${m.label}</label>`).join('')+cards.map((c,i)=>`<label><input type="checkbox" data-card-key="${esc(c.nmId)}" ${state.visibleCards.has(String(c.nmId))?'checked':''}> Артикул ${esc(c.nmId)}</label>`).join('');$('#chartOptions').querySelectorAll('[data-chart-key]').forEach(i=>i.onchange=()=>{i.checked?state.visibleMetrics.add(i.dataset.chartKey):state.visibleMetrics.delete(i.dataset.chartKey);renderChart()});$('#chartOptions').querySelectorAll('[data-card-key]').forEach(i=>i.onchange=()=>{i.checked?state.visibleCards.add(i.dataset.cardKey):state.visibleCards.delete(i.dataset.cardKey);renderChart()})}
@@ -127,49 +132,19 @@
     renderExportProgress();
     return event.type==='result'?event:null;
   }
-  const keywords={data:null,loading:false,error:'',product:'',search:'',onlyInactive:false,grade:'',sort:{key:'views',direction:'desc'},limit:200,selected:new Set(),busy:false,shown:[],ranges:{}};
-  // Первые три столбца (запрос, статус, оценка) рисуются отдельно, остальные — через keywordValue.
-  const KEYWORD_COLUMNS=['query','status','gradeScore','views','clicks','ctr','cpm','cpc','spend','spendShare','carts','cartCost','orders','cr','cpo','avgPosition'];
-  // --- Оценка ключевых запросов по правилам: каждый запрос сравнивается со средним по кампании за период ---
-  // Основа — стоимость заказа (CPO). Если заказов в кампании меньше десяти, по ним мало что видно (почти всё уйдёт
-  // в «Мало данных»), поэтому сравнение идёт по стоимости корзины: корзин обычно в разы больше.
-  // Запрос без заказов считается плохим, только когда кликов у него вдвое больше, чем в среднем нужно на один заказ,
-  // и потрачено не меньше средней стоимости заказа; иначе это «Мало данных», а не провал.
-  const KEYWORD_GRADES={good:{label:'Хороший',plural:'Хорошие',rank:4},watch:{label:'Наблюдать',plural:'Наблюдать',rank:3},little:{label:'Мало данных',plural:'Мало данных',rank:2},bad:{label:'Плохой',plural:'Плохие',rank:1}};
-  const KEYWORD_MIN_ORDERS=10,KEYWORD_WATCH_RATIO=1.5;
-  const ratioText=value=>Number(value).toLocaleString('ru-RU',{maximumFractionDigits:1});
+  const KEYWORD_PAGE_SIZE=100;
+  const keywords={data:null,loading:false,error:'',product:'',search:'',onlyInactive:false,sort:{key:'views',direction:'desc'},page:1,selected:new Set(),busy:false,shown:[],ranges:{}};
+  // Первые два столбца (запрос, статус) рисуются отдельно, остальные — через keywordValue.
+  const KEYWORD_COLUMNS=['query','status','views','clicks','ctr','cpm','cpc','spend','spendShare','carts','cartCost','orders','cr','cpo','avgPosition'];
   const plural=(count,forms)=>{const n=Math.abs(Number(count)||0)%100,d=n%10;return forms[n>10&&n<20?2:d===1?0:d>1&&d<5?1:2]};
-  const clicksText=count=>`${number(count)} ${plural(count,['клик','клика','кликов'])}`;
-  function keywordBenchmark(rows){
-    const sum=key=>rows.reduce((total,row)=>total+Number(row[key]||0),0),spend=sum('spend'),clicks=sum('clicks'),orders=sum('orders'),carts=sum('carts');
-    const byOrders=orders>=KEYWORD_MIN_ORDERS,count=byOrders?orders:carts;
-    return {spend,clicks,byOrders,count,key:byOrders?'orders':'carts',cost:byOrders?'CPO':'Цена корзины',unit:byOrders?'заказ':'корзина',none:byOrders?'заказов':'корзин',
-      unitCost:count?spend/count:null,clicksPerUnit:count?clicks/count:null};
-  }
-  function gradeKeyword(row,b){
-    const spend=Number(row.spend||0),clicks=Number(row.clicks||0),count=Number(row[b.key]||0);
-    if(!spend&&!clicks)return null;
-    if(!b.unitCost)return {grade:'little',reason:`В кампании пока нет ${b.none} — сравнивать не с чем`};
-    const average=money(b.unitCost);
-    if(count){
-      const cost=spend/count,ratio=cost/b.unitCost,diff=Math.round(Math.abs(1-ratio)*100);
-      const versus=diff<5?`на уровне среднего (${average})`:ratio<1?`на ${diff}% ниже среднего (${average})`:ratio<=2?`на ${diff}% выше среднего (${average})`:`в ${ratioText(ratio)} раза выше среднего (${average})`;
-      return {grade:ratio<=1?'good':ratio<=KEYWORD_WATCH_RATIO?'watch':'bad',reason:`${b.cost} ${money(cost)} — ${versus}`};
-    }
-    const need=Math.round(b.clicksPerUnit);
-    if(clicks>=2*b.clicksPerUnit&&spend>=b.unitCost)return {grade:'bad',reason:`0 ${b.none} за ${clicksText(clicks)} (в среднем ${b.unit} на ${clicksText(need)}), потрачено ${money(spend)}`};
-    return {grade:'little',reason:`${clicksText(clicks)} без ${b.none} — мало для вывода (в среднем ${b.unit} на ${clicksText(need)})`};
-  }
-  // Строки текущего артикула (или всех) с долей расходов, ценой корзины, CPO и оценкой; среднее — по всем строкам вида.
+  // Исключать запросы (минус-фразы) WB позволяет только в кампаниях с оплатой за показы.
+  const keywordsCpc=()=>state.paymentType==='cpc'||keywords.data?.viewsAvailable===false;
+  // Строки текущего артикула (или всех) с долей расходов, ценой корзины и CPO.
   function keywordView(){
-    const data=keywords.data;if(!data)return {rows:[],benchmark:null};
-    const base=keywords.product?(data.byNmId?.[keywords.product]||[]):(data.total||[]),benchmark=keywordBenchmark(base);
-    const rows=base.map(row=>{
-      const spend=Number(row.spend||0),graded=gradeKeyword(row,benchmark);
-      return {...row,spendShare:benchmark.spend?spend/benchmark.spend*100:0,cartCost:row.carts?spend/row.carts:null,cpo:row.orders?spend/row.orders:null,
-        grade:graded?.grade||'',gradeReason:graded?.reason||'',gradeScore:graded?KEYWORD_GRADES[graded.grade].rank:null};
-    });
-    return {rows,benchmark};
+    const data=keywords.data;if(!data)return {rows:[]};
+    const base=keywords.product?(data.byNmId?.[keywords.product]||[]):(data.total||[]),spend=base.reduce((total,row)=>total+Number(row.spend||0),0);
+    const rows=base.map(row=>({...row,spendShare:spend?Number(row.spend||0)/spend*100:0,cartCost:row.carts?Number(row.spend||0)/row.carts:null,cpo:row.orders?Number(row.spend||0)/row.orders:null}));
+    return {rows};
   }
   const KEYWORD_STATUSES={active:'Активен',excluded:'Неактивен',archived:'В архиве'};
   const keywordStatusCell=row=>row.status?`<span class="keyword-status ${row.status}">${KEYWORD_STATUSES[row.status]}</span>`:'<span class="keyword-status archived">Нет данных</span>';
@@ -181,27 +156,11 @@
     // Фильтры «от — до» над столбцами: строка без значения (прочерк) при заданной границе не проходит.
     const ranges=Object.entries(keywords.ranges).filter(([,range])=>range.min!=null||range.max!=null);
     const inRanges=row=>ranges.every(([key,range])=>{const value=row[key];if(value==null)return false;return (range.min==null||value>=range.min)&&(range.max==null||value<=range.max)});
-    const filtered=view.rows.filter(row=>(!term||row.query.toLowerCase().includes(term))&&(!keywords.onlyInactive||row.status==='excluded'||row.status==='archived')&&(!keywords.grade||row.grade===keywords.grade)&&inRanges(row));
+    const filtered=view.rows.filter(row=>(!term||row.query.toLowerCase().includes(term))&&(!keywords.onlyInactive||row.status==='excluded'||row.status==='archived')&&inRanges(row));
     // Без показов (CPC-кампании) сортировка по показам, CTR или CPM ничего не упорядочит — тогда сортируем по кликам.
     const unknown=data.viewsAvailable===false&&['views','ctr','cpm'].includes(keywords.sort.key),sort=unknown?{key:'clicks',direction:keywords.sort.direction}:keywords.sort;
-    // Строки без значения (нет заказов для CPO, нет корзин для их цены, нет оценки) всегда в конце, в любом направлении.
+    // Строки без значения (нет заказов для CPO, нет корзин для их цены) всегда в конце, в любом направлении.
     return [...sorted(filtered.filter(row=>row[sort.key]!=null),sort),...filtered.filter(row=>row[sort.key]==null)];
-  }
-  // Блок над таблицей: сколько запросов в каждой оценке, сколько денег на них ушло, кандидаты на отключение.
-  function renderKeywordInsights(view){
-    const box=$('#keywordInsights');if(!box)return;
-    const b=view.benchmark,graded=view.rows.filter(row=>row.grade);
-    if(!b||!graded.length){box.innerHTML='';return}
-    const cards=['good','watch','bad','little'].map(grade=>{
-      const list=graded.filter(row=>row.grade===grade),spend=list.reduce((total,row)=>total+Number(row.spend||0),0);
-      return `<button type="button" class="keyword-grade-card ${grade} ${keywords.grade===grade?'active':''}" data-keyword-grade="${grade}"><b>${number(list.length)}</b><span>${KEYWORD_GRADES[grade].plural}</span><small>${money(spend)} · ${percent(b.spend?spend/b.spend*100:0)} расходов</small></button>`;
-    }).join('');
-    const cost=b.byOrders?b.cost:b.cost.toLowerCase();
-    const basis=b.unitCost?`Сравнение со средним по кампании: ${cost} ${money(b.unitCost)}, ${b.unit} в среднем на ${clicksText(Math.round(b.clicksPerUnit))}${b.byOrders?'':` (заказов меньше ${KEYWORD_MIN_ORDERS} — по ним выводы ненадёжны, поэтому оценка по корзинам)`}. Хороший — ${cost} не выше среднего; наблюдать — до ${ratioText(KEYWORD_WATCH_RATIO)}× среднего; плохой — выше или 0 ${b.none} при вдвое большем числе кликов, чем обычно нужно.`:`В кампании пока нет ${b.none} — оценивать запросы не с чем.`;
-    const bad=graded.filter(row=>row.grade==='bad').sort((x,y)=>Number(y.spend||0)-Number(x.spend||0)).slice(0,5);
-    box.innerHTML=`<div class="keyword-grade-cards">${cards}</div><p class="keyword-basis">${esc(basis)}</p>`+
-      (bad.length?`<div class="keyword-candidates"><strong>Кандидаты на отключение</strong>${bad.map(row=>`<span><b>${esc(row.query)}</b> — ${esc(money(row.spend))} · ${esc(row.gradeReason)}</span>`).join('')}</div>`:'');
-    box.querySelectorAll('[data-keyword-grade]').forEach(button=>button.onclick=()=>{const grade=button.dataset.keywordGrade;keywords.grade=keywords.grade===grade?'':grade;$('#keywordGrade').value=keywords.grade;renderKeywords()});
   }
   function keywordStatusNote(rows){
     const off=rows.filter(row=>row.status==='excluded').length,archived=rows.filter(row=>row.status==='archived').length;
@@ -234,41 +193,59 @@
     if(!note)return;
     const data=keywords.data;
     select.innerHTML='<option value="">Все артикулы</option>'+(data?.products||[]).map(product=>`<option value="${esc(product.nmId)}" ${String(product.nmId)===keywords.product?'selected':''}>${esc(product.vendorCode||product.name)} · ${esc(product.nmId)}</option>`).join('');
-    if(keywords.loading&&!data){note.textContent='Загрузка ключевых запросов…';body.innerHTML='';renderKeywordInsights({rows:[],benchmark:null});return}
-    if(keywords.error&&!data){note.textContent=`Ошибка: ${keywords.error}`;body.innerHTML='';renderKeywordInsights({rows:[],benchmark:null});return}
-    if(!data){note.textContent='';body.innerHTML='';renderKeywordInsights({rows:[],benchmark:null});return}
-    const view=keywordView(),rows=keywordRows(view),shown=rows.slice(0,keywords.limit),totals=keywordTotals(rows);
-    renderKeywordInsights(view);
+    if(keywords.loading&&!data){note.textContent='Загрузка ключевых запросов…';body.innerHTML='';renderKeywordPagination(0);return}
+    if(keywords.error&&!data){note.textContent=`Ошибка: ${keywords.error}`;body.innerHTML='';renderKeywordPagination(0);return}
+    if(!data){note.textContent='';body.innerHTML='';renderKeywordPagination(0);return}
+    const view=keywordView(),rows=keywordRows(view),totals=keywordTotals(rows);
+    const pageCount=Math.ceil(rows.length/KEYWORD_PAGE_SIZE);keywords.page=Math.min(Math.max(1,keywords.page),Math.max(1,pageCount));
+    const shown=rows.slice((keywords.page-1)*KEYWORD_PAGE_SIZE,keywords.page*KEYWORD_PAGE_SIZE);
+    // В CPC-кампаниях галочек и панели «Исключить/Включить» нет.
+    const cpc=keywordsCpc();if(cpc)keywords.selected.clear();
+    document.querySelector('.keywords-table').classList.toggle('no-select',cpc);
     const notes=[`${date(data.period.from)} — ${date(data.period.to)}`,`запросов: ${number(rows.length)}`,...keywordStatusNote(rows)];
     if(keywords.product)notes.push('по одному артикулу');
     const rangeCount=Object.values(keywords.ranges).filter(range=>range.min!=null||range.max!=null).length;
     if(rangeCount)notes.push(`фильтров по столбцам: ${number(rangeCount)}`);
     $('#keywordRangeReset').hidden=!rangeCount;
-    if(rows.length>shown.length)notes.push(`показаны первые ${number(shown.length)}`);
     // У кампаний с оплатой за клики WB не отдаёт показы по запросам — столбцы «Показы», «CTR» и «CPM» скрываются.
     document.querySelector('.keywords-table').classList.toggle('no-views',data.viewsAvailable===false);
     if(data.viewsAvailable===false)notes.push('кампания с оплатой за клики (CPC): показы, CTR и CPM по запросам WB не отдаёт, поэтому эти столбцы скрыты');
+    if(cpc)notes.push('исключать запросы в CPC-кампаниях WB не позволяет');
     if(data.fromFile)notes.push('из сохранённого файла');
     if(keywords.loading)notes.push('обновляем…');
     if(keywords.error)notes.push(`ошибка обновления: ${keywords.error}`);
     (data.warnings||[]).forEach(text=>notes.push(text));
     note.textContent=notes.join(' · ');
-    const gradeCell=row=>row.grade?`<span class="keyword-grade ${row.grade}" title="${esc(row.gradeReason)}">${KEYWORD_GRADES[row.grade].label}</span>`:'<span class="keyword-grade none" title="Нет кликов и затрат за период">—</span>';
-    const empty=keywords.grade?`Запросов с оценкой «${KEYWORD_GRADES[keywords.grade].label}» нет`:keywords.onlyInactive?'Неактивных запросов нет':'WB не вернул поисковые запросы за этот период';
+    const empty=keywords.search.trim()||rangeCount?'Нет запросов по заданным фильтрам':keywords.onlyInactive?'Неактивных запросов нет':'WB не вернул поисковые запросы за этот период';
     keywords.shown=shown;
     const rowClass=row=>[row.status==='excluded'||row.status==='archived'?'keyword-off':'',keywords.selected.has(row.query)?'keyword-selected':''].filter(Boolean).join(' ');
-    body.innerHTML=rows.length?`<tr class="total-row"><td></td><td>Итого · ${number(rows.length)} запросов</td><td></td><td></td>${KEYWORD_COLUMNS.slice(3).map(key=>`<td>${esc(keywordValue(key,totals[key]))}</td>`).join('')}</tr>`+
-      shown.map(row=>`<tr class="${rowClass(row)}"><td><input type="checkbox" data-keyword-select="${esc(row.query)}" ${keywords.selected.has(row.query)?'checked':''} aria-label="Выбрать запрос «${esc(row.query)}»"></td><td><span class="keyword-query"><button type="button" class="keyword-chart-button" data-keyword-daily="${esc(row.query)}" title="Статистика по дням" aria-label="Статистика запроса «${esc(row.query)}» по дням"><svg viewBox="0 0 16 16" aria-hidden="true"><rect x="1.75" y="1.75" width="12.5" height="12.5" rx="3"/><path d="M4.5 10.5l2.5-3 2 2 2.5-4"/></svg></button><span>${esc(row.query)}</span></span></td><td>${keywordStatusCell(row)}</td><td>${gradeCell(row)}</td>${KEYWORD_COLUMNS.slice(3).map(key=>`<td>${esc(keywordValue(key,row[key]))}</td>`).join('')}</tr>`).join(''):
+    body.innerHTML=rows.length?`<tr class="total-row"><td></td><td>Итого · ${number(rows.length)} ${plural(rows.length,['запрос','запроса','запросов'])}</td><td></td>${KEYWORD_COLUMNS.slice(2).map(key=>`<td>${esc(keywordValue(key,totals[key]))}</td>`).join('')}</tr>`+
+      shown.map(row=>`<tr class="${rowClass(row)}"><td><input type="checkbox" data-keyword-select="${esc(row.query)}" ${keywords.selected.has(row.query)?'checked':''} aria-label="Выбрать запрос «${esc(row.query)}»"></td><td><span class="keyword-query"><button type="button" class="keyword-chart-button" data-keyword-daily="${esc(row.query)}" title="Статистика по дням" aria-label="Статистика запроса «${esc(row.query)}» по дням"><svg viewBox="0 0 16 16" aria-hidden="true"><rect x="1.75" y="1.75" width="12.5" height="12.5" rx="3"/><path d="M4.5 10.5l2.5-3 2 2 2.5-4"/></svg></button>${keywordTagButton(row.query)}<span>${esc(row.query)}</span></span></td><td>${keywordStatusCell(row)}</td>${KEYWORD_COLUMNS.slice(2).map(key=>`<td>${esc(keywordValue(key,row[key]))}</td>`).join('')}</tr>`).join(''):
       `<tr><td colspan="${KEYWORD_COLUMNS.length+1}" class="empty">${empty}</td></tr>`;
+    renderKeywordPagination(pageCount);
     renderKeywordActions();
   }
-  document.querySelectorAll('th[data-keyword-key]').forEach(header=>header.onclick=()=>{const key=header.dataset.keywordKey;keywords.sort=keywords.sort.key===key?{key,direction:keywords.sort.direction==='asc'?'desc':'asc'}:{key,direction:key==='query'?'asc':'desc'};renderKeywords()});
-  $('#keywordProduct').onchange=event=>{keywords.product=event.target.value;keywords.selected.clear();renderKeywords()};
+  // Страницы по 100 запросов — как пагинация на остальных страницах сайта.
+  function renderKeywordPagination(pageCount){
+    const el=$('#keywordPagination');
+    if(pageCount<=1){el.innerHTML='';el.hidden=true;return}
+    el.hidden=false;
+    el.innerHTML=`<button type="button" class="page-button" data-keyword-page="prev" ${keywords.page===1?'disabled':''}>Назад</button><div class="page-numbers">${Array.from({length:pageCount},(_,index)=>index+1).map(page=>`<button type="button" class="page-button ${page===keywords.page?'active':''}" data-keyword-page="${page}" aria-current="${page===keywords.page?'page':'false'}">${page}</button>`).join('')}</div><button type="button" class="page-button" data-keyword-page="next" ${keywords.page===pageCount?'disabled':''}>Вперёд</button>`;
+  }
+  $('#keywordPagination').addEventListener('click',event=>{
+    const button=event.target.closest('[data-keyword-page]');if(!button||button.disabled)return;
+    const target=button.dataset.keywordPage,page=target==='prev'?keywords.page-1:target==='next'?keywords.page+1:Number(target);
+    if(!Number.isInteger(page)||page===keywords.page)return;
+    keywords.page=page;renderKeywords();
+    $('#keywordsNote').closest('.panel').scrollIntoView({behavior:'smooth',block:'start'});
+  });
+  document.querySelectorAll('th[data-keyword-key]').forEach(header=>header.onclick=()=>{const key=header.dataset.keywordKey;keywords.sort=keywords.sort.key===key?{key,direction:keywords.sort.direction==='asc'?'desc':'asc'}:{key,direction:key==='query'?'asc':'desc'};keywords.page=1;renderKeywords()});
+  $('#keywordProduct').onchange=event=>{keywords.product=event.target.value;keywords.selected.clear();keywords.page=1;renderKeywords()};
   // Поля «От» и «До» в заголовках числовых столбцов. Клик по ним не сортирует таблицу; ввод применяется с короткой задержкой.
   // Проценты и рубли вводятся как в ячейках: «5» в CTR — это 5%, «150» в CPO — 150 ₽; запятая и точка равноценны.
   let keywordRangeTimer=0;
   document.querySelectorAll('th[data-keyword-key]').forEach(header=>{
-    const key=header.dataset.keywordKey;if(!KEYWORD_COLUMNS.slice(3).includes(key))return;
+    const key=header.dataset.keywordKey;if(!KEYWORD_COLUMNS.slice(2).includes(key))return;
     const box=document.createElement('span');box.className='keyword-range';
     const name=header.textContent.replace('↕','').trim();
     box.innerHTML=`<input type="text" inputmode="decimal" placeholder="От" data-range-key="${key}" data-range-side="min" aria-label="${esc(name)}: от"><input type="text" inputmode="decimal" placeholder="До" data-range-key="${key}" data-range-side="max" aria-label="${esc(name)}: до">`;
@@ -282,9 +259,34 @@
     const range=keywords.ranges[input.dataset.rangeKey]||(keywords.ranges[input.dataset.rangeKey]={min:null,max:null});
     range[input.dataset.rangeSide]=Number.isFinite(value)?value:null;
     input.classList.toggle('filled',range[input.dataset.rangeSide]!=null);
-    clearTimeout(keywordRangeTimer);keywordRangeTimer=setTimeout(renderKeywords,250);
+    clearTimeout(keywordRangeTimer);keywordRangeTimer=setTimeout(()=>{keywords.page=1;renderKeywords()},250);
   });
-  $('#keywordRangeReset').onclick=()=>{keywords.ranges={};document.querySelectorAll('[data-range-key]').forEach(input=>{input.value='';input.classList.remove('filled','invalid')});renderKeywords()};
+  $('#keywordRangeReset').onclick=()=>{keywords.ranges={};document.querySelectorAll('[data-range-key]').forEach(input=>{input.value='';input.classList.remove('filled','invalid')});keywords.page=1;renderKeywords()};
+  // Поиск стоит в заголовке столбца «Запрос»: клик по полю не сортирует таблицу.
+  $('#keywordSearch').addEventListener('click',event=>event.stopPropagation());
+  // Средняя позиция по дням для графика — догружается после выгрузки, график перерисовывается.
+  let positionsRequest=0;
+  async function loadPositions(period){
+    if(!period)return;const request=++positionsRequest;state.positions=new Map();
+    try{
+      const response=await fetch(`/api/advertising/campaign/positions?${new URLSearchParams({cabinet:params.get('cabinet')||'demo',id:params.get('id')||'',from:period.from,to:period.to})}`);
+      const result=await response.json();if(!response.ok)throw new Error(result.error||'');
+      if(request!==positionsRequest)return;
+      state.positions=new Map((result.days||[]).filter(day=>day.avgPosition!=null).map(day=>[day.date,day.avgPosition]));
+      renderChart();
+    }catch{/* без позиции график остаётся как есть */}
+  }
+  // --- Шапка: название ведёт в кампанию в кабинете продвижения WB, номер рядом копируется по клику ---
+  function renderCampaignHeader(result){
+    const id=result.campaign.id,period=result.period,link=$('#campaignWbLink'),idButton=$('#campaignId');
+    if(result.folder&&/^\d+$/.test(String(id)))link.href=`https://cmp.wildberries.ru/campaigns/edit/${encodeURIComponent(id)}?from=${period.from}T00:00:00Z&to=${period.to}T00:00:00Z`;
+    else link.removeAttribute('href');
+    idButton.textContent=id;idButton.dataset.copy=id;idButton.hidden=false;
+  }
+  $('#campaignId').onclick=event=>{const button=event.currentTarget,text=button.dataset.copy;navigator.clipboard?.writeText(text).then(()=>{button.textContent='Скопировано';setTimeout(()=>{button.textContent=text},1200)})};
+  // Кнопка «i»: подробности выгрузки видны при наведении, а на телефоне — по нажатию.
+  $('#campaignInfoButton').onclick=event=>{event.stopPropagation();event.currentTarget.closest('.info-wrap').classList.toggle('open')};
+  document.addEventListener('click',event=>{if(!event.target.closest('.info-wrap'))document.querySelector('.info-wrap')?.classList.remove('open')});
   // --- Блок «Размещение и ставки»: места размещения кампании и ставки товаров из настроек WB ---
   function renderSetup(setup){
     const panel=$('#setupPanel');if(!setup){panel.hidden=true;return}
@@ -342,11 +344,98 @@
   $('#keywordsBody').addEventListener('click',event=>{const button=event.target.closest('[data-keyword-daily]');if(button)openKeywordDaily(button.dataset.keywordDaily)});
   document.addEventListener('click',event=>{const metric=event.target.closest('[data-kwday-metric]');if(metric){keywordDaily.metric=metric.dataset.kwdayMetric;renderKeywordDaily()}if(event.target.closest('[data-kwday-close]'))closeKeywordDaily()});
   document.addEventListener('keydown',event=>{if(event.key==='Escape'&&!$('#keywordDailyModal').hidden)closeKeywordDaily()});
+  // --- Отметки ключевых запросов: «Важный» сочетается с любой, остальные — одна на запрос. Хранятся на сервере по кампании ---
+  const KEYWORD_TAGS={
+    important:{label:'Важный',desc:'Можно сочетать с любой отметкой',icon:'★',color:'#f0a04b'},
+    target:{label:'Целевой',desc:'Запрос точно подходит товару',icon:'◎',color:'#2f8f62'},
+    nearTarget:{label:'Околоцелевой',desc:'Смежный запрос: проверяем интерес к товару',icon:'✣',color:'#3f6fd6'},
+    nonTarget:{label:'Нецелевой',desc:'Покупатель ищет другой товар',icon:'✕',color:'#d4553f'},
+    promote:{label:'Продвигаем',desc:'Усиливаем показы по запросу',icon:'➚',color:'#2e7d32'},
+    test:{label:'Тестируем',desc:'Проверяем рекламную гипотезу',icon:'⚗',color:'#7b2fbf'},
+    traffic:{label:'Трафик',desc:'Запрос для привлечения трафика',icon:'≋',color:'#4a63d6'},
+    watch:{label:'Наблюдаем',desc:'Следим за результатом без изменений',icon:'◉',color:'#2b7bbf'},
+    unprofitable:{label:'Не окупается',desc:'Затраты не оправдывают результат',icon:'⊘',color:'#c0392b'},
+    profitable:{label:'Выгодно',desc:'Результат устраивает по затратам',icon:'₽',color:'#43a047'},
+    investigate:{label:'Разобраться',desc:'Есть вопрос: добавьте пояснение',icon:'?',color:'#e67e22'}};
+  const KEYWORD_TAG_ORDER=Object.keys(KEYWORD_TAGS).filter(key=>key!=='important');
+  keywords.tags={};keywords.tagColors={};keywords.tagsLoaded=false;
+  const tagColor=key=>keywords.tagColors[key]||KEYWORD_TAGS[key].color;
+  async function loadKeywordTags(){
+    try{const response=await fetch(`/api/keyword-tags?${new URLSearchParams({cabinet:params.get('cabinet')||'demo',id:params.get('id')||''})}`);const result=await response.json();if(!response.ok)throw new Error(result.error);
+      keywords.tags=result.tags||{};keywords.tagColors=result.colors||{};keywords.tagsLoaded=true;renderKeywords()}catch{/* без отметок таблица работает как раньше */}
+  }
+  function keywordTagButton(query){
+    const tag=keywords.tags[query]||{};
+    if(!tag.tag&&!tag.important)return `<button type="button" class="keyword-tag-add" data-keyword-tag="${esc(query)}" title="Добавить отметку" aria-label="Добавить отметку запросу «${esc(query)}»">+</button>`;
+    const title=[tag.important?KEYWORD_TAGS.important.label:'',tag.tag?KEYWORD_TAGS[tag.tag].label:''].filter(Boolean).join(' · ');
+    // В строке — только иконки отметок, названия видны при наведении.
+    const main=tag.tag?`<i style="color:${tagColor(tag.tag)}">${KEYWORD_TAGS[tag.tag].icon}</i>`:'';
+    return `<button type="button" class="keyword-tag-set" data-keyword-tag="${esc(query)}" style="--tag:${tag.tag?tagColor(tag.tag):tagColor('important')}" title="${esc(title)} — изменить отметку" aria-label="Отметка «${esc(title)}», изменить">${tag.important?`<i style="color:${tagColor('important')}">★</i>`:''}${main}</button>`;
+  }
+  function closeTagMenu(){$('#keywordTagMenu').hidden=true}
+  function openTagMenu(query,anchor){
+    const menu=$('#keywordTagMenu'),tag=keywords.tags[query]||{};
+    menu.dataset.query=query;
+    menu.innerHTML=`<button type="button" class="tag-menu-close" data-tag-close aria-label="Закрыть">×</button><small class="tag-menu-caption">Отметка кластера</small><strong class="tag-menu-query">${esc(query)}</strong>`+
+      `<button type="button" class="tag-item ${tag.important?'active':''}" data-tag-important><i style="color:${tagColor('important')}">${tag.important?'★':'☆'}</i><span>${KEYWORD_TAGS.important.label}<small>${KEYWORD_TAGS.important.desc}</small></span></button><hr>`+
+      KEYWORD_TAG_ORDER.map(key=>`<button type="button" class="tag-item ${tag.tag===key?'active':''}" data-tag-set="${key}"><i style="color:${tagColor(key)}">${KEYWORD_TAGS[key].icon}</i><span>${KEYWORD_TAGS[key].label}<small>${KEYWORD_TAGS[key].desc}</small></span></button>`).join('')+
+      `<hr><button type="button" class="tag-item" data-tag-clear ${tag.tag||tag.important?'':'disabled'}><i>⌫</i><span>Убрать отметку</span></button><button type="button" class="tag-colors-link" data-tag-colors>⚙ Настроить цвета отметок</button>`;
+    menu.hidden=false;
+    // Меню у кнопки: вниз, если помещается, иначе в сторону, где больше места, с прокруткой внутри.
+    const rect=anchor.getBoundingClientRect(),below=window.innerHeight-rect.bottom-14,above=rect.top-14;
+    menu.style.maxHeight='none';
+    const full=menu.offsetHeight,down=full<=below||below>=above,height=Math.min(full,down?below:above);
+    menu.style.maxHeight=`${height}px`;
+    menu.style.left=`${Math.max(8,Math.min(rect.left,window.innerWidth-menu.offsetWidth-8))}px`;
+    menu.style.top=`${down?rect.bottom+6:rect.top-6-height}px`;
+  }
+  async function saveKeywordTag(query,change){
+    const before=keywords.tags[query]?{...keywords.tags[query]}:null;
+    const next=change.clear?{}:{...(before||{})};
+    if(!change.clear){if('tag' in change){if(change.tag)next.tag=change.tag;else delete next.tag}if('important' in change){if(change.important)next.important=true;else delete next.important}}
+    if(next.tag||next.important)keywords.tags[query]=next;else delete keywords.tags[query];
+    renderKeywords();
+    try{const response=await fetch('/api/keyword-tags',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({cabinet:params.get('cabinet')||'demo',id:params.get('id')||'',query,...change})});
+      const result=await response.json();if(!response.ok)throw new Error(result.error||'не сохранилось');
+      if(result.tag)keywords.tags[query]=result.tag;else delete keywords.tags[query];}
+    catch(e){if(before)keywords.tags[query]=before;else delete keywords.tags[query];keywordMessage(`Отметка не сохранилась: ${e.message}`,'error')}
+    renderKeywords();
+  }
+  function openTagColors(){
+    closeTagMenu();
+    $('#tagColorsBody').innerHTML=Object.keys(KEYWORD_TAGS).map(key=>`<label class="tag-color-row"><i style="color:${tagColor(key)}">${KEYWORD_TAGS[key].icon}</i><span>${KEYWORD_TAGS[key].label}</span><input type="color" value="${tagColor(key)}" data-tag-color="${key}" aria-label="Цвет отметки «${KEYWORD_TAGS[key].label}»"></label>`).join('')+
+      `<div class="confirm-buttons"><button type="button" class="secondary" data-tag-colors-reset>По умолчанию</button><button type="button" data-tag-colors-save>Сохранить</button></div>`;
+    $('#tagColorsModal').hidden=false;
+  }
+  async function saveTagColors(colors){
+    try{const response=await fetch('/api/keyword-tags/colors',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({colors})});const result=await response.json();if(!response.ok)throw new Error(result.error);
+      keywords.tagColors=result.colors||{};$('#tagColorsModal').hidden=true;renderKeywords()}catch(e){keywordMessage(`Цвета не сохранились: ${e.message}`,'error')}
+  }
+  $('#keywordsBody').addEventListener('click',event=>{const button=event.target.closest('[data-keyword-tag]');if(!button)return;event.stopPropagation();const menu=$('#keywordTagMenu');if(!menu.hidden&&menu.dataset.query===button.dataset.keywordTag){closeTagMenu();return}openTagMenu(button.dataset.keywordTag,button)});
+  $('#keywordTagMenu').addEventListener('click',event=>{
+    // Меню перерисовывается при клике — без этого document увидит «внешний» клик и закроет его.
+    event.stopPropagation();
+    const query=$('#keywordTagMenu').dataset.query,tag=keywords.tags[query]||{};
+    if(event.target.closest('[data-tag-close]'))return closeTagMenu();
+    if(event.target.closest('[data-tag-colors]'))return openTagColors();
+    if(event.target.closest('[data-tag-important]')){saveKeywordTag(query,{important:!tag.important});const anchor=document.querySelector(`[data-keyword-tag="${CSS.escape(query)}"]`);if(anchor)openTagMenu(query,anchor);else closeTagMenu();return}
+    const set=event.target.closest('[data-tag-set]');if(set){saveKeywordTag(query,{tag:tag.tag===set.dataset.tagSet?'':set.dataset.tagSet});closeTagMenu();return}
+    if(event.target.closest('[data-tag-clear]')){saveKeywordTag(query,{clear:true});closeTagMenu()}
+  });
+  $('#tagColorsModal').addEventListener('click',event=>{
+    if(event.target.closest('[data-tag-colors-close]'))$('#tagColorsModal').hidden=true;
+    if(event.target.closest('[data-tag-colors-reset]'))saveTagColors({});
+    if(event.target.closest('[data-tag-colors-save]'))saveTagColors(Object.fromEntries([...document.querySelectorAll('[data-tag-color]')].filter(input=>input.value.toLowerCase()!==KEYWORD_TAGS[input.dataset.tagColor].color.toLowerCase()).map(input=>[input.dataset.tagColor,input.value])));
+  });
+  document.addEventListener('click',event=>{if(!$('#keywordTagMenu').hidden&&!event.target.closest('#keywordTagMenu'))closeTagMenu()});
+  document.addEventListener('keydown',event=>{if(event.key==='Escape'){closeTagMenu();$('#tagColorsModal').hidden=true}});
+  window.addEventListener('scroll',event=>{if(!$('#keywordTagMenu').contains(event.target))closeTagMenu()},true);
+  loadKeywordTags();
   // --- Исключение и включение выбранных запросов: галочки слева, нижняя панель действий, подтверждение ---
   // Сервер читает текущие минус-фразы каждого товара, добавляет или убирает выбранные запросы и перепроверяет результат.
   function selectedKeywordRows(){const rows=keywordView().rows;return rows.filter(row=>keywords.selected.has(row.query))}
   function renderKeywordActions(){
-    const bar=$('#keywordActions'),all=$('#keywordSelectAll'),selected=selectedKeywordRows();
+    const bar=$('#keywordActions'),all=$('#keywordSelectAll'),selected=keywordsCpc()?[]:selectedKeywordRows();
     bar.hidden=!selected.length;
     $('#keywordSelectedCount').textContent=`Выбрано: ${number(selected.length)}`;
     $('#keywordExclude').disabled=keywords.busy||!selected.some(row=>row.status!=='excluded');
@@ -358,6 +447,7 @@
   function keywordMessage(text,kind='ok'){const box=$('#keywordMessage');box.className=`keyword-message ${kind}`;box.textContent=text}
   function closeConfirm(){$('#confirmModal').hidden=true}
   function openKeywordConfirm(action){
+    if(keywordsCpc())return;
     const exclude=action==='exclude',rows=selectedKeywordRows().filter(row=>exclude?row.status!=='excluded':row.status==='excluded');
     if(!rows.length)return;
     const product=(keywords.data?.products||[]).find(item=>String(item.nmId)===keywords.product);
@@ -393,9 +483,8 @@
   $('#keywordClearSelection').onclick=()=>{keywords.selected.clear();renderKeywords()};
   document.addEventListener('click',event=>{if(event.target.closest('[data-confirm-close]'))closeConfirm()});
   document.addEventListener('keydown',event=>{if(event.key==='Escape'&&!$('#confirmModal').hidden)closeConfirm()});
-  $('#keywordSearch').oninput=event=>{keywords.search=event.target.value;renderKeywords()};
-  $('#keywordOnlyInactive').onchange=event=>{keywords.onlyInactive=event.target.checked;renderKeywords()};
-  $('#keywordGrade').onchange=event=>{keywords.grade=event.target.value;renderKeywords()};
+  $('#keywordSearch').oninput=event=>{keywords.search=event.target.value;keywords.page=1;renderKeywords()};
+  $('#keywordOnlyInactive').onchange=event=>{keywords.onlyInactive=event.target.checked;keywords.page=1;renderKeywords()};
   $('#keywordRefresh').onclick=()=>loadKeywords(keywords.data?.period||state.period,true);
   async function exportHistory(){
     const button=$('#exportHistory'),controls=[button,$('#exportPreset'),$('#exportFrom'),$('#exportTo')];
@@ -419,10 +508,10 @@
       }
       if(!result)throw new Error('Выгрузка прервалась без результата');
       state.rows=result.campaign.daily||[];state.productDaily=result.productDaily||[];
-      renderMeta(result.campaign);renderSummary(result.campaign);renderSetup(result.setup);renderOptions();renderChart();renderTable();renderProductTable();
-      $('#campaignTitle').textContent=result.campaign.name||`Кампания #${result.campaign.id}`;
+      renderMeta(result.campaign);renderSummary(result.campaign);renderSetup(result.setup);renderOptions();renderChart();renderTable();renderProductTable();loadPositions(result.activePeriod||result.period);
+      $('#campaignTitle').textContent=result.campaign.name||`Кампания #${result.campaign.id}`;renderCampaignHeader(result);
       state.period=result.activePeriod||result.period;loadKeywords(state.period);
-      $('#periodLabel').textContent=`Кампания #${result.campaign.id} · ${date(result.period.from)} — ${date(result.period.to)}${result.folder?` · ${result.folder}`:''}`;
+      $('#periodLabel').textContent=`${date(result.period.from)} — ${date(result.period.to)}${result.folder?` · ${result.folder}`:''}`;
       clearInterval(exportState.timer);
       const took=formatSeconds(Math.max(1,Math.round((Date.now()-exportState.started)/1000)));
       const saved=result.storedDays?` · из сохранённого: ${result.storedDays} дн.`:'';
@@ -441,7 +530,7 @@
       const headers=[...table.querySelectorAll('thead th')];
       if(!headers.length)return;
       table.dataset.resizable='1';table.classList.add('resizable-table');
-      const bodyId=table.querySelector('tbody[id]')?.id||`campaign-table-${tableIndex}`,storageKey=`wb-campaign-column-widths:${bodyId}`;
+      const bodyId=table.querySelector('tbody[id]')?.id||`campaign-table-${tableIndex}`,storageKey=`wb-campaign-column-widths:${bodyId}${table.dataset.widthsVersion?`:v${table.dataset.widthsVersion}`:''}`;
       let saved=[];try{saved=JSON.parse(localStorage.getItem(storageKey)||'[]')}catch{}
       if(saved.length===headers.length&&saved.every(Number.isFinite)){
         headers.forEach((header,index)=>header.style.width=`${saved[index]}px`);

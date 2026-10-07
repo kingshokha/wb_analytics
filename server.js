@@ -47,6 +47,9 @@ const ORDERS_LOOKUP_MAX_PAGES = 30;
 const CARGO_TYPES = { 0: 'Не указан', 1: 'Обычный', 2: 'СГТ', 3: 'КГТ' };
 const STOCK_PRESETS_FILE = path.join(ROOT, 'data', 'stock-presets.json');
 const PRICE_PRESETS_FILE = path.join(ROOT, 'data', 'price-presets.json');
+const KEYWORD_TAGS_FILE = path.join(ROOT, 'data', 'keyword-tags.json');
+// Отметки ключевых запросов: одна основная отметка на запрос плюс независимая «Важный».
+const KEYWORD_TAG_KEYS = ['target', 'nearTarget', 'nonTarget', 'promote', 'test', 'traffic', 'watch', 'unprofitable', 'profitable', 'investigate'];
 const PRESET_MAX_ITEMS = 200;
 const PRESET_MAX_COUNT = 50;
 const STOCK_PRESET_MAX_AMOUNT = 100_000;
@@ -985,6 +988,73 @@ function summarizeKeywordDaily(items = [], query, dates = []) {
     views: viewsAvailable ? row.views : null, ctr: viewsAvailable ? safeRatio(row.clicks, row.views) : null, cpm: viewsAvailable ? safeRatio(row.spend, row.views, 1000) : null,
     cpc: safeRatio(row.spend, row.clicks, 1), cr: safeRatio(row.orders, row.clicks), avgPosition: positionBase ? Math.round(positionWeight / positionBase * 10) / 10 : null })) };
 }
+// Средняя позиция кампании по дням: из статистики поисковых кластеров (/adv/v1/normquery/stats), взвешенная по показам
+// (у CPC-кампаний показов нет — тогда каждый кластер весит одинаково). Это позиция в поиске; дни без данных — null.
+function summarizePositionDaily(items = [], dates = []) {
+  const byDate = new Map(dates.map(date => [date, { weight: 0, base: 0 }]));
+  for (const item of items) for (const day of item.dailyStats || []) {
+    const stat = day.stat || {}; if (!stat.avgPos) continue;
+    const date = String(day.date || '').slice(0, 10); if (!byDate.has(date)) byDate.set(date, { weight: 0, base: 0 });
+    const weight = Number(stat.views) || 1, row = byDate.get(date);
+    row.weight += Number(stat.avgPos) * weight; row.base += weight;
+  }
+  return [...byDate].sort(([a], [b]) => a.localeCompare(b)).map(([date, row]) => ({ date, avgPosition: row.base ? Math.round(row.weight / row.base * 10) / 10 : null }));
+}
+async function campaignPositions(id, campaignId, from, to) {
+  const period = historyPeriod(from, to), dates = datesBetween(period.from, period.to);
+  if (id === 'demo' || !cabinets().length) return { demo: true, period, days: dates.map((date, index) => ({ date, avgPosition: 6 + (index * 7) % 9 })) };
+  if (!/^\d{1,15}$/.test(String(campaignId || ''))) throw apiError(400, 'Некорректный номер кампании');
+  const token = tokenFor(id);
+  const campaignData = await cachedAnalytics(`ad-campaigns:${id}`, () => wbRequest(token, AD_CAMPAIGNS_URL), 3 * 60_000);
+  const meta = (Array.isArray(campaignData?.adverts) ? campaignData.adverts : []).find(item => String(item.id) === String(campaignId));
+  if (!meta) throw apiError(404, 'Кампания не найдена');
+  const nmIds = campaignProductIds(meta).map(String).slice(0, 100);
+  if (!nmIds.length) return { demo: false, period, days: dates.map(date => ({ date, avgPosition: null })) };
+  const response = await cachedAnalytics(`keyword-daily:${id}:${campaignId}:${period.from}:${period.to}:${nmIds.join(',')}`, () => normqueryRequest(id, token,
+    { from: period.from, to: period.to, items: nmIds.map(nmId => ({ advertId: Number(campaignId), nmId: Number(nmId) })) }, NORMQUERY_DAILY_URL), 10 * 60_000);
+  return { demo: false, period, days: summarizePositionDaily(response?.items || [], dates) };
+}
+
+// --- Отметки ключевых запросов (data/keyword-tags.json) ---
+function readKeywordTags() {
+  try { const data = JSON.parse(fs.readFileSync(KEYWORD_TAGS_FILE, 'utf8')); return { colors: data.colors || {}, campaigns: data.campaigns || {} }; } catch { return { colors: {}, campaigns: {} }; }
+}
+function writeKeywordTags(data) {
+  fs.mkdirSync(path.dirname(KEYWORD_TAGS_FILE), { recursive: true });
+  fs.writeFileSync(`${KEYWORD_TAGS_FILE}.tmp`, JSON.stringify(data, null, 2));
+  fs.renameSync(`${KEYWORD_TAGS_FILE}.tmp`, KEYWORD_TAGS_FILE);
+}
+function keywordTagsKey(cabinet, campaignId) {
+  if (!/^[\w-]{1,40}$/.test(String(cabinet || '')) || !/^\d{1,15}$/.test(String(campaignId || ''))) throw apiError(400, 'Некорректный кабинет или кампания');
+  return `${cabinet}:${campaignId}`;
+}
+function keywordTags(cabinet, campaignId) {
+  const data = readKeywordTags();
+  return { tags: data.campaigns[keywordTagsKey(cabinet, campaignId)] || {}, colors: data.colors };
+}
+// Пустая отметка (нет основной и не «Важный») удаляется, чтобы файл не копил пустые записи.
+function setKeywordTag(cabinet, campaignId, body = {}) {
+  const key = keywordTagsKey(cabinet, campaignId), query = String(body.query || '').trim();
+  if (!query || query.length > 300) throw apiError(400, 'Не указан ключевой запрос');
+  if (body.tag != null && body.tag !== '' && !KEYWORD_TAG_KEYS.includes(body.tag)) throw apiError(400, 'Неизвестная отметка');
+  const data = readKeywordTags(), campaign = data.campaigns[key] || {};
+  const current = body.clear ? {} : { ...(campaign[query] || {}) };
+  if (!body.clear) {
+    if ('tag' in body) { if (body.tag) current.tag = body.tag; else delete current.tag; }
+    if ('important' in body) { if (body.important) current.important = true; else delete current.important; }
+  }
+  if (current.tag || current.important) campaign[query] = current; else delete campaign[query];
+  if (Object.keys(campaign).length) data.campaigns[key] = campaign; else delete data.campaigns[key];
+  writeKeywordTags(data);
+  return { query, tag: campaign[query] || null };
+}
+function setKeywordTagColors(colors = {}) {
+  const data = readKeywordTags(), allowed = ['important', ...KEYWORD_TAG_KEYS];
+  data.colors = Object.fromEntries(Object.entries(colors || {}).filter(([key, value]) => allowed.includes(key) && /^#[0-9a-f]{6}$/i.test(String(value))));
+  writeKeywordTags(data);
+  return { colors: data.colors };
+}
+
 async function campaignKeywordDaily(id, campaignId, from, to, queryInput, nmIdsInput) {
   const period = historyPeriod(from, to), query = String(queryInput || '').trim(), dates = datesBetween(period.from, period.to);
   if (!query) throw apiError(400, 'Не указан ключевой запрос');
@@ -1052,6 +1122,7 @@ async function campaignMinus(id, campaignId, action, queriesInput, nmIdsInput) {
   const campaignData = await cachedAnalytics(`ad-campaigns:${id}`, () => wbRequest(token, AD_CAMPAIGNS_URL), 3 * 60_000);
   const meta = (Array.isArray(campaignData?.adverts) ? campaignData.adverts : []).find(item => String(item.id) === String(campaignId));
   if (!meta) throw apiError(404, 'Кампания не найдена');
+  if (String(meta.settings?.payment_type || '').toLowerCase() === 'cpc') throw apiError(400, 'В кампаниях с оплатой за клики (CPC) WB не позволяет исключать запросы');
   const campaignNms = campaignProductIds(meta).map(String);
   const requested = Array.isArray(nmIdsInput) && nmIdsInput.length ? nmIdsInput.map(String).filter(nmId => campaignNms.includes(nmId)) : campaignNms;
   if (!requested.length) throw apiError(400, 'В кампании нет выбранных товаров');
@@ -2320,6 +2391,20 @@ async function handleApi(req, res, url) {
   if (req.method === 'GET' && url.pathname === '/api/advertising/campaign') {
     return send(res, 200, await advertisingCampaign(url.searchParams.get('cabinet') || 'demo', url.searchParams.get('id'), url.searchParams.get('from'), url.searchParams.get('to')));
   }
+  if (req.method === 'GET' && url.pathname === '/api/advertising/campaign/positions') {
+    return send(res, 200, await campaignPositions(url.searchParams.get('cabinet') || 'demo', url.searchParams.get('id'), url.searchParams.get('from'), url.searchParams.get('to')));
+  }
+  if (req.method === 'GET' && url.pathname === '/api/keyword-tags') {
+    return send(res, 200, keywordTags(url.searchParams.get('cabinet') || 'demo', url.searchParams.get('id')));
+  }
+  if (req.method === 'POST' && url.pathname === '/api/keyword-tags') {
+    const body = await readJson(req);
+    return send(res, 200, setKeywordTag(body.cabinet || 'demo', body.id, body));
+  }
+  if (req.method === 'POST' && url.pathname === '/api/keyword-tags/colors') {
+    const body = await readJson(req);
+    return send(res, 200, setKeywordTagColors(body.colors));
+  }
   if (req.method === 'POST' && url.pathname === '/api/advertising/campaign/keyword-daily') {
     const body = await readJson(req);
     return send(res, 200, await campaignKeywordDaily(body.cabinet || 'demo', body.id, body.from, body.to, body.query, body.nmIds));
@@ -2513,7 +2598,7 @@ const server = http.createServer(async (req, res) => {
 
 if (require.main === module) server.listen(PORT, '127.0.0.1', () => console.log(`WB Analytics: http://127.0.0.1:${PORT}`));
 
-module.exports = { server, cabinets, campaignActivePeriod, mergeMinusList, summarizeKeywordDaily, normalizeOrders, normalizeOrderFeed, enrichOrders, extractFunnel, summarizeAdStats, campaignProductDaily, withAdBudgets, summarizeKeywords, normalizeStockPreset, normalizePricePreset, adCampaignMayHaveStats, validAdPeriod, historyPeriod, historyChunks, planAdFetch, datesBetween, safeFolderName, funnelDaysToFetch, pairFunnelDays, funnelPeriods, funnelRangeBuckets, funnelRecordCounts, funnelRangeValues, funnelSalesMatrix, summaryTopProducts, summaryDrops, summaryProducts, normalizeFbsStocks, normalizeFbwStocks, normalizePrices, summarizeStockTotals, normalizeNewOrders, summarizeSupplies, normalizeTrbxes, chunkOrders, stickerType, WB_HOSTS };
+module.exports = { server, cabinets, campaignActivePeriod, mergeMinusList, summarizeKeywordDaily, summarizePositionDaily, normalizeOrders, normalizeOrderFeed, enrichOrders, extractFunnel, summarizeAdStats, campaignProductDaily, withAdBudgets, summarizeKeywords, normalizeStockPreset, normalizePricePreset, adCampaignMayHaveStats, validAdPeriod, historyPeriod, historyChunks, planAdFetch, datesBetween, safeFolderName, funnelDaysToFetch, pairFunnelDays, funnelPeriods, funnelRangeBuckets, funnelRecordCounts, funnelRangeValues, funnelSalesMatrix, summaryTopProducts, summaryDrops, summaryProducts, normalizeFbsStocks, normalizeFbwStocks, normalizePrices, summarizeStockTotals, normalizeNewOrders, summarizeSupplies, normalizeTrbxes, chunkOrders, stickerType, WB_HOSTS };
 
 
 

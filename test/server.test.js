@@ -1,7 +1,7 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { campaignActivePeriod, mergeMinusList, summarizeKeywordDaily, normalizeOrders, normalizeOrderFeed, enrichOrders, extractFunnel, summarizeAdStats, campaignProductDaily, withAdBudgets, summarizeKeywords, normalizeStockPreset, normalizePricePreset, adCampaignMayHaveStats, validAdPeriod, historyPeriod, historyChunks, planAdFetch, datesBetween, safeFolderName, funnelDaysToFetch, pairFunnelDays, funnelPeriods, funnelRangeBuckets, funnelRecordCounts, funnelRangeValues, funnelSalesMatrix, summaryTopProducts, summaryDrops, summaryProducts, normalizeFbsStocks, normalizeFbwStocks, normalizePrices, summarizeStockTotals, normalizeNewOrders, summarizeSupplies, normalizeTrbxes, chunkOrders, stickerType, WB_HOSTS } = require('../server');
+const { campaignActivePeriod, mergeMinusList, summarizeKeywordDaily, summarizePositionDaily, normalizeOrders, normalizeOrderFeed, enrichOrders, extractFunnel, summarizeAdStats, campaignProductDaily, withAdBudgets, summarizeKeywords, normalizeStockPreset, normalizePricePreset, adCampaignMayHaveStats, validAdPeriod, historyPeriod, historyChunks, planAdFetch, datesBetween, safeFolderName, funnelDaysToFetch, pairFunnelDays, funnelPeriods, funnelRangeBuckets, funnelRecordCounts, funnelRangeValues, funnelSalesMatrix, summaryTopProducts, summaryDrops, summaryProducts, normalizeFbsStocks, normalizeFbwStocks, normalizePrices, summarizeStockTotals, normalizeNewOrders, summarizeSupplies, normalizeTrbxes, chunkOrders, stickerType, WB_HOSTS } = require('../server');
 
 test('объединяет и сортирует FBS и события ленты WB', () => {
   const result = normalizeOrders(
@@ -548,4 +548,14 @@ test('статистика ключевого запроса по дням: су
   assert.equal(cpc.viewsAvailable, false);
   assert.equal(cpc.days[0].views, null);
   assert.equal(cpc.days[0].cpc, 8);
+});
+
+test('средняя позиция кампании по дням взвешивается по показам кластеров, пустые дни — null', () => {
+  const items = [{ dailyStats: [
+    { date: '2026-10-01', stat: { normQuery: 'фен', views: 300, avgPos: 4 } },
+    { date: '2026-10-01', stat: { normQuery: 'утюжок', views: 100, avgPos: 12 } },
+    { date: '2026-10-01', stat: { normQuery: 'плойка', views: 50 } }] }];
+  assert.deepEqual(summarizePositionDaily(items, ['2026-10-01', '2026-10-02']), [{ date: '2026-10-01', avgPosition: 6 }, { date: '2026-10-02', avgPosition: null }]);
+  const cpc = [{ dailyStats: [{ date: '2026-10-01', stat: { normQuery: 'фен', avgPos: 3 } }, { date: '2026-10-01', stat: { normQuery: 'утюжок', avgPos: 9 } }] }];
+  assert.equal(summarizePositionDaily(cpc, ['2026-10-01'])[0].avgPosition, 6);
 });

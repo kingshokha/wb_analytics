@@ -6,6 +6,7 @@ data/cabinets.json
 data/balance-history.json
 data/stock-presets.json
 data/price-presets.json
+data/keyword-tags.json
 *.log
 .DS_Store
 statistics.json
