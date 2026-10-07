@@ -1,7 +1,7 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { campaignActivePeriod, mergeMinusList, summarizeKeywordDaily, summarizePositionDaily, normalizeOrders, normalizeOrderFeed, enrichOrders, extractFunnel, summarizeAdStats, campaignProductDaily, withAdBudgets, summarizeKeywords, normalizeStockPreset, normalizePricePreset, adCampaignMayHaveStats, validAdPeriod, historyPeriod, historyChunks, planAdFetch, datesBetween, safeFolderName, funnelDaysToFetch, pairFunnelDays, funnelPeriods, funnelRangeBuckets, funnelRecordCounts, funnelRangeValues, funnelSalesMatrix, summaryTopProducts, summaryDrops, summaryProducts, normalizeFbsStocks, normalizeFbwStocks, normalizePrices, summarizeStockTotals, normalizeNewOrders, summarizeSupplies, normalizeTrbxes, chunkOrders, stickerType, WB_HOSTS } = require('../server');
+const { campaignActivePeriod, mergeMinusList, summarizeKeywordDaily, summarizePositionDaily, normalizeOrders, normalizeOrderFeed, enrichOrders, extractFunnel, summarizeAdStats, campaignProductDaily, withAdBudgets, summarizeKeywords, normalizeStockPreset, normalizePricePreset, adCampaignMayHaveStats, validAdPeriod, historyPeriod, historyChunks, planAdFetch, datesBetween, safeFolderName, funnelDaysToFetch, pairFunnelDays, funnelPeriods, funnelRangeBuckets, funnelRecordCounts, funnelRangeValues, funnelSalesMatrix, summaryTopProducts, summaryDrops, summaryProducts, normalizeFbsStocks, normalizeFbwStocks, normalizePrices, summarizeStockTotals, normalizeNewOrders, summarizeSupplies, normalizeTrbxes, chunkOrders, stickerType, localPhoto, WB_HOSTS } = require('../server');
 
 test('объединяет и сортирует FBS и события ленты WB', () => {
   const result = normalizeOrders(
@@ -37,6 +37,15 @@ test('добавляет к заказу название, бренд, арти�
   assert.equal(result[0].article, 'URBAN-01');
   assert.equal(result[0].brand, 'Example');
   assert.equal(result[0].photo, 'https://basket.example/card.webp');
+});
+
+test('фото с CDN WB отдаются через локальный кэш, остальные ссылки не меняются', () => {
+  assert.equal(localPhoto('https://basket-47.wbbasket.ru/vol14523/part1452346/1452346227/images/c246x328/1.webp'),
+    '/api/photo/basket-47.wbbasket.ru/vol14523/part1452346/1452346227/images/c246x328/1.webp');
+  assert.equal(localPhoto('https://basket.example/card.webp'), 'https://basket.example/card.webp');
+  assert.equal(localPhoto('https://evil.wbbasket.ru.example.com/a.webp'), 'https://evil.wbbasket.ru.example.com/a.webp');
+  assert.equal(localPhoto('http://basket-1.wbbasket.ru/a.webp'), 'http://basket-1.wbbasket.ru/a.webp');
+  assert.equal(localPhoto(''), '');
 });
 
 test('суммирует показатели воронки разных товаров', () => {
