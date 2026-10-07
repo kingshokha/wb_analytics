@@ -7,6 +7,7 @@
   <link rel="icon" type="image/svg+xml" href="/favicon.svg">
   <title>WB Pulse — заказы и аналитика</title>
   <link rel="stylesheet" href="/styles.css">
+  <link rel="stylesheet" href="/date-range.css">
 </head>
 <body>
   <div class="shell">
@@ -45,7 +46,7 @@
       <header>
         <div><p class="eyebrow">Операционный центр</p><h1 id="pageTitle">Общая сводка</h1></div>
         <div class="header-actions">
-          <label class="date"><span>Период</span><input id="dateFrom" type="date"><b>—</b><input id="dateTo" type="date"></label>
+          <div class="date" data-date-range><span>Период</span><input id="dateFrom" type="date" aria-label="Дата начала"><b>—</b><input id="dateTo" type="date" aria-label="Дата конца"></div>
           <select class="month-select hidden" id="adMonth" aria-label="Выбрать месяц"></select>
           <button class="refresh refetch hidden" id="funnelRefetch" type="button" title="Заново загрузить данные воронки за выбранный период через API WB и перезаписать сохранённые">⇣ <span>Перекачать</span></button>
           <button class="refresh" id="refresh">↻ <span>Обновить</span></button>
@@ -234,6 +235,7 @@
   <div class="loading-overlay" id="loadingOverlay"><div class="loading-spinner" aria-label="Загрузка"></div></div>
   <button id="runApi" hidden></button><button id="copyResponse" hidden></button>
   <script src="/sidebar.js"></script>
+  <script src="/date-range.js"></script>
   <script src="/table-ui.js"></script>
   <script src="/summary.js"></script>
   <script src="/app.js"></script>

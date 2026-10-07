@@ -1,0 +1,33 @@
+/* Календарь выбора периода (public/date-range.js) — в духе Range Calendar из shadcn/ui */
+.drp>input[type=date],.drp>b{display:none!important}
+.drp{cursor:pointer}
+.drp-trigger{display:inline-flex;align-items:center;gap:8px;height:auto;min-height:30px;padding:0;border-radius:0;border:0;background:transparent;color:var(--ink,#17211d);font:700 12px Manrope,Arial,sans-serif;white-space:nowrap;cursor:pointer}
+.drp-trigger svg{width:15px;height:15px;flex:0 0 15px;fill:none;stroke:var(--muted,#6f7974);stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+.drp-trigger strong{font-weight:700}
+.drp-trigger:hover svg,.drp-trigger[aria-expanded=true] svg{stroke:var(--purple,#7651e5)}
+.drp-trigger:focus-visible{outline:2px solid var(--purple,#7651e5);outline-offset:4px;border-radius:4px}
+.drp-trigger:disabled{opacity:.5;cursor:default}
+.drp-pop{position:fixed;z-index:60;padding:14px 16px 12px;border:1px solid var(--line,#e4e8e5);border-radius:14px;background:#fff;box-shadow:0 18px 50px #17211d29;color:var(--ink,#17211d);font-family:Manrope,Arial,sans-serif}
+.drp-pop[hidden]{display:none}
+.drp-months{display:flex;gap:24px}
+.drp-caption{height:30px;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:800}
+.drp-nav{position:absolute;top:14px;width:30px;height:30px;padding:0;display:grid;place-items:center;border:1px solid var(--line,#e4e8e5);border-radius:8px;background:#fff;color:var(--ink,#17211d);cursor:pointer}
+.drp-nav.prev{left:16px}.drp-nav.next{right:16px}
+.drp-nav svg{width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.drp-nav:hover:not(:disabled){border-color:var(--purple,#7651e5);color:var(--purple,#7651e5)}
+.drp-nav:disabled{opacity:.35;cursor:default}
+.drp-grid{display:grid;grid-template-columns:repeat(7,36px);row-gap:3px;margin-top:10px}
+.drp-weekday{height:26px;display:grid;place-items:center;color:var(--muted,#6f7974);font-size:11px;font-weight:600}
+.drp-day{width:36px;height:36px;padding:0;border:0;border-radius:8px;background:transparent;color:var(--ink,#17211d);font:600 12px Manrope,Arial,sans-serif;cursor:pointer}
+.drp-day:hover:not(:disabled){background:#f0f1ef}
+.drp-day.today{background:#f0f1ef;font-weight:800}
+.drp-day.in-range{border-radius:0;background:#f0ebff;color:#4b2db3}
+.drp-day.in-range:hover{background:#e6ddff}
+.drp-day.in-range.row-start{border-radius:8px 0 0 8px}.drp-day.in-range.row-end{border-radius:0 8px 8px 0}.drp-day.in-range.row-start.row-end{border-radius:8px}
+.drp-day.start,.drp-day.end,.drp-day.start:hover,.drp-day.end:hover{background:var(--purple,#7651e5);color:#fff}
+.drp-day.start{border-radius:8px 0 0 8px}.drp-day.end{border-radius:0 8px 8px 0}
+.drp-day.start.end,.drp-day.start.row-end,.drp-day.end.row-start{border-radius:8px}
+.drp-day:disabled{color:#c3c9c5;cursor:default}
+.drp-day:focus-visible{outline:2px solid var(--purple,#7651e5);outline-offset:-2px}
+.drp-foot{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-top:12px;padding-top:10px;border-top:1px solid var(--line,#e4e8e5);color:var(--muted,#6f7974);font-size:11px;font-weight:600}
+.drp-foot b{color:var(--ink,#17211d);font-weight:800}
