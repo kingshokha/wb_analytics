@@ -113,6 +113,60 @@
     .tag-item:hover{background:#f6f6f4}
     .tag-item.active{background:#f0ebff}
     .tag-item:disabled{opacity:.45;cursor:default;background:transparent}
+    /* Пояснение к отметке — под выбранной отметкой в меню */
+    .tag-note-link{width:auto;height:auto;margin:2px 0 6px 36px;padding:0;display:inline-flex;align-items:center;gap:5px;border:0;background:none;color:#3f6fd6;font-size:12px;font-weight:700;text-decoration:underline dashed;text-underline-offset:3px}
+    .tag-note-link svg,.tag-note svg{width:14px;height:14px;flex:0 0 14px;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linejoin:round}
+    .tag-note{margin:2px 4px 6px 36px;display:flex;align-items:flex-start;gap:6px;color:var(--ink);font-size:12px;line-height:1.4}
+    .tag-note span{flex:1;min-width:0;overflow-wrap:anywhere}
+    .tag-note svg{margin-top:1px;color:#3f6fd6}
+    .tag-note .tag-note-link{margin:0}
+    .note-form{display:grid;gap:6px;margin:4px 4px 8px 36px}
+    .tag-menu .note-form{margin-left:36px}
+    .note-form textarea{width:100%;min-height:54px;padding:7px 9px;border:1px solid var(--line);border-radius:8px;background:white;color:var(--ink);font:500 12px/1.4 Manrope,Arial,sans-serif;resize:vertical}
+    .note-form textarea:focus{border-color:var(--purple);outline:0}
+    .note-form div{display:flex;justify-content:flex-end;gap:6px}
+    .note-form button{height:28px;padding:0 11px;border-radius:7px;font-size:11px}
+    .note-form .note-cancel{border-color:var(--line);background:white;color:var(--ink)}
+    .note-form .note-save{border-color:var(--purple);background:var(--purple)}
+    /* Значок истории справа от запроса */
+    .keyword-note-button{flex:0 0 24px;width:24px;height:24px;margin-left:auto;padding:0;display:grid;place-items:center;border:0;border-radius:6px;background:transparent;color:var(--muted)}
+    .keyword-note-button svg{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linejoin:round}
+    .keyword-note-button:hover,.keyword-note-button:focus-visible{background:#eef2fc;color:#3f6fd6;outline:0}
+    /* Всплывающая история: смена отметок с пояснениями, комментарии, статус фразы */
+    .history-pop{position:fixed;z-index:41;width:min(470px,calc(100vw - 16px));overflow:auto;padding:14px 16px 12px;border:1px solid var(--line);border-radius:16px;background:white;box-shadow:0 18px 50px #17211d33;color:var(--ink)}
+    .history-pop[hidden]{display:none}
+    .history-head{display:flex;align-items:center;justify-content:space-between;gap:10px}
+    .history-head strong{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:14px;font-weight:800}
+    .history-close{flex:0 0 28px;width:28px;height:28px;padding:0;border:1px solid var(--line);border-radius:50%;background:white;color:var(--muted);font-size:16px;line-height:1}
+    .history-tabs{display:flex;gap:16px;margin:8px 0 4px;border-bottom:1px solid var(--line)}
+    .history-tabs button{height:auto;padding:8px 0;border:0;border-bottom:2px solid transparent;border-radius:0;background:none;color:var(--muted);font-size:12px;font-weight:700}
+    .history-tabs button.active{border-bottom-color:var(--purple);color:var(--purple)}
+    .history-tabs button:hover{color:var(--ink)}
+    .history-day{display:flex;align-items:center;gap:10px;margin:12px 0 8px;color:var(--muted);font-size:11px;font-weight:700}
+    .history-day:after{content:"";flex:1;border-top:1px solid var(--line)}
+    .history-card{margin:0 0 8px 10px;padding:11px 13px;border:1px solid var(--line);border-radius:11px;background:#f6f7f5}
+    .history-card-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
+    .history-title{color:var(--muted);font-size:12px;line-height:1.6}
+    .history-title b{color:var(--ink);font-weight:800}
+    .history-tag{display:inline-flex;align-items:center;gap:4px}
+    .history-tag i{font-style:normal;font-size:13px}
+    .history-from{color:var(--ink)}
+    .history-who{display:grid;justify-items:end;gap:1px;white-space:nowrap}
+    .history-who b{font-size:11px;font-weight:800}
+    .history-who small{color:var(--muted);font-size:11px}
+    .history-comment{display:flex;align-items:flex-start;gap:8px;margin-top:9px;padding:9px 10px;border-radius:9px;background:white}
+    .history-comment>svg{width:15px;height:15px;flex:0 0 15px;margin-top:1px;fill:none;stroke:var(--muted);stroke-width:1.4;stroke-linejoin:round}
+    .history-comment p{flex:1;min-width:0;margin:0;color:var(--ink);font-size:12px;line-height:1.45;white-space:pre-wrap;overflow-wrap:anywhere}
+    .history-actions{display:flex;gap:2px}
+    .history-actions button{width:24px;height:24px;padding:0;display:grid;place-items:center;border:0;border-radius:6px;background:transparent;color:var(--muted)}
+    .history-actions button:hover{background:#f0f1ef;color:var(--ink)}
+    .history-actions svg,.history-add svg{width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}
+    .history-explain{height:auto;margin-top:4px;padding:0;border:0;background:none;color:#3f6fd6;font-size:11px;font-weight:700;text-decoration:underline dashed;text-underline-offset:3px}
+    .history-card .note-form{margin:9px 0 0}
+    .history-empty{margin:16px 0;text-align:center;font-size:12px}
+    .history-foot{display:flex;justify-content:flex-end;margin-top:6px}
+    .history-foot .note-form{flex:1;margin:0 0 0 10px}
+    .history-add{height:auto;padding:4px 0;display:inline-flex;align-items:center;gap:6px;border:0;background:none;color:#3f6fd6;font-size:12px;font-weight:700;text-decoration:underline dashed;text-underline-offset:3px}
     .tag-colors-link{width:auto;height:auto;margin:6px 8px 0;padding:0;border:0;background:none;color:var(--purple);font-size:12px;font-weight:700;text-decoration:underline dotted;text-underline-offset:3px}
     .tag-color-row{display:grid;grid-template-columns:22px 1fr 44px;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid #eef0ee;font-size:13px}
     .tag-color-row i{font-style:normal;font-size:15px;text-align:center}
@@ -314,7 +368,7 @@
     <section class="summary" id="summary"></section>
     <section class="panel setup-panel" id="setupPanel" hidden>
       <div class="panel-head"><h2>Размещение и ставки</h2><div class="setup-head"><div class="setup-chips" id="setupPlacements"></div><p id="setupNote"></p></div></div>
-      <div class="table-wrap"><table class="setup-table"><thead><tr><th>Товар</th><th>Предмет</th><th>Ставка в поиске</th><th>Ставка в рекомендациях</th></tr></thead><tbody id="setupBids"></tbody></table></div>
+      <div class="table-wrap"><table class="setup-table"><thead><tr id="setupHead"><th>Товар</th><th>Предмет</th><th>Ставка в поиске</th><th>Ставка в рекомендациях</th></tr></thead><tbody id="setupBids"></tbody></table></div>
     </section>
     <section class="panel chart-panel">
       <div class="panel-head"><h2>График по датам</h2></div>
@@ -344,6 +398,7 @@
 <div id="keywordActions" class="keyword-actions" hidden><strong id="keywordSelectedCount">Выбрано: 0</strong><button type="button" class="danger" id="keywordExclude">Исключить</button><button type="button" class="include" id="keywordInclude">Включить</button><button type="button" class="ghost" id="keywordClearSelection">Сбросить</button></div>
 <div id="confirmModal" class="modal" hidden><div class="modal-backdrop" data-confirm-close></div><div class="modal-dialog small" role="dialog" aria-modal="true" aria-labelledby="confirmTitle"><div class="modal-head"><h2 id="confirmTitle">Исключить запросы?</h2><button type="button" class="modal-close" data-confirm-close aria-label="Закрыть">×</button></div><div class="confirm-body" id="confirmBody"></div></div></div>
 <div id="keywordTagMenu" class="tag-menu" role="menu" aria-label="Отметка ключевого запроса" hidden></div>
+<div id="keywordHistoryPop" class="history-pop" role="dialog" aria-label="История отметок и комментариев запроса" hidden></div>
 <div id="tagColorsModal" class="modal" hidden><div class="modal-backdrop" data-tag-colors-close></div><div class="modal-dialog small" role="dialog" aria-modal="true" aria-labelledby="tagColorsTitle"><div class="modal-head"><h2 id="tagColorsTitle">Цвета отметок</h2><button type="button" class="modal-close" data-tag-colors-close aria-label="Закрыть">×</button></div><div class="confirm-body" id="tagColorsBody"></div></div></div>
 <div id="keywordDailyModal" class="modal" hidden><div class="modal-backdrop" data-kwday-close></div><div class="modal-dialog" role="dialog" aria-modal="true" aria-labelledby="keywordDailyTitle"><div class="modal-head"><div><h2 id="keywordDailyTitle">Запрос по дням</h2><p id="keywordDailyNote" class="kwday-note"></p></div><button type="button" class="modal-close" data-kwday-close aria-label="Закрыть">×</button></div><div class="modal-table-wrap"><div class="kwday-metrics" id="keywordDailyMetrics"></div><div class="kwday-chart" id="keywordDailyChart"></div><table class="kwday-table"><thead><tr><th>Дата</th><th class="views-col">Показы</th><th>Клики</th><th class="views-col">CTR</th><th class="views-col">CPM</th><th>CPC</th><th>Затраты</th><th>Корзины</th><th>Заказы</th><th>CR</th><th>Ср. позиция</th></tr></thead><tbody id="keywordDailyBody"></tbody></table></div></div></div>
 <div id="productModal" class="modal" hidden><div class="modal-backdrop" data-modal-close></div><div class="modal-dialog" role="dialog" aria-modal="true" aria-labelledby="productModalTitle"><div class="modal-head"><h2 id="productModalTitle">Статистика артикула</h2><button type="button" class="modal-close" data-modal-close aria-label="Закрыть">×</button></div><div class="modal-table-wrap"><table><thead><tr><th>Дата</th><th>Показы</th><th>Клики</th><th>CTR</th><th>CPC</th><th>Корзины</th><th>Заказы</th><th>Отмены</th><th>Сумма заказов</th><th>Затраты</th><th>ДРР, %</th></tr></thead><tbody id="productModalBody"></tbody></table></div></div></div>

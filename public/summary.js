@@ -2,7 +2,7 @@
 // Файл подключается перед app.js и пользуется его общими помощниками ($, state, api, fmtNum, trendSmoothPath и др.).
 const summaryView={data:null,ads:null,key:'',metric:'orderSum',requestId:0,adsRequestId:0,pollTimer:0,sparks:[],sparkActive:null,loading:false,error:'',adsLoading:false,adsError:''};
 const SUMMARY_COLORS=['#7651e5','#f0a04b','#3f8fd6','#40a879','#c35fb8'],SUMMARY_OTHER_COLOR='#cfd4d1';
-// unit задаёт формат и вид сравнения: для процентов разница в п.п., для остального — относительное изменение.
+// unit задаёт формат и вид сравнения: для процентов — разница процентов (показывается со знаком %), для остального — относительное изменение.
 // lowerBetter переворачивает цвет изменения, neutral красит его серым: рост расходов сам по себе не плох и не хорош.
 const SUMMARY_METRICS={
   orderSum:{label:'Заказы',chart:'Заказы, ₽',unit:'₽'},
@@ -53,7 +53,7 @@ function summaryFormat(key,value){
 function summaryDelta(key,now,before){
   if(now==null||before==null||!Number.isFinite(now)||!Number.isFinite(before))return null;
   const text=(value,unit)=>Math.abs(value)<0.05?`0${unit}`:`${value>0?'+':'−'}${summaryNumber(Math.abs(value))}${unit}`;
-  if(SUMMARY_METRICS[key].unit==='%'){const diff=now-before;return {value:diff,text:text(diff,' п.п.')}}
+  if(SUMMARY_METRICS[key].unit==='%'){const diff=now-before;return {value:diff,text:text(diff,'%')}}
   if(!before)return null;
   const change=(now-before)/before*100;
   return {value:change,text:text(change,'%')};
@@ -245,10 +245,10 @@ function renderSummaryMix(top,hasPrevious){
     ...(top.other?[{...top.other,name:`Прочие · ${fmtNum(top.other.count)} ${pluralRu(top.other.count,['товар','товара','товаров'])}`,color:SUMMARY_OTHER_COLOR,other:true}]:[])];
   const r=68,c=2*Math.PI*r,gap=rows.length>1?2:0;let offset=0;
   const arcs=rows.map((row,i)=>{const length=row.share/100*c,visible=Math.max(0.5,length-gap),arc=`<circle data-mix="${i}" cx="85" cy="85" r="${r}" stroke="${row.color}" stroke-dasharray="${visible} ${c-visible}" stroke-dashoffset="${-offset}" transform="rotate(-90 85 85)"><title>${escapeHtml(row.name)}: ${summaryNumber(row.share)}%</title></circle>`;offset+=length;return arc}).join('');
-  const shift=row=>{if(!hasPrevious||!top.previousTotal)return '';const diff=row.share-row.previousShare;return Math.abs(diff)<0.1?'±0 п.п.':`${diff>0?'+':'−'}${summaryNumber(Math.abs(diff))} п.п.`};
+  const shift=row=>{if(!hasPrevious||!top.previousTotal)return '';const diff=row.share-row.previousShare;return Math.abs(diff)<0.1?'±0%':`${diff>0?'+':'−'}${summaryNumber(Math.abs(diff))}%`};
   const leader=rows[0],leaderShift=hasPrevious&&top.previousTotal?leader.share-leader.previousShare:null;
   const lead=`<b>«${escapeHtml(leader.name)}»</b> даёт <b>${summaryNumber(leader.share)}%</b> суммы заказов`+
-    (leaderShift==null?'.':Math.abs(leaderShift)<0.1?' — столько же, сколько в прошлом периоде.':` — на ${summaryNumber(Math.abs(leaderShift))} п.п. ${leaderShift>0?'больше':'меньше'}, чем в прошлом периоде.`);
+    (leaderShift==null?'.':Math.abs(leaderShift)<0.1?' — столько же, сколько в прошлом периоде.':` — на ${summaryNumber(Math.abs(leaderShift))}% ${leaderShift>0?'больше':'меньше'}, чем в прошлом периоде.`);
   el.innerHTML=`<svg class="summary-donut" viewBox="0 0 170 170" role="img" aria-label="Доли товаров в сумме заказов">${arcs}<text class="summary-donut-total" x="85" y="86" text-anchor="middle">${new Intl.NumberFormat('ru-RU',{notation:'compact',maximumFractionDigits:1}).format(top.total)}</text><text class="summary-donut-caption" x="85" y="104" text-anchor="middle">₽ в заказах</text></svg>`+
     `<div class="summary-mix-list">${rows.map((row,i)=>`<div class="summary-mix-row ${row.other?'':'clickable'}" data-mix="${i}" ${row.other?'':`data-summary-nm="${escapeHtml(row.nmId)}" title="Открыть в воронке"`}><i style="--dot:${row.color}"></i><span><strong>${escapeHtml(row.name)}</strong><small>${row.other?`${fmtNum(row.orderCount)} шт`:`${escapeHtml(row.vendorCode||row.nmId)} · ${fmtNum(row.orderCount)} шт`}</small></span><b>${summaryNumber(row.share)}%${shift(row)?`<em>${shift(row)}</em>`:''}</b></div>`).join('')}</div>`+
     `<p class="summary-mix-lead">${lead}</p>`;

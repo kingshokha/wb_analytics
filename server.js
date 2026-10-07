@@ -957,12 +957,12 @@ function hasAdActivity(day = {}) {
 // Места размещения и ставки товаров из списка кампаний (/api/advert/v2/adverts): ставки WB хранит в копейках.
 // Для CPM ставка — за 1000 показов, для CPC — за клик.
 function campaignSetup(meta, cards = [], demo = false) {
-  if (demo) return { paymentType: 'cpm', placements: { search: true, recommendations: false },
+  if (demo) return { paymentType: 'cpm', bidType: 'manual', placements: { search: true, recommendations: false },
     bids: [{ nmId: 4210000, name: 'Демо-товар 1.1', vendorCode: 'DEMO-1', photo: '', subject: 'Демо', search: 250, recommendations: 0 }] };
   if (!meta) return null;
   const byNmId = new Map(cards.map(card => [String(card.nmID), card]));
   const rub = value => value == null ? null : Number(value) / 100;
-  return { paymentType: meta.settings?.payment_type || '', placements: meta.settings?.placements || null,
+  return { paymentType: meta.settings?.payment_type || '', bidType: meta.bid_type || '', placements: meta.settings?.placements || null,
     bids: (Array.isArray(meta.nm_settings) ? meta.nm_settings : []).map(item => { const card = byNmId.get(String(item.nm_id)) || {};
       return { nmId: item.nm_id, name: card.title || `Товар ${item.nm_id}`, vendorCode: card.vendorCode || '', photo: cardPhoto(card), subject: item.subject?.name || '',
         search: rub(item.bids_kopecks?.search), recommendations: rub(item.bids_kopecks?.recommendations) }; }) };
@@ -1032,21 +1032,69 @@ function keywordTags(cabinet, campaignId) {
   const data = readKeywordTags();
   return { tags: data.campaigns[keywordTagsKey(cabinet, campaignId)] || {}, colors: data.colors };
 }
-// Пустая отметка (нет основной и не «Важный») удаляется, чтобы файл не копил пустые записи.
-function setKeywordTag(cabinet, campaignId, body = {}) {
-  const key = keywordTagsKey(cabinet, campaignId), query = String(body.query || '').trim();
+// У запроса — текущие отметки (tag, important) и история: смена отметок (с пояснением note), комментарии и смена статуса
+// фразы через сайт. Новые события — в конце списка; хранится не больше KEYWORD_HISTORY_LIMIT последних.
+const KEYWORD_HISTORY_LIMIT = 200;
+const keywordEventId = () => `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`;
+function keywordQuery(value) {
+  const query = String(value || '').trim();
   if (!query || query.length > 300) throw apiError(400, 'Не указан ключевой запрос');
-  if (body.tag != null && body.tag !== '' && !KEYWORD_TAG_KEYS.includes(body.tag)) throw apiError(400, 'Неизвестная отметка');
-  const data = readKeywordTags(), campaign = data.campaigns[key] || {};
-  const current = body.clear ? {} : { ...(campaign[query] || {}) };
-  if (!body.clear) {
-    if ('tag' in body) { if (body.tag) current.tag = body.tag; else delete current.tag; }
-    if ('important' in body) { if (body.important) current.important = true; else delete current.important; }
-  }
-  if (current.tag || current.important) campaign[query] = current; else delete campaign[query];
+  return query;
+}
+function pushKeywordEvent(entry, event) {
+  entry.history = [...(entry.history || []), { id: keywordEventId(), at: new Date().toISOString(), ...event }].slice(-KEYWORD_HISTORY_LIMIT);
+}
+// Запись без отметок и истории удаляется, чтобы файл не копил пустые записи.
+function storeKeywordEntry(data, key, query, entry) {
+  const campaign = data.campaigns[key] || {};
+  if (entry.tag || entry.important || entry.history?.length) campaign[query] = entry; else delete campaign[query];
   if (Object.keys(campaign).length) data.campaigns[key] = campaign; else delete data.campaigns[key];
   writeKeywordTags(data);
-  return { query, tag: campaign[query] || null };
+  return campaign[query] || null;
+}
+function setKeywordTag(cabinet, campaignId, body = {}) {
+  const key = keywordTagsKey(cabinet, campaignId), query = keywordQuery(body.query);
+  if (body.tag != null && body.tag !== '' && !KEYWORD_TAG_KEYS.includes(body.tag)) throw apiError(400, 'Неизвестная отметка');
+  const data = readKeywordTags(), before = data.campaigns[key]?.[query] || {};
+  const current = { ...before, history: [...(before.history || [])] };
+  if (body.clear) { delete current.tag; delete current.important; }
+  if ('tag' in body) { if (body.tag) current.tag = body.tag; else delete current.tag; }
+  if ('important' in body) { if (body.important) current.important = true; else delete current.important; }
+  if ((before.tag || '') !== (current.tag || '')) pushKeywordEvent(current, { type: 'tag', from: before.tag || '', to: current.tag || '' });
+  if (Boolean(before.important) !== Boolean(current.important)) pushKeywordEvent(current, { type: 'important', on: Boolean(current.important) });
+  return { query, tag: storeKeywordEntry(data, key, query, current) };
+}
+// Пояснение к смене отметки (eventId события отметки) или комментарий (без eventId — новый); remove — удалить.
+function setKeywordNote(cabinet, campaignId, body = {}) {
+  const key = keywordTagsKey(cabinet, campaignId), query = keywordQuery(body.query), text = String(body.text || '').trim();
+  if (!body.remove && !text) throw apiError(400, 'Пустой комментарий');
+  if (text.length > 1000) throw apiError(400, 'Комментарий длиннее 1000 символов');
+  const data = readKeywordTags(), current = { ...(data.campaigns[key]?.[query] || {}) };
+  current.history = [...(current.history || [])];
+  if (!body.eventId) {
+    if (body.remove) throw apiError(400, 'Не указано, что удалить');
+    pushKeywordEvent(current, { type: 'comment', text });
+  } else {
+    const index = current.history.findIndex(event => event.id === body.eventId);
+    if (index < 0) throw apiError(404, 'Запись истории не найдена — обновите страницу');
+    const event = { ...current.history[index] }, now = new Date().toISOString();
+    if (event.type === 'comment') { if (body.remove) { current.history.splice(index, 1); return { query, tag: storeKeywordEntry(data, key, query, current) }; } event.text = text; event.editedAt = now; }
+    else if (body.remove) { delete event.note; delete event.noteAt; }
+    else { event.note = text; event.noteAt = now; }
+    current.history[index] = event;
+  }
+  return { query, tag: storeKeywordEntry(data, key, query, current) };
+}
+// Исключение и включение фраз через сайт попадают в историю («Статус фразы»).
+function recordKeywordStatus(cabinet, campaignId, action, queries = []) {
+  if (!queries.length) return;
+  const key = keywordTagsKey(cabinet, campaignId), data = readKeywordTags();
+  for (const query of queries) {
+    const entry = { ...(data.campaigns[key]?.[query] || {}) };
+    pushKeywordEvent(entry, { type: 'status', action });
+    data.campaigns[key] = { ...(data.campaigns[key] || {}), [query]: entry };
+  }
+  writeKeywordTags(data);
 }
 function setKeywordTagColors(colors = {}) {
   const data = readKeywordTags(), allowed = ['important', ...KEYWORD_TAG_KEYS];
@@ -2401,6 +2449,10 @@ async function handleApi(req, res, url) {
     const body = await readJson(req);
     return send(res, 200, setKeywordTag(body.cabinet || 'demo', body.id, body));
   }
+  if (req.method === 'POST' && url.pathname === '/api/keyword-tags/note') {
+    const body = await readJson(req);
+    return send(res, 200, setKeywordNote(body.cabinet || 'demo', body.id, body));
+  }
   if (req.method === 'POST' && url.pathname === '/api/keyword-tags/colors') {
     const body = await readJson(req);
     return send(res, 200, setKeywordTagColors(body.colors));
@@ -2411,7 +2463,10 @@ async function handleApi(req, res, url) {
   }
   if (req.method === 'POST' && url.pathname === '/api/advertising/campaign/minus') {
     const body = await readJson(req);
-    return send(res, 200, await campaignMinus(body.cabinet || 'demo', body.id, body.action, body.queries, body.nmIds));
+    const result = await campaignMinus(body.cabinet || 'demo', body.id, body.action, body.queries, body.nmIds);
+    const changed = [...new Set(result.results.filter(item => item.ok && item.changed).flatMap(item => item.queries))];
+    try { recordKeywordStatus(body.cabinet || 'demo', body.id, result.action, changed); } catch (error) { console.error('История статусов фраз не записалась:', error.message); }
+    return send(res, 200, result);
   }
   if (req.method === 'GET' && url.pathname === '/api/advertising/campaign/keywords') {
     return send(res, 200, await campaignKeywords(url.searchParams.get('cabinet') || 'demo', url.searchParams.get('id'),

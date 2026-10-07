@@ -20,7 +20,11 @@
 .drp-weekday{height:26px;display:grid;place-items:center;color:var(--muted,#6f7974);font-size:11px;font-weight:600}
 .drp-day{width:36px;height:36px;padding:0;border:0;border-radius:8px;background:transparent;color:var(--ink,#17211d);font:600 12px Manrope,Arial,sans-serif;cursor:pointer}
 .drp-day:hover:not(:disabled){background:#f0f1ef}
-.drp-day.today{background:#f0f1ef;font-weight:800}
+/* Сегодня — фиолетовая рамка и точка под числом; видно и внутри выбранного периода */
+.drp-day{position:relative}
+.drp-day.today{box-shadow:inset 0 0 0 1.5px var(--purple,#7651e5);color:var(--purple,#7651e5);font-weight:800}
+.drp-day.today:after{content:"";position:absolute;left:50%;bottom:5px;width:4px;height:4px;margin-left:-2px;border-radius:50%;background:currentColor}
+.drp-day.today.start,.drp-day.today.end{box-shadow:none;color:#fff}
 .drp-day.in-range{border-radius:0;background:#f0ebff;color:#4b2db3}
 .drp-day.in-range:hover{background:#e6ddff}
 .drp-day.in-range.row-start{border-radius:8px 0 0 8px}.drp-day.in-range.row-end{border-radius:0 8px 8px 0}.drp-day.in-range.row-start.row-end{border-radius:8px}

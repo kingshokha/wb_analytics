@@ -39,7 +39,8 @@
     document.body.append(pop);
     // month — первый день левого месяца; hover — день под курсором, пока выбран только конец периода.
     const view = { month: 0, from: null, to: null, hover: null };
-    const limits = () => ({ min: parse(fromInput.min) ?? parse(toInput.min), max: parse(toInput.max) ?? parse(fromInput.max) });
+    // Будущие дни выбрать нельзя: верхняя граница — сегодня, если у полей нет более ранней.
+    const limits = () => { const max = parse(toInput.max) ?? parse(fromInput.max), now = today(); return { min: parse(fromInput.min) ?? parse(toInput.min), max: max != null && max < now ? max : now }; };
     const monthsCount = () => window.innerWidth >= 640 ? 2 : 1;
 
     function refresh() {
@@ -66,7 +67,7 @@
           const time = Date.UTC(year, month, day), column = (offset + day - 1) % 7;
           const classes = ['drp-day', time === now ? 'today' : '', column === 0 || day === 1 ? 'row-start' : '', column === 6 || day === length ? 'row-end' : ''].filter(Boolean).join(' ');
           const disabled = (min != null && time < min) || (max != null && time > max);
-          cells += `<button type="button" class="${classes}" data-day="${time}" aria-label="${text(time)}"${disabled ? ' disabled' : ''}>${day}</button>`;
+          cells += `<button type="button" class="${classes}" data-day="${time}" aria-label="${text(time)}${time === now ? ', сегодня' : ''}"${time === now ? ' aria-current="date" title="Сегодня"' : ''}${disabled ? ' disabled' : ''}>${day}</button>`;
         }
         months += `<div class="drp-month"><div class="drp-caption">${MONTHS[month]} ${year}</div><div class="drp-grid">${cells}</div></div>`;
       }
