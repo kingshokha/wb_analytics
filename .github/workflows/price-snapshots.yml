@@ -1,0 +1,54 @@
+# Снимки цен и скидок каждые 3 часа — работают, даже когда компьютер выключен.
+# Токены WB — секреты репозитория с именами на WB_ (Settings → Secrets and variables → Actions).
+# Снимки шифруются (scripts/snapshot-crypto.js) и сохраняются в ветку snapshots; сервер на компьютере
+# скачивает их, расшифровывает и удаляет из ветки.
+name: Снимки цен
+
+on:
+  schedule:
+    # Время UTC: 00:17, 03:17, … = 03:17, 06:17, … по Москве. Не ровно в начале часа — так GitHub меньше опаздывает.
+    - cron: '17 */3 * * *'
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+concurrency:
+  group: price-snapshots
+  cancel-in-progress: false
+
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Подготовить ветку snapshots
+        run: |
+          if git fetch --depth=1 origin snapshots; then
+            git worktree add -B snapshots snap FETCH_HEAD
+          else
+            git worktree add --detach snap
+            git -C snap checkout --orphan snapshots
+            git -C snap rm -rf --quiet .
+          fi
+
+      - name: Снять цены
+        env:
+          SECRETS_JSON: ${{ toJSON(secrets) }}
+        run: node scripts/price-snapshot.js snap
+
+      - name: Сохранить снимок
+        working-directory: snap
+        run: |
+          git config user.name "wb-pulse-snapshots"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then echo "Нечего сохранять"; exit 0; fi
+          git commit --quiet -m "Снимок цен $(TZ=Europe/Moscow date '+%Y-%m-%d %H:%M') МСК"
+          git push origin snapshots

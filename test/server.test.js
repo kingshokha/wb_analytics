@@ -3,6 +3,28 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const { summarizeHourlyOrders, orderFeedPeriod, itemRatingPeriods, normalizeItemRatings, campaignActivePeriod, mergeMinusList, summarizeKeywordDaily, summarizePositionDaily, normalizeOrders, normalizeOrderFeed, enrichOrders, extractFunnel, summarizeAdStats, campaignProductDaily, withAdBudgets, summarizeKeywords, normalizeStockPreset, normalizePricePreset, adCampaignMayHaveStats, validAdPeriod, historyPeriod, historyChunks, planAdFetch, datesBetween, safeFolderName, funnelDaysToFetch, pairFunnelDays, funnelPeriods, funnelRangeBuckets, funnelRecordCounts, funnelRangeValues, funnelSalesMatrix, summaryTopProducts, summaryDrops, summaryProducts, normalizeFbsStocks, normalizeFbwStocks, normalizePrices, summarizeStockTotals, normalizeNewOrders, summarizeSupplies, normalizeTrbxes, chunkOrders, stickerType, localPhoto, WB_HOSTS } = require('../server');
 
+test('снимок цен: шифруется открытым ключом и расшифровывается только закрытым', () => {
+  const { generateSnapshotKeys, encryptSnapshot, decryptSnapshot } = require('../scripts/snapshot-crypto');
+  const mine = generateSnapshotKeys(), other = generateSnapshotKeys();
+  const box = encryptSnapshot({ goods: [{ nmId: 1, price: 1990 }] }, mine.publicKey);
+  assert.ok(!box.includes('1990'));
+  assert.deepEqual(decryptSnapshot(box, mine.privateKey), { goods: [{ nmId: 1, price: 1990 }] });
+  assert.throws(() => decryptSnapshot(box, other.privateKey));
+});
+
+test('снимок цен: токены из секретов WB_, компактные товары, имя файла по Москве', () => {
+  const { tokensFromEnv, compactGoods, moscowStamp } = require('../scripts/price-snapshot');
+  const cabinets = tokensFromEnv({ SECRETS_JSON: JSON.stringify({ WB_PRICES_TOKEN_SAMIRI: 'aaa', WB_TOKEN_ZIKRI: 'bbb', WB_: 'ccc', github_token: 'x', OTHER: 'y', WB_EMPTY: '' }) });
+  assert.deepEqual(cabinets, [{ cabinet: 'samiri', token: 'aaa' }, { cabinet: 'zikri', token: 'bbb' }, { cabinet: 'main', token: 'ccc' }]);
+  const goods = compactGoods([
+    { nmID: 1, vendorCode: 'A', currencyIsoCode4217: 'RUB', discount: 20, clubDiscount: 5, sizes: [{ price: 1000, discountedPrice: 800, clubDiscountedPrice: 760 }] },
+    { nmID: 2, editableSizePrice: true, discount: 0, sizes: [{ sizeID: 11, techSizeName: 'S', price: 500, discountedPrice: 500 }, { sizeID: 12, techSizeName: 'M', price: 600, discountedPrice: 600 }] }
+  ]);
+  assert.deepEqual(goods[0], { nmId: 1, vendorCode: 'A', currency: 'RUB', price: 1000, discountedPrice: 800, clubDiscountedPrice: 760, discount: 20, clubDiscount: 5 });
+  assert.equal(goods[1].sizes.length, 2);
+  assert.equal(moscowStamp(new Date('2026-10-08T22:17:40Z')), '2026-10-09T01-17');
+});
+
 test('оценки товаров: период не позже вчера, прошлый период той же длины перед ним', () => {
   const yesterday = new Date(Date.now() + 3 * 3_600_000 - 86_400_000).toISOString().slice(0, 10);
   const today = new Date(Date.now() + 3 * 3_600_000).toISOString().slice(0, 10);

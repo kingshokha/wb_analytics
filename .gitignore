@@ -13,4 +13,7 @@ statistics.json
 data/Ads/
 data/Funnel/
 data/Photos/
+# Закрытый ключ снимков цен — только на этом компьютере; без него снимки не расшифровать
+data/snapshot-key.pem
+data/price-snapshots/
 swagger .txt

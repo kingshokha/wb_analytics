@@ -5,6 +5,9 @@ const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
 const { URL } = require('node:url');
+const os = require('node:os');
+const { execFile } = require('node:child_process');
+const { decryptSnapshot } = require('./scripts/snapshot-crypto');
 
 const ROOT = __dirname;
 loadEnv(path.join(ROOT, '.env'));
@@ -2172,6 +2175,73 @@ async function summaryAds(id, from, to) {
   return { demo, available: true, periods, current: summaryAdPeriod(days, periods.current), previous: summaryAdPeriod(days, periods.previous), warnings };
 }
 
+// --- Снимки цен с GitHub Actions (.github/workflows/price-snapshots.yml) ---
+// GitHub каждые 3 часа кладёт зашифрованные снимки в ветку snapshots. Сервер при запуске и раз в час скачивает их,
+// расшифровывает закрытым ключом (data/snapshot-key.pem) в data/price-snapshots/<кабинет>/<время>.json и удаляет
+// скачанное из ветки отдельным коммитом — рабочие файлы и текущая ветка не затрагиваются.
+const SNAPSHOT_KEY_FILE = path.join(ROOT, 'data', 'snapshot-key.pem');
+const SNAPSHOT_DIR = path.join(ROOT, 'data', 'price-snapshots');
+const SNAPSHOT_FILE_RE = /^prices\/[\w-]+\/\d{4}-\d{2}-\d{2}T\d{2}-\d{2}\.json\.enc$/;
+const snapshotSync = { running: false, lastRun: null, lastError: '', downloaded: 0, removed: 0 };
+function git(args, extraEnv = {}) {
+  return new Promise((resolve, reject) => execFile('git', args, { cwd: ROOT, timeout: 120_000, maxBuffer: 64 * 1024 * 1024, windowsHide: true,
+    // Без окон с вводом пароля: сервер работает в фоне — если доступа нет, просто будет ошибка в статусе.
+    env: { ...process.env, GIT_TERMINAL_PROMPT: '0', GCM_INTERACTIVE: 'never', ...extraEnv } },
+  (error, stdout, stderr) => error ? reject(new Error((stderr || error.message).trim())) : resolve(stdout)));
+}
+async function removeFromSnapshotBranch(head, files) {
+  const index = path.join(os.tmpdir(), `wb-snapshots-${process.pid}-${Date.now()}.index`), env = { GIT_INDEX_FILE: index };
+  const author = { GIT_AUTHOR_NAME: 'wb-pulse', GIT_AUTHOR_EMAIL: 'wb-pulse@users.noreply.github.com', GIT_COMMITTER_NAME: 'wb-pulse', GIT_COMMITTER_EMAIL: 'wb-pulse@users.noreply.github.com' };
+  try {
+    await git(['read-tree', head], env);
+    for (let offset = 0; offset < files.length; offset += 200) await git(['update-index', '--force-remove', '--', ...files.slice(offset, offset + 200)], env);
+    const tree = (await git(['write-tree'], env)).trim();
+    const commit = (await git(['commit-tree', tree, '-p', head, '-m', `Снимки скачаны на компьютер: ${files.length}`], { ...env, ...author })).trim();
+    await git(['push', '--quiet', 'origin', `${commit}:refs/heads/snapshots`]);
+    snapshotSync.removed += files.length;
+  } catch (error) {
+    // GitHub успел записать новый снимок — ветка ушла вперёд; скачанное уберём при следующей синхронизации.
+    if (!/rejected|non-fast-forward|fetch first/i.test(error.message)) throw error;
+  } finally { fs.rmSync(index, { force: true }); }
+}
+async function syncPriceSnapshots() {
+  if (snapshotSync.running || !fs.existsSync(SNAPSHOT_KEY_FILE)) return snapshotSync;
+  snapshotSync.running = true;
+  try {
+    try { await git(['fetch', '--quiet', 'origin', '+refs/heads/snapshots:refs/remotes/origin/snapshots']); }
+    catch (error) { if (/couldn't find remote ref|could not find remote ref/i.test(error.message)) { snapshotSync.lastError = ''; return snapshotSync; } throw error; }
+    const head = (await git(['rev-parse', 'refs/remotes/origin/snapshots'])).trim();
+    const files = (await git(['ls-tree', '-r', '--name-only', head, '--', 'prices'])).split('\n').map(name => name.trim()).filter(name => SNAPSHOT_FILE_RE.test(name));
+    const key = fs.readFileSync(SNAPSHOT_KEY_FILE, 'utf8');
+    for (const file of files) {
+      const [, cabinet, name] = file.split('/'), target = path.join(SNAPSHOT_DIR, cabinet, name.replace(/\.enc$/, ''));
+      if (fs.existsSync(target)) continue;
+      const snapshot = decryptSnapshot(await git(['show', `${head}:${file}`]), key);
+      fs.mkdirSync(path.dirname(target), { recursive: true });
+      fs.writeFileSync(`${target}.tmp`, JSON.stringify(snapshot));
+      fs.renameSync(`${target}.tmp`, target);
+      snapshotSync.downloaded += 1;
+    }
+    // Удаляем из ветки только то, что уже лежит на компьютере.
+    if (files.length) await removeFromSnapshotBranch(head, files);
+    snapshotSync.lastError = '';
+  } catch (error) {
+    snapshotSync.lastError = error.message;
+    console.error('Снимки цен:', error.message);
+  } finally {
+    snapshotSync.running = false;
+    snapshotSync.lastRun = new Date().toISOString();
+  }
+  return snapshotSync;
+}
+function priceSnapshotsStatus() {
+  const cabinets = fs.existsSync(SNAPSHOT_DIR) ? fs.readdirSync(SNAPSHOT_DIR, { withFileTypes: true }).filter(entry => entry.isDirectory()).map(entry => {
+    const files = fs.readdirSync(path.join(SNAPSHOT_DIR, entry.name)).filter(name => name.endsWith('.json')).sort();
+    return { cabinet: entry.name, count: files.length, first: files[0]?.replace('.json', '') || null, last: files.at(-1)?.replace('.json', '') || null };
+  }) : [];
+  return { enabled: fs.existsSync(SNAPSHOT_KEY_FILE), cabinets, sync: { ...snapshotSync } };
+}
+
 // --- Оценки товаров: /api/analytics/v2/item-rating — рейтинг по отзывам, новые отзывы по звёздам, сравнение с конкурентами ---
 // WB: период заканчивается не позже вчерашнего дня и начинается не раньше 364 суток от вчера; лимит — 3 запроса
 // в минуту (интервал 20 сек); данные обновляются раз в час, поэтому кэш 30 минут.
@@ -2660,6 +2730,13 @@ async function handleApi(req, res, url) {
   if (req.method === 'GET' && url.pathname === '/api/dashboard') {
     return send(res, 200, await dashboard(url.searchParams.get('cabinet') || 'demo', url.searchParams.get('from'), url.searchParams.get('to')));
   }
+  if (req.method === 'GET' && url.pathname === '/api/price-snapshots') {
+    return send(res, 200, priceSnapshotsStatus());
+  }
+  if (req.method === 'POST' && url.pathname === '/api/price-snapshots/sync') {
+    await syncPriceSnapshots();
+    return send(res, 200, priceSnapshotsStatus());
+  }
   if (req.method === 'GET' && url.pathname === '/api/ratings') {
     return send(res, 200, await itemRatings(url.searchParams.get('cabinet') || 'demo', url.searchParams.get('from'), url.searchParams.get('to')));
   }
@@ -2872,7 +2949,12 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
-if (require.main === module) server.listen(PORT, '127.0.0.1', () => console.log(`WB Analytics: http://127.0.0.1:${PORT}`));
+if (require.main === module) server.listen(PORT, '127.0.0.1', () => {
+  console.log(`WB Analytics: http://127.0.0.1:${PORT}`);
+  // Снимки цен с GitHub: сразу после запуска и потом раз в час.
+  setTimeout(syncPriceSnapshots, 5_000);
+  setInterval(syncPriceSnapshots, 60 * 60_000);
+});
 
 module.exports = { server, cabinets, campaignActivePeriod, mergeMinusList, summarizeHourlyOrders, orderFeedPeriod, itemRatingPeriods, normalizeItemRatings, summarizeKeywordDaily, summarizePositionDaily, normalizeOrders, normalizeOrderFeed, enrichOrders, extractFunnel, summarizeAdStats, campaignProductDaily, withAdBudgets, summarizeKeywords, normalizeStockPreset, normalizePricePreset, adCampaignMayHaveStats, validAdPeriod, historyPeriod, historyChunks, planAdFetch, datesBetween, safeFolderName, funnelDaysToFetch, pairFunnelDays, funnelPeriods, funnelRangeBuckets, funnelRecordCounts, funnelRangeValues, funnelSalesMatrix, summaryTopProducts, summaryDrops, summaryProducts, normalizeFbsStocks, normalizeFbwStocks, normalizePrices, summarizeStockTotals, normalizeNewOrders, summarizeSupplies, normalizeTrbxes, chunkOrders, stickerType, localPhoto, WB_HOSTS };
 
