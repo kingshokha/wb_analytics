@@ -1,7 +1,17 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { summarizeHourlyOrders, orderFeedPeriod, itemRatingPeriods, normalizeItemRatings, campaignActivePeriod, mergeMinusList, summarizeKeywordDaily, summarizePositionDaily, normalizeOrders, normalizeOrderFeed, enrichOrders, extractFunnel, summarizeAdStats, campaignProductDaily, withAdBudgets, summarizeKeywords, normalizeStockPreset, normalizePricePreset, adCampaignMayHaveStats, validAdPeriod, historyPeriod, historyChunks, planAdFetch, datesBetween, safeFolderName, funnelDaysToFetch, pairFunnelDays, funnelPeriods, funnelRangeBuckets, funnelRecordCounts, funnelRangeValues, funnelSalesMatrix, summaryTopProducts, summaryDrops, summaryProducts, normalizeFbsStocks, normalizeFbwStocks, normalizePrices, summarizeStockTotals, normalizeNewOrders, summarizeSupplies, normalizeTrbxes, chunkOrders, stickerType, localPhoto, WB_HOSTS } = require('../server');
+const { buildPriceHistory, summarizeHourlyOrders, orderFeedPeriod, itemRatingPeriods, normalizeItemRatings, campaignActivePeriod, mergeMinusList, summarizeKeywordDaily, summarizePositionDaily, normalizeOrders, normalizeOrderFeed, enrichOrders, extractFunnel, summarizeAdStats, campaignProductDaily, withAdBudgets, summarizeKeywords, normalizeStockPreset, normalizePricePreset, adCampaignMayHaveStats, validAdPeriod, historyPeriod, historyChunks, planAdFetch, datesBetween, safeFolderName, funnelDaysToFetch, pairFunnelDays, funnelPeriods, funnelRangeBuckets, funnelRecordCounts, funnelRangeValues, funnelSalesMatrix, summaryTopProducts, summaryDrops, summaryProducts, normalizeFbsStocks, normalizeFbwStocks, normalizePrices, summarizeStockTotals, normalizeNewOrders, summarizeSupplies, normalizeTrbxes, chunkOrders, stickerType, localPhoto, WB_HOSTS } = require('../server');
+
+test('история цены: точки товара из снимков по времени, из всех кабинетов', () => {
+  const history = buildPriceHistory([
+    { takenAt: '2026-10-09T03:17:00Z', goods: [{ nmId: 1, price: 2000, discount: 25, discountedPrice: 1500 }] },
+    { takenAt: '2026-10-09T00:17:00Z', goods: [{ nmId: 1, price: 2000, discount: 20, discountedPrice: 1600 }, { nmId: 2, price: 500, discount: 0, discountedPrice: 500 }] }
+  ]);
+  assert.deepEqual(history.get('1').map(point => [point.takenAt, point.discountedPrice]), [['2026-10-09T00:17:00Z', 1600], ['2026-10-09T03:17:00Z', 1500]]);
+  assert.equal(history.get('2').length, 1);
+  assert.equal(history.get('3'), undefined);
+});
 
 test('снимок цен: шифруется открытым ключом и расшифровывается только закрытым', () => {
   const { generateSnapshotKeys, encryptSnapshot, decryptSnapshot } = require('../scripts/snapshot-crypto');

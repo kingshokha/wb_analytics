@@ -106,6 +106,41 @@ a.nav-item{text-decoration:none}a.nav-item:focus-visible{outline:2px solid var(-
 .campaign-open{flex:0 0 28px;width:28px;height:28px;display:grid;place-items:center;border:1px solid var(--line);border-radius:8px;background:white;color:var(--muted);transition:color .15s,border-color .15s,background .15s}.campaign-open:hover,.campaign-open:focus-visible{color:var(--purple);border-color:var(--purple);background:#f6f4fd;outline:0}.campaign-open svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
 .ad-product-toggle,.ad-product-toggle-stub{flex:0 0 22px;width:22px;height:22px}.ad-product-toggle{display:grid;place-items:center;padding:0;border:0;border-radius:6px;background:transparent;color:var(--muted);cursor:pointer;transition:transform .18s ease,color .15s,background .15s}.ad-product-toggle:hover,.ad-product-toggle:focus-visible{color:var(--purple);background:#f6f4fd;outline:0}.ad-product-toggle[aria-expanded="true"]{transform:rotate(90deg);color:var(--purple)}.ad-product-toggle svg{width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
 .ad-product-campaign td{background:#fafbfa;font-size:12.5px}.ad-product-campaign-name{padding-left:31px;min-width:220px}.ad-product-campaign-name a{color:inherit;text-decoration:none}.ad-product-campaign-name a:hover{color:var(--purple);text-decoration:underline}.ad-product-campaign-name small{display:flex;flex-wrap:wrap;align-items:center;gap:4px}.ad-product-campaign-name .status{padding:2px 7px;font-size:10.5px}
+/* Окно товара в «Ценах и скидках»: текущие цены, история по снимкам, изменение (public/price-product.js) */
+.modal-card.modal-wide{width:min(880px,100%)}
+#pricesBody td[data-price-open]{cursor:pointer}
+#pricesBody td[data-price-open]:hover strong{color:var(--purple);text-decoration:underline;text-underline-offset:3px}
+.price-product-head{display:flex;align-items:center;gap:16px;padding-right:24px}
+.price-product-head h2{margin:2px 0 4px;font-size:18px}
+.price-product-head p{margin:0;color:var(--muted);font-size:12px}
+.price-product-photo{width:64px;height:84px;flex:0 0 64px;border-radius:10px;object-fit:cover;background:#f1f2f0}
+.price-product-now{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px;margin:16px 0 4px}
+.price-product-now div{display:grid;gap:3px;padding:10px 12px;border:1px solid var(--line);border-radius:10px}
+.price-product-now span{color:var(--muted);font-size:11px}
+.price-product-now strong{font-size:14px}
+.price-product-section{margin-top:18px;padding-top:14px;border-top:1px solid var(--line)}
+.price-product-section h3{margin:0 0 8px;font-size:14px}
+.price-product-note{margin:6px 0;color:var(--muted);font-size:12px;line-height:1.5}
+.price-product-note.error,.price-down{color:#b84949}
+.price-up{color:var(--green)}
+.price-down,.price-up{font-size:11px;font-weight:800}
+.price-history-chart{padding:0}
+.price-history-legend{margin:2px 0 6px}
+.price-legend{display:inline-block;width:16px;border-top:3px solid var(--purple);border-radius:2px}
+.price-legend.base{border-top:2px dashed #9aa39e}
+.price-step{fill:none;stroke-width:2.5;stroke-linejoin:round}
+.price-step.current{stroke:var(--purple)}
+.price-step.base{stroke:#9aa39e;stroke-width:2;stroke-dasharray:5 4}
+.price-history-table{max-height:240px;overflow:auto;border:1px solid var(--line);border-radius:10px}
+.price-history-table table{width:100%;min-width:0!important}
+.price-history-table th,.price-history-table td{padding:7px 12px;font-size:12px;white-space:nowrap}
+.price-history-table tr.price-history-now td{background:#f6f4fd;font-weight:700}
+.price-edit{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.price-edit-preview{margin:8px 0;font-size:13px}
+.price-edit-confirm{padding:12px 14px;border-radius:10px;background:#faf9ff;border:1px solid #e6defd}
+.price-edit-confirm p{margin:0 0 8px;font-size:13px;line-height:1.7}
+.price-edit-done{margin:6px 0;padding:10px 12px;border-radius:10px;background:#e7f5ee;color:#277653;font-size:12px;font-weight:700}
+@media(max-width:680px){.price-product-now{grid-template-columns:1fr 1fr}.price-edit{grid-template-columns:1fr}}
 /* Состояние снимков цен с GitHub Actions во вкладке «Цены и скидки» */
 .price-snapshot-note{margin-top:3px;color:var(--muted);font-size:11px}
 .price-snapshot-note:empty{display:none}

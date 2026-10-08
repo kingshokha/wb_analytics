@@ -2234,6 +2234,35 @@ async function syncPriceSnapshots() {
   }
   return snapshotSync;
 }
+// История цены товара по скачанным снимкам. Артикул WB уникален, поэтому ищем во всех кабинетах.
+// Индекс перечитывается, только когда меняется набор файлов (новые снимки приходят раз в час).
+let priceHistoryIndex = { signature: '', byNmId: new Map(), first: null, count: 0 };
+function snapshotFiles() {
+  if (!fs.existsSync(SNAPSHOT_DIR)) return [];
+  return fs.readdirSync(SNAPSHOT_DIR, { withFileTypes: true }).filter(entry => entry.isDirectory())
+    .flatMap(entry => fs.readdirSync(path.join(SNAPSHOT_DIR, entry.name)).filter(name => name.endsWith('.json')).map(name => path.join(SNAPSHOT_DIR, entry.name, name)));
+}
+function buildPriceHistory(snapshots = []) {
+  const byNmId = new Map();
+  for (const snapshot of snapshots.sort((a, b) => String(a.takenAt).localeCompare(String(b.takenAt)))) {
+    for (const good of snapshot.goods || []) {
+      const key = String(good.nmId);
+      if (!byNmId.has(key)) byNmId.set(key, []);
+      byNmId.get(key).push({ takenAt: snapshot.takenAt, price: good.price, discount: good.discount, discountedPrice: good.discountedPrice, clubDiscount: good.clubDiscount, clubDiscountedPrice: good.clubDiscountedPrice, currency: good.currency });
+    }
+  }
+  return byNmId;
+}
+function priceHistory(nmId) {
+  if (!/^\d{1,12}$/.test(String(nmId || ''))) throw apiError(400, 'Некорректный артикул');
+  const files = snapshotFiles(), signature = `${files.length}:${files.map(file => path.basename(file)).sort().at(-1) || ''}`;
+  if (signature !== priceHistoryIndex.signature) {
+    const snapshots = files.map(file => { try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return null; } }).filter(Boolean);
+    priceHistoryIndex = { signature, byNmId: buildPriceHistory(snapshots), count: snapshots.length,
+      first: snapshots.map(snapshot => snapshot.takenAt).filter(Boolean).sort()[0] || null };
+  }
+  return { nmId: Number(nmId), points: priceHistoryIndex.byNmId.get(String(nmId)) || [], snapshots: priceHistoryIndex.count, firstSnapshot: priceHistoryIndex.first, enabled: fs.existsSync(SNAPSHOT_KEY_FILE) };
+}
 function priceSnapshotsStatus() {
   const cabinets = fs.existsSync(SNAPSHOT_DIR) ? fs.readdirSync(SNAPSHOT_DIR, { withFileTypes: true }).filter(entry => entry.isDirectory()).map(entry => {
     const files = fs.readdirSync(path.join(SNAPSHOT_DIR, entry.name)).filter(name => name.endsWith('.json')).sort();
@@ -2730,6 +2759,9 @@ async function handleApi(req, res, url) {
   if (req.method === 'GET' && url.pathname === '/api/dashboard') {
     return send(res, 200, await dashboard(url.searchParams.get('cabinet') || 'demo', url.searchParams.get('from'), url.searchParams.get('to')));
   }
+  if (req.method === 'GET' && url.pathname === '/api/price-history') {
+    return send(res, 200, priceHistory(url.searchParams.get('nmId')));
+  }
   if (req.method === 'GET' && url.pathname === '/api/price-snapshots') {
     return send(res, 200, priceSnapshotsStatus());
   }
@@ -2956,7 +2988,7 @@ if (require.main === module) server.listen(PORT, '127.0.0.1', () => {
   setInterval(syncPriceSnapshots, 60 * 60_000);
 });
 
-module.exports = { server, cabinets, campaignActivePeriod, mergeMinusList, summarizeHourlyOrders, orderFeedPeriod, itemRatingPeriods, normalizeItemRatings, summarizeKeywordDaily, summarizePositionDaily, normalizeOrders, normalizeOrderFeed, enrichOrders, extractFunnel, summarizeAdStats, campaignProductDaily, withAdBudgets, summarizeKeywords, normalizeStockPreset, normalizePricePreset, adCampaignMayHaveStats, validAdPeriod, historyPeriod, historyChunks, planAdFetch, datesBetween, safeFolderName, funnelDaysToFetch, pairFunnelDays, funnelPeriods, funnelRangeBuckets, funnelRecordCounts, funnelRangeValues, funnelSalesMatrix, summaryTopProducts, summaryDrops, summaryProducts, normalizeFbsStocks, normalizeFbwStocks, normalizePrices, summarizeStockTotals, normalizeNewOrders, summarizeSupplies, normalizeTrbxes, chunkOrders, stickerType, localPhoto, WB_HOSTS };
+module.exports = { server, cabinets, campaignActivePeriod, mergeMinusList, buildPriceHistory, summarizeHourlyOrders, orderFeedPeriod, itemRatingPeriods, normalizeItemRatings, summarizeKeywordDaily, summarizePositionDaily, normalizeOrders, normalizeOrderFeed, enrichOrders, extractFunnel, summarizeAdStats, campaignProductDaily, withAdBudgets, summarizeKeywords, normalizeStockPreset, normalizePricePreset, adCampaignMayHaveStats, validAdPeriod, historyPeriod, historyChunks, planAdFetch, datesBetween, safeFolderName, funnelDaysToFetch, pairFunnelDays, funnelPeriods, funnelRangeBuckets, funnelRecordCounts, funnelRangeValues, funnelSalesMatrix, summaryTopProducts, summaryDrops, summaryProducts, normalizeFbsStocks, normalizeFbwStocks, normalizePrices, summarizeStockTotals, normalizeNewOrders, summarizeSupplies, normalizeTrbxes, chunkOrders, stickerType, localPhoto, WB_HOSTS };
 
 
 
