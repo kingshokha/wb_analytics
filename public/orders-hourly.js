@@ -1,7 +1,9 @@
-// --- Лента заказов: заказы по часам. Сегодня (столбики) против вчера или среднего за 7 дней (пунктир) ---
+// --- Лента заказов: заказы и выкупы по часам. Сегодня (столбики) против вчера или среднего за 7 дней (пунктир) ---
 // Время московское, как в кабинете WB и в расписании показов рекламы. Данные — /api/orders/hourly (8 дней ленты заказов).
-const ordersHourly={data:null,error:'',metric:'count',compare:'yesterday',request:0,cabinet:''};
-const HOURLY_METRICS=[['count','Заказы, шт'],['sum','Заказы, ₽']];
+// Заказ — по времени оформления, выкуп — по времени, когда покупатель забрал товар.
+const ordersHourly={data:null,error:'',series:'orders',metric:'count',compare:'yesterday',request:0,cabinet:''};
+const HOURLY_SERIES=[['orders','Заказы'],['buyouts','Выкупы']];
+const HOURLY_METRICS=[['count','шт'],['sum','₽']];
 const HOURLY_COMPARE=[['yesterday','Вчера'],['week','Среднее за 7 дней']];
 const hourLabel=hour=>`${String(hour%24).padStart(2,'0')}:00`;
 const hourRange=(from,to)=>`${hourLabel(from)}–${hourLabel(to)}`;
@@ -16,7 +18,10 @@ async function loadOrdersHourly(){
   }catch(e){if(request!==ordersHourly.request)return;ordersHourly.error=e.message}
   renderOrdersHourly();
 }
-function hourlyValue(cell){return ordersHourly.metric==='sum'?cell.sum:cell.count}
+// Заказы или выкупы ячейки часа (дня) — количество и сумма.
+const hourlyPick=(cell,series=ordersHourly.series)=>series==='buyouts'?{count:cell.buyoutCount||0,sum:cell.buyoutSum||0}:{count:cell.count,sum:cell.sum};
+function hourlyValue(cell){const value=hourlyPick(cell);return ordersHourly.metric==='sum'?value.sum:value.count}
+const hourlySeriesLabel=()=>HOURLY_SERIES.find(([key])=>key===ordersHourly.series)[1];
 // Среднее бывает дробным (2,4 заказа в час) — один знак после запятой; суммы — целыми рублями.
 function hourlyFormat(value){
   if(value==null)return '—';
@@ -47,10 +52,9 @@ function hourlyPeaks(values){
 }
 function renderOrdersHourly(){
   const el=$('#ordersHourlyChart');if(!el)return;
-  $('#ordersHourlyControls').innerHTML=[HOURLY_METRICS.map(([key,label])=>`<button type="button" class="funnel-metric ${ordersHourly.metric===key?'active':''}" data-hourly-metric="${key}">${label}</button>`).join(''),
-    HOURLY_COMPARE.map(([key,label])=>`<button type="button" class="funnel-metric ${ordersHourly.compare===key?'active':''}" data-hourly-compare="${key}">${label}</button>`).join('')]
-    .map((buttons,index)=>`<div class="hourly-switch" role="group" aria-label="${index?'Сравнить с':'Показатель'}">${buttons}</div>`).join('');
-  const data=ordersHourly.data,compareLabel=HOURLY_COMPARE.find(([key])=>key===ordersHourly.compare)[1];
+  const switches=[['Что показать',HOURLY_SERIES,'series'],['Единицы',HOURLY_METRICS,'metric'],['Сравнить с',HOURLY_COMPARE,'compare']];
+  $('#ordersHourlyControls').innerHTML=switches.map(([label,options,field])=>`<div class="hourly-switch" role="group" aria-label="${label}">${options.map(([key,text])=>`<button type="button" class="funnel-metric ${ordersHourly[field]===key?'active':''}" data-hourly-${field}="${key}">${text}</button>`).join('')}</div>`).join('');
+  const data=ordersHourly.data,compareLabel=HOURLY_COMPARE.find(([key])=>key===ordersHourly.compare)[1],seriesLabel=hourlySeriesLabel();
   if(!data){
     el.innerHTML=`<div class="chart-empty">${ordersHourly.error?`Не удалось загрузить заказы по часам: ${escapeHtml(ordersHourly.error)}`:'Загрузка заказов по часам…'}</div>`;
     $('#ordersHourlyInsights').innerHTML='';$('#ordersHourlyLegend').innerHTML='';$('#ordersHourlyTable').innerHTML='';return;
@@ -73,7 +77,7 @@ function renderOrdersHourly(){
     return `<path class="hourly-bar ${hour===nowHour?'partial':''}" data-hour="${hour}" d="M${x} ${base}V${top0+r}Q${x} ${top0} ${x+r} ${top0}H${x+barW-r}Q${x+barW} ${top0} ${x+barW} ${top0+r}V${base}Z"/>`};
   const bars=todayValues.map((value,hour)=>bar(hour,value)).join('');
   const line=`<path class="trend-line previous" d="${compareValues.map((value,hour)=>`${hour?'L':'M'}${cx(hour)} ${y(value)}`).join('')}"/>`;
-  el.innerHTML=`<svg viewBox="0 0 ${w} ${h}" role="img" aria-label="Заказы по часам: сегодня и ${compareLabel.toLowerCase()}">${ticks}${labels}${bars}${line}`+
+  el.innerHTML=`<svg viewBox="0 0 ${w} ${h}" role="img" aria-label="${seriesLabel} по часам: сегодня и ${compareLabel.toLowerCase()}">${ticks}${labels}${bars}${line}`+
     `<g class="trend-hover hidden"><line class="hover-line" y1="${top}" y2="${top+plotH}"/><circle class="trend-hover-point previous" r="4.5"/></g><rect x="${left}" y="${top}" width="${plotW}" height="${plotH}" fill="transparent"/></svg><div class="chart-tooltip hidden"></div>`;
   const svg=el.querySelector('svg'),tip=el.querySelector('.chart-tooltip'),hover=svg.querySelector('.trend-hover');
   svg.onpointermove=event=>{
@@ -83,7 +87,7 @@ function renderOrdersHourly(){
     const dot=hover.querySelector('circle');dot.setAttribute('cx',cx(hour));dot.setAttribute('cy',y(compareValues[hour]));
     svg.querySelectorAll('.hourly-bar').forEach(item=>item.classList.toggle('active',Number(item.dataset.hour)===hour));
     const now=todayValues[hour],before=compareValues[hour];
-    tip.innerHTML=`<strong>${hourRange(hour,hour+1)}${hour===nowHour?' · час идёт':''}</strong>`+
+    tip.innerHTML=`<strong>${seriesLabel} · ${hourRange(hour,hour+1)}${hour===nowHour?' · час идёт':''}</strong>`+
       `<span style="--dot:var(--purple)"><i></i>Сегодня<b>${hour>nowHour?'ещё не было':hourlyFormat(now)}</b></span>`+
       `<span style="--dot:#a78bfa"><i></i>${compareLabel}<b>${hourlyFormat(before)}</b></span>`+
       (hour<nowHour&&(now||before)?`<span>Изменение<b>${hourlyDelta(now,before).replace(/<[^>]+>/g,'')}</b></span>`:'');
@@ -95,24 +99,33 @@ function renderOrdersHourly(){
   // Таблица — те же числа без графика (и для тех, кому трудно различить цвета).
   const rows=Array.from({length:24},(_,hour)=>`<tr${hour===nowHour?' class="hourly-now"':''}><td>${hourRange(hour,hour+1)}</td><td>${hour>nowHour?'—':hourlyFormat(todayValues[hour])}</td><td>${hourlyFormat(series.yesterdayValues[hour])}</td><td>${hourlyFormat(series.weekValues[hour])}</td></tr>`).join('');
   const table=$('#ordersHourlyTable'),open=table.open;
-  table.innerHTML=`<summary>Таблица по часам</summary><div class="table-wrap"><table><thead><tr><th>Час</th><th>Сегодня</th><th>Вчера</th><th>Среднее за 7 дней</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+  table.innerHTML=`<summary>Таблица по часам — ${seriesLabel.toLowerCase()}, ${ordersHourly.metric==='sum'?'₽':'шт'}</summary><div class="table-wrap"><table><thead><tr><th>Час</th><th>Сегодня</th><th>Вчера</th><th>Среднее за 7 дней</th></tr></thead><tbody>${rows}</tbody></table></div>`;
   table.open=open;
 }
+// «К этому часу» — заказы и выкупы сегодня против вчера и среднего за 7 дней к тому же времени суток,
+// изменение и по количеству, и по сумме.
 function renderOrdersHourlyInsights(data,series){
-  const {today,yesterday,week}=series,weekByNow={count:week.reduce((sum,day)=>sum+day.byNow.count,0)/week.length,sum:week.reduce((sum,day)=>sum+day.byNow.sum,0)/week.length};
+  const {today,yesterday,week}=series;
   const at=`${hourLabel(data.now.hour).slice(0,3)}${String(data.now.minute).padStart(2,'0')}`;
-  const count=value=>`${Number(value).toLocaleString('ru-RU',{maximumFractionDigits:1})} ${Number.isInteger(value)?pluralRu(value,['заказ','заказа','заказов']):'заказа'}`;
-  const byNow=`<p><b>Сегодня к ${at}:</b> ${count(today.byNow.count)} на ${fmtNum(Math.round(today.byNow.sum))} ₽ · вчера к этому времени ${count(yesterday.byNow.count)} ${hourlyDelta(today.byNow.count,yesterday.byNow.count)} · в среднем за 7 дней ${count(weekByNow.count)} ${hourlyDelta(today.byNow.count,weekByNow.count)}</p>`;
-  const peaks=hourlyPeaks(series.weekValues);
-  const what=ordersHourly.metric==='sum'?'суммы заказов':'заказов';
-  const advice=peaks?`<p><b>Пиковые часы</b> (среднее за 7 дней): ${peaks.ranges.map(range=>hourRange(range.from,range.to)).join(', ')} — ${Math.round(peaks.peakShare*100)}% ${what}. Подсказка для расписания показов: в эти часы реклама должна быть включена.`+
-    (peaks.quiet.share<.1?` Меньше всего — ${hourRange(peaks.quiet.from,peaks.quiet.from+6)}: всего ${Math.max(1,Math.round(peaks.quiet.share*100))}% ${what}, эти часы можно исключить из показов, чтобы не тратить бюджет.`:'')+'</p>':'<p>За прошлую неделю заказов нет — пиковые часы определить не по чему.</p>';
-  $('#ordersHourlyInsights').innerHTML=byNow+advice;
+  const num=value=>Number(value).toLocaleString('ru-RU',{maximumFractionDigits:1}),rub=value=>`${fmtNum(Math.round(value))} ₽`;
+  const average=kind=>({count:week.reduce((sum,day)=>sum+hourlyPick(day.byNow,kind).count,0)/week.length,sum:week.reduce((sum,day)=>sum+hourlyPick(day.byNow,kind).sum,0)/week.length});
+  const versus=(now,before,label)=>`${label} ${num(before.count)} шт ${hourlyDelta(now.count,before.count)} · ${rub(before.sum)} ${hourlyDelta(now.sum,before.sum)}`;
+  const line=(kind,title)=>{const now=hourlyPick(today.byNow,kind);
+    return `<p class="${ordersHourly.series===kind?'hourly-current':''}"><b>${title} к ${at}:</b> ${num(now.count)} шт · ${rub(now.sum)} — ${versus(now,hourlyPick(yesterday.byNow,kind),'вчера к этому времени')} — ${versus(now,average(kind),'в среднем за 7 дней')}</p>`};
+  const peaks=hourlyPeaks(series.weekValues),buyouts=ordersHourly.series==='buyouts';
+  const what=`${ordersHourly.metric==='sum'?'суммы ':''}${buyouts?'выкупов':'заказов'}`;
+  // Расписание рекламы подсказываем по заказам; пики выкупов — когда покупатели забирают товар из пунктов выдачи.
+  const advice=!peaks?`<p>За прошлую неделю ${buyouts?'выкупов':'заказов'} нет — пиковые часы определить не по чему.</p>`:buyouts?
+    `<p><b>Пиковые часы выкупов</b> (среднее за 7 дней): ${peaks.ranges.map(range=>hourRange(range.from,range.to)).join(', ')} — ${Math.round(peaks.peakShare*100)}% ${what}. В эти часы покупатели чаще всего забирают заказы из пунктов выдачи.</p>`:
+    `<p><b>Пиковые часы</b> (среднее за 7 дней): ${peaks.ranges.map(range=>hourRange(range.from,range.to)).join(', ')} — ${Math.round(peaks.peakShare*100)}% ${what}. Подсказка для расписания показов: в эти часы реклама должна быть включена.`+
+    (peaks.quiet.share<.1?` Меньше всего — ${hourRange(peaks.quiet.from,peaks.quiet.from+6)}: всего ${Math.max(1,Math.round(peaks.quiet.share*100))}% ${what}, эти часы можно исключить из показов, чтобы не тратить бюджет.`:'')+'</p>';
+  $('#ordersHourlyInsights').innerHTML=line('orders','Заказы сегодня')+line('buyouts','Выкупы сегодня')+advice;
 }
 let ordersHourlyResize=0;
 window.addEventListener('resize',()=>{clearTimeout(ordersHourlyResize);ordersHourlyResize=setTimeout(()=>{if(ordersHourly.data&&state.activePage==='orders')renderOrdersHourly()},150)});
 document.addEventListener('click',event=>{
-  const metric=event.target.closest('[data-hourly-metric]'),compare=event.target.closest('[data-hourly-compare]');
+  const metric=event.target.closest('[data-hourly-metric]'),compare=event.target.closest('[data-hourly-compare]'),series=event.target.closest('[data-hourly-series]');
+  if(series){ordersHourly.series=series.dataset.hourlySeries;renderOrdersHourly()}
   if(metric){ordersHourly.metric=metric.dataset.hourlyMetric;renderOrdersHourly()}
   if(compare){ordersHourly.compare=compare.dataset.hourlyCompare;renderOrdersHourly()}
 });

@@ -2286,20 +2286,31 @@ function orderFeedPeriod(feed, from, to) {
 // --- Заказы по часам (Лента заказов): сегодня и 7 предыдущих дней по московскому времени ---
 const HOURLY_DAYS = 8;
 // Каждый заказ (srid) считается один раз — по времени оформления; отменённые и возвращённые тоже, как в заказах WB.
-// byNow — заказы дня до того же времени суток, что сейчас: честное сравнение «к этому часу».
+// Выкуп — событие со статусом «выкуплен», по времени этого статуса (когда покупатель забрал товар).
+// byNow — заказы и выкупы дня до того же времени суток, что сейчас: честное сравнение «к этому часу».
 function summarizeHourlyOrders(orders = [], today, nowMinutes) {
   const dates = Array.from({ length: HOURLY_DAYS }, (_, index) => addDays(today, index - HOURLY_DAYS + 1));
-  const days = new Map(dates.map(date => [date, { date, hours: Array.from({ length: 24 }, () => ({ count: 0, sum: 0 })), byNow: { count: 0, sum: 0 } }]));
+  const empty = () => ({ count: 0, sum: 0, buyoutCount: 0, buyoutSum: 0 });
+  const days = new Map(dates.map(date => [date, { date, hours: Array.from({ length: 24 }, empty), byNow: empty() }]));
+  const place = time => {
+    const at = new Date(time);
+    if (Number.isNaN(at.getTime())) return null;
+    const msk = new Date(at.getTime() + 3 * 3_600_000), day = days.get(msk.toISOString().slice(0, 10));
+    return day ? { day, hour: msk.getUTCHours(), beforeNow: msk.getUTCHours() * 60 + msk.getUTCMinutes() <= nowMinutes } : null;
+  };
+  const add = (slot, countKey, sumKey, price) => {
+    if (!slot) return;
+    slot.day.hours[slot.hour][countKey] += 1; slot.day.hours[slot.hour][sumKey] += price;
+    if (slot.beforeNow) { slot.day.byNow[countKey] += 1; slot.day.byNow[sumKey] += price; }
+  };
   const seen = new Set();
   for (const order of orders) {
-    const id = String(order.id || ''), at = new Date(order.orderedAt || order.createdAt);
-    if (!id || seen.has(id) || Number.isNaN(at.getTime())) continue;
+    const id = String(order.id || '');
+    if (!id || seen.has(id)) continue;
     seen.add(id);
-    const msk = new Date(at.getTime() + 3 * 3_600_000), day = days.get(msk.toISOString().slice(0, 10));
-    if (!day) continue;
-    const hour = msk.getUTCHours(), price = Number(order.price || 0) / 100;
-    day.hours[hour].count += 1; day.hours[hour].sum += price;
-    if (hour * 60 + msk.getUTCMinutes() <= nowMinutes) { day.byNow.count += 1; day.byNow.sum += price; }
+    const price = Number(order.price || 0) / 100;
+    add(place(order.orderedAt || order.createdAt), 'count', 'sum', price);
+    if (order.rawStatus === 'buyout') add(place(order.createdAt), 'buyoutCount', 'buyoutSum', price);
   }
   return dates.map(date => days.get(date));
 }
@@ -2313,7 +2324,10 @@ function demoHourlyOrders(today, nowMinutes) {
       for (let n = 0; n < count; n++) {
         const at = new Date(Date.parse(`${date}T${String(hour).padStart(2, '0')}:${String((n * 13) % 60).padStart(2, '0')}:00Z`) - 3 * 3_600_000);
         if (back === 0 && hour * 60 + (n * 13) % 60 > nowMinutes) continue;
-        orders.push({ id: `demo-${date}-${hour}-${n}`, orderedAt: at.toISOString(), price: (900 + ((hour + n) % 4) * 350) * 100 });
+        // Часть заказов выкуплена примерно через сутки — в часы, когда забирают из пунктов выдачи.
+        const bought = back > 0 && (n + hour) % 3 !== 0, boughtAt = new Date(at.getTime() + (20 + (hour * 5 + n) % 10) * 3_600_000);
+        orders.push({ id: `demo-${date}-${hour}-${n}`, orderedAt: at.toISOString(), price: (900 + ((hour + n) % 4) * 350) * 100,
+          ...(bought && boughtAt.getTime() <= Date.now() ? { rawStatus: 'buyout', createdAt: boughtAt.toISOString() } : { createdAt: at.toISOString() }) });
       }
     }
   }

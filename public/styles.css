@@ -156,6 +156,7 @@ tr.rating-row-attention td:first-child{box-shadow:inset 3px 0 0 var(--red)}
 .hourly-insights{display:grid;gap:4px;padding:12px 20px 0;color:var(--muted);font-size:12px;line-height:1.55}
 .hourly-insights p{margin:0}
 .hourly-insights b{color:var(--ink)}
+.hourly-insights p.hourly-current b:first-child{color:var(--purple)}
 .hourly-up{color:var(--green);font-weight:700}.hourly-down{color:var(--red);font-weight:700}
 .hourly-bar{fill:var(--purple);transition:fill .12s}
 .hourly-bar.partial{fill:#b9a8f4}

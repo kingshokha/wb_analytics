@@ -56,11 +56,30 @@ test('заказы по часам — по московскому времен�
   assert.equal(days[0].date, '2026-10-01');
   const today = days[7], yesterday = days[6];
   assert.equal(today.date, '2026-10-08');
-  assert.deepEqual(today.hours[9], { count: 1, sum: 1000 });
+  assert.deepEqual(today.hours[9], { count: 1, sum: 1000, buyoutCount: 0, buyoutSum: 0 });
   assert.equal(today.hours[0].count, 1);
-  assert.deepEqual(today.byNow, { count: 2, sum: 1200 });
+  assert.deepEqual(today.byNow, { count: 2, sum: 1200, buyoutCount: 0, buyoutSum: 0 });
   assert.equal(yesterday.hours[23].count, 1);
-  assert.deepEqual(yesterday.byNow, { count: 1, sum: 300 });
+  assert.deepEqual(yesterday.byNow, { count: 1, sum: 300, buyoutCount: 0, buyoutSum: 0 });
+});
+
+test('выкупы по часам — по времени статуса «выкуплен», заказ — по времени оформления', () => {
+  const days = summarizeHourlyOrders([
+    // Заказан 05.10 в 12:00 МСК, выкуплен сегодня в 09:15 МСК.
+    { id: 'x', orderedAt: '2026-10-05T09:00:00Z', createdAt: '2026-10-08T06:15:00Z', rawStatus: 'buyout', price: 150000 },
+    // Заказан и выкуплен вчера; выкуп в 18:00 МСК — позже «сейчас» (10:00), в byNow не входит.
+    { id: 'y', orderedAt: '2026-10-07T05:00:00Z', createdAt: '2026-10-07T15:00:00Z', rawStatus: 'buyout', price: 50000 },
+    // Отменённый заказ — только заказ, не выкуп.
+    { id: 'z', orderedAt: '2026-10-08T05:00:00Z', createdAt: '2026-10-08T06:00:00Z', rawStatus: 'cancel', price: 40000 }
+  ], '2026-10-08', 10 * 60);
+  const today = days[7], yesterday = days[6];
+  assert.equal(today.hours[9].buyoutCount, 1);
+  assert.equal(today.hours[9].buyoutSum, 1500);
+  assert.deepEqual(today.byNow, { count: 1, sum: 400, buyoutCount: 1, buyoutSum: 1500 });
+  assert.equal(days[4].hours[12].count, 1);
+  assert.equal(yesterday.hours[18].buyoutCount, 1);
+  assert.equal(yesterday.byNow.buyoutCount, 0);
+  assert.equal(yesterday.byNow.count, 1);
 });
 
 test('лента заказов строится только из событий WB, отсортированных по времени', () => {
