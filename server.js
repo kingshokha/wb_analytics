@@ -653,14 +653,19 @@ function normalizeOrderFeed(payload) {
   }));
 }
 
+// Строки ленты — только события «Ленты заказов» WB: у них есть склад отгрузки и город покупателя.
+// Новое FBS-задание — тот же заказ (rid задания = srid события), поэтому отдельной строкой не идёт; от него берётся только
+// сумма покупателя с учётом СПП (buyerPrice). Задания, которых ещё нет в ленте, видны в разделе «Новые заказы».
 function normalizeOrders(fbs, orderFeed) {
-  const a = (fbs?.orders || []).map(o => ({
-    id: o.id, nmId: o.nmId, article: o.article || o.vendorCode || `№ ${o.id}`, name: o.article || `Товар ${o.nmId}`,
-    status: 'new', createdAt: o.createdAt || o.createdDate, price: o.convertedFinalPrice ?? o.finalPrice ?? o.convertedPrice ?? o.price,
-    currencyCode: o.convertedCurrencyCode || o.currencyCode, warehouse: o.warehouseId ? `Склад ${o.warehouseId}` : '—', source: 'FBS'
-  }));
-  const b = normalizeOrderFeed(orderFeed);
-  return [...a, ...b].sort((x, y) => new Date(y.createdAt) - new Date(x.createdAt));
+  const tasks = new Map((fbs?.orders || []).filter(o => o.rid).map(o => [String(o.rid), o]));
+  return normalizeOrderFeed(orderFeed).map(order => {
+    const task = tasks.get(String(order.id));
+    if (!task) return order;
+    // Сумма покупателя — в валюте продавца; если валюта события другая, не показываем её, чтобы не сравнивать разные валюты.
+    const buyerPrice = task.convertedFinalPrice ?? task.finalPrice;
+    const sameCurrency = !task.convertedCurrencyCode || !order.currencyCode || String(task.convertedCurrencyCode) === String(order.currencyCode);
+    return buyerPrice != null && sameCurrency ? { ...order, buyerPrice } : order;
+  }).sort((x, y) => new Date(y.createdAt) - new Date(x.createdAt));
 }
 
 function extractFunnel(payload) {
@@ -2167,6 +2172,82 @@ async function summaryAds(id, from, to) {
   return { demo, available: true, periods, current: summaryAdPeriod(days, periods.current), previous: summaryAdPeriod(days, periods.previous), warnings };
 }
 
+// --- Лента заказов WB: один общий запрос на кабинет ---
+// WB отдаёт ленту не чаще 1 раза в минуту на аккаунт и максимум за последние 31 день. Поэтому и список заказов,
+// и график по часам берут данные из одного запроса за 31 день (кэш 90 сек): повторный запрос раньше минуты
+// не отправляется, а при отказе WB отдаются последние полученные данные.
+const ORDER_FEED_INTERVAL = 61_000;
+const orderFeedAttempts = new Map();
+async function orderFeedMonth(id, token) {
+  const today = moscowDate();
+  return cachedAnalytics(`order-feed-31:${id}`, async () => {
+    const wait = ORDER_FEED_INTERVAL - (Date.now() - (orderFeedAttempts.get(id) || 0));
+    if (wait > 0) throw apiError(429, `WB отдаёт ленту заказов не чаще 1 раза в минуту — повторите через ${Math.ceil(wait / 1000)} сек`);
+    orderFeedAttempts.set(id, Date.now());
+    try {
+      const feed = await wbRequest(token, 'https://seller-analytics-api.wildberries.ru/api/analytics/v1/order-feed', { method: 'POST', body: {
+        // Без пагинации WB отдаёт только 50 последних событий, поэтому запрашиваем максимум за один раз.
+        selectedPeriod: { start: `${addDays(today, -30)}T00:00:00Z`, end: `${today}T23:59:59Z` }, pagination: { limit: ORDER_FEED_LIMIT } } });
+      return { feed, fetchedAt: new Date().toISOString() };
+    } catch (error) {
+      if (error.status === 429) throw apiError(429, `WB ограничил частоту запросов ленты заказов (1 в минуту) — повторите через ${error.retryAfter || 60} сек`);
+      throw error;
+    }
+  }, 90_000);
+}
+// Период списка заказов — по времени текущего статуса события, как фильтрует сам WB.
+function orderFeedPeriod(feed, from, to) {
+  const start = Date.parse(`${from}T00:00:00Z`), end = Date.parse(`${to}T23:59:59Z`);
+  const orders = (feed?.data?.orders || []).filter(order => { const at = Date.parse(order.updatedAt || order.createdAt); return at >= start && at <= end; });
+  return { ...feed, data: { ...(feed?.data || {}), orders } };
+}
+
+// --- Заказы по часам (Лента заказов): сегодня и 7 предыдущих дней по московскому времени ---
+const HOURLY_DAYS = 8;
+// Каждый заказ (srid) считается один раз — по времени оформления; отменённые и возвращённые тоже, как в заказах WB.
+// byNow — заказы дня до того же времени суток, что сейчас: честное сравнение «к этому часу».
+function summarizeHourlyOrders(orders = [], today, nowMinutes) {
+  const dates = Array.from({ length: HOURLY_DAYS }, (_, index) => addDays(today, index - HOURLY_DAYS + 1));
+  const days = new Map(dates.map(date => [date, { date, hours: Array.from({ length: 24 }, () => ({ count: 0, sum: 0 })), byNow: { count: 0, sum: 0 } }]));
+  const seen = new Set();
+  for (const order of orders) {
+    const id = String(order.id || ''), at = new Date(order.orderedAt || order.createdAt);
+    if (!id || seen.has(id) || Number.isNaN(at.getTime())) continue;
+    seen.add(id);
+    const msk = new Date(at.getTime() + 3 * 3_600_000), day = days.get(msk.toISOString().slice(0, 10));
+    if (!day) continue;
+    const hour = msk.getUTCHours(), price = Number(order.price || 0) / 100;
+    day.hours[hour].count += 1; day.hours[hour].sum += price;
+    if (hour * 60 + msk.getUTCMinutes() <= nowMinutes) { day.byNow.count += 1; day.byNow.sum += price; }
+  }
+  return dates.map(date => days.get(date));
+}
+function demoHourlyOrders(today, nowMinutes) {
+  const orders = [];
+  for (let back = 0; back < HOURLY_DAYS; back++) {
+    const date = addDays(today, -back);
+    for (let hour = 0; hour < 24; hour++) {
+      // Вечерний пик и ночной провал, как у типичного магазина.
+      const count = Math.max(0, Math.round([0, 0, 0, 0, 0, 0, 1, 1, 2, 2, 3, 3, 3, 3, 3, 3, 3, 4, 4, 5, 6, 6, 4, 2][hour] * (1 + ((back * 7 + hour * 3) % 5 - 2) * 0.15)));
+      for (let n = 0; n < count; n++) {
+        const at = new Date(Date.parse(`${date}T${String(hour).padStart(2, '0')}:${String((n * 13) % 60).padStart(2, '0')}:00Z`) - 3 * 3_600_000);
+        if (back === 0 && hour * 60 + (n * 13) % 60 > nowMinutes) continue;
+        orders.push({ id: `demo-${date}-${hour}-${n}`, orderedAt: at.toISOString(), price: (900 + ((hour + n) % 4) * 350) * 100 });
+      }
+    }
+  }
+  return orders;
+}
+async function hourlyOrders(id) {
+  const now = new Date(Date.now() + 3 * 3_600_000), today = now.toISOString().slice(0, 10), nowMinutes = now.getUTCHours() * 60 + now.getUTCMinutes();
+  const meta = { today, now: { hour: now.getUTCHours(), minute: now.getUTCMinutes() }, currency: 'RUB' };
+  if (id === 'demo' || !cabinets().length) return { demo: true, ...meta, days: summarizeHourlyOrders(demoHourlyOrders(today, nowMinutes), today, nowMinutes) };
+  // Та же лента за 31 день, что и у списка заказов; лишнее отсекается по времени оформления.
+  const { feed, fetchedAt } = await orderFeedMonth(id, tokenFor(id));
+  return { demo: false, ...meta, fetchedAt, currency: feed?.data?.currency || 'RUB', days: summarizeHourlyOrders(normalizeOrderFeed(feed), today, nowMinutes),
+    warnings: (feed?.data?.orders || []).length >= ORDER_FEED_LIMIT ? [`WB отдал только первые ${ORDER_FEED_LIMIT} событий за 31 день — часть заказов могла не попасть`] : [] };
+}
+
 async function dashboard(id, from, to) {
   if (id === 'demo' || !cabinets().length) return demoDashboard();
   const token = tokenFor(id); const warnings = [];
@@ -2174,10 +2255,7 @@ async function dashboard(id, from, to) {
   const safeTo = /^\d{4}-\d{2}-\d{2}$/.test(to || '') ? to : dateDaysAgo(0);
   const jobs = [
     wbRequest(token, 'https://marketplace-api.wildberries.ru/api/v3/orders/new').catch(e => (warnings.push(`FBS: ${e.message}`), { orders: [] })),
-    cachedAnalytics(`order-feed:${id}:${safeFrom}:${safeTo}`, () => wbRequest(token, 'https://seller-analytics-api.wildberries.ru/api/analytics/v1/order-feed', { method: 'POST', body: {
-      // Без пагинации WB отдаёт только 50 последних событий, поэтому запрашиваем максимум за один раз.
-      selectedPeriod: { start: `${safeFrom}T00:00:00Z`, end: `${safeTo}T23:59:59Z` }, pagination: { limit: ORDER_FEED_LIMIT }
-    }})).catch(e => (warnings.push(`Лента заказов: ${e.message}`), { data: { orders: [] } })),
+    orderFeedMonth(id, token).then(({ feed }) => feed).catch(e => (warnings.push(`Лента заказов: ${e.message}`), { data: { orders: [] } })),
     cachedAnalytics(`product-cards:${id}`, () => loadProductCards(token), 10 * 60_000)
       .catch(e => (warnings.push(`Карточки товаров: ${e.message}`), [])),
     cachedAnalytics(`balance:${id}`, () => wbRequest(token, 'https://finance-api.wildberries.ru/api/v1/account/balance'), 60_000)
@@ -2185,10 +2263,12 @@ async function dashboard(id, from, to) {
   ];
   const [fbs, orderFeed, cards, balance] = await Promise.all(jobs);
   if ((orderFeed?.data?.orders || []).length >= ORDER_FEED_LIMIT) {
-    warnings.push(`Лента заказов: показаны первые ${ORDER_FEED_LIMIT} событий за период, выберите период короче`);
+    warnings.push(`Лента заказов: WB отдал только первые ${ORDER_FEED_LIMIT} событий за 31 день — часть заказов могла не попасть`);
   }
+  if (safeFrom < addDays(moscowDate(), -30)) warnings.push('Лента заказов: WB отдаёт события только за последние 31 день — более ранних заказов в списке нет');
   const balanceHistory = balance ? saveBalanceSnapshot(id, balance) : (readBalanceHistory()[id] || []);
-  return { demo: false, orders: enrichOrders(normalizeOrders(fbs, orderFeed), cards), funnel: extractFunnel({ data: { products: [] } }), funnelProducts: [], funnelHistory: [], funnelGroupedHistory: [],
+  // Новые FBS-задания в строки ленты не входят — для счётчика «Новые FBS» их число отдаётся отдельно.
+  return { demo: false, orders: enrichOrders(normalizeOrders(fbs, orderFeedPeriod(orderFeed, safeFrom, safeTo)), cards), fbsNew: (fbs?.orders || []).length, funnel: extractFunnel({ data: { products: [] } }), funnelProducts: [], funnelHistory: [], funnelGroupedHistory: [],
     balance: balance ? { currency: balance.currency || 'RUB', current: Number(balance.current || 0),
       forWithdraw: Number(balance.for_withdraw || 0), history: balanceHistory } : null, warnings };
 }
@@ -2485,6 +2565,9 @@ async function handleApi(req, res, url) {
   if (req.method === 'GET' && url.pathname === '/api/dashboard') {
     return send(res, 200, await dashboard(url.searchParams.get('cabinet') || 'demo', url.searchParams.get('from'), url.searchParams.get('to')));
   }
+  if (req.method === 'GET' && url.pathname === '/api/orders/hourly') {
+    return send(res, 200, await hourlyOrders(url.searchParams.get('cabinet') || 'demo'));
+  }
   if (req.method === 'GET' && url.pathname === '/api/summary') {
     return send(res, 200, await summary(url.searchParams.get('cabinet') || 'demo', url.searchParams.get('from'), url.searchParams.get('to'), url.searchParams.get('refresh') === '1'));
   }
@@ -2611,16 +2694,6 @@ async function handleApi(req, res, url) {
     if (!body.confirm) throw apiError(400, 'Подтвердите копирование остатков');
     return send(res, 200, await copyFbsStocks(body));
   }
-  if (req.method === 'POST' && url.pathname === '/api/orders/status') {
-    const body = await readJson(req); const token = tokenFor(body.cabinet);
-    return send(res, 200, await wbRequest(token, 'https://marketplace-api.wildberries.ru/api/v3/orders/status', { method: 'POST', body: { orders: body.orders } }));
-  }
-  const cancel = url.pathname.match(/^\/api\/orders\/(\d+)\/cancel$/);
-  if (req.method === 'PATCH' && cancel) {
-    const body = await readJson(req); const token = tokenFor(body.cabinet);
-    await wbRequest(token, `https://marketplace-api.wildberries.ru/api/v3/orders/${cancel[1]}/cancel`, { method: 'PATCH', body: {} });
-    return send(res, 200, { ok: true });
-  }
   if (req.method === 'POST' && url.pathname === '/api/orders/stickers') {
     return send(res, 200, await orderStickers(await readJson(req)));
   }
@@ -2703,7 +2776,7 @@ const server = http.createServer(async (req, res) => {
 
 if (require.main === module) server.listen(PORT, '127.0.0.1', () => console.log(`WB Analytics: http://127.0.0.1:${PORT}`));
 
-module.exports = { server, cabinets, campaignActivePeriod, mergeMinusList, summarizeKeywordDaily, summarizePositionDaily, normalizeOrders, normalizeOrderFeed, enrichOrders, extractFunnel, summarizeAdStats, campaignProductDaily, withAdBudgets, summarizeKeywords, normalizeStockPreset, normalizePricePreset, adCampaignMayHaveStats, validAdPeriod, historyPeriod, historyChunks, planAdFetch, datesBetween, safeFolderName, funnelDaysToFetch, pairFunnelDays, funnelPeriods, funnelRangeBuckets, funnelRecordCounts, funnelRangeValues, funnelSalesMatrix, summaryTopProducts, summaryDrops, summaryProducts, normalizeFbsStocks, normalizeFbwStocks, normalizePrices, summarizeStockTotals, normalizeNewOrders, summarizeSupplies, normalizeTrbxes, chunkOrders, stickerType, localPhoto, WB_HOSTS };
+module.exports = { server, cabinets, campaignActivePeriod, mergeMinusList, summarizeHourlyOrders, orderFeedPeriod, summarizeKeywordDaily, summarizePositionDaily, normalizeOrders, normalizeOrderFeed, enrichOrders, extractFunnel, summarizeAdStats, campaignProductDaily, withAdBudgets, summarizeKeywords, normalizeStockPreset, normalizePricePreset, adCampaignMayHaveStats, validAdPeriod, historyPeriod, historyChunks, planAdFetch, datesBetween, safeFolderName, funnelDaysToFetch, pairFunnelDays, funnelPeriods, funnelRangeBuckets, funnelRecordCounts, funnelRangeValues, funnelSalesMatrix, summaryTopProducts, summaryDrops, summaryProducts, normalizeFbsStocks, normalizeFbwStocks, normalizePrices, summarizeStockTotals, normalizeNewOrders, summarizeSupplies, normalizeTrbxes, chunkOrders, stickerType, localPhoto, WB_HOSTS };
 
 
 

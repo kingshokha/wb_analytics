@@ -79,6 +79,16 @@
       <section class="page" id="page-orders">
         <div class="balance-strip" id="balanceStrip"></div>
         <div class="metrics" id="metrics"></div>
+        <div class="panel orders-hourly-panel">
+          <div class="panel-head">
+            <div><h2>Заказы по часам</h2><p id="ordersHourlyNote">По московскому времени</p></div>
+            <div class="hourly-controls" id="ordersHourlyControls"></div>
+          </div>
+          <div class="hourly-insights" id="ordersHourlyInsights"></div>
+          <div class="summary-chart" id="ordersHourlyChart"></div>
+          <div class="summary-legend hourly-legend" id="ordersHourlyLegend"></div>
+          <details class="hourly-table" id="ordersHourlyTable"></details>
+        </div>
         <div class="panel">
           <div class="panel-head">
             <div><h2>Все заказы</h2><p id="orderCount">Загрузка данных…</p></div>
@@ -237,6 +247,7 @@
   <script src="/date-range.js"></script>
   <script src="/table-ui.js"></script>
   <script src="/summary.js"></script>
+  <script src="/orders-hourly.js"></script>
   <script src="/app.js"></script>
 </body>
 </html>

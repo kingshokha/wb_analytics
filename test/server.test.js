@@ -1,16 +1,71 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { campaignActivePeriod, mergeMinusList, summarizeKeywordDaily, summarizePositionDaily, normalizeOrders, normalizeOrderFeed, enrichOrders, extractFunnel, summarizeAdStats, campaignProductDaily, withAdBudgets, summarizeKeywords, normalizeStockPreset, normalizePricePreset, adCampaignMayHaveStats, validAdPeriod, historyPeriod, historyChunks, planAdFetch, datesBetween, safeFolderName, funnelDaysToFetch, pairFunnelDays, funnelPeriods, funnelRangeBuckets, funnelRecordCounts, funnelRangeValues, funnelSalesMatrix, summaryTopProducts, summaryDrops, summaryProducts, normalizeFbsStocks, normalizeFbwStocks, normalizePrices, summarizeStockTotals, normalizeNewOrders, summarizeSupplies, normalizeTrbxes, chunkOrders, stickerType, localPhoto, WB_HOSTS } = require('../server');
+const { summarizeHourlyOrders, orderFeedPeriod, campaignActivePeriod, mergeMinusList, summarizeKeywordDaily, summarizePositionDaily, normalizeOrders, normalizeOrderFeed, enrichOrders, extractFunnel, summarizeAdStats, campaignProductDaily, withAdBudgets, summarizeKeywords, normalizeStockPreset, normalizePricePreset, adCampaignMayHaveStats, validAdPeriod, historyPeriod, historyChunks, planAdFetch, datesBetween, safeFolderName, funnelDaysToFetch, pairFunnelDays, funnelPeriods, funnelRangeBuckets, funnelRecordCounts, funnelRangeValues, funnelSalesMatrix, summaryTopProducts, summaryDrops, summaryProducts, normalizeFbsStocks, normalizeFbwStocks, normalizePrices, summarizeStockTotals, normalizeNewOrders, summarizeSupplies, normalizeTrbxes, chunkOrders, stickerType, localPhoto, WB_HOSTS } = require('../server');
 
-test('объединяет и сортирует FBS и события ленты WB', () => {
+test('из общей ленты за 31 день список берёт события по времени текущего статуса в выбранном периоде', () => {
+  const feed = { data: { currency: 'RUB', orders: [
+    { srid: 'old', createdAt: '2026-09-20T10:00:00Z', updatedAt: '2026-10-03T10:00:00Z' },
+    { srid: 'in', createdAt: '2026-10-05T10:00:00Z' },
+    { srid: 'out', createdAt: '2026-09-25T10:00:00Z' }
+  ] } };
+  const result = orderFeedPeriod(feed, '2026-10-02', '2026-10-08');
+  assert.deepEqual(result.data.orders.map(order => order.srid), ['old', 'in']);
+  assert.equal(result.data.currency, 'RUB');
+});
+
+test('заказы по часам — по московскому времени, каждый заказ один раз, «к этому часу» по времени суток', () => {
+  const days = summarizeHourlyOrders([
+    { id: 'a', orderedAt: '2026-10-08T06:30:00Z', price: 100000 },   // 09:30 МСК сегодня
+    { id: 'a', orderedAt: '2026-10-08T06:30:00Z', price: 100000 },   // тот же заказ — не считается дважды
+    { id: 'b', orderedAt: '2026-10-07T20:59:00Z', price: 50000 },    // 23:59 МСК 07.10 — вчера
+    { id: 'c', orderedAt: '2026-10-07T21:10:00Z', price: 20000 },    // 00:10 МСК 08.10 — уже сегодня
+    { id: 'd', orderedAt: '2026-10-07T06:00:00Z', price: 30000 },    // 09:00 МСК вчера — до «сейчас» (10:00)
+    { id: 'e', orderedAt: '2026-09-20T06:00:00Z', price: 30000 }     // за пределами 8 дней
+  ], '2026-10-08', 10 * 60);
+  assert.equal(days.length, 8);
+  assert.equal(days[0].date, '2026-10-01');
+  const today = days[7], yesterday = days[6];
+  assert.equal(today.date, '2026-10-08');
+  assert.deepEqual(today.hours[9], { count: 1, sum: 1000 });
+  assert.equal(today.hours[0].count, 1);
+  assert.deepEqual(today.byNow, { count: 2, sum: 1200 });
+  assert.equal(yesterday.hours[23].count, 1);
+  assert.deepEqual(yesterday.byNow, { count: 1, sum: 300 });
+});
+
+test('лента заказов строится только из событий WB, отсортированных по времени', () => {
   const result = normalizeOrders(
-    { orders: [{ id: 1, nmId: 11, createdAt: '2026-08-12T10:00:00Z', price: 5000 }] },
-    { data: { currency: 'RUB', orders: [{ srid: 's2', nmId: 12, chrtId: 22, createdAt: '2026-08-11T10:00:00Z', updatedAt: '2026-08-13T10:00:00Z', status: 'buyout', sellerPrice: 100 }] } }
+    { orders: [{ id: 1, rid: 'not-in-feed', nmId: 11, createdAt: '2026-08-12T10:00:00Z', price: 5000 }] },
+    { data: { currency: 'RUB', orders: [
+      { srid: 's1', nmId: 12, createdAt: '2026-08-10T10:00:00Z', status: 'created', sellerPrice: 50 },
+      { srid: 's2', nmId: 12, chrtId: 22, createdAt: '2026-08-11T10:00:00Z', updatedAt: '2026-08-13T10:00:00Z', status: 'buyout', sellerPrice: 100 }
+    ] } }
+  );
+  assert.deepEqual(result.map(order => order.id), ['s2', 's1']);
+  assert.ok(result.every(order => order.source === 'Лента WB'));
+});
+
+test('новое FBS-задание не дублирует строку ленты, а добавляет к ней сумму покупателя с СПП (rid = srid)', () => {
+  const result = normalizeOrders(
+    { orders: [
+      { id: 5985992160, rid: 'eBG.re86.1.0', nmId: 221609260, createdAt: '2026-10-08T13:43:00Z', salePrice: 570400, finalPrice: 468800, convertedFinalPrice: 468800, currencyCode: 643, convertedCurrencyCode: 643, warehouseId: 2155961 },
+      { id: 7, rid: 'other-currency', nmId: 1, createdAt: '2026-10-08T12:00:00Z', convertedFinalPrice: 9000, currencyCode: 933, convertedCurrencyCode: 933 }
+    ] },
+    { data: { currency: 'RUB', orders: [
+      { srid: 'eBG.re86.1.0', nmId: 221609260, createdAt: '2026-10-08T13:43:00Z', status: 'created', sellerPrice: 5704, warehouseName: 'склад продавца Коледино', destinationCity: 'Минск', destinationDistrict: 'Беларусь' },
+      { srid: 'other-currency', nmId: 1, createdAt: '2026-10-08T12:00:00Z', status: 'created', sellerPrice: 100 }
+    ] } }
   );
   assert.equal(result.length, 2);
-  assert.equal(result[0].id, 's2');
-  assert.equal(result[1].source, 'FBS');
+  const order = result.find(item => item.id === 'eBG.re86.1.0');
+  assert.equal(order.source, 'Лента WB');
+  assert.equal(order.price, 570400);
+  assert.equal(order.buyerPrice, 468800);
+  assert.equal(order.warehouse, 'склад продавца Коледино');
+  assert.equal(order.destinationCity, 'Минск');
+  // Сумма покупателя в другой валюте не подставляется.
+  assert.equal(result.find(item => item.id === 'other-currency').buyerPrice, undefined);
 });
 
 test('преобразует актуальный ответ order-feed и использует время обновления события', () => {
