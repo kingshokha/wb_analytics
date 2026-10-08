@@ -2679,11 +2679,6 @@ async function handleApi(req, res, url) {
   if (req.method === 'POST' && url.pathname === '/api/supplies/trbx/stickers') {
     return send(res, 200, await trbxStickers(await readJson(req)));
   }
-  if (req.method === 'POST' && url.pathname === '/api/proxy') {
-    const body = await readJson(req); const token = tokenFor(body.cabinet);
-    if (!body.confirm && !['GET'].includes(String(body.method).toUpperCase())) throw apiError(400, 'Подтвердите изменяющий запрос');
-    return send(res, 200, await wbRequest(token, body.url, { method: body.method, body: body.body }));
-  }
   throw apiError(404, 'Метод сайта не найден');
 }
 

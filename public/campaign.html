@@ -30,6 +30,8 @@
     .nav-item{display:flex;align-items:center;gap:12px;padding:12px 16px;border-radius:9px;color:#aeb8b3;text-decoration:none;font:600 13px Manrope;white-space:nowrap;overflow:hidden}
     .nav-item:hover,.nav-item.active{background:#27332e;color:white}
     .nav-icon{width:24px;height:24px;display:inline-grid;place-items:center;flex:0 0 24px;font:700 18px "Segoe UI Symbol",Arial,sans-serif;color:inherit}
+    .nav-icon svg{width:21px;height:21px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+    .nav-icon.nav-icon-ads{width:30px;height:18px;flex:0 0 30px;margin:0 -3px;border:1.7px solid currentColor;border-radius:5px;font:800 9px/1 Manrope,Arial,sans-serif;letter-spacing:.04em}
     .nav-label{opacity:0;transition:opacity .15s}
     .sidebar.expanded .nav-label{opacity:1}
     .sidebar-note{margin:auto 11px 0;color:#77847e;font-size:11px;line-height:1.5;opacity:0;visibility:hidden;transition:opacity .15s}
@@ -344,13 +346,13 @@
     </div>
     <nav>
       <a class="nav-item" href="/?page=summary"><span class="nav-icon" aria-hidden="true">◎</span><span class="nav-label">Сводка</span></a>
-      <a class="nav-item" href="/?page=orders"><span class="nav-icon" aria-hidden="true">▤</span><span class="nav-label">Лента заказов</span></a>
-      <a class="nav-item" href="/?page=fbs-orders"><span class="nav-icon" aria-hidden="true">◈</span><span class="nav-label">Новые заказы</span></a>
-      <a class="nav-item" href="/?page=fbw-stocks"><span class="nav-icon" aria-hidden="true">◇</span><span class="nav-label">Остатки FBW</span></a>
-      <a class="nav-item" href="/?page=stocks"><span class="nav-icon" aria-hidden="true">◇</span><span class="nav-label">Остатки FBS</span></a>
+      <a class="nav-item" href="/?page=orders"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M6 3.5h12v17l-2-1.4-2 1.4-2-1.4-2 1.4-2-1.4-2 1.4z"/><path d="M9 8h6M9 11.5h6M9 15h3.5"/></svg></span><span class="nav-label">Лента заказов</span></a>
+      <a class="nav-item" href="/?page=fbs-orders"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M11.3 10.5l.2-3h9l.8 11h-6.3M13.6 7.5V6.6a2.4 2.4 0 0 1 4.8 0v.9"/><path d="M4.5 10.5h9.6l.8 10H3.7z"/><path d="M7 10.5V9.4a2.3 2.3 0 0 1 4.6 0v1.1"/></svg></span><span class="nav-label">Новые заказы</span></a>
+      <a class="nav-item" href="/?page=fbw-stocks"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="8" y="4.5" width="8" height="7.5" rx="1.2"/><rect x="3.5" y="12.5" width="8" height="7.5" rx="1.2"/><rect x="12.5" y="12.5" width="8" height="7.5" rx="1.2"/><path d="M12 4.5v2.5M7.5 12.5V15M16.5 12.5V15"/></svg></span><span class="nav-label">Остатки FBW</span></a>
+      <a class="nav-item" href="/?page=stocks"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="8" y="4.5" width="8" height="7.5" rx="1.2"/><rect x="3.5" y="12.5" width="8" height="7.5" rx="1.2"/><rect x="12.5" y="12.5" width="8" height="7.5" rx="1.2"/><path d="M12 4.5v2.5M7.5 12.5V15M16.5 12.5V15"/></svg></span><span class="nav-label">Остатки FBS</span></a>
       <a class="nav-item" href="/?page=prices"><span class="nav-icon" aria-hidden="true">₽</span><span class="nav-label">Цены и скидки</span></a>
-      <a class="nav-item" href="/?page=funnel"><span class="nav-icon" aria-hidden="true">◫</span><span class="nav-label">Воронка</span></a>
-      <a class="nav-item active" href="/?page=ads"><span class="nav-icon" aria-hidden="true">↗</span><span class="nav-label">Реклама</span></a>
+      <a class="nav-item" href="/?page=funnel"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3.5 3.5v17h17"/><path d="M7 15.5l4-4.5 3 3 5.5-6.5"/><path d="M16 7.5h3.5V11"/></svg></span><span class="nav-label">Воронка</span></a>
+      <a class="nav-item active" href="/?page=ads"><span class="nav-icon nav-icon-ads" aria-hidden="true">ADS</span><span class="nav-label">Реклама</span></a>
     </nav>
     <p class="sidebar-note">Детализация рекламной кампании</p>
   </aside>
