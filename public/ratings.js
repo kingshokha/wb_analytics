@@ -109,7 +109,11 @@ function renderRatingTable(){
   ratings.page=Math.min(Math.max(1,ratings.page),Math.max(1,pageCount));
   const pageRows=rows.slice((ratings.page-1)*ratings.pageSize,ratings.page*ratings.pageSize);
   $('#ratingCount').textContent=`${fmtNum(rows.length)} из ${fmtNum(all.length)} товаров · отзывы за ${trendFullDate(ratings.data.periods.current.start)} – ${trendFullDate(ratings.data.periods.current.end)}`;
-  $('#ratingHead').innerHTML=RATING_COLUMNS.map(c=>`<th data-rating-sort="${c.key}" data-col-key="${c.key}" data-col-width="${c.width}"${c.hint?` title="${escapeHtml(c.hint)}"`:''}>${escapeHtml(c.label)} ${ratings.sort.key===c.key?(ratings.sort.dir==='asc'?'↑':'↓'):'↕'}</th>`).join('');
+  // Заголовки создаются один раз: ширину столбцов задаёт и хранит общий механизм изменения ширины (initResizableTables),
+  // и если пересоздавать заголовки, ширины теряются и столбцы налезают друг на друга. При сортировке меняется только стрелка.
+  const head=$('#ratingHead');
+  if(!head.children.length)head.innerHTML=RATING_COLUMNS.map(c=>`<th data-rating-sort="${c.key}" data-col-key="${c.key}" data-col-width="${c.width}"${c.hint?` title="${escapeHtml(c.hint)}"`:''}>${escapeHtml(c.label)} <span class="rating-sort-arrow"></span></th>`).join('');
+  head.querySelectorAll('[data-rating-sort]').forEach(th=>{th.querySelector('.rating-sort-arrow').textContent=ratings.sort.key===th.dataset.ratingSort?(ratings.sort.dir==='asc'?'↑':'↓'):'↕'});
   $('#ratingBody').innerHTML=pageRows.map(item=>`<tr class="${item.attention?'rating-row-attention':''}">${RATING_COLUMNS.map(c=>ratingCell(item,c.key)).join('')}</tr>`).join('');
   $('#emptyRatings').classList.toggle('hidden',rows.length>0);
   $$('#ratingBody .stock-product-photo,#ratingAttention .stock-product-photo').forEach(image=>{if(image.dataset.previewBound)return;image.dataset.previewBound='1';bindPhotoPreview(image)});
