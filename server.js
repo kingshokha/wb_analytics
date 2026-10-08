@@ -8,6 +8,7 @@ const { URL } = require('node:url');
 const os = require('node:os');
 const { execFile } = require('node:child_process');
 const { decryptSnapshot } = require('./scripts/snapshot-crypto');
+const { compactGoods, moscowStamp } = require('./scripts/price-snapshot');
 
 const ROOT = __dirname;
 loadEnv(path.join(ROOT, '.env'));
@@ -533,15 +534,21 @@ function demoPrices() {
   return { demo: true, ...normalizePrices(goods, cards), warnings: [] };
 }
 
-async function prices(id) {
-  if (id === 'demo' || !cabinets().length) return demoPrices();
-  const token = tokenFor(id); const cards = await cachedAnalytics(`product-cards:${id}`, () => loadProductCards(token), 10 * 60_000); const goods = [];
+// Цены и скидки всех товаров кабинета — для таблицы цен и для снимка «Снять цены сейчас».
+async function loadPriceGoods(token) {
+  const goods = [];
   for (let offset = 0; offset < 100_000; offset += 1000) {
     const response = await wbRequest(token, `https://discounts-prices-api.wildberries.ru/api/v2/list/goods/filter?limit=1000&offset=${offset}`);
     const batch = Array.isArray(response?.data?.listGoods) ? response.data.listGoods : []; goods.push(...batch);
     if (batch.length < 1000) break; await wait(650);
   }
-  return { demo: false, ...normalizePrices(goods, cards), warnings: [] };
+  return goods;
+}
+
+async function prices(id) {
+  if (id === 'demo' || !cabinets().length) return demoPrices();
+  const token = tokenFor(id); const cards = await cachedAnalytics(`product-cards:${id}`, () => loadProductCards(token), 10 * 60_000);
+  return { demo: false, ...normalizePrices(await loadPriceGoods(token), cards), warnings: [] };
 }
 
 async function updatePrices(body) {
@@ -2261,7 +2268,27 @@ function priceHistory(nmId) {
     priceHistoryIndex = { signature, byNmId: buildPriceHistory(snapshots), count: snapshots.length,
       first: snapshots.map(snapshot => snapshot.takenAt).filter(Boolean).sort()[0] || null };
   }
-  return { nmId: Number(nmId), points: priceHistoryIndex.byNmId.get(String(nmId)) || [], snapshots: priceHistoryIndex.count, firstSnapshot: priceHistoryIndex.first, enabled: fs.existsSync(SNAPSHOT_KEY_FILE) };
+  // История есть, если настроены снимки с GitHub (есть ключ) или уже сделан хоть один снимок с сайта.
+  return { nmId: Number(nmId), points: priceHistoryIndex.byNmId.get(String(nmId)) || [], snapshots: priceHistoryIndex.count, firstSnapshot: priceHistoryIndex.first, enabled: fs.existsSync(SNAPSHOT_KEY_FILE) || files.length > 0 };
+}
+// «Снять цены сейчас»: снимок с сайта, без GitHub — сразу в data/price-snapshots/site-<кабинет>/ (на компьютере, без
+// шифрования). История цены собирается по артикулу из всех папок, поэтому такие снимки встают в ту же историю.
+// Не чаще раза в минуту на кабинет — двойной клик не делает двух снимков.
+const localSnapshotTimes = new Map();
+async function takePriceSnapshot(id) {
+  if (id === 'demo' || !cabinets().length) throw apiError(400, 'В демо-режиме снимки цен не делаются');
+  const token = tokenFor(id), since = Date.now() - (localSnapshotTimes.get(id) || 0);
+  if (since < 60_000) throw apiError(429, `Снимок этого кабинета только что сделан — следующий через ${Math.ceil((60_000 - since) / 1000)} сек`);
+  localSnapshotTimes.set(id, Date.now());
+  let rawGoods;
+  // Если WB ответил ошибкой — снимка нет, и повторить можно сразу.
+  try { rawGoods = await loadPriceGoods(token); } catch (error) { localSnapshotTimes.delete(id); throw error; }
+  const takenAt = new Date(), goods = compactGoods(rawGoods), cabinet = `site-${String(id).replace(/[^\w-]/g, '')}`;
+  const dir = path.join(SNAPSHOT_DIR, cabinet), file = path.join(dir, `${moscowStamp(takenAt)}.json`);
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(`${file}.tmp`, JSON.stringify({ version: 1, cabinet, source: 'site', takenAt: takenAt.toISOString(), goods }));
+  fs.renameSync(`${file}.tmp`, file);
+  return { ok: true, takenAt: takenAt.toISOString(), goods: goods.length, ...priceSnapshotsStatus() };
 }
 function priceSnapshotsStatus() {
   const cabinets = fs.existsSync(SNAPSHOT_DIR) ? fs.readdirSync(SNAPSHOT_DIR, { withFileTypes: true }).filter(entry => entry.isDirectory()).map(entry => {
@@ -2764,6 +2791,10 @@ async function handleApi(req, res, url) {
   }
   if (req.method === 'GET' && url.pathname === '/api/price-snapshots') {
     return send(res, 200, priceSnapshotsStatus());
+  }
+  if (req.method === 'POST' && url.pathname === '/api/price-snapshots/take') {
+    const body = await readJson(req);
+    return send(res, 200, await takePriceSnapshot(body.cabinet || 'demo'));
   }
   if (req.method === 'POST' && url.pathname === '/api/price-snapshots/sync') {
     await syncPriceSnapshots();
