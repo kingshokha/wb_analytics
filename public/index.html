@@ -25,6 +25,7 @@
         <a class="nav-item" href="?page=stocks" data-page="stocks"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="8" y="4.5" width="8" height="7.5" rx="1.2"/><rect x="3.5" y="12.5" width="8" height="7.5" rx="1.2"/><rect x="12.5" y="12.5" width="8" height="7.5" rx="1.2"/><path d="M12 4.5v2.5M7.5 12.5V15M16.5 12.5V15"/></svg></span><span class="nav-label">Остатки FBS</span></a>
         <a class="nav-item" href="?page=prices" data-page="prices"><span class="nav-icon" aria-hidden="true">₽</span><span class="nav-label">Цены и скидки</span></a>
         <a class="nav-item" href="?page=funnel" data-page="funnel"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3.5 3.5v17h17"/><path d="M7 15.5l4-4.5 3 3 5.5-6.5"/><path d="M16 7.5h3.5V11"/></svg></span><span class="nav-label">Воронка</span></a>
+        <a class="nav-item" href="?page=ratings" data-page="ratings"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3.6l2.6 5.3 5.8.8-4.2 4.1 1 5.8-5.2-2.7-5.2 2.7 1-5.8-4.2-4.1 5.8-.8z"/></svg></span><span class="nav-label">Оценки товаров</span></a>
         <a class="nav-item" href="?page=ads" data-page="ads"><span class="nav-icon nav-icon-ads" aria-hidden="true">ADS</span><span class="nav-label">Реклама</span></a>
       </nav>
       <div class="sync-state"><i></i><span><strong>WB API</strong><small id="syncText">Подключение…</small></span></div>
@@ -203,6 +204,20 @@
         </div>
       </section>
 
+      <section class="page" id="page-ratings">
+        <div class="metrics" id="ratingMetrics"></div>
+        <div class="rating-overview">
+          <div class="panel"><div class="panel-head"><div><h2>Новые оценки по звёздам</h2><p id="ratingStarsNote">Загрузка…</p></div></div><div class="rating-stars" id="ratingStars"></div></div>
+          <div class="panel"><div class="panel-head"><div><h2>Требуют внимания</h2><p>Просел рейтинг, много 1–2★, хуже конкурентов или скрыт из каталога</p></div></div><div class="rating-attention" id="ratingAttention"></div></div>
+        </div>
+        <div class="panel stock-panel">
+          <div class="panel-head"><div><h2>Оценки товаров</h2><p id="ratingCount">Загрузка оценок…</p></div><div class="filters stock-filters"><label class="search">⌕ <input id="ratingSearch" placeholder="Товар, артикул или nmId"></label><select id="ratingFilter" aria-label="Какие товары показать"><option value="">Все товары</option><option value="new">С новыми отзывами</option><option value="attention">Требуют внимания</option><option value="weak">Хуже 75% конкурентов</option><option value="shadowed">Скрытые из каталога</option></select></div></div>
+          <div class="table-wrap"><table class="stock-table rating-table"><thead><tr id="ratingHead"></tr></thead><tbody id="ratingBody"></tbody></table></div>
+          <div class="empty hidden" id="emptyRatings"><span>★</span><h3>Товары не найдены</h3><p>Измените фильтры или период.</p></div>
+          <div class="stock-pagination hidden" id="ratingPagination" aria-label="Пагинация оценок товаров"></div>
+        </div>
+      </section>
+
       <section class="page" id="page-ads">
         <div class="ad-note hidden" id="adPartialNote"></div>
         <div class="metrics ad-metrics" id="adMetrics"></div>
@@ -248,6 +263,7 @@
   <script src="/table-ui.js"></script>
   <script src="/summary.js"></script>
   <script src="/orders-hourly.js"></script>
+  <script src="/ratings.js"></script>
   <script src="/app.js"></script>
 </body>
 </html>

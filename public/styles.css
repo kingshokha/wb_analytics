@@ -106,6 +106,44 @@ a.nav-item{text-decoration:none}a.nav-item:focus-visible{outline:2px solid var(-
 .campaign-open{flex:0 0 28px;width:28px;height:28px;display:grid;place-items:center;border:1px solid var(--line);border-radius:8px;background:white;color:var(--muted);transition:color .15s,border-color .15s,background .15s}.campaign-open:hover,.campaign-open:focus-visible{color:var(--purple);border-color:var(--purple);background:#f6f4fd;outline:0}.campaign-open svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
 .ad-product-toggle,.ad-product-toggle-stub{flex:0 0 22px;width:22px;height:22px}.ad-product-toggle{display:grid;place-items:center;padding:0;border:0;border-radius:6px;background:transparent;color:var(--muted);cursor:pointer;transition:transform .18s ease,color .15s,background .15s}.ad-product-toggle:hover,.ad-product-toggle:focus-visible{color:var(--purple);background:#f6f4fd;outline:0}.ad-product-toggle[aria-expanded="true"]{transform:rotate(90deg);color:var(--purple)}.ad-product-toggle svg{width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
 .ad-product-campaign td{background:#fafbfa;font-size:12.5px}.ad-product-campaign-name{padding-left:31px;min-width:220px}.ad-product-campaign-name a{color:inherit;text-decoration:none}.ad-product-campaign-name a:hover{color:var(--purple);text-decoration:underline}.ad-product-campaign-name small{display:flex;flex-wrap:wrap;align-items:center;gap:4px}.ad-product-campaign-name .status{padding:2px 7px;font-size:10.5px}
+/* Оценки товаров (public/ratings.js) */
+.rating-overview{display:grid;grid-template-columns:minmax(0,.85fr) minmax(0,1.15fr);gap:15px;margin-bottom:15px}
+.rating-overview .panel{margin:0}
+.rating-stars{display:grid;gap:12px;padding:16px 20px 20px}
+.rating-star-row{display:grid;grid-template-columns:34px minmax(0,1fr) 56px 40px 52px;align-items:center;gap:10px;font-size:12px}
+.rating-star-label{font-weight:800;color:var(--ink)}
+.rating-star-label i{margin-left:2px;font-style:normal;color:#f0a04b}
+.rating-star-track{height:10px;border-radius:5px;background:#f1f2f0;overflow:hidden}
+.rating-star-track span{display:block;height:100%;min-width:2px;border-radius:5px;background:#f0a04b}
+.rating-star-row b{text-align:right;font-size:12px}
+.rating-star-row small{color:var(--muted);font-size:11px;text-align:right}
+.rating-delta{display:block;margin-top:2px;color:var(--muted);font-size:11px;font-weight:700}
+.rating-star-row .rating-delta{margin:0;text-align:right}
+.rating-delta.up{color:var(--green)}.rating-delta.down{color:var(--red)}
+.rating-attention{display:grid;padding:6px 12px 12px}
+.rating-attention-row{display:flex;align-items:center;gap:11px;width:100%;padding:9px 8px;border:0;border-bottom:1px solid var(--line);background:none;color:var(--ink);text-align:left;cursor:pointer;border-radius:8px}
+.rating-attention-row:hover{background:#faf9ff}
+.rating-attention-row>span{display:grid;gap:4px;min-width:0;flex:1}
+.rating-attention-row strong{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px}
+.rating-attention-value{font-size:13px}
+.rating-photo-stub{width:34px;height:34px;flex:0 0 34px;border-radius:8px;background:#eef0ed}
+.rating-issues{display:flex;flex-wrap:wrap;gap:4px}
+.rating-issues em{padding:2px 7px;border-radius:20px;font-style:normal;font-size:11px;font-weight:700}
+.rating-issues em.bad{background:#fdecec;color:#b84949}
+.rating-issues em.warn{background:#fff1dc;color:#9b5e16}
+.rating-attention-more{justify-self:end;margin-top:8px;padding:4px 8px;border:0;background:none;color:var(--purple);font-size:12px;font-weight:700;cursor:pointer}
+.rating-empty{margin:0;padding:14px 8px;color:var(--muted);font-size:12px}
+.rating-table{min-width:1500px!important}
+.rating-percentile{display:grid;gap:4px;min-width:80px}
+.rating-percentile>span{height:5px;border-radius:3px;background:#f1f2f0;overflow:hidden}
+.rating-percentile i{display:block;height:100%;border-radius:3px}
+.rating-percentile.good i{background:var(--green)}.rating-percentile.warn i{background:var(--orange)}.rating-percentile.bad i{background:var(--red)}
+.rating-percentile.bad b{color:#b84949}
+.rating-negative{color:#b84949;font-weight:800}
+.rating-table .muted{color:#b5bcb8}
+.rating-table td small{display:block}
+tr.rating-row-attention td:first-child{box-shadow:inset 3px 0 0 var(--red)}
+@media(max-width:1180px){.rating-overview{grid-template-columns:minmax(0,1fr)}}
 /* Лента заказов: заказы по часам (public/orders-hourly.js) */
 .orders-hourly-panel{margin-bottom:15px}
 .hourly-controls{display:flex;flex-wrap:wrap;align-items:center;gap:8px}

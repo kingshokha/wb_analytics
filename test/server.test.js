@@ -1,7 +1,36 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { summarizeHourlyOrders, orderFeedPeriod, campaignActivePeriod, mergeMinusList, summarizeKeywordDaily, summarizePositionDaily, normalizeOrders, normalizeOrderFeed, enrichOrders, extractFunnel, summarizeAdStats, campaignProductDaily, withAdBudgets, summarizeKeywords, normalizeStockPreset, normalizePricePreset, adCampaignMayHaveStats, validAdPeriod, historyPeriod, historyChunks, planAdFetch, datesBetween, safeFolderName, funnelDaysToFetch, pairFunnelDays, funnelPeriods, funnelRangeBuckets, funnelRecordCounts, funnelRangeValues, funnelSalesMatrix, summaryTopProducts, summaryDrops, summaryProducts, normalizeFbsStocks, normalizeFbwStocks, normalizePrices, summarizeStockTotals, normalizeNewOrders, summarizeSupplies, normalizeTrbxes, chunkOrders, stickerType, localPhoto, WB_HOSTS } = require('../server');
+const { summarizeHourlyOrders, orderFeedPeriod, itemRatingPeriods, normalizeItemRatings, campaignActivePeriod, mergeMinusList, summarizeKeywordDaily, summarizePositionDaily, normalizeOrders, normalizeOrderFeed, enrichOrders, extractFunnel, summarizeAdStats, campaignProductDaily, withAdBudgets, summarizeKeywords, normalizeStockPreset, normalizePricePreset, adCampaignMayHaveStats, validAdPeriod, historyPeriod, historyChunks, planAdFetch, datesBetween, safeFolderName, funnelDaysToFetch, pairFunnelDays, funnelPeriods, funnelRangeBuckets, funnelRecordCounts, funnelRangeValues, funnelSalesMatrix, summaryTopProducts, summaryDrops, summaryProducts, normalizeFbsStocks, normalizeFbwStocks, normalizePrices, summarizeStockTotals, normalizeNewOrders, summarizeSupplies, normalizeTrbxes, chunkOrders, stickerType, localPhoto, WB_HOSTS } = require('../server');
+
+test('оценки товаров: период не позже вчера, прошлый период той же длины перед ним', () => {
+  const yesterday = new Date(Date.now() + 3 * 3_600_000 - 86_400_000).toISOString().slice(0, 10);
+  const today = new Date(Date.now() + 3 * 3_600_000).toISOString().slice(0, 10);
+  const periods = itemRatingPeriods('2026-01-01', today);
+  assert.equal(periods.current.end, yesterday);
+  assert.equal(periods.endClamped, true);
+  const fixed = itemRatingPeriods(yesterday, yesterday);
+  assert.deepEqual(fixed.current, { start: yesterday, end: yesterday });
+  assert.equal(fixed.past.end, fixed.past.start);
+  assert.ok(fixed.past.end < yesterday);
+});
+
+test('оценки товаров: dynamics — разница с прошлым периодом, звёзды и фото из карточек', () => {
+  const result = normalizeItemRatings([{ sellerRating: { current: 4.31, dynamics: 0 },
+    feedbackIncrease: { current: 22, total: 100, dynamics: 18, fiveStar: { current: 17, total: 80 }, oneStar: { current: 2, total: 5 } },
+    items: [{ nmId: 1261663339, title: 'MagSafe', vendorCode: 'MS', rating: 10, feedbackRating: { current: 4.51, dynamics: -0.49, percentile: 44.4 },
+      feedbackCount: { current: 22, dynamics: 18 }, fiveStar: { current: 17, dynamics: 13 }, oneStar: { current: 2, dynamics: 2 }, disqualified: 0, pinnedFeedback: false, isShadowed: true }] }],
+    [{ nmID: 1261663339, photos: [{ tm: 'https://basket-01.wbbasket.ru/x.webp' }] }]);
+  const item = result.items[0];
+  assert.equal(item.feedbackRatingDelta, -0.49);
+  assert.equal(item.newFeedbacks, 22);
+  assert.equal(item.newFeedbacksDelta, 18);
+  assert.deepEqual(item.stars[5], { count: 17, delta: 13 });
+  assert.deepEqual(item.stars[3], { count: 0, delta: null });
+  assert.equal(item.shadowed, true);
+  assert.ok(item.photo);
+  assert.equal(result.seller.stars[1].total, 5);
+});
 
 test('из общей ленты за 31 день список берёт события по времени текущего статуса в выбранном периоде', () => {
   const feed = { data: { currency: 'RUB', orders: [
