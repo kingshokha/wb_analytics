@@ -51,6 +51,10 @@
           <select class="month-select hidden" id="adMonth" aria-label="Выбрать месяц"></select>
           <button class="refresh refetch hidden" id="funnelRefetch" type="button" title="Заново загрузить данные воронки за выбранный период через API WB и перезаписать сохранённые">⇣ <span>Перекачать</span></button>
           <button class="refresh" id="refresh">↻ <span>Обновить</span></button>
+          <div class="notice-wrap">
+            <button class="notice-bell" id="noticeBell" type="button" aria-label="Уведомления раздела" aria-expanded="false" aria-controls="noticePanel" title="Уведомлений нет"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5a5.2 5.2 0 0 0-5.2 5.2v3.1c0 1-.4 2-1.1 2.7l-.9.9h14.4l-.9-.9a3.8 3.8 0 0 1-1.1-2.7V8.7A5.2 5.2 0 0 0 12 3.5z"/><path d="M9.8 18.4a2.3 2.3 0 0 0 4.4 0"/></svg><b id="noticeCount" hidden>0</b></button>
+            <div class="notice-panel" id="noticePanel" role="dialog" aria-label="Уведомления раздела" hidden></div>
+          </div>
         </div>
       </header>
 
@@ -262,6 +266,7 @@
   <script src="/date-range.js"></script>
   <script src="/table-ui.js"></script>
   <script src="/summary.js"></script>
+  <script src="/notifications.js"></script>
   <script src="/orders-hourly.js"></script>
   <script src="/ratings.js"></script>
   <script src="/price-product.js"></script>

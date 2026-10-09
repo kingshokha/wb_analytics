@@ -125,7 +125,7 @@ async function loadSummary(force=false,silent=false){
     if(!silent)$('#syncText').textContent=`Сводка · ${new Date().toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit'})}`;
     // Пока сервер догружает дни воронки из WB, сводка переспрашивает его и дорисовывает графики.
     if(data.sync?.pending)summaryView.pollTimer=setTimeout(()=>{if(request===summaryView.requestId&&state.activePage==='summary'&&summaryView.key===[state.cabinet,$('#dateFrom').value,$('#dateTo').value].join(':'))loadSummary(false,true)},5000);
-  }catch(e){if(request!==summaryView.requestId)return;summaryView.error=e.message;if(!silent){$('#syncText').textContent='Ошибка сводки';toast(e.message)}}
+  }catch(e){if(request!==summaryView.requestId)return;summaryView.error=e.message;if(!silent){$('#syncText').textContent='Ошибка сводки';toast(e.message);addNotice('summary',`Ошибка загрузки сводки: ${e.message}`)}}
   finally{if(request===summaryView.requestId){summaryView.loading=false;renderSummary()}}
 }
 async function loadSummaryAds(key){
@@ -162,12 +162,9 @@ function renderSummary(){
   renderSummaryDrops(data.drops,hasPrevious);
   renderSummaryFoot(data);
 }
+// Предупреждения сводки и её рекламной части — в уведомлениях раздела «Сводка» (колокольчик в шапке).
 function renderSummaryAlerts(){
-  const area=$('#alertArea');if(!area)return;
-  area.querySelectorAll('.summary-alert').forEach(el=>el.remove());
-  if(state.activePage!=='summary')return;
-  const warnings=[...(summaryView.data?.warnings||[]),...(summaryView.ads?.warnings||[])];
-  area.insertAdjacentHTML('beforeend',[...new Set(warnings)].map(text=>`<div class="alert summary-alert">${escapeHtml(text)}</div>`).join(''));
+  setNotices('summary','load',[...(summaryView.data?.warnings||[]),...(summaryView.ads?.warnings||[])]);
 }
 
 const SUMMARY_KPIS=[

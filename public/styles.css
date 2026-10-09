@@ -106,6 +106,27 @@ a.nav-item{text-decoration:none}a.nav-item:focus-visible{outline:2px solid var(-
 .campaign-open{flex:0 0 28px;width:28px;height:28px;display:grid;place-items:center;border:1px solid var(--line);border-radius:8px;background:white;color:var(--muted);transition:color .15s,border-color .15s,background .15s}.campaign-open:hover,.campaign-open:focus-visible{color:var(--purple);border-color:var(--purple);background:#f6f4fd;outline:0}.campaign-open svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
 .ad-product-toggle,.ad-product-toggle-stub{flex:0 0 22px;width:22px;height:22px}.ad-product-toggle{display:grid;place-items:center;padding:0;border:0;border-radius:6px;background:transparent;color:var(--muted);cursor:pointer;transition:transform .18s ease,color .15s,background .15s}.ad-product-toggle:hover,.ad-product-toggle:focus-visible{color:var(--purple);background:#f6f4fd;outline:0}.ad-product-toggle[aria-expanded="true"]{transform:rotate(90deg);color:var(--purple)}.ad-product-toggle svg{width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
 .ad-product-campaign td{background:#fafbfa;font-size:12.5px}.ad-product-campaign-name{padding-left:31px;min-width:220px}.ad-product-campaign-name a{color:inherit;text-decoration:none}.ad-product-campaign-name a:hover{color:var(--purple);text-decoration:underline}.ad-product-campaign-name small{display:flex;flex-wrap:wrap;align-items:center;gap:4px}.ad-product-campaign-name .status{padding:2px 7px;font-size:10.5px}
+/* Уведомления раздела: колокольчик справа от «Обновить» (public/notifications.js) */
+.notice-wrap{position:relative;display:flex}
+.notice-bell{position:relative;width:43px;height:43px;padding:0;display:grid;place-items:center;border:1px solid var(--line);border-radius:11px;background:white;color:var(--ink);cursor:pointer}
+.notice-bell:hover,.notice-bell[aria-expanded=true]{border-color:var(--purple);color:var(--purple)}
+.notice-bell svg{width:21px;height:21px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+.notice-bell b{position:absolute;top:-6px;right:-6px;min-width:20px;height:20px;padding:0 5px;border:2px solid var(--bg);border-radius:10px;background:#b5bcb8;color:white;font-size:10px;font-weight:800;line-height:16px;text-align:center}
+.notice-bell b.error{background:var(--red)}.notice-bell b.warning{background:var(--orange)}
+.notice-bell b[hidden]{display:none}
+.notice-panel{position:absolute;right:0;top:51px;z-index:60;width:min(400px,calc(100vw - 32px));max-height:min(70vh,560px);overflow:auto;overscroll-behavior:contain;padding:14px 16px;border:1px solid var(--line);border-radius:14px;background:white;box-shadow:0 18px 50px #17211d29}
+.notice-panel[hidden]{display:none}
+.notice-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px}
+.notice-head strong{font-size:13px}
+.notice-clear{padding:0;border:0;background:none;color:var(--purple);font:700 11px Manrope;cursor:pointer}
+.notice-list{display:grid;gap:6px}
+.notice-item{display:grid;grid-template-columns:22px minmax(0,1fr) auto;align-items:start;gap:8px;padding:9px 10px;border-radius:10px;background:#fff7ec}
+.notice-item.error{background:#fdecec}.notice-item.info{background:#f0ebff}
+.notice-item i{width:22px;height:22px;display:grid;place-items:center;border-radius:50%;background:var(--orange);color:white;font-style:normal;font-size:12px;font-weight:800}
+.notice-item.error i{background:var(--red)}.notice-item.info i{background:var(--purple)}
+.notice-item p{margin:2px 0 0;color:var(--ink);font-size:12px;line-height:1.45;overflow-wrap:anywhere}
+.notice-item small{margin-top:3px;color:var(--muted);font-size:11px}
+.notice-empty{margin:6px 0 2px;color:var(--muted);font-size:12px}
 /* Изменение к прошлому периоду в карточках вкладки «Реклама» */
 .metric .metric-delta{display:block;margin-top:4px;font-size:11px!important}
 .metric .metric-delta span{color:var(--muted);font-weight:600}
@@ -199,10 +220,20 @@ tr.rating-row-attention td:first-child{box-shadow:inset 3px 0 0 var(--red)}
 .hourly-controls{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
 .hourly-switch{display:flex;gap:2px;padding:3px;border:1px solid var(--line);border-radius:11px;background:#fafbfa}
 .hourly-switch .funnel-metric{padding:7px 11px;white-space:nowrap}
-.hourly-insights{display:grid;gap:4px;padding:12px 20px 0;color:var(--muted);font-size:12px;line-height:1.55}
+.hourly-insights{display:grid;gap:10px;padding:14px 20px 0;color:var(--muted);font-size:12px;line-height:1.55}
 .hourly-insights p{margin:0}
 .hourly-insights b{color:var(--ink)}
-.hourly-insights p.hourly-current b:first-child{color:var(--purple)}
+/* Карточки «к этому времени»: сегодня против вчера и среднего за 7 дней; активная — та, что на графике */
+.hourly-cards{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+.hourly-card{display:grid;align-content:start;gap:3px;padding:12px 14px;border:1px solid var(--line);border-radius:12px;background:white;color:var(--ink);font:inherit;text-align:left;cursor:pointer}
+.hourly-card:hover{border-color:#cfc3f7}
+.hourly-card.active{border-color:var(--purple);box-shadow:inset 0 0 0 1px var(--purple);background:#faf9ff}
+.hourly-card>span:first-child{color:var(--muted);font-size:11px;font-weight:800;letter-spacing:.06em;text-transform:uppercase}
+.hourly-card strong{font:700 19px Unbounded,sans-serif}
+.hourly-card small{color:var(--muted);font-size:11px}
+.hourly-compare{display:grid;gap:2px;margin-top:6px;padding-top:7px;border-top:1px solid var(--line);font-size:11px;line-height:1.5}
+.hourly-compare b{font-weight:800}
+@media(max-width:980px){.hourly-cards{grid-template-columns:1fr 1fr}}
 .hourly-up{color:var(--green);font-weight:700}.hourly-down{color:var(--red);font-weight:700}
 .hourly-bar{fill:var(--purple);transition:fill .12s}
 .hourly-bar.partial{fill:#b9a8f4}

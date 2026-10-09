@@ -59,7 +59,7 @@ async function loadRatings(force=false){
     if(request!==ratings.request)return;
     Object.assign(ratings,{data,key,error:'',page:1});state.demo=data.demo;renderRatings();
     $('#syncText').textContent=`Оценки · ${new Date().toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit'})}`;
-  }catch(e){if(request!==ratings.request)return;ratings.error=e.message;renderRatings();$('#syncText').textContent='Ошибка загрузки оценок';toast(e.message)}
+  }catch(e){if(request!==ratings.request)return;ratings.error=e.message;renderRatings();$('#syncText').textContent='Ошибка загрузки оценок';toast(e.message);addNotice('ratings',`Ошибка загрузки оценок: ${e.message}`)}
   finally{if(request===ratings.request)btn.classList.remove('loading')}
 }
 function renderRatings(){
