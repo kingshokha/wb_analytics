@@ -102,7 +102,23 @@
     .keyword-tag-set{flex:0 0 auto;min-width:26px;height:26px;padding:0 6px;display:inline-flex;align-items:center;justify-content:center;gap:3px;border:1px solid color-mix(in srgb,var(--tag) 35%,white);border-radius:20px;background:color-mix(in srgb,var(--tag) 10%,white);color:var(--ink);font-size:11px}
     .keyword-tag-set i{font-style:normal;font-size:13px;line-height:1}
     .keyword-tag-set:hover{border-color:var(--tag)}
-    .tag-menu{position:fixed;z-index:40;width:320px;max-height:min(640px,calc(100vh - 16px));overflow:auto;padding:16px 12px 12px;border:1px solid var(--line);border-radius:16px;background:white;box-shadow:0 18px 50px #17211d33}
+    /* Заметки по кампании: плавающая кнопка справа внизу и окно с историей заметок */
+    .notes-fab{position:fixed;right:24px;bottom:24px;z-index:44;width:52px;height:52px;padding:0;display:grid;place-items:center;border:0;border-radius:50%;background:var(--ink);color:white;box-shadow:0 12px 30px #17211d55}
+    .notes-fab svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linejoin:round}
+    .notes-fab:hover,.notes-fab[aria-expanded=true]{background:var(--purple)}
+    .notes-fab b{position:absolute;top:-3px;right:-3px;min-width:21px;height:21px;padding:0 6px;border-radius:11px;background:var(--lime);color:#24351a;font-size:11px;font-weight:800;line-height:21px}
+    .notes-fab b[hidden]{display:none}
+    .notes-panel{right:24px;bottom:88px;width:min(440px,calc(100vw - 32px));max-height:min(72vh,660px);display:flex;flex-direction:column}
+    .notes-panel[hidden]{display:none}
+    .notes-list{flex:1;min-height:60px;overflow:auto;overscroll-behavior:contain;margin-top:4px}
+    .notes-new{margin-top:8px;padding-top:10px;border-top:1px solid var(--line)}
+    .notes-new .note-form{margin:0}
+    .notes-panel .history-card{margin-left:0}
+    .notes-panel .history-comment{margin-top:6px}
+    /* Изменение к прошлому периоду в карточках */
+    .metric-delta{display:block;margin-top:5px;font-size:11px;font-weight:800}
+    .metric-delta.up{color:#2f8f62}.metric-delta.down{color:#e05c4b}.metric-delta.flat{color:var(--muted)}
+    .tag-menu{position:fixed;z-index:40;width:320px;max-height:min(640px,calc(100vh - 16px));overflow:auto;overscroll-behavior:contain;padding:16px 12px 12px;border:1px solid var(--line);border-radius:16px;background:white;box-shadow:0 18px 50px #17211d33}
     .tag-menu[hidden]{display:none}
     .tag-menu-close{position:absolute;top:8px;right:8px;width:28px;height:28px;padding:0;border:1px solid var(--line);border-radius:50%;background:white;color:var(--muted);font-size:16px;line-height:1}
     .tag-menu-caption{display:block;padding:0 8px;color:var(--muted);font-size:11px}
@@ -135,7 +151,7 @@
     .keyword-note-button svg{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linejoin:round}
     .keyword-note-button:hover,.keyword-note-button:focus-visible{background:#eef2fc;color:#3f6fd6;outline:0}
     /* Всплывающая история: смена отметок с пояснениями, комментарии, статус фразы */
-    .history-pop{position:fixed;z-index:41;width:min(470px,calc(100vw - 16px));overflow:auto;padding:14px 16px 12px;border:1px solid var(--line);border-radius:16px;background:white;box-shadow:0 18px 50px #17211d33;color:var(--ink)}
+    .history-pop{position:fixed;z-index:41;width:min(470px,calc(100vw - 16px));overflow:auto;overscroll-behavior:contain;padding:14px 16px 12px;border:1px solid var(--line);border-radius:16px;background:white;box-shadow:0 18px 50px #17211d33;color:var(--ink)}
     .history-pop[hidden]{display:none}
     .history-head{display:flex;align-items:center;justify-content:space-between;gap:10px}
     .history-head strong{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:14px;font-weight:800}
@@ -401,6 +417,8 @@
 <div id="keywordActions" class="keyword-actions" hidden><strong id="keywordSelectedCount">Выбрано: 0</strong><button type="button" class="danger" id="keywordExclude">Исключить</button><button type="button" class="include" id="keywordInclude">Включить</button><button type="button" class="ghost" id="keywordClearSelection">Сбросить</button></div>
 <div id="confirmModal" class="modal" hidden><div class="modal-backdrop" data-confirm-close></div><div class="modal-dialog small" role="dialog" aria-modal="true" aria-labelledby="confirmTitle"><div class="modal-head"><h2 id="confirmTitle">Исключить запросы?</h2><button type="button" class="modal-close" data-confirm-close aria-label="Закрыть">×</button></div><div class="confirm-body" id="confirmBody"></div></div></div>
 <div id="keywordTagMenu" class="tag-menu" role="menu" aria-label="Отметка ключевого запроса" hidden></div>
+<button type="button" class="notes-fab" id="campaignNotesButton" aria-label="Заметки по кампании" aria-expanded="false" aria-controls="campaignNotesPanel" title="Заметки по кампании"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 1.75h5.25l3 3v9.5H4z"/><path d="M9.25 1.75v3h3M6.25 8h4M6.25 10.75h4"/></svg><b id="campaignNotesCount" hidden>0</b></button>
+<div id="campaignNotesPanel" class="history-pop notes-panel" role="dialog" aria-label="Заметки по кампании" hidden></div>
 <div id="keywordHistoryPop" class="history-pop" role="dialog" aria-label="История отметок и комментариев запроса" hidden></div>
 <div id="tagColorsModal" class="modal" hidden><div class="modal-backdrop" data-tag-colors-close></div><div class="modal-dialog small" role="dialog" aria-modal="true" aria-labelledby="tagColorsTitle"><div class="modal-head"><h2 id="tagColorsTitle">Цвета отметок</h2><button type="button" class="modal-close" data-tag-colors-close aria-label="Закрыть">×</button></div><div class="confirm-body" id="tagColorsBody"></div></div></div>
 <div id="keywordDailyModal" class="modal" hidden><div class="modal-backdrop" data-kwday-close></div><div class="modal-dialog" role="dialog" aria-modal="true" aria-labelledby="keywordDailyTitle"><div class="modal-head"><div><h2 id="keywordDailyTitle">Запрос по дням</h2><p id="keywordDailyNote" class="kwday-note"></p></div><button type="button" class="modal-close" data-kwday-close aria-label="Закрыть">×</button></div><div class="modal-table-wrap"><div class="kwday-metrics" id="keywordDailyMetrics"></div><div class="kwday-chart" id="keywordDailyChart"></div><table class="kwday-table"><thead><tr><th>Дата</th><th class="views-col">Показы</th><th>Клики</th><th class="views-col">CTR</th><th class="views-col">CPM</th><th>CPC</th><th>Затраты</th><th>Корзины</th><th>Заказы</th><th>CR</th><th>Ср. позиция</th></tr></thead><tbody id="keywordDailyBody"></tbody></table></div></div></div>

@@ -7,6 +7,7 @@ data/balance-history.json
 data/stock-presets.json
 data/price-presets.json
 data/keyword-tags.json
+data/campaign-notes.json
 *.log
 .DS_Store
 statistics.json

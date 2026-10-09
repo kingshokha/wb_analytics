@@ -22,7 +22,35 @@
   // Идут показы — зеленоватая плашка, на паузе — красноватая.
   const AD_STATUS_CLASSES={9:'status-running',11:'status-paused'};
   function renderMeta(c){state.paymentType=String(c.paymentType||'').toLowerCase();const status=AD_STATUSES[Number(c.status)]||'',tags=[c.paymentType?String(c.paymentType).toUpperCase():'',AD_BIDS[String(c.bidType)]||c.bidType||''],created=createdDate(c.createdAt);$('#campaignMeta').innerHTML=tags.filter(Boolean).map(x=>`<b>${esc(x)}</b>`).join('')+(status?`<b class="${AD_STATUS_CLASSES[Number(c.status)]||''}">${esc(status)}</b>`:'')+(created?`<span class="campaign-created">Создана ${created}</span>`:'')}
-  function renderSummary(c){const cards=[['Показы',number(c.views)],['Клики',number(c.clicks)],['Рекламные заказы',number(c.orders)],['Сумма заказов',money(c.revenue)],['Затраты',money(c.spend)],['ДРР за период',percent(Number(c.revenue)?Number(c.spend||0)/Number(c.revenue)*100:0)],['Средний CTR',percent(average('ctr'))],['Средний CPC',money(average('cpc'))],['Добавления в корзину',number(total('carts'))],['Отмены',number(total('canceled'))]];$('#summary').innerHTML=cards.map(x=>`<div class="metric"><span>${x[0]}</span><strong>${x[1]}</strong></div>`).join('')}
+  // Карточки с изменением к прошлому периоду той же длины (state.previous — /api/advertising/campaign/previous).
+  // CTR и CPC — за весь период (клики ÷ показы, затраты ÷ клики), а не среднее по дням: так они сравнимы с прошлым периодом.
+  // up — рост хорош (зелёный), down — рост плох (красный), neutral — затраты: рост сам по себе ни хорош, ни плох.
+  const SUMMARY_TONES={views:'up',clicks:'up',orders:'up',revenue:'up',spend:'neutral',drr:'down',ctr:'up',cpc:'down',carts:'up',canceled:'down'};
+  function summaryDelta(key,now){
+    const p=state.previous;if(!p)return '';
+    if(p.loading)return '<small class="metric-delta flat" title="Загружаем прошлый период">…</small>';
+    if(!p.available||!p.campaign)return '';
+    const before=Number(p.campaign[key]||0),value=Number(now||0),title=`к ${date(p.period.from)} – ${date(p.period.to)}: ${['spend','revenue','cpc'].includes(key)?money(before):['drr','ctr'].includes(key)?percent(before):number(before)}`;
+    if(['drr','ctr','cpc'].includes(key)&&(!value||!before))return '';
+    if(!before)return value?`<small class="metric-delta flat" title="${esc(title)}">новое</small>`:'';
+    const change=Math.round((value-before)/before*100),tone=!change||SUMMARY_TONES[key]==='neutral'?'flat':(change>0)===(SUMMARY_TONES[key]==='up')?'up':'down';
+    return `<small class="metric-delta ${tone}" title="${esc(title)}">${change?`${change>0?'▲':'▼'} ${number(Math.abs(change))}%`:'0%'}</small>`;
+  }
+  function renderSummary(c){
+    const ctr=c.ctr??average('ctr'),cpc=c.cpc??average('cpc'),drr=Number(c.revenue)?Number(c.spend||0)/Number(c.revenue)*100:0,carts=c.carts??total('carts'),canceled=c.canceled??total('canceled');
+    const cards=[['Показы',number(c.views),'views',c.views],['Клики',number(c.clicks),'clicks',c.clicks],['Рекламные заказы',number(c.orders),'orders',c.orders],['Сумма заказов',money(c.revenue),'revenue',c.revenue],['Затраты',money(c.spend),'spend',c.spend],
+      ['ДРР за период',percent(drr),'drr',drr],['Средний CTR',percent(ctr),'ctr',ctr],['Средний CPC',money(cpc),'cpc',cpc],['Добавления в корзину',number(carts),'carts',carts],['Отмены',number(canceled),'canceled',canceled]];
+    $('#summary').innerHTML=cards.map(x=>`<div class="metric"><span>${x[0]}</span><strong>${x[1]}</strong>${summaryDelta(x[2],x[3])}</div>`).join('');
+  }
+  async function loadPrevious(period,campaign){
+    const request=state.previousRequest=(state.previousRequest||0)+1;
+    state.previous={loading:true};renderSummary(campaign);
+    try{const q=new URLSearchParams({cabinet:params.get('cabinet')||'demo',id:params.get('id')||'',from:period.from,to:period.to});
+      const response=await fetch(`/api/advertising/campaign/previous?${q}`),data=await response.json();if(!response.ok)throw new Error(data.error||'не загрузилось');
+      if(request!==state.previousRequest)return;state.previous=data}
+    catch(e){if(request!==state.previousRequest)return;state.previous=null}
+    renderSummary(campaign);
+  }
   function renderTable(){const rows=sorted(state.rows,state.sort);const sum=totals(state.rows);const head=`<tr class="total-row"><td>Итого · ${number(state.rows.length)} дн.</td>${columns.slice(1).map(k=>`<td>${esc(fmt(k,sum[k]))}</td>`).join('')}</tr>`;$('#dailyBody').innerHTML=rows.length?head+rows.map(r=>`<tr>${columns.map(k=>`<td>${k==='drr'&&!Number(r.revenue)&&Number(r.spend)?'<span title="Нет рекламной выручки — ДРР не определён">—</span>':esc(fmt(k,r[k]))}</td>`).join('')}</tr>`).join(''):'<tr><td colspan="11" class="empty">Нет дневных данных за выбранный период</td></tr>'}
   function aggregateProducts(){
     const totals=new Map(), sumKeys=['views','clicks','carts','orders','canceled','revenue','spend'];
@@ -419,13 +447,24 @@
     tagMenu.editing=false;hideHistory();
     renderTagMenu(query);
     menu.hidden=false;
-    // Меню у кнопки: вниз, если помещается, иначе в сторону, где больше места, с прокруткой внутри.
-    const rect=anchor.getBoundingClientRect(),below=window.innerHeight-rect.bottom-14,above=rect.top-14;
+    placeTagMenu(anchor);
+  }
+  // Меню у кнопки: вниз, если помещается, иначе в сторону, где больше места, с прокруткой внутри.
+  function placeTagMenu(anchor){
+    const menu=$('#keywordTagMenu'),rect=anchor.getBoundingClientRect(),below=window.innerHeight-rect.bottom-14,above=rect.top-14,scroll=menu.scrollTop;
     menu.style.maxHeight='none';
     const full=menu.offsetHeight,down=full<=below||below>=above,height=Math.min(full,down?below:above);
     menu.style.maxHeight=`${height}px`;
     menu.style.left=`${Math.max(8,Math.min(rect.left,window.innerWidth-menu.offsetWidth-8))}px`;
     menu.style.top=`${down?rect.bottom+6:rect.top-6-height}px`;
+    menu.scrollTop=scroll;
+  }
+  // При прокрутке страницы меню едет за своей кнопкой; закрывается, только когда кнопка ушла с экрана.
+  function followTagMenu(){
+    const menu=$('#keywordTagMenu');if(menu.hidden)return;
+    const anchor=document.querySelector(`[data-keyword-tag="${CSS.escape(menu.dataset.query||'')}"]`),rect=anchor?.getBoundingClientRect();
+    if(!rect||rect.bottom<0||rect.top>window.innerHeight)return closeTagMenu();
+    placeTagMenu(anchor);
   }
   // Меню открыто для этого запроса и не редактируется — перерисовать (например, когда сервер вернул событие для пояснения).
   const refreshTagMenu=query=>{const menu=$('#keywordTagMenu');if(!menu.hidden&&menu.dataset.query===query&&!tagMenu.editing)renderTagMenu(query)};
@@ -568,11 +607,73 @@
   document.addEventListener('click',event=>{if(!$('#keywordTagMenu').hidden&&!event.target.closest('#keywordTagMenu'))closeTagMenu()});
   document.addEventListener('keydown',event=>{if(event.key==='Escape'){closeTagMenu();hideHistory();$('#tagColorsModal').hidden=true}});
   window.addEventListener('scroll',event=>{
-    if(!$('#keywordTagMenu').contains(event.target))closeTagMenu();
+    if(!$('#keywordTagMenu').contains(event.target))followTagMenu();
     // История закрывается при прокрутке страницы, а если в ней пишут или она закреплена — едет за значком.
     if(!$('#keywordHistoryPop').hidden&&!$('#keywordHistoryPop').contains(event.target)){if(historyBusy())placeHistory();else hideHistory()}
   },true);
   loadKeywordTags();
+  // --- Заметки по кампании: плавающая кнопка справа внизу, окно с заметками по дням (новые сверху) и полем для новой ---
+  // Хранятся на компьютере (data/campaign-notes.json), отдельно для каждой кампании.
+  const campaignNotes={list:[],open:false,editing:null};
+  const notesQuery=()=>({cabinet:params.get('cabinet')||'demo',id:params.get('id')||''});
+  async function loadCampaignNotes(){
+    try{const response=await fetch(`/api/campaign-notes?${new URLSearchParams(notesQuery())}`),data=await response.json();if(!response.ok)throw new Error(data.error);campaignNotes.list=data.notes||[]}
+    catch{campaignNotes.list=[]}
+    renderCampaignNotesButton();if(campaignNotes.open)renderCampaignNotes();
+  }
+  function renderCampaignNotesButton(){const count=$('#campaignNotesCount');count.textContent=campaignNotes.list.length;count.hidden=!campaignNotes.list.length}
+  function renderCampaignNotes(){
+    const panel=$('#campaignNotesPanel'),draft=panel.querySelector('[data-campaign-note-form="new"] textarea')?.value||'';
+    let day='',html='';
+    for(const note of [...campaignNotes.list].reverse()){
+      const label=historyDay(note.at);if(label!==day){day=label;html+=`<div class="history-day"><span>${esc(label)}</span></div>`}
+      html+=`<article class="history-card comment"><div class="history-card-head"><div class="history-title">Заметка${note.editedAt?` · изменена ${esc(historyTime(note.editedAt))}`:''}</div><div class="history-who"><b>Вы</b><small>${historyTime(note.at)}</small></div></div>`+
+        (campaignNotes.editing===note.id?noteForm(`data-campaign-note-form="${esc(note.id)}"`,note.text,'Заметка'):
+        `<div class="history-comment">${COMMENT_ICON}<p>${esc(note.text)}</p><span class="history-actions"><button type="button" data-campaign-note-edit="${esc(note.id)}" title="Изменить" aria-label="Изменить">${EDIT_ICON}</button><button type="button" data-campaign-note-delete="${esc(note.id)}" title="Удалить" aria-label="Удалить">${DELETE_ICON}</button></span></div>`)+'</article>';
+    }
+    panel.innerHTML=`<div class="history-head"><strong>Заметки по кампании</strong><button type="button" class="history-close" data-campaign-notes-close aria-label="Закрыть">×</button></div>`+
+      `<div class="notes-list">${html||'<p class="history-empty">Заметок пока нет. Запишите, что меняли в кампании и зачем, — потом будет видно, что сработало.</p>'}</div>`+
+      `<div class="notes-new">${noteForm('data-campaign-note-form="new"',draft,'Новая заметка — Enter сохранить, Shift+Enter перенос')}</div>`;
+    const field=panel.querySelector(campaignNotes.editing?`[data-campaign-note-form="${CSS.escape(campaignNotes.editing)}"] textarea`:'[data-campaign-note-form="new"] textarea');
+    if(field){field.focus();field.setSelectionRange(field.value.length,field.value.length)}
+  }
+  function toggleCampaignNotes(open=!campaignNotes.open){
+    campaignNotes.open=open;campaignNotes.editing=null;
+    $('#campaignNotesPanel').hidden=!open;$('#campaignNotesButton').setAttribute('aria-expanded',String(open));
+    if(open)renderCampaignNotes();
+  }
+  async function saveCampaignNote(body){
+    try{const response=await fetch('/api/campaign-notes',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...notesQuery(),...body})});
+      const data=await response.json();if(!response.ok)throw new Error(data.error||'не сохранилось');campaignNotes.list=data.notes||[];return true}
+    catch(e){alertNote(`Заметка не сохранилась: ${e.message}`);return false}
+  }
+  const alertNote=text=>{const panel=$('#campaignNotesPanel');panel.querySelector('.notes-error')?.remove();panel.insertAdjacentHTML('beforeend',`<p class="price-product-note notes-error" style="color:#b84949">${esc(text)}</p>`)};
+  $('#campaignNotesButton').addEventListener('click',event=>{event.stopPropagation();toggleCampaignNotes()});
+  $('#campaignNotesPanel').addEventListener('click',async event=>{
+    event.stopPropagation();
+    if(event.target.closest('[data-campaign-notes-close]'))return toggleCampaignNotes(false);
+    const edit=event.target.closest('[data-campaign-note-edit]');if(edit){campaignNotes.editing=edit.dataset.campaignNoteEdit;return renderCampaignNotes()}
+    const remove=event.target.closest('[data-campaign-note-delete]');if(remove){if(await saveCampaignNote({noteId:remove.dataset.campaignNoteDelete,remove:true})){renderCampaignNotesButton();renderCampaignNotes()}return}
+    if(event.target.closest('[data-note-cancel]')){const form=event.target.closest('form');if(form?.dataset.campaignNoteForm==='new')form.querySelector('textarea').value='';campaignNotes.editing=null;renderCampaignNotes()}
+  });
+  $('#campaignNotesPanel').addEventListener('submit',async event=>{
+    event.preventDefault();
+    const id=event.target.dataset.campaignNoteForm,text=event.target.querySelector('textarea').value.trim();
+    // Пустой текст у существующей заметки — удалить её; пустая новая — ничего не делать.
+    if(id==='new'&&!text)return;
+    if(await saveCampaignNote(id==='new'?{text}:text?{noteId:id,text}:{noteId:id,remove:true})){
+      if(id==='new')event.target.querySelector('textarea').value='';
+      campaignNotes.editing=null;renderCampaignNotesButton();renderCampaignNotes();
+    }
+  });
+  // Клик мимо окна закрывает его, если ничего не пишется (иначе можно потерять набранный текст).
+  document.addEventListener('click',event=>{
+    if(!campaignNotes.open||event.target.closest('#campaignNotesPanel,#campaignNotesButton'))return;
+    const draft=$('#campaignNotesPanel [data-campaign-note-form="new"] textarea')?.value.trim();
+    if(!draft&&!campaignNotes.editing)toggleCampaignNotes(false);
+  });
+  document.addEventListener('keydown',event=>{if(event.key==='Escape'&&campaignNotes.open)toggleCampaignNotes(false)});
+  loadCampaignNotes();
   // --- Исключение и включение выбранных запросов: галочки слева, нижняя панель действий, подтверждение ---
   // Сервер читает текущие минус-фразы каждого товара, добавляет или убирает выбранные запросы и перепроверяет результат.
   function selectedKeywordRows(){const rows=keywordView().rows;return rows.filter(row=>keywords.selected.has(row.query))}
@@ -652,7 +753,7 @@
       state.rows=result.campaign.daily||[];state.productDaily=result.productDaily||[];
       renderMeta(result.campaign);renderSummary(result.campaign);renderSetup(result.setup);renderOptions();renderChart();renderTable();renderProductTable();loadPositions(result.activePeriod||result.period);
       $('#campaignTitle').textContent=result.campaign.name||`Кампания #${result.campaign.id}`;document.title=`${$('#campaignTitle').textContent} — WB Pulse`;renderCampaignHeader(result);
-      state.period=result.activePeriod||result.period;loadKeywords(state.period);
+      state.period=result.activePeriod||result.period;loadKeywords(state.period);loadPrevious(result.period,result.campaign);
       $('#periodLabel').textContent=`${date(result.period.from)} — ${date(result.period.to)}${result.folder?` · ${result.folder}`:''}`;
       clearInterval(exportState.timer);
       const took=formatSeconds(Math.max(1,Math.round((Date.now()-exportState.started)/1000)));

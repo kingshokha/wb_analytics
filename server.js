@@ -58,6 +58,7 @@ const CARGO_TYPES = { 0: 'Не указан', 1: 'Обычный', 2: 'СГТ', 
 const STOCK_PRESETS_FILE = path.join(ROOT, 'data', 'stock-presets.json');
 const PRICE_PRESETS_FILE = path.join(ROOT, 'data', 'price-presets.json');
 const KEYWORD_TAGS_FILE = path.join(ROOT, 'data', 'keyword-tags.json');
+const CAMPAIGN_NOTES_FILE = path.join(ROOT, 'data', 'campaign-notes.json');
 // Отметки ключевых запросов: одна основная отметка на запрос плюс независимая «Важный».
 const KEYWORD_TAG_KEYS = ['target', 'nearTarget', 'nonTarget', 'promote', 'test', 'traffic', 'watch', 'unprofitable', 'profitable', 'investigate'];
 const PRESET_MAX_ITEMS = 200;
@@ -1134,6 +1135,32 @@ function setKeywordTag(cabinet, campaignId, body = {}) {
   return { query, tag: storeKeywordEntry(data, key, query, current) };
 }
 // Пояснение к смене отметки (eventId события отметки) или комментарий (без eventId — новый); remove — удалить.
+// --- Заметки по кампании (кнопка с заметками в детализации): data/campaign-notes.json, { "кабинет:кампания": [заметки] } ---
+const CAMPAIGN_NOTES_LIMIT = 500;
+function readCampaignNotes() {
+  try { const data = JSON.parse(fs.readFileSync(CAMPAIGN_NOTES_FILE, 'utf8')); return data && typeof data === 'object' && !Array.isArray(data) ? data : {}; } catch { return {}; }
+}
+function campaignNotes(cabinet, campaignId) {
+  return { notes: readCampaignNotes()[keywordTagsKey(cabinet, campaignId)] || [] };
+}
+// Без noteId — новая заметка; с noteId — изменить текст или удалить (remove).
+function setCampaignNote(cabinet, campaignId, body = {}) {
+  const key = keywordTagsKey(cabinet, campaignId), text = String(body.text || '').trim();
+  if (!body.remove && !text) throw apiError(400, 'Пустая заметка');
+  if (text.length > 3000) throw apiError(400, 'Заметка длиннее 3000 символов');
+  const data = readCampaignNotes(), notes = [...(data[key] || [])];
+  if (!body.noteId) notes.push({ id: keywordEventId(), at: new Date().toISOString(), text });
+  else {
+    const index = notes.findIndex(note => note.id === body.noteId);
+    if (index < 0) throw apiError(404, 'Заметка не найдена — обновите страницу');
+    if (body.remove) notes.splice(index, 1); else notes[index] = { ...notes[index], text, editedAt: new Date().toISOString() };
+  }
+  if (notes.length) data[key] = notes.slice(-CAMPAIGN_NOTES_LIMIT); else delete data[key];
+  fs.mkdirSync(path.dirname(CAMPAIGN_NOTES_FILE), { recursive: true });
+  fs.writeFileSync(`${CAMPAIGN_NOTES_FILE}.tmp`, JSON.stringify(data, null, 2));
+  fs.renameSync(`${CAMPAIGN_NOTES_FILE}.tmp`, CAMPAIGN_NOTES_FILE);
+  return { notes: data[key] || [] };
+}
 function setKeywordNote(cabinet, campaignId, body = {}) {
   const key = keywordTagsKey(cabinet, campaignId), query = keywordQuery(body.query), text = String(body.text || '').trim();
   if (!body.remove && !text) throw apiError(400, 'Пустой комментарий');
@@ -1503,6 +1530,20 @@ async function advertisingCampaignHistory(id, campaignId, from, to, report = () 
     folder: demo ? '' : `data/Ads/${cabinetFolderName(id)}/${campaignId}`, campaign: enriched.campaigns[0], setup: campaignSetup(meta, cards, demo),
     productDaily: enriched.productDaily.sort((a, b) => `${a.date}:${a.nmId}`.localeCompare(`${b.date}:${b.nmId}`)) };
 }
+// Прошлый период той же длины — для изменения в процентах в карточках детализации кампании. Та же выгрузка, только без
+// хода работы: дни берутся из сохранённых файлов (data/Ads/…), недостающие — из WB. Если кампании тогда ещё не было,
+// available: false — сравнивать не с чем. Слишком старый период (раньше, чем WB отдаёт историю) — тоже без сравнения.
+const CAMPAIGN_PREVIOUS_KEYS = ['views', 'clicks', 'orders', 'revenue', 'spend', 'carts', 'canceled', 'ctr', 'cpc', 'drr'];
+async function advertisingCampaignPrevious(id, campaignId, from, to) {
+  const period = historyPeriod(from, to), length = datesBetween(period.from, period.to).length;
+  const previous = { from: addDays(period.from, -length), to: addDays(period.from, -1) };
+  try { historyPeriod(previous.from, previous.to); } catch (error) { return { period: previous, available: false, reason: error.message }; }
+  return cachedAnalytics(`campaign-previous:${id}:${campaignId}:${previous.from}:${previous.to}`, async () => {
+    const result = await advertisingCampaignHistory(id, campaignId, previous.from, previous.to);
+    return { period: previous, available: Boolean(result.activePeriod),
+      campaign: Object.fromEntries(CAMPAIGN_PREVIOUS_KEYS.map(key => [key, Number(result.campaign?.[key] || 0)])) };
+  }, 10 * 60_000);
+}
 async function advertisingCampaign(id, campaignId, from, to) {
   const summary = await advertising(id, from, to);
   const campaign = (summary.campaigns || []).find(item => String(item.id) === String(campaignId));
@@ -1551,10 +1592,12 @@ async function advertisingPrevious(id, from, to) {
   const length = datesBetween(period.from, period.to).length;
   const previous = { from: addDays(period.from, -length), to: addDays(period.from, -1) };
   const pick = campaign => ({ id: campaign.id, ...Object.fromEntries(AD_COMPARE_KEYS.map(key => [key, Number(campaign[key] || 0)])) });
-  if (id === 'demo' || !cabinets().length) return { demo: true, period: previous, campaigns: demoAds(previous.from, previous.to).campaigns.map(pick), warnings: [] };
+  // totals — для изменения в карточках вкладки «Реклама» (расходы, выручка, ДРР, CTR, CPC, ROAS).
+  if (id === 'demo' || !cabinets().length) { const demo = demoAds(previous.from, previous.to); return { demo: true, period: previous, totals: pick(demo.totals || {}), campaigns: demo.campaigns.map(pick), warnings: [] }; }
   const warnings = [];
   const { campaigns, stats } = await loadAdStats(id, tokenFor(id), previous, warnings);
-  return { demo: false, period: previous, campaigns: summarizeAdStats(campaigns, stats, previous.from, previous.to).campaigns.map(pick), warnings };
+  const summary = summarizeAdStats(campaigns, stats, previous.from, previous.to);
+  return { demo: false, period: previous, totals: pick(summary.totals), campaigns: summary.campaigns.map(pick), warnings };
 }
 
 async function loadAdStats(id, token, period, warnings = [], part = 'all') {
@@ -2842,6 +2885,13 @@ async function handleApi(req, res, url) {
     const body = await readJson(req);
     return send(res, 200, setKeywordTag(body.cabinet || 'demo', body.id, body));
   }
+  if (req.method === 'GET' && url.pathname === '/api/campaign-notes') {
+    return send(res, 200, campaignNotes(url.searchParams.get('cabinet') || 'demo', url.searchParams.get('id')));
+  }
+  if (req.method === 'POST' && url.pathname === '/api/campaign-notes') {
+    const body = await readJson(req);
+    return send(res, 200, setCampaignNote(body.cabinet || 'demo', body.id, body));
+  }
   if (req.method === 'POST' && url.pathname === '/api/keyword-tags/note') {
     const body = await readJson(req);
     return send(res, 200, setKeywordNote(body.cabinet || 'demo', body.id, body));
@@ -2864,6 +2914,9 @@ async function handleApi(req, res, url) {
   if (req.method === 'GET' && url.pathname === '/api/advertising/campaign/keywords') {
     return send(res, 200, await campaignKeywords(url.searchParams.get('cabinet') || 'demo', url.searchParams.get('id'),
       url.searchParams.get('from'), url.searchParams.get('to'), url.searchParams.get('refresh') === '1'));
+  }
+  if (req.method === 'GET' && url.pathname === '/api/advertising/campaign/previous') {
+    return send(res, 200, await advertisingCampaignPrevious(url.searchParams.get('cabinet') || 'demo', url.searchParams.get('id'), url.searchParams.get('from'), url.searchParams.get('to')));
   }
   if (req.method === 'GET' && url.pathname === '/api/advertising/campaign/history') {
     // Ответ идёт построчно: события прогресса, затем итог или ошибка.
