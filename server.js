@@ -2032,6 +2032,23 @@ async function funnelDetails(id, from, to) {
   return { periods: { current: periods.current, previous: past }, products, history: [], groupedHistory: [] };
 }
 
+// Заказы из воронки продаж по артикулам за период — для столбца «Заказы, воронка» во вкладке «Реклама»:
+// все заказы товара (не только с рекламы), чтобы видеть, какую долю дают рекламные заказы. Кэш 5 минут.
+function funnelOrdersByNmId(products = []) {
+  const orders = {};
+  for (const item of products) {
+    const product = item.product || item, stats = item.statistic?.selected || item.history?.[0] || item, nmId = product.nmId ?? product.nmID;
+    if (nmId != null) orders[nmId] = (orders[nmId] || 0) + Number(stats.orderCount || 0);
+  }
+  return orders;
+}
+async function funnelOrders(id, from, to) {
+  const periods = funnelPeriods(from, to);
+  if (id === 'demo' || !cabinets().length) return { demo: true, period: periods.current, orders: { 4210000: 412, 4210001: 268 } };
+  const details = await cachedAnalytics(`funnel-orders:${id}:${periods.current.from}:${periods.current.to}`, () => funnelDetails(id, from, to), 5 * 60_000);
+  return { demo: false, period: periods.current, orders: funnelOrdersByNmId(details.products) };
+}
+
 // --- Общая сводка ---
 // Итоги выбранного и прошлого периода с разбивкой по артикулам приходят одним запросом воронки
 // и сохраняются в periods.json рядом с отрезками графика; дневная динамика берётся из истории воронки.
@@ -2882,6 +2899,9 @@ async function handleApi(req, res, url) {
   if (req.method === 'GET' && url.pathname === '/api/funnel/history') {
     return send(res, 200, await funnelHistory(url.searchParams.get('cabinet') || 'demo', url.searchParams.get('from'), url.searchParams.get('to'), url.searchParams.get('grouping')));
   }
+  if (req.method === 'GET' && url.pathname === '/api/funnel/orders') {
+    return send(res, 200, await funnelOrders(url.searchParams.get('cabinet') || 'demo', url.searchParams.get('from'), url.searchParams.get('to')));
+  }
   if (req.method === 'GET' && url.pathname === '/api/funnel') {
     return send(res, 200, await funnelDetails(url.searchParams.get('cabinet') || 'demo', url.searchParams.get('from'), url.searchParams.get('to')));
   }
@@ -3019,7 +3039,7 @@ if (require.main === module) server.listen(PORT, '127.0.0.1', () => {
   setInterval(syncPriceSnapshots, 60 * 60_000);
 });
 
-module.exports = { server, cabinets, campaignActivePeriod, mergeMinusList, buildPriceHistory, summarizeHourlyOrders, orderFeedPeriod, itemRatingPeriods, normalizeItemRatings, summarizeKeywordDaily, summarizePositionDaily, normalizeOrders, normalizeOrderFeed, enrichOrders, extractFunnel, summarizeAdStats, campaignProductDaily, withAdBudgets, summarizeKeywords, normalizeStockPreset, normalizePricePreset, adCampaignMayHaveStats, validAdPeriod, historyPeriod, historyChunks, planAdFetch, datesBetween, safeFolderName, funnelDaysToFetch, pairFunnelDays, funnelPeriods, funnelRangeBuckets, funnelRecordCounts, funnelRangeValues, funnelSalesMatrix, summaryTopProducts, summaryDrops, summaryProducts, normalizeFbsStocks, normalizeFbwStocks, normalizePrices, summarizeStockTotals, normalizeNewOrders, summarizeSupplies, normalizeTrbxes, chunkOrders, stickerType, localPhoto, WB_HOSTS };
+module.exports = { server, cabinets, campaignActivePeriod, mergeMinusList, buildPriceHistory, funnelOrdersByNmId, summarizeHourlyOrders, orderFeedPeriod, itemRatingPeriods, normalizeItemRatings, summarizeKeywordDaily, summarizePositionDaily, normalizeOrders, normalizeOrderFeed, enrichOrders, extractFunnel, summarizeAdStats, campaignProductDaily, withAdBudgets, summarizeKeywords, normalizeStockPreset, normalizePricePreset, adCampaignMayHaveStats, validAdPeriod, historyPeriod, historyChunks, planAdFetch, datesBetween, safeFolderName, funnelDaysToFetch, pairFunnelDays, funnelPeriods, funnelRangeBuckets, funnelRecordCounts, funnelRangeValues, funnelSalesMatrix, summaryTopProducts, summaryDrops, summaryProducts, normalizeFbsStocks, normalizeFbwStocks, normalizePrices, summarizeStockTotals, normalizeNewOrders, summarizeSupplies, normalizeTrbxes, chunkOrders, stickerType, localPhoto, WB_HOSTS };
 
 
 

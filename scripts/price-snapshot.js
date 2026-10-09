@@ -1,7 +1,8 @@
 'use strict';
 // Снимок цен и скидок для GitHub Actions (.github/workflows/price-snapshots.yml).
-// Токены WB берутся из секретов репозитория: любой секрет с именем на WB_ (например WB_PRICES_TOKEN_SAMIRI).
-// Имя кабинета в снимке — часть имени секрета после WB_PRICES_TOKEN_ / WB_TOKEN_ / WB_ («samiri»).
+// Токены WB — переменные окружения с именами на WB_ (например WB_PRICES_TOKEN_SAMIRI); в сценарии каждая
+// задаётся из одноимённого секрета репозитория. Имя кабинета в снимке — часть имени после
+// WB_PRICES_TOKEN_ / WB_TOKEN_ / WB_ («samiri»).
 // Снимок шифруется открытым ключом (scripts/snapshot-public-key.pem) и пишется в папку ветки snapshots:
 //   prices/<кабинет>/<ГГГГ-ММ-ДД>T<ЧЧ-ММ>.json.enc  (время московское)
 // Запуск: node scripts/price-snapshot.js <папка ветки snapshots>
@@ -14,9 +15,7 @@ const PUBLIC_KEY_FILE = path.join(__dirname, 'snapshot-public-key.pem');
 const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
 
 function tokensFromEnv(env = process.env) {
-  let secrets = {};
-  try { secrets = JSON.parse(env.SECRETS_JSON || '{}'); } catch {}
-  return Object.entries(secrets)
+  return Object.entries(env)
     .filter(([name, value]) => /^WB_/.test(name) && typeof value === 'string' && value.trim())
     .map(([name, value]) => ({ cabinet: name.replace(/^WB_(PRICES_)?(TOKEN_?)?/, '').toLowerCase().replace(/[^a-z0-9_-]/g, '') || 'main', token: value.trim() }));
 }
@@ -61,7 +60,7 @@ function moscowStamp(date = new Date()) {
 async function main(outputDir) {
   if (!outputDir) throw new Error('Укажите папку ветки snapshots');
   const publicKey = fs.readFileSync(PUBLIC_KEY_FILE, 'utf8'), cabinets = tokensFromEnv();
-  if (!cabinets.length) throw new Error('Нет секретов с токенами WB: добавьте секрет с именем на WB_, например WB_PRICES_TOKEN_SAMIRI');
+  if (!cabinets.length) throw new Error('Нет токенов WB: добавьте секрет с именем на WB_ (например WB_PRICES_TOKEN_SAMIRI) и строку с ним в env шага «Снять цены» в .github/workflows/price-snapshots.yml');
   const takenAt = new Date(), stamp = moscowStamp(takenAt);
   let saved = 0;
   for (const { cabinet, token } of cabinets) {

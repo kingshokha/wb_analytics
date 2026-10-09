@@ -1,7 +1,15 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { buildPriceHistory, summarizeHourlyOrders, orderFeedPeriod, itemRatingPeriods, normalizeItemRatings, campaignActivePeriod, mergeMinusList, summarizeKeywordDaily, summarizePositionDaily, normalizeOrders, normalizeOrderFeed, enrichOrders, extractFunnel, summarizeAdStats, campaignProductDaily, withAdBudgets, summarizeKeywords, normalizeStockPreset, normalizePricePreset, adCampaignMayHaveStats, validAdPeriod, historyPeriod, historyChunks, planAdFetch, datesBetween, safeFolderName, funnelDaysToFetch, pairFunnelDays, funnelPeriods, funnelRangeBuckets, funnelRecordCounts, funnelRangeValues, funnelSalesMatrix, summaryTopProducts, summaryDrops, summaryProducts, normalizeFbsStocks, normalizeFbwStocks, normalizePrices, summarizeStockTotals, normalizeNewOrders, summarizeSupplies, normalizeTrbxes, chunkOrders, stickerType, localPhoto, WB_HOSTS } = require('../server');
+const { buildPriceHistory, funnelOrdersByNmId, summarizeHourlyOrders, orderFeedPeriod, itemRatingPeriods, normalizeItemRatings, campaignActivePeriod, mergeMinusList, summarizeKeywordDaily, summarizePositionDaily, normalizeOrders, normalizeOrderFeed, enrichOrders, extractFunnel, summarizeAdStats, campaignProductDaily, withAdBudgets, summarizeKeywords, normalizeStockPreset, normalizePricePreset, adCampaignMayHaveStats, validAdPeriod, historyPeriod, historyChunks, planAdFetch, datesBetween, safeFolderName, funnelDaysToFetch, pairFunnelDays, funnelPeriods, funnelRangeBuckets, funnelRecordCounts, funnelRangeValues, funnelSalesMatrix, summaryTopProducts, summaryDrops, summaryProducts, normalizeFbsStocks, normalizeFbwStocks, normalizePrices, summarizeStockTotals, normalizeNewOrders, summarizeSupplies, normalizeTrbxes, chunkOrders, stickerType, localPhoto, WB_HOSTS } = require('../server');
+
+test('заказы из воронки по артикулам: статистика выбранного периода, ответ v3 и старый формат', () => {
+  assert.deepEqual(funnelOrdersByNmId([
+    { product: { nmId: 101 }, statistic: { selected: { orderCount: 12 }, past: { orderCount: 99 } } },
+    { product: { nmId: 102 }, statistic: { selected: { orderCount: 0 } } },
+    { nmID: 103, orderCount: 5 }
+  ]), { 101: 12, 102: 0, 103: 5 });
+});
 
 test('история цены: точки товара из снимков по времени, из всех кабинетов', () => {
   const history = buildPriceHistory([
@@ -24,7 +32,7 @@ test('снимок цен: шифруется открытым ключом и �
 
 test('снимок цен: токены из секретов WB_, компактные товары, имя файла по Москве', () => {
   const { tokensFromEnv, compactGoods, moscowStamp } = require('../scripts/price-snapshot');
-  const cabinets = tokensFromEnv({ SECRETS_JSON: JSON.stringify({ WB_PRICES_TOKEN_SAMIRI: 'aaa', WB_TOKEN_ZIKRI: 'bbb', WB_: 'ccc', github_token: 'x', OTHER: 'y', WB_EMPTY: '' }) });
+  const cabinets = tokensFromEnv({ WB_PRICES_TOKEN_SAMIRI: 'aaa', WB_TOKEN_ZIKRI: 'bbb', WB_: 'ccc', GITHUB_TOKEN: 'x', OTHER: 'y', WB_EMPTY: '' });
   assert.deepEqual(cabinets, [{ cabinet: 'samiri', token: 'aaa' }, { cabinet: 'zikri', token: 'bbb' }, { cabinet: 'main', token: 'ccc' }]);
   const goods = compactGoods([
     { nmID: 1, vendorCode: 'A', currencyIsoCode4217: 'RUB', discount: 20, clubDiscount: 5, sizes: [{ price: 1000, discountedPrice: 800, clubDiscountedPrice: 760 }] },

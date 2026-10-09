@@ -41,7 +41,9 @@ jobs:
 
       - name: Снять цены
         env:
-          SECRETS_JSON: ${{ toJSON(secrets) }}
+          # Каждый кабинет — отдельной строкой: переменная с именем секрета (на WB_) и сам секрет.
+          # Передаём только нужные токены, а не все секреты репозитория — иначе GitHub считает сценарий подозрительным.
+          WB_PRICES_TOKEN_MYCABINET: ${{ secrets.WB_PRICES_TOKEN_MYCABINET }}
         run: node scripts/price-snapshot.js snap
 
       - name: Сохранить снимок
