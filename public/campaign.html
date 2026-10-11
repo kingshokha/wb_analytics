@@ -191,7 +191,8 @@
     .tag-color-row input{width:44px;height:28px;padding:0;border:1px solid var(--line);border-radius:6px;background:white;cursor:pointer}
     #tagColorsBody .confirm-buttons{margin-top:14px}
     .keyword-chart-button svg{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
-    .keywords-table.no-views th:nth-child(4),.keywords-table.no-views td:nth-child(4),.keywords-table.no-views th:nth-child(6),.keywords-table.no-views td:nth-child(6),.keywords-table.no-views th:nth-child(7),.keywords-table.no-views td:nth-child(7){display:none}
+    /* CPC-кампании: показы, CTR и CPM по запросам WB не отдаёт — по классу столбца, т. к. порядок столбцов настраивается */
+    .keywords-table.no-views .c-views,.keywords-table.no-views .c-ctr,.keywords-table.no-views .c-cpm{display:none}
     .keywords-table.no-select th:nth-child(1),.keywords-table.no-select td:nth-child(1){display:none}
     .kwday-note{margin-top:3px;font-size:12px}
     .kwday-metrics{display:flex;flex-wrap:wrap;gap:6px;padding:14px 20px 0}
@@ -300,12 +301,33 @@
     tbody tr.keyword-off td{background:#fdf7f6}
     tbody tr.keyword-off:hover td{background:#fbefed}
     tbody tr.keyword-selected td{background:#f4f2ff}
-    .keywords-table{min-width:1700px}
     .keywords-table th:nth-child(1),.keywords-table td:nth-child(1){width:44px;padding-left:16px;padding-right:6px;text-align:center;cursor:default}
     .keywords-table th:nth-child(1):hover{background:#fafbfa}
     .keywords-table th:nth-child(2),.keywords-table td:nth-child(2){width:330px;text-align:left}
     .keywords-table th:nth-child(3){width:110px}
-    .keywords-table th:nth-child(10),.keywords-table th:nth-child(12){width:125px}
+    /* Таблицы статистики: ширина по содержимому, ничего не обрезается — широкая таблица листается вбок */
+    table.metrics-table{width:max-content;min-width:100%;table-layout:auto}
+    .metrics-table th,.metrics-table td{overflow:visible;text-overflow:clip}
+    .metrics-table td.c-metric,.metrics-table th.c-metric{min-width:84px}
+    .product-table .product-name-cell{max-width:380px}
+    .product-table .product-cell,.product-table .product-cell span{overflow:hidden}
+    .product-table .product-cell b,.product-table .product-cell small{text-overflow:ellipsis}
+    /* Меню «Столбцы»: показать или скрыть столбец и поменять порядок; выбор запоминается в браузере */
+    .columns-menu{position:relative;flex:0 0 auto}
+    .columns-menu summary{height:38px;display:flex;align-items:center;gap:8px;padding:0 12px;border:1px solid var(--line);border-radius:9px;background:#fafbfa;color:var(--ink);font-size:12px;font-weight:700;list-style:none;cursor:pointer;user-select:none}
+    .columns-menu summary::-webkit-details-marker{display:none}
+    .columns-menu summary:after{content:'⌄';color:var(--muted)}
+    .columns-menu[open] summary{border-color:var(--purple);color:var(--purple)}
+    .columns-options{position:absolute;right:0;top:44px;z-index:25;width:270px;max-height:min(420px,70vh);overflow:auto;overscroll-behavior:contain;padding:6px;border:1px solid var(--line);border-radius:11px;background:white;box-shadow:0 14px 40px #17211d22}
+    .column-row{display:flex;align-items:center;gap:8px;padding:6px 6px;border-radius:7px;font-size:12px;cursor:pointer}
+    .column-row:hover{background:#f6f4fd}
+    .column-row input{width:15px;height:15px;margin:0;accent-color:var(--purple)}
+    .column-row span{flex:1;min-width:0}
+    .column-row small{display:block;color:var(--muted);font-size:10px}
+    .column-row button{width:24px;height:24px;padding:0;border:1px solid var(--line);border-radius:6px;background:white;color:var(--ink);font-size:12px}
+    .column-row button:hover:not(:disabled){border-color:var(--purple);color:var(--purple)}
+    .column-row button:disabled{opacity:.3;cursor:default}
+    .columns-reset{width:100%;height:auto;margin-top:4px;padding:8px 6px;border:0;border-top:1px solid var(--line);border-radius:0;background:none;color:var(--muted);font-size:11px;font-weight:700;text-align:left}
     .keywords-table input[type=checkbox]{width:16px;height:16px;margin:0;accent-color:var(--purple);cursor:pointer}
     /* Поиск по запросу — в заголовке столбца «Запрос», на месте полей «от — до» */
     .keyword-search{display:block;margin-bottom:6px}
@@ -396,20 +418,18 @@
       <p class="chart-scale-note" id="chartScaleNote"></p>
     </section>
     <section class="panel">
-      <div class="panel-head"><h2>Статистика по датам</h2></div>
-      <div class="table-wrap"><table><thead><tr>
-        <th data-key="date">Дата ↕</th><th data-key="views">Показы ↕</th><th data-key="clicks">Клики ↕</th><th data-key="ctr">CTR ↕</th><th data-key="cpc">CPC ↕</th><th data-key="carts">Добавления в корзину ↕</th><th data-key="orders">Рекламные заказы ↕</th><th data-key="canceled">Отмены ↕</th><th data-key="revenue">Сумма заказов ↕</th><th data-key="spend">Затраты ↕</th><th data-key="drr">ДРР, % ↕</th>
-      </tr></thead><tbody id="dailyBody"></tbody></table></div>
+      <div class="panel-head"><h2>Статистика по датам</h2><details class="columns-menu" data-columns-table="daily"><summary>Столбцы</summary><div class="columns-options"></div></details></div>
+      <div class="table-wrap"><table class="metrics-table daily-table"><thead><tr id="dailyHead"></tr></thead><tbody id="dailyBody"></tbody></table></div>
     </section>
     <section class="panel">
-      <div class="panel-head"><h2>Статистика по дням каждого артикула</h2></div>
-      <div class="table-wrap"><table class="product-table" data-widths-version="2"><thead><tr><th data-product-key="name">Название ↕</th><th data-product-key="nmId" title="Артикул WB">Арт. WB ↕</th><th data-product-key="views">Показы ↕</th><th data-product-key="clicks">Клики ↕</th><th data-product-key="ctr">CTR ↕</th><th data-product-key="cpc">CPC ↕</th><th data-product-key="carts">Корзины ↕</th><th data-product-key="orders">Заказы ↕</th><th data-product-key="canceled">Отмены ↕</th><th data-product-key="revenue">Сумма заказов ↕</th><th data-product-key="spend">Затраты ↕</th><th data-product-key="drr">ДРР, % ↕</th></tr></thead><tbody id="productDailyBody"></tbody></table></div>
+      <div class="panel-head"><h2>Статистика по дням каждого артикула</h2><details class="columns-menu" data-columns-table="product"><summary>Столбцы</summary><div class="columns-options"></div></details></div>
+      <div class="table-wrap"><table class="product-table metrics-table"><thead><tr id="productHead"></tr></thead><tbody id="productDailyBody"></tbody></table></div>
     </section>
     <section class="panel">
-      <div class="panel-head keywords-head"><h2>Ключевые запросы</h2><div class="keywords-controls"><label class="keyword-toggle"><input type="checkbox" id="keywordOnlyInactive"> Только неактивные</label><select id="keywordProduct" aria-label="Артикул"><option value="">Все артикулы</option></select><button id="keywordRangeReset" class="secondary-button" type="button" hidden>Сбросить «от — до»</button><button id="keywordRefresh" type="button">Обновить</button></div></div>
+      <div class="panel-head keywords-head"><h2>Ключевые запросы</h2><div class="keywords-controls"><label class="keyword-toggle"><input type="checkbox" id="keywordOnlyInactive"> Только неактивные</label><select id="keywordProduct" aria-label="Артикул"><option value="">Все артикулы</option></select><button id="keywordRangeReset" class="secondary-button" type="button" hidden>Сбросить «от — до»</button><details class="columns-menu" data-columns-table="keywords"><summary>Столбцы</summary><div class="columns-options"></div></details><button id="keywordRefresh" type="button">Обновить</button></div></div>
       <p id="keywordsNote" class="keywords-note">Загрузка ключевых запросов…</p>
       <div id="keywordMessage" class="keyword-message" role="status" aria-live="polite"></div>
-      <div class="table-wrap"><table class="keywords-table"><thead><tr><th><input type="checkbox" id="keywordSelectAll" aria-label="Выбрать все запросы на странице"></th><th data-keyword-key="query"><span class="keyword-search"><input id="keywordSearch" type="search" placeholder="Поиск по запросу" autocomplete="off" aria-label="Поиск по запросу"></span>Запрос ↕</th><th data-keyword-key="status">Статус ↕</th><th data-keyword-key="views">Показы ↕</th><th data-keyword-key="clicks">Клики ↕</th><th data-keyword-key="ctr">CTR ↕</th><th data-keyword-key="cpm">CPM ↕</th><th data-keyword-key="cpc">CPC ↕</th><th data-keyword-key="spend">Затраты ↕</th><th data-keyword-key="spendShare" title="Доля затрат запроса в затратах всех запросов">Доля расходов ↕</th><th data-keyword-key="carts">Корзины ↕</th><th data-keyword-key="cartCost" title="Затраты ÷ корзины">Цена корзины ↕</th><th data-keyword-key="orders">Заказы ↕</th><th data-keyword-key="cr">CR ↕</th><th data-keyword-key="cpo" title="Затраты ÷ заказы">CPO ↕</th><th data-keyword-key="avgPosition">Средняя позиция ↕</th></tr></thead><tbody id="keywordsBody"></tbody></table></div>
+      <div class="table-wrap"><table class="keywords-table metrics-table"><thead><tr id="keywordHead"><th><input type="checkbox" id="keywordSelectAll" aria-label="Выбрать все запросы на странице"></th><th data-keyword-key="query"><span class="keyword-search"><input id="keywordSearch" type="search" placeholder="Поиск по запросу" autocomplete="off" aria-label="Поиск по запросу"></span>Запрос ↕</th><th data-keyword-key="status">Статус ↕</th></tr></thead><tbody id="keywordsBody"></tbody></table></div>
       <div id="keywordPagination" class="pagination" aria-label="Страницы ключевых запросов" hidden></div>
     </section>
   </main>

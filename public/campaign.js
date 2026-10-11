@@ -2,7 +2,6 @@
   'use strict';
   const params = new URLSearchParams(location.search);
   const state = { rows: [], productDaily: [], sort: { key: 'date', direction: 'desc' }, productSort: { key: 'spend', direction: 'desc' }, visibleMetrics: new Set(['views', 'clicks', 'orders', 'spend', 'drr', 'avgPosition']), visibleCards: new Set(), positions: new Map() };
-  const columns = ['date','views','clicks','ctr','cpc','carts','orders','canceled','revenue','spend','drr'];
   const chartMetrics = [{key:'views',label:'Показы',color:'#277a70'},{key:'clicks',label:'Клики',color:'#d77b28'},{key:'carts',label:'Корзины',color:'#4d8f63'},{key:'orders',label:'Заказы',color:'#b35b45'},{key:'spend',label:'Затраты',color:'#5a7d9a'},{key:'revenue',label:'Сумма заказов',color:'#8b6b3f'},{key:'drr',label:'ДРР',color:'#7651e5'},{key:'avgPosition',label:'Ср. позиция',color:'#c35fb8'}];
   // Значение линии графика за день. ДРР без рекламной выручки не определён (расход есть, заказов нет) — на графике разрыв, а не 0.
   // Средняя позиция приходит отдельно (статистика поисковых кластеров по дням); дни без неё — тоже разрыв.
@@ -14,6 +13,75 @@
   const AD_BIDS={manual:'Ручные ставки',unified:'Единая ставка',auto:'Автоставка'};
   const SUM_KEYS=['views','clicks','carts','orders','canceled','revenue','spend'];
   function totals(rows){const t={};SUM_KEYS.forEach(k=>t[k]=rows.reduce((sum,row)=>sum+Number(row[k]||0),0));t.ctr=t.views?t.clicks/t.views*100:0;t.cpc=t.clicks?t.spend/t.clicks:0;t.drr=t.revenue?t.spend/t.revenue*100:0;return t}
+  // --- Единый набор столбцов-показателей: «Статистика по датам», «по дням каждого артикула» и «Ключевые запросы» ---
+  // Порядок во всех трёх одинаковый; в каждой таблице его можно поменять и скрыть лишнее (меню «Столбцы», хранится в браузере).
+  // Отмен, суммы заказов и ДРР по поисковым запросам WB не отдаёт — в «Ключевых запросах» этих столбцов нет.
+  const METRIC_COLUMNS=[{key:'views',label:'Показы'},{key:'clicks',label:'Клики'},{key:'ctr',label:'CTR',title:'Клики ÷ показы'},{key:'cpm',label:'CPM',title:'Затраты на 1000 показов'},{key:'cpc',label:'CPC',title:'Затраты ÷ клики'},
+    {key:'spend',label:'Затраты'},{key:'spendShare',label:'Доля расходов',title:'Доля в затратах за период'},{key:'carts',label:'Корзины'},{key:'cartCost',label:'Цена корзины',title:'Затраты ÷ корзины'},
+    {key:'orders',label:'Заказы'},{key:'cr',label:'CR',title:'Заказы ÷ клики'},{key:'cpo',label:'CPO',title:'Затраты ÷ заказы'},{key:'canceled',label:'Отмены'},{key:'revenue',label:'Сумма заказов'},
+    {key:'drr',label:'ДРР, %',title:'Затраты ÷ сумма заказов'},{key:'avgPosition',label:'Ср. позиция',title:'Средняя позиция в поиске по кластерам, взвешенная по показам'}];
+  const COLUMN_TABLES={daily:METRIC_COLUMNS,product:METRIC_COLUMNS,keywords:METRIC_COLUMNS.filter(column=>!['canceled','revenue','drr'].includes(column.key))};
+  const MONEY_METRICS=['spend','revenue','cpc','cpm','cartCost','cpo'],PERCENT_METRICS=['ctr','drr','cr','spendShare'];
+  // null — показатель не определён (деление на ноль) или WB его не прислал: прочерк, а не 0.
+  const metricText=(key,value)=>value==null||!Number.isFinite(Number(value))?'—':MONEY_METRICS.includes(key)?money(value):PERCENT_METRICS.includes(key)?percent(value):key==='avgPosition'?Number(value).toLocaleString('ru-RU',{maximumFractionDigits:1}):number(value);
+  function withMetrics(row,totalSpend){
+    const value=key=>Number(row[key]||0),spend=value('spend'),views=value('views'),clicks=value('clicks'),carts=value('carts'),orders=value('orders'),revenue=value('revenue');
+    return {...row,ctr:views?clicks/views*100:0,cpm:views?spend/views*1000:null,cpc:clicks?spend/clicks:0,spendShare:totalSpend?spend/totalSpend*100:0,
+      cartCost:carts?spend/carts:null,cr:clicks?orders/clicks*100:0,cpo:orders?spend/orders:null,drr:revenue?spend/revenue*100:(spend?null:0)};
+  }
+  // Средняя позиция по строкам с позицией, взвешенная по показам (у CPC-кампаний показов нет — каждая строка с весом 1).
+  function weightedPosition(rows=[]){let weight=0,sum=0;for(const row of rows){const position=Number(row.avgPosition);if(!position)continue;const w=Number(row.views)||1;sum+=position*w;weight+=w}return weight?sum/weight:null}
+  // Сортировка с пустыми значениями в конце в любом направлении.
+  const sortedWithBlanks=(rows,sort)=>[...sorted(rows.filter(row=>row[sort.key]!=null),sort),...rows.filter(row=>row[sort.key]==null)];
+  const columnLayouts={};
+  function columnLayout(table){
+    if(columnLayouts[table])return columnLayouts[table];
+    const defaults=COLUMN_TABLES[table].map(column=>({key:column.key,visible:true})),known=new Set(defaults.map(column=>column.key));
+    let saved=[];try{saved=JSON.parse(localStorage.getItem(`wb-campaign-columns:${table}`)||'[]')}catch{}
+    const layout=(Array.isArray(saved)?saved:[]).filter(item=>known.has(item?.key)).map(item=>({key:item.key,visible:item.visible!==false}));
+    // Столбцы, которых не было в сохранённом наборе, встают после своего соседа по умолчанию, а не в конец.
+    defaults.forEach((item,index)=>{if(layout.some(column=>column.key===item.key))return;const before=defaults.slice(0,index).reverse().find(column=>layout.some(saved=>saved.key===column.key)),at=before?layout.findIndex(saved=>saved.key===before.key)+1:0;layout.splice(at,0,item)});
+    return columnLayouts[table]=layout;
+  }
+  const visibleColumns=table=>columnLayout(table).filter(item=>item.visible).map(item=>COLUMN_TABLES[table].find(column=>column.key===item.key));
+  const metricHead=(column,attr)=>`<th ${attr}="${column.key}" class="c-metric c-${column.key}"${column.title?` title="${esc(column.title)}"`:''}>${esc(column.label)} ↕</th>`;
+  function saveColumnLayout(table,layout){
+    columnLayouts[table]=layout;
+    try{localStorage.setItem(`wb-campaign-columns:${table}`,JSON.stringify(layout))}catch{}
+    renderColumnsMenu(table);rerenderMetricTable(table);
+  }
+  function renderColumnsMenu(table){
+    const box=document.querySelector(`[data-columns-table="${table}"] .columns-options`);if(!box)return;
+    const layout=columnLayout(table);
+    box.innerHTML=layout.map((item,index)=>{const column=COLUMN_TABLES[table].find(entry=>entry.key===item.key);
+      return `<label class="column-row"><input type="checkbox" data-column-toggle="${column.key}" ${item.visible?'checked':''}><span>${esc(column.label)}${column.title?`<small>${esc(column.title)}</small>`:''}</span>`+
+        `<button type="button" data-column-move="-1" data-column-key="${column.key}" aria-label="Выше" ${index?'':'disabled'}>↑</button><button type="button" data-column-move="1" data-column-key="${column.key}" aria-label="Ниже" ${index<layout.length-1?'':'disabled'}>↓</button></label>`}).join('')+
+      '<button type="button" class="columns-reset" data-columns-reset>Вернуть все столбцы и порядок по умолчанию</button>';
+  }
+  function rerenderMetricTable(table){if(table==='daily'){renderDailyHead();renderTable()}else if(table==='product'){renderProductHead();renderProductTable()}else{renderKeywordHead();renderKeywords()}}
+  // Ширины, подобранные мышью для прежнего набора столбцов, к новому не подходят: сбрасываем и включаем изменение ширины заново.
+  function resetResizable(table,signature){
+    table.dataset.widthsVersion=signature;delete table.dataset.resizable;table.classList.remove('resizable-table');
+    table.querySelectorAll('.column-resizer').forEach(handle=>handle.remove());
+    table.style.width='';table.style.minWidth='';table.style.tableLayout='';table.querySelectorAll('thead th').forEach(header=>{header.style.width=''});
+    initResizableTables();
+  }
+  document.addEventListener('change',event=>{
+    const toggle=event.target.closest('[data-column-toggle]');if(!toggle)return;
+    const table=toggle.closest('[data-columns-table]').dataset.columnsTable,key=toggle.dataset.columnToggle;
+    // Скрытый столбец не должен незаметно фильтровать запросы своим «от — до».
+    if(table==='keywords'&&!toggle.checked)delete keywords.ranges[key];
+    saveColumnLayout(table,columnLayout(table).map(item=>item.key===key?{...item,visible:toggle.checked}:item));
+  });
+  document.addEventListener('click',event=>{
+    const move=event.target.closest('[data-column-move]'),reset=event.target.closest('[data-columns-reset]');if(!move&&!reset)return;
+    event.preventDefault();
+    const table=event.target.closest('[data-columns-table]').dataset.columnsTable;
+    if(reset){try{localStorage.removeItem(`wb-campaign-columns:${table}`)}catch{};delete columnLayouts[table];return saveColumnLayout(table,columnLayout(table))}
+    const layout=[...columnLayout(table)],index=layout.findIndex(item=>item.key===move.dataset.columnKey),target=index+Number(move.dataset.columnMove);
+    if(index<0||target<0||target>=layout.length)return;
+    [layout[index],layout[target]]=[layout[target],layout[index]];saveColumnLayout(table,layout);
+  });
   function photoCell(row){const photo=row.photo?`<img class="product-photo" src="${esc(row.photo)}" alt="" loading="lazy">`:'<i class="product-photo-stub"></i>';return `<div class="product-cell" title="${esc(row.name||`Товар ${row.nmId}`)}">${photo}<span><b>${esc(row.name||`Товар ${row.nmId}`)}</b>${row.vendorCode?`<small>${esc(row.vendorCode)}</small>`:''}</span></div>`}
   function bindPhotoPreview(image){image.addEventListener('mouseenter',()=>{const rect=image.getBoundingClientRect(),preview=document.createElement('img');preview.className='product-photo-preview';preview.src=image.currentSrc||image.src;preview.alt='';document.body.append(preview);const width=preview.offsetWidth,height=preview.offsetHeight;preview.style.left=`${Math.min(Math.max(8,rect.right+10),window.innerWidth-width-8)}px`;preview.style.top=`${Math.min(Math.max(8,rect.top+(rect.height-height)/2),window.innerHeight-height-8)}px`;image._preview=preview});image.addEventListener('mouseleave',()=>{image._preview?.remove();image._preview=null})}
   function bindPhotoPreviews(selector){document.querySelectorAll(`${selector} .product-photo`).forEach(image=>{if(image.dataset.previewBound)return;image.dataset.previewBound='1';bindPhotoPreview(image)})}
@@ -51,7 +119,21 @@
     catch(e){if(request!==state.previousRequest)return;state.previous=null}
     renderSummary(campaign);
   }
-  function renderTable(){const rows=sorted(state.rows,state.sort);const sum=totals(state.rows);const head=`<tr class="total-row"><td>Итого · ${number(state.rows.length)} дн.</td>${columns.slice(1).map(k=>`<td>${esc(fmt(k,sum[k]))}</td>`).join('')}</tr>`;$('#dailyBody').innerHTML=rows.length?head+rows.map(r=>`<tr>${columns.map(k=>`<td>${k==='drr'&&!Number(r.revenue)&&Number(r.spend)?'<span title="Нет рекламной выручки — ДРР не определён">—</span>':esc(fmt(k,r[k]))}</td>`).join('')}</tr>`).join(''):'<tr><td colspan="11" class="empty">Нет дневных данных за выбранный период</td></tr>'}
+  // «Статистика по датам»: средняя позиция дня — из статистики кластеров по дням (state.positions).
+  function renderDailyHead(){
+    const head=$('#dailyHead'),columns=visibleColumns('daily');
+    head.innerHTML='<th data-key="date">Дата ↕</th>'+columns.map(column=>metricHead(column,'data-key')).join('');
+    resetResizable(head.closest('table'),`daily:${columns.map(column=>column.key).join(',')}`);
+  }
+  const metricCell=(column,row)=>`<td class="c-metric c-${column.key}">${column.key==='drr'&&row.drr==null&&Number(row.spend)?'<span title="Нет рекламной выручки — ДРР не определён">—</span>':esc(metricText(column.key,row[column.key]))}</td>`;
+  function renderTable(){
+    const columns=visibleColumns('daily'),spend=state.rows.reduce((sum,row)=>sum+Number(row.spend||0),0);
+    const all=state.rows.map(row=>({...withMetrics(row,spend),avgPosition:state.positions.get(row.date)??null})),rows=sortedWithBlanks(all,state.sort);
+    const sum={...withMetrics(totals(state.rows),spend),avgPosition:weightedPosition(all)};
+    $('#dailyBody').innerHTML=rows.length?`<tr class="total-row"><td>Итого · ${number(state.rows.length)} дн.</td>${columns.map(column=>metricCell(column,sum)).join('')}</tr>`+
+      rows.map(row=>`<tr><td>${esc(date(row.date))}</td>${columns.map(column=>metricCell(column,row)).join('')}</tr>`).join(''):
+      `<tr><td colspan="${columns.length+1}" class="empty">Нет дневных данных за выбранный период</td></tr>`;
+  }
   function aggregateProducts(){
     const totals=new Map(), sumKeys=['views','clicks','carts','orders','canceled','revenue','spend'];
     for(const row of state.productDaily){const key=String(row.nmId||'');if(!key)continue;let total=totals.get(key);if(!total){total={nmId:row.nmId,name:'',photo:'',vendorCode:''};sumKeys.forEach(k=>total[k]=0);totals.set(key,total)}if(!total.name&&row.name)total.name=row.name;if(!total.photo&&row.photo)total.photo=row.photo;if(!total.vendorCode&&row.vendorCode)total.vendorCode=row.vendorCode;sumKeys.forEach(k=>total[k]+=Number(row[k]||0));}
@@ -59,7 +141,21 @@
   }
   // Детализация артикула по дням открывается кнопкой со стрелкой слева от названия.
   const productOpenButton=row=>`<button class="product-open" type="button" data-product-id="${esc(row.nmId)}" title="Статистика артикула по дням" aria-label="Статистика артикула ${esc(row.nmId)} по дням"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5.5 10.5l5-5M6.5 5.5h4v4"/></svg></button>`;
-  function renderProductTable(){const rows=sorted(aggregateProducts(),state.productSort);const sum=totals(rows);const head=`<tr class="total-row"><td>Итого · ${number(rows.length)} ${plural(rows.length,['артикул','артикула','артикулов'])}</td><td></td>${['views','clicks','ctr','cpc','carts','orders','canceled','revenue','spend','drr'].map(k=>`<td>${esc(fmt(k,sum[k]))}</td>`).join('')}</tr>`;$('#productDailyBody').innerHTML=rows.length?head+rows.map(r=>`<tr><td><div class="product-name-cell">${productOpenButton(r)}${photoCell(r)}</div></td><td>${esc(r.nmId||'—')}</td>${['views','clicks','ctr','cpc','carts','orders','canceled','revenue','spend','drr'].map(k=>`<td>${esc(fmt(k,r[k]))}</td>`).join('')}</tr>`).join(''):'<tr><td colspan="12" class="empty">Нет данных по артикулам за выбранный период</td></tr>';$('#productDailyBody').querySelectorAll('[data-product-id]').forEach(button=>button.onclick=()=>openProductModal(button.dataset.productId));bindPhotoPreviews('#productDailyBody')}
+  // «Статистика по дням каждого артикула»: средняя позиция артикула — по его поисковым кластерам из «Ключевых запросов».
+  function renderProductHead(){
+    const head=$('#productHead'),columns=visibleColumns('product');
+    head.innerHTML='<th data-product-key="name">Название ↕</th><th data-product-key="nmId" title="Артикул WB">Арт. WB ↕</th>'+columns.map(column=>metricHead(column,'data-product-key')).join('');
+    resetResizable(head.closest('table'),`product:${columns.map(column=>column.key).join(',')}`);
+  }
+  function renderProductTable(){
+    const columns=visibleColumns('product'),base=aggregateProducts(),spend=base.reduce((sum,row)=>sum+Number(row.spend||0),0);
+    const all=base.map(row=>({...withMetrics(row,spend),avgPosition:weightedPosition(keywords.data?.byNmId?.[row.nmId]||[])})),rows=sortedWithBlanks(all,state.productSort);
+    const sum={...withMetrics(totals(base),spend),avgPosition:weightedPosition(keywords.data?.total||[])};
+    $('#productDailyBody').innerHTML=rows.length?`<tr class="total-row"><td>Итого · ${number(rows.length)} ${plural(rows.length,['артикул','артикула','артикулов'])}</td><td></td>${columns.map(column=>metricCell(column,sum)).join('')}</tr>`+
+      rows.map(row=>`<tr><td><div class="product-name-cell">${productOpenButton(row)}${photoCell(row)}</div></td><td>${esc(row.nmId||'—')}</td>${columns.map(column=>metricCell(column,row)).join('')}</tr>`).join(''):
+      `<tr><td colspan="${columns.length+2}" class="empty">Нет данных по артикулам за выбранный период</td></tr>`;
+    $('#productDailyBody').querySelectorAll('[data-product-id]').forEach(button=>button.onclick=()=>openProductModal(button.dataset.productId));bindPhotoPreviews('#productDailyBody');
+  }
   function openProductModal(nmId){const rows=state.productDaily.filter(row=>String(row.nmId)===String(nmId)).sort((a,b)=>String(a.date).localeCompare(String(b.date)));const first=rows.find(row=>row.name)||rows[0]||{};$('#productModalTitle').textContent=`Артикул ${nmId} · ${first.name||'Статистика по дням'}`;$('#productModalBody').innerHTML=rows.length?`<tr class="total-row"><td>Итого · ${number(rows.length)} дн.</td>${['views','clicks','ctr','cpc','carts','orders','canceled','revenue','spend','drr'].map(k=>`<td>${esc(fmt(k,totals(rows)[k]))}</td>`).join('')}</tr>`+rows.map(r=>`<tr>${['date','views','clicks','ctr','cpc','carts','orders','canceled','revenue','spend','drr'].map(k=>`<td>${esc(fmt(k,r[k]))}</td>`).join('')}</tr>`).join(''):'<tr><td colspan="11" class="empty">Нет дневных данных по этому артикулу</td></tr>';$('#productModal').hidden=false}
   function closeProductModal(){$('#productModal').hidden=true}
   function renderOptions(){const cards=[...new Map(state.productDaily.map(r=>[String(r.nmId),r])).values()];$('#chartOptions').innerHTML=chartMetrics.map(m=>`<label><input type="checkbox" data-chart-key="${m.key}" ${state.visibleMetrics.has(m.key)?'checked':''}> ${m.label}</label>`).join('')+cards.map((c,i)=>`<label><input type="checkbox" data-card-key="${esc(c.nmId)}" ${state.visibleCards.has(String(c.nmId))?'checked':''}> Артикул ${esc(c.nmId)}</label>`).join('');$('#chartOptions').querySelectorAll('[data-chart-key]').forEach(i=>i.onchange=()=>{i.checked?state.visibleMetrics.add(i.dataset.chartKey):state.visibleMetrics.delete(i.dataset.chartKey);renderChart()});$('#chartOptions').querySelectorAll('[data-card-key]').forEach(i=>i.onchange=()=>{i.checked?state.visibleCards.add(i.dataset.cardKey):state.visibleCards.delete(i.dataset.cardKey);renderChart()})}
@@ -162,8 +258,7 @@
   }
   const KEYWORD_PAGE_SIZE=100;
   const keywords={data:null,loading:false,error:'',product:'',search:'',onlyInactive:false,sort:{key:'views',direction:'desc'},page:1,selected:new Set(),busy:false,shown:[],ranges:{}};
-  // Первые два столбца (запрос, статус) рисуются отдельно, остальные — через keywordValue.
-  const KEYWORD_COLUMNS=['query','status','views','clicks','ctr','cpm','cpc','spend','spendShare','carts','cartCost','orders','cr','cpo','avgPosition'];
+  // Первые три столбца (галочка, запрос, статус) постоянные; показатели — из меню «Столбцы» (visibleColumns('keywords')).
   const plural=(count,forms)=>{const n=Math.abs(Number(count)||0)%100,d=n%10;return forms[n>10&&n<20?2:d===1?0:d>1&&d<5?1:2]};
   // Исключать запросы (минус-фразы) WB позволяет только в кампаниях с оплатой за показы.
   const keywordsCpc=()=>state.paymentType==='cpc'||keywords.data?.viewsAvailable===false;
@@ -177,7 +272,7 @@
   const KEYWORD_STATUSES={active:'Активен',excluded:'Неактивен',archived:'В архиве'};
   const keywordStatusCell=row=>row.status?`<span class="keyword-status ${row.status}">${KEYWORD_STATUSES[row.status]}</span>`:'<span class="keyword-status archived">Нет данных</span>';
   // null — WB этот показатель не прислал (показы, CTR и CPM по CPC-кампаниям), поэтому прочерк, а не 0.
-  const keywordValue=(key,value)=>key==='query'?String(value??''):value==null?'—':['spend','cpc','cpm','cartCost','cpo'].includes(key)?money(value):['ctr','cr','spendShare'].includes(key)?percent(value):number(value);
+  const keywordValue=(key,value)=>key==='query'?String(value??''):metricText(key,value);
   function keywordRows(view){
     const data=keywords.data;if(!data)return [];
     const term=keywords.search.trim().toLowerCase();
@@ -197,11 +292,10 @@
   function keywordTotals(rows){
     const sum=key=>rows.reduce((total,row)=>total+Number(row[key]||0),0);
     const viewsKnown=rows.some(row=>row.views!=null),views=viewsKnown?sum('views'):null,clicks=sum('clicks'),spend=sum('spend'),orders=sum('orders');
-    const positions=rows.reduce((total,row)=>total+Number(row.avgPosition||0)*Number(row.views||1),0);
-    const base=rows.reduce((total,row)=>total+Number(row.views||1),0);
     const carts=sum('carts');
+    // Средняя позиция — только по запросам, у которых она есть (взвешенно по показам), как в остальных таблицах.
     return {views,clicks,spend,orders,carts,ctr:viewsKnown?(views?clicks/views*100:0):null,cpc:clicks?spend/clicks:0,
-      cpm:viewsKnown?(views?spend/views*1000:0):null,cr:clicks?orders/clicks*100:0,avgPosition:base?positions/base:0,
+      cpm:viewsKnown?(views?spend/views*1000:0):null,cr:clicks?orders/clicks*100:0,avgPosition:weightedPosition(rows),
       spendShare:sum('spendShare'),cartCost:carts?spend/carts:null,cpo:orders?spend/orders:null};
   }
   async function loadKeywords(period,refresh=false){
@@ -214,7 +308,8 @@
       keywords.data=await response.json();keywords.selected.clear();
       if(!keywords.data.byNmId?.[keywords.product])keywords.product='';
     }catch(e){keywords.error=e.message}
-    finally{keywords.loading=false;renderKeywords()}
+    // Средняя позиция артикулов в «Статистике по дням каждого артикула» берётся из ключевых запросов — перерисовываем и её.
+    finally{keywords.loading=false;renderKeywords();renderProductTable()}
   }
   function renderKeywords(){
     const note=$('#keywordsNote'),body=$('#keywordsBody'),select=$('#keywordProduct');
@@ -247,9 +342,10 @@
     const empty=keywords.search.trim()||rangeCount?'Нет запросов по заданным фильтрам':keywords.onlyInactive?'Неактивных запросов нет':'WB не вернул поисковые запросы за этот период';
     keywords.shown=shown;
     const rowClass=row=>[row.status==='excluded'||row.status==='archived'?'keyword-off':'',keywords.selected.has(row.query)?'keyword-selected':''].filter(Boolean).join(' ');
-    body.innerHTML=rows.length?`<tr class="total-row"><td></td><td>Итого · ${number(rows.length)} ${plural(rows.length,['запрос','запроса','запросов'])}</td><td></td>${KEYWORD_COLUMNS.slice(2).map(key=>`<td>${esc(keywordValue(key,totals[key]))}</td>`).join('')}</tr>`+
-      shown.map(row=>`<tr class="${rowClass(row)}"><td><input type="checkbox" data-keyword-select="${esc(row.query)}" ${keywords.selected.has(row.query)?'checked':''} aria-label="Выбрать запрос «${esc(row.query)}»"></td><td><span class="keyword-query"><button type="button" class="keyword-chart-button" data-keyword-daily="${esc(row.query)}" title="Статистика по дням" aria-label="Статистика запроса «${esc(row.query)}» по дням"><svg viewBox="0 0 16 16" aria-hidden="true"><rect x="1.75" y="1.75" width="12.5" height="12.5" rx="3"/><path d="M4.5 10.5l2.5-3 2 2 2.5-4"/></svg></button>${keywordTagButton(row.query)}<span>${esc(row.query)}</span>${keywordNoteButton(row.query)}</span></td><td>${keywordStatusCell(row)}</td>${KEYWORD_COLUMNS.slice(2).map(key=>`<td>${esc(keywordValue(key,row[key]))}</td>`).join('')}</tr>`).join(''):
-      `<tr><td colspan="${KEYWORD_COLUMNS.length+1}" class="empty">${empty}</td></tr>`;
+    const columns=visibleColumns('keywords'),cells=row=>columns.map(column=>`<td class="c-metric c-${column.key}">${esc(keywordValue(column.key,row[column.key]))}</td>`).join('');
+    body.innerHTML=rows.length?`<tr class="total-row"><td></td><td>Итого · ${number(rows.length)} ${plural(rows.length,['запрос','запроса','запросов'])}</td><td></td>${cells(totals)}</tr>`+
+      shown.map(row=>`<tr class="${rowClass(row)}"><td><input type="checkbox" data-keyword-select="${esc(row.query)}" ${keywords.selected.has(row.query)?'checked':''} aria-label="Выбрать запрос «${esc(row.query)}»"></td><td><span class="keyword-query"><button type="button" class="keyword-chart-button" data-keyword-daily="${esc(row.query)}" title="Статистика по дням" aria-label="Статистика запроса «${esc(row.query)}» по дням"><svg viewBox="0 0 16 16" aria-hidden="true"><rect x="1.75" y="1.75" width="12.5" height="12.5" rx="3"/><path d="M4.5 10.5l2.5-3 2 2 2.5-4"/></svg></button>${keywordTagButton(row.query)}<span>${esc(row.query)}</span>${keywordNoteButton(row.query)}</span></td><td>${keywordStatusCell(row)}</td>${cells(row)}</tr>`).join(''):
+      `<tr><td colspan="${columns.length+3}" class="empty">${empty}</td></tr>`;
     renderKeywordPagination(pageCount);
     renderKeywordActions();
   }
@@ -267,19 +363,26 @@
     keywords.page=page;renderKeywords();
     $('#keywordsNote').closest('.panel').scrollIntoView({behavior:'smooth',block:'start'});
   });
-  document.querySelectorAll('th[data-keyword-key]').forEach(header=>header.onclick=()=>{const key=header.dataset.keywordKey;keywords.sort=keywords.sort.key===key?{key,direction:keywords.sort.direction==='asc'?'desc':'asc'}:{key,direction:key==='query'?'asc':'desc'};keywords.page=1;renderKeywords()});
-  $('#keywordProduct').onchange=event=>{keywords.product=event.target.value;keywords.selected.clear();keywords.page=1;renderKeywords()};
-  // Поля «От» и «До» в заголовках числовых столбцов. Клик по ним не сортирует таблицу; ввод применяется с короткой задержкой.
-  // Проценты и рубли вводятся как в ячейках: «5» в CTR — это 5%, «150» в CPO — 150 ₽; запятая и точка равноценны.
-  let keywordRangeTimer=0;
-  document.querySelectorAll('th[data-keyword-key]').forEach(header=>{
-    const key=header.dataset.keywordKey;if(!KEYWORD_COLUMNS.slice(2).includes(key))return;
-    const box=document.createElement('span');box.className='keyword-range';
-    const name=header.textContent.replace('↕','').trim();
-    box.innerHTML=`<input type="text" inputmode="decimal" placeholder="От" data-range-key="${key}" data-range-side="min" aria-label="${esc(name)}: от"><input type="text" inputmode="decimal" placeholder="До" data-range-key="${key}" data-range-side="max" aria-label="${esc(name)}: до">`;
-    box.addEventListener('click',event=>event.stopPropagation());
-    header.prepend(box);
+  // Сортировка по клику на заголовок; клики по полям «от — до», поиску и ручке ширины не сортируют.
+  $('#keywordHead').addEventListener('click',event=>{
+    if(event.target.closest('input,.keyword-range,.keyword-search,.column-resizer'))return;
+    const header=event.target.closest('th[data-keyword-key]');if(!header)return;
+    const key=header.dataset.keywordKey;keywords.sort=keywords.sort.key===key?{key,direction:keywords.sort.direction==='asc'?'desc':'asc'}:{key,direction:key==='query'?'asc':'desc'};keywords.page=1;renderKeywords();
   });
+  $('#keywordProduct').onchange=event=>{keywords.product=event.target.value;keywords.selected.clear();keywords.page=1;renderKeywords()};
+  // Поля «От» и «До» в заголовках столбцов-показателей. Клик по ним не сортирует таблицу; ввод применяется с короткой задержкой.
+  // Проценты и рубли вводятся как в ячейках: «5» в CTR — это 5%, «150» в CPO — 150 ₽; запятая и точка равноценны.
+  // Заголовок перестраивается при смене столбцов — введённые границы берутся из keywords.ranges.
+  let keywordRangeTimer=0;
+  function renderKeywordHead(){
+    const head=$('#keywordHead'),columns=visibleColumns('keywords'),value=number=>number==null?'':String(number).replace('.',',');
+    [...head.children].slice(3).forEach(header=>header.remove());
+    head.insertAdjacentHTML('beforeend',columns.map(column=>{const range=keywords.ranges[column.key]||{};
+      return `<th data-keyword-key="${column.key}" class="c-metric c-${column.key}"${column.title?` title="${esc(column.title)}"`:''}><span class="keyword-range">`+
+        `<input type="text" inputmode="decimal" placeholder="От" data-range-key="${column.key}" data-range-side="min" aria-label="${esc(column.label)}: от" value="${value(range.min)}"${range.min!=null?' class="filled"':''}>`+
+        `<input type="text" inputmode="decimal" placeholder="До" data-range-key="${column.key}" data-range-side="max" aria-label="${esc(column.label)}: до" value="${value(range.max)}"${range.max!=null?' class="filled"':''}></span>${esc(column.label)} ↕</th>`}).join(''));
+    resetResizable(head.closest('table'),`keywords:${columns.map(column=>column.key).join(',')}`);
+  }
   document.querySelector('.keywords-table thead').addEventListener('input',event=>{
     const input=event.target.closest('[data-range-key]');if(!input)return;
     const raw=input.value.replace(/\s/g,'').replace(',','.'),value=raw===''?null:Number(raw);
@@ -301,7 +404,7 @@
       const result=await response.json();if(!response.ok)throw new Error(result.error||'');
       if(request!==positionsRequest)return;
       state.positions=new Map((result.days||[]).filter(day=>day.avgPosition!=null).map(day=>[day.date,day.avgPosition]));
-      renderChart();
+      renderChart();renderTable();
     }catch{/* без позиции график остаётся как есть */}
   }
   // --- Шапка: название ведёт в кампанию в кабинете продвижения WB, номер рядом копируется по клику ---
@@ -813,7 +916,7 @@
   new MutationObserver(()=>initResizableTables()).observe(document.body,{childList:true,subtree:true});
   initResizableTables();
   function load(){const from=params.get('from')||'',to=params.get('to')||'',fromInput=$('#exportFrom'),toInput=$('#exportTo');if(/^\d{4}-\d{2}-\d{2}$/.test(from)&&/^\d{4}-\d{2}-\d{2}$/.test(to)&&from<=to&&from>=fromInput.min&&to<=toInput.max){fromInput.value=from;toInput.value=to;fromInput.onchange()}exportHistory()}
-  document.querySelectorAll('th[data-key]').forEach(h=>h.onclick=()=>{const k=h.dataset.key;state.sort=state.sort.key===k?{key:k,direction:state.sort.direction==='asc'?'desc':'asc'}:{key:k,direction:'desc'};renderTable()});document.querySelectorAll('th[data-product-key]').forEach(h=>h.onclick=()=>{const k=h.dataset.productKey;state.productSort=state.productSort.key===k?{key:k,direction:state.productSort.direction==='asc'?'desc':'asc'}:{key:k,direction:'desc'};renderProductTable()});buildExportPresets();$('#exportHistory').onclick=exportHistory;document.querySelectorAll('[data-modal-close]').forEach(el=>el.onclick=closeProductModal);document.addEventListener('keydown',event=>{if(event.key==='Escape')closeProductModal()});load();
+  $('#dailyHead').addEventListener('click',event=>{if(event.target.closest('.column-resizer'))return;const h=event.target.closest('th[data-key]');if(!h)return;const k=h.dataset.key;state.sort=state.sort.key===k?{key:k,direction:state.sort.direction==='asc'?'desc':'asc'}:{key:k,direction:'desc'};renderTable()});$('#productHead').addEventListener('click',event=>{if(event.target.closest('.column-resizer'))return;const h=event.target.closest('th[data-product-key]');if(!h)return;const k=h.dataset.productKey;state.productSort=state.productSort.key===k?{key:k,direction:state.productSort.direction==='asc'?'desc':'asc'}:{key:k,direction:'desc'};renderProductTable()});['daily','product','keywords'].forEach(renderColumnsMenu);renderDailyHead();renderProductHead();renderKeywordHead();buildExportPresets();$('#exportHistory').onclick=exportHistory;document.querySelectorAll('[data-modal-close]').forEach(el=>el.onclick=closeProductModal);document.addEventListener('keydown',event=>{if(event.key==='Escape')closeProductModal()});load();
 })();
 
 
