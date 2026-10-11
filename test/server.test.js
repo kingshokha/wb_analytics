@@ -91,7 +91,7 @@ test('заказы по часам — по московскому времен�
     { id: 'c', orderedAt: '2026-10-07T21:10:00Z', price: 20000 },    // 00:10 МСК 08.10 — уже сегодня
     { id: 'd', orderedAt: '2026-10-07T06:00:00Z', price: 30000 },    // 09:00 МСК вчера — до «сейчас» (10:00)
     { id: 'e', orderedAt: '2026-09-20T06:00:00Z', price: 30000 }     // за пределами 8 дней
-  ], '2026-10-08', 10 * 60);
+  ], '2026-10-08', 10 * 60, 3);
   assert.equal(days.length, 8);
   assert.equal(days[0].date, '2026-10-01');
   const today = days[7], yesterday = days[6];
@@ -103,6 +103,19 @@ test('заказы по часам — по московскому времен�
   assert.deepEqual(yesterday.byNow, { count: 1, sum: 300, buyoutCount: 0, buyoutSum: 0 });
 });
 
+test('заказы по часам по умолчанию — по времени Душанбе (UTC+5): и час, и граница суток', () => {
+  const days = summarizeHourlyOrders([
+    { id: 'a', orderedAt: '2026-10-08T06:30:00Z', price: 100000 },   // 11:30 по Душанбе (09:30 МСК)
+    { id: 'b', orderedAt: '2026-10-07T19:30:00Z', price: 50000 }     // 00:30 по Душанбе 08.10 (22:30 МСК 07.10) — уже сегодня
+  ], '2026-10-08', 12 * 60);
+  const today = days[7];
+  assert.equal(today.hours[11].count, 1);
+  assert.equal(today.hours[9].count, 0);
+  assert.equal(today.hours[0].count, 1);
+  assert.equal(days[6].hours[22].count, 0);
+  assert.equal(today.byNow.count, 2);
+});
+
 test('выкупы по часам — по времени статуса «выкуплен», заказ — по времени оформления', () => {
   const days = summarizeHourlyOrders([
     // Заказан 05.10 в 12:00 МСК, выкуплен сегодня в 09:15 МСК.
@@ -111,7 +124,7 @@ test('выкупы по часам — по времени статуса «вы
     { id: 'y', orderedAt: '2026-10-07T05:00:00Z', createdAt: '2026-10-07T15:00:00Z', rawStatus: 'buyout', price: 50000 },
     // Отменённый заказ — только заказ, не выкуп.
     { id: 'z', orderedAt: '2026-10-08T05:00:00Z', createdAt: '2026-10-08T06:00:00Z', rawStatus: 'cancel', price: 40000 }
-  ], '2026-10-08', 10 * 60);
+  ], '2026-10-08', 10 * 60, 3);
   const today = days[7], yesterday = days[6];
   assert.equal(today.hours[9].buyoutCount, 1);
   assert.equal(today.hours[9].buyoutSum, 1500);

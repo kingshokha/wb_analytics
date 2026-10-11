@@ -2469,20 +2469,24 @@ function orderFeedPeriod(feed, from, to) {
   return { ...feed, data: { ...(feed?.data || {}), orders } };
 }
 
-// --- Заказы по часам (Лента заказов): сегодня и 7 предыдущих дней по московскому времени ---
+// --- Заказы по часам (Лента заказов): сегодня и 7 предыдущих дней по местному времени владельца ---
+// Время графика — Душанбе (UTC+5, без перехода на летнее время), на 2 часа больше московского.
+// Сутки, «сегодня» и «к этому времени» тоже считаются по Душанбе.
 const HOURLY_DAYS = 8;
+const HOURLY_TIMEZONE = { name: 'Asia/Dushanbe', label: 'Душанбе', offsetHours: 5 };
 // Каждый заказ (srid) считается один раз — по времени оформления; отменённые и возвращённые тоже, как в заказах WB.
 // Выкуп — событие со статусом «выкуплен», по времени этого статуса (когда покупатель забрал товар).
 // byNow — заказы и выкупы дня до того же времени суток, что сейчас: честное сравнение «к этому часу».
-function summarizeHourlyOrders(orders = [], today, nowMinutes) {
+// offsetHours — сдвиг часового пояса от UTC: 5 — Душанбе, 3 — Москва.
+function summarizeHourlyOrders(orders = [], today, nowMinutes, offsetHours = HOURLY_TIMEZONE.offsetHours) {
   const dates = Array.from({ length: HOURLY_DAYS }, (_, index) => addDays(today, index - HOURLY_DAYS + 1));
   const empty = () => ({ count: 0, sum: 0, buyoutCount: 0, buyoutSum: 0 });
   const days = new Map(dates.map(date => [date, { date, hours: Array.from({ length: 24 }, empty), byNow: empty() }]));
   const place = time => {
     const at = new Date(time);
     if (Number.isNaN(at.getTime())) return null;
-    const msk = new Date(at.getTime() + 3 * 3_600_000), day = days.get(msk.toISOString().slice(0, 10));
-    return day ? { day, hour: msk.getUTCHours(), beforeNow: msk.getUTCHours() * 60 + msk.getUTCMinutes() <= nowMinutes } : null;
+    const local = new Date(at.getTime() + offsetHours * 3_600_000), day = days.get(local.toISOString().slice(0, 10));
+    return day ? { day, hour: local.getUTCHours(), beforeNow: local.getUTCHours() * 60 + local.getUTCMinutes() <= nowMinutes } : null;
   };
   const add = (slot, countKey, sumKey, price) => {
     if (!slot) return;
@@ -2508,7 +2512,7 @@ function demoHourlyOrders(today, nowMinutes) {
       // Вечерний пик и ночной провал, как у типичного магазина.
       const count = Math.max(0, Math.round([0, 0, 0, 0, 0, 0, 1, 1, 2, 2, 3, 3, 3, 3, 3, 3, 3, 4, 4, 5, 6, 6, 4, 2][hour] * (1 + ((back * 7 + hour * 3) % 5 - 2) * 0.15)));
       for (let n = 0; n < count; n++) {
-        const at = new Date(Date.parse(`${date}T${String(hour).padStart(2, '0')}:${String((n * 13) % 60).padStart(2, '0')}:00Z`) - 3 * 3_600_000);
+        const at = new Date(Date.parse(`${date}T${String(hour).padStart(2, '0')}:${String((n * 13) % 60).padStart(2, '0')}:00Z`) - HOURLY_TIMEZONE.offsetHours * 3_600_000);
         if (back === 0 && hour * 60 + (n * 13) % 60 > nowMinutes) continue;
         // Часть заказов выкуплена примерно через сутки — в часы, когда забирают из пунктов выдачи.
         const bought = back > 0 && (n + hour) % 3 !== 0, boughtAt = new Date(at.getTime() + (20 + (hour * 5 + n) % 10) * 3_600_000);
@@ -2520,8 +2524,8 @@ function demoHourlyOrders(today, nowMinutes) {
   return orders;
 }
 async function hourlyOrders(id) {
-  const now = new Date(Date.now() + 3 * 3_600_000), today = now.toISOString().slice(0, 10), nowMinutes = now.getUTCHours() * 60 + now.getUTCMinutes();
-  const meta = { today, now: { hour: now.getUTCHours(), minute: now.getUTCMinutes() }, currency: 'RUB' };
+  const now = new Date(Date.now() + HOURLY_TIMEZONE.offsetHours * 3_600_000), today = now.toISOString().slice(0, 10), nowMinutes = now.getUTCHours() * 60 + now.getUTCMinutes();
+  const meta = { today, now: { hour: now.getUTCHours(), minute: now.getUTCMinutes() }, currency: 'RUB', timezone: HOURLY_TIMEZONE };
   if (id === 'demo' || !cabinets().length) return { demo: true, ...meta, days: summarizeHourlyOrders(demoHourlyOrders(today, nowMinutes), today, nowMinutes) };
   // Та же лента за 31 день, что и у списка заказов; лишнее отсекается по времени оформления.
   const { feed, fetchedAt } = await orderFeedMonth(id, tokenFor(id));

@@ -1,12 +1,17 @@
 // --- Лента заказов: заказы и выкупы по часам. Сегодня (столбики) против вчера или среднего за 7 дней (пунктир) ---
-// Время московское, как в кабинете WB и в расписании показов рекламы. Данные — /api/orders/hourly (8 дней ленты заказов).
+// Время — местное, Душанбе (UTC+5; часовой пояс приходит с сервера в data.timezone). Расписание показов рекламы в кабинете
+// WB задаётся по Москве (на 2 часа меньше), поэтому в подсказке по рекламе часы дублируются по МСК.
+// Данные — /api/orders/hourly (8 дней ленты заказов).
 // Заказ — по времени оформления, выкуп — по времени, когда покупатель забрал товар.
 const ordersHourly={data:null,error:'',series:'orders',metric:'count',compare:'yesterday',request:0,cabinet:''};
 const HOURLY_SERIES=[['orders','Заказы'],['buyouts','Выкупы']];
 const HOURLY_METRICS=[['count','шт'],['sum','₽']];
 const HOURLY_COMPARE=[['yesterday','Вчера'],['week','Среднее за 7 дней']];
-const hourLabel=hour=>`${String(hour%24).padStart(2,'0')}:00`;
+const hourLabel=hour=>`${String(((hour%24)+24)%24).padStart(2,'0')}:00`;
 const hourRange=(from,to)=>`${hourLabel(from)}–${hourLabel(to)}`;
+// Тот же интервал по Москве — для расписания показов в кабинете WB (сдвиг часового пояса графика от МСК).
+const mskShift=data=>(data?.timezone?.offsetHours??3)-3;
+const hourRangeMsk=(from,to,data)=>{const shift=mskShift(data);return shift?`${hourRange(from,to)} (МСК ${hourRange(from-shift,to-shift)})`:hourRange(from,to)};
 
 async function loadOrdersHourly(){
   const request=++ordersHourly.request,cabinet=state.cabinet;
@@ -62,8 +67,9 @@ function renderOrdersHourly(){
   }
   const series=hourlySeries(data),{todayValues,compareValues}=series,nowHour=data.now.hour;
   // WB отдаёт ленту раз в минуту; если обновить не удалось, показываем, на какое время данные.
-  const fetched=data.fetchedAt?new Date(data.fetchedAt).toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit',timeZone:'Europe/Moscow'}):'';
-  $('#ordersHourlyNote').textContent=`По московскому времени · сегодня до ${hourLabel(nowHour).slice(0,3)}${String(data.now.minute).padStart(2,'0')}${fetched?` · данные WB на ${fetched}`:''}${data.demo?' · демо-данные':''}`;
+  const zone=data.timezone||{name:'Europe/Moscow',label:'Москве',offsetHours:3};
+  const fetched=data.fetchedAt?new Date(data.fetchedAt).toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit',timeZone:zone.name}):'';
+  $('#ordersHourlyNote').textContent=`По времени ${zone.label==='Москве'?'Москвы':zone.label} (UTC+${zone.offsetHours}) · сегодня до ${hourLabel(nowHour).slice(0,3)}${String(data.now.minute).padStart(2,'0')}${fetched?` · данные WB на ${fetched}`:''}${data.demo?' · демо-данные':''}`;
   renderOrdersHourlyInsights(data,series);
   $('#ordersHourlyLegend').innerHTML=`<span><i class="legend-bar"></i>Сегодня</span><span><i class="legend-dashed"></i>${compareLabel}</span><span class="hourly-legend-note"><i class="legend-bar partial"></i>текущий час ещё идёт</span>`;
   // Ширина рисунка — по ширине панели, чтобы подписи осей не растягивались вместе с графиком.
@@ -120,8 +126,8 @@ function renderOrdersHourlyInsights(data,series){
   // Расписание рекламы подсказываем по заказам; пики выкупов — когда покупатели забирают товар из пунктов выдачи.
   const advice=!peaks?`<p>За прошлую неделю ${buyouts?'выкупов':'заказов'} нет — пиковые часы определить не по чему.</p>`:buyouts?
     `<p><b>Пиковые часы выкупов</b> (среднее за 7 дней): ${peaks.ranges.map(range=>hourRange(range.from,range.to)).join(', ')} — ${Math.round(peaks.peakShare*100)}% ${what}. В эти часы покупатели чаще всего забирают заказы из пунктов выдачи.</p>`:
-    `<p><b>Пиковые часы</b> (среднее за 7 дней): ${peaks.ranges.map(range=>hourRange(range.from,range.to)).join(', ')} — ${Math.round(peaks.peakShare*100)}% ${what}. Подсказка для расписания показов: в эти часы реклама должна быть включена.`+
-    (peaks.quiet.share<.1?` Меньше всего — ${hourRange(peaks.quiet.from,peaks.quiet.from+6)}: всего ${Math.max(1,Math.round(peaks.quiet.share*100))}% ${what}, эти часы можно исключить из показов, чтобы не тратить бюджет.`:'')+'</p>';
+    `<p><b>Пиковые часы</b> (среднее за 7 дней): ${peaks.ranges.map(range=>hourRangeMsk(range.from,range.to,data)).join(', ')} — ${Math.round(peaks.peakShare*100)}% ${what}. Подсказка для расписания показов (в кабинете WB время московское): в эти часы реклама должна быть включена.`+
+    (peaks.quiet.share<.1?` Меньше всего — ${hourRangeMsk(peaks.quiet.from,peaks.quiet.from+6,data)}: всего ${Math.max(1,Math.round(peaks.quiet.share*100))}% ${what}, эти часы можно исключить из показов, чтобы не тратить бюджет.`:'')+'</p>';
   $('#ordersHourlyInsights').innerHTML=`<div class="hourly-cards">${card('orders','count','Заказы, шт')}${card('orders','sum','Заказы, ₽')}${card('buyouts','count','Выкупы, шт')}${card('buyouts','sum','Выкупы, ₽')}</div>`+advice;
 }
 let ordersHourlyResize=0;
