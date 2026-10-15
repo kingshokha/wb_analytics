@@ -1,7 +1,7 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { buildPriceHistory, funnelOrdersByNmId, summarizeHourlyOrders, orderFeedPeriod, itemRatingPeriods, normalizeItemRatings, campaignActivePeriod, mergeMinusList, summarizeKeywordDaily, summarizePositionDaily, normalizeOrders, normalizeOrderFeed, enrichOrders, extractFunnel, summarizeAdStats, campaignProductDaily, withAdBudgets, summarizeKeywords, normalizeStockPreset, normalizePricePreset, adCampaignMayHaveStats, validAdPeriod, historyPeriod, historyChunks, planAdFetch, datesBetween, safeFolderName, funnelDaysToFetch, pairFunnelDays, funnelPeriods, funnelRangeBuckets, funnelRecordCounts, funnelRangeValues, funnelSalesMatrix, summaryTopProducts, summaryDrops, summaryProducts, normalizeFbsStocks, normalizeFbwStocks, normalizePrices, summarizeStockTotals, normalizeNewOrders, summarizeSupplies, normalizeTrbxes, chunkOrders, stickerType, localPhoto, WB_HOSTS } = require('../server');
+const { funnelOrdersByNmId, summarizeHourlyOrders, orderFeedPeriod, itemRatingPeriods, normalizeItemRatings, campaignActivePeriod, mergeMinusList, summarizeKeywordDaily, summarizePositionDaily, normalizeOrders, normalizeOrderFeed, enrichOrders, extractFunnel, summarizeAdStats, campaignProductDaily, withAdBudgets, summarizeKeywords, normalizeStockPreset, normalizePricePreset, adCampaignMayHaveStats, validAdPeriod, historyPeriod, historyChunks, planAdFetch, datesBetween, safeFolderName, funnelDaysToFetch, pairFunnelDays, funnelPeriods, funnelRangeBuckets, funnelRecordCounts, funnelRangeValues, funnelSalesMatrix, summaryTopProducts, summaryDrops, summaryProducts, normalizeFbsStocks, normalizeFbwStocks, normalizePrices, summarizeStockTotals, normalizeNewOrders, summarizeSupplies, normalizeTrbxes, chunkOrders, stickerType, localPhoto, WB_HOSTS } = require('../server');
 
 test('заказы из воронки по артикулам: статистика выбранного периода, ответ v3 и старый формат', () => {
   assert.deepEqual(funnelOrdersByNmId([
@@ -9,38 +9,6 @@ test('заказы из воронки по артикулам: статисти
     { product: { nmId: 102 }, statistic: { selected: { orderCount: 0 } } },
     { nmID: 103, orderCount: 5 }
   ]), { 101: 12, 102: 0, 103: 5 });
-});
-
-test('история цены: точки товара из снимков по времени, из всех кабинетов', () => {
-  const history = buildPriceHistory([
-    { takenAt: '2026-10-09T03:17:00Z', goods: [{ nmId: 1, price: 2000, discount: 25, discountedPrice: 1500 }] },
-    { takenAt: '2026-10-09T00:17:00Z', goods: [{ nmId: 1, price: 2000, discount: 20, discountedPrice: 1600 }, { nmId: 2, price: 500, discount: 0, discountedPrice: 500 }] }
-  ]);
-  assert.deepEqual(history.get('1').map(point => [point.takenAt, point.discountedPrice]), [['2026-10-09T00:17:00Z', 1600], ['2026-10-09T03:17:00Z', 1500]]);
-  assert.equal(history.get('2').length, 1);
-  assert.equal(history.get('3'), undefined);
-});
-
-test('снимок цен: шифруется открытым ключом и расшифровывается только закрытым', () => {
-  const { generateSnapshotKeys, encryptSnapshot, decryptSnapshot } = require('../scripts/snapshot-crypto');
-  const mine = generateSnapshotKeys(), other = generateSnapshotKeys();
-  const box = encryptSnapshot({ goods: [{ nmId: 1, price: 1990 }] }, mine.publicKey);
-  assert.ok(!box.includes('1990'));
-  assert.deepEqual(decryptSnapshot(box, mine.privateKey), { goods: [{ nmId: 1, price: 1990 }] });
-  assert.throws(() => decryptSnapshot(box, other.privateKey));
-});
-
-test('снимок цен: токены из секретов WB_, компактные товары, имя файла по Москве', () => {
-  const { tokensFromEnv, compactGoods, moscowStamp } = require('../scripts/price-snapshot');
-  const cabinets = tokensFromEnv({ WB_PRICES_TOKEN_SAMIRI: 'aaa', WB_TOKEN_ZIKRI: 'bbb', WB_: 'ccc', GITHUB_TOKEN: 'x', OTHER: 'y', WB_EMPTY: '' });
-  assert.deepEqual(cabinets, [{ cabinet: 'samiri', token: 'aaa' }, { cabinet: 'zikri', token: 'bbb' }, { cabinet: 'main', token: 'ccc' }]);
-  const goods = compactGoods([
-    { nmID: 1, vendorCode: 'A', currencyIsoCode4217: 'RUB', discount: 20, clubDiscount: 5, sizes: [{ price: 1000, discountedPrice: 800, clubDiscountedPrice: 760 }] },
-    { nmID: 2, editableSizePrice: true, discount: 0, sizes: [{ sizeID: 11, techSizeName: 'S', price: 500, discountedPrice: 500 }, { sizeID: 12, techSizeName: 'M', price: 600, discountedPrice: 600 }] }
-  ]);
-  assert.deepEqual(goods[0], { nmId: 1, vendorCode: 'A', currency: 'RUB', price: 1000, discountedPrice: 800, clubDiscountedPrice: 760, discount: 20, clubDiscount: 5 });
-  assert.equal(goods[1].sizes.length, 2);
-  assert.equal(moscowStamp(new Date('2026-10-08T22:17:40Z')), '2026-10-09T01-17');
 });
 
 test('оценки товаров: период не позже вчера, прошлый период той же длины перед ним', () => {

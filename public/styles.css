@@ -150,29 +150,12 @@ a.nav-item{text-decoration:none}a.nav-item:focus-visible{outline:2px solid var(-
 .price-product-note.error,.price-down{color:#b84949}
 .price-up{color:var(--green)}
 .price-down,.price-up{font-size:11px;font-weight:800}
-.price-history-chart{padding:0}
-.price-history-legend{margin:2px 0 6px}
-.price-legend{display:inline-block;width:16px;border-top:3px solid var(--purple);border-radius:2px}
-.price-legend.base{border-top:2px dashed #9aa39e}
-.price-step{fill:none;stroke-width:2.5;stroke-linejoin:round}
-.price-step.current{stroke:var(--purple)}
-.price-step.base{stroke:#9aa39e;stroke-width:2;stroke-dasharray:5 4}
-.price-history-table{max-height:240px;overflow:auto;border:1px solid var(--line);border-radius:10px}
-.price-history-table table{width:100%;min-width:0!important}
-.price-history-table th,.price-history-table td{padding:7px 12px;font-size:12px;white-space:nowrap}
-.price-history-table tr.price-history-now td{background:#f6f4fd;font-weight:700}
 .price-edit{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 .price-edit-preview{margin:8px 0;font-size:13px}
 .price-edit-confirm{padding:12px 14px;border-radius:10px;background:#faf9ff;border:1px solid #e6defd}
 .price-edit-confirm p{margin:0 0 8px;font-size:13px;line-height:1.7}
 .price-edit-done{margin:6px 0;padding:10px 12px;border-radius:10px;background:#e7f5ee;color:#277653;font-size:12px;font-weight:700}
 @media(max-width:680px){.price-product-now{grid-template-columns:1fr 1fr}.price-edit{grid-template-columns:1fr}}
-/* Состояние снимков цен с GitHub Actions во вкладке «Цены и скидки» */
-.price-snapshot-note{display:flex;flex-wrap:wrap;align-items:center;gap:4px 10px;margin-top:3px;color:var(--muted);font-size:11px}
-.price-snapshot-note .error{color:#b84949}
-.price-snapshot-take{padding:0;border:0;background:none;color:var(--purple);font:700 11px Manrope,Arial,sans-serif;text-decoration:underline dashed;text-underline-offset:3px;cursor:pointer}
-.price-snapshot-take:disabled{color:var(--muted);cursor:wait}
-.price-snapshot-take.hidden{display:none}
 /* Оценки товаров (public/ratings.js) */
 .rating-overview{display:grid;grid-template-columns:minmax(0,.85fr) minmax(0,1.15fr);gap:15px;margin-bottom:15px}
 .rating-overview .panel{margin:0}
