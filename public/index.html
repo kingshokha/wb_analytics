@@ -27,6 +27,7 @@
         <a class="nav-item" href="?page=funnel" data-page="funnel"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3.5 3.5v17h17"/><path d="M7 15.5l4-4.5 3 3 5.5-6.5"/><path d="M16 7.5h3.5V11"/></svg></span><span class="nav-label">Воронка</span></a>
         <a class="nav-item" href="?page=ratings" data-page="ratings"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3.6l2.6 5.3 5.8.8-4.2 4.1 1 5.8-5.2-2.7-5.2 2.7 1-5.8-4.2-4.1 5.8-.8z"/></svg></span><span class="nav-label">Оценки товаров</span></a>
         <a class="nav-item" href="?page=ads" data-page="ads"><span class="nav-icon nav-icon-ads" aria-hidden="true">ADS</span><span class="nav-label">Реклама</span></a>
+        <a class="nav-item" href="?page=todo" data-page="todo"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 6.5l1.6 1.6L8.6 5"/><path d="M4 12.5l1.6 1.6 3-3.1"/><path d="M4 18.5l1.6 1.6 3-3.1"/><path d="M12 7h8M12 13h8M12 19h8"/></svg></span><span class="nav-label">Дела</span></a>
       </nav>
       <div class="sync-state"><i></i><span><strong>WB API</strong><small id="syncText">Подключение…</small></span></div>
       <div class="cabinet-wrap">
@@ -256,6 +257,15 @@
         </div>
       </section>
 
+      <section class="page" id="page-todo">
+        <form class="panel todo-add" id="todoForm" autocomplete="off"></form>
+        <div class="funnel-tabs todo-tabs" role="tablist"><button type="button" class="funnel-tab active" data-todo-tab="open">В работе <b id="todoOpenCount"></b></button><button type="button" class="funnel-tab" data-todo-tab="done">Выполненные <b id="todoDoneCount"></b></button></div>
+        <div class="panel todo-panel">
+          <div class="panel-head"><div><h2 id="todoListTitle">В работе</h2><p id="todoCount">Загрузка дел…</p></div><div class="filters stock-filters"><label class="search">⌕ <input id="todoSearch" placeholder="Текст, артикул, комментарий"></label><select id="todoTypeFilter" aria-label="Тип дела"></select><select id="todoPriorityFilter" aria-label="Приоритет"></select><select id="todoCabinetFilter" aria-label="Кабинет"></select></div></div>
+          <div class="todo-list" id="todoList"></div>
+        </div>
+      </section>
+
     </main>
   </div>
 
@@ -270,6 +280,8 @@
   <script src="/orders-hourly.js"></script>
   <script src="/ratings.js"></script>
   <script src="/price-product.js"></script>
+  <script src="/todo.js"></script>
   <script src="/app.js"></script>
+  <script src="/auto-refresh.js"></script>
 </body>
 </html>

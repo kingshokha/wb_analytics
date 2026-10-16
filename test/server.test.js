@@ -1,7 +1,7 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { funnelOrdersByNmId, summarizeHourlyOrders, orderFeedPeriod, itemRatingPeriods, normalizeItemRatings, campaignActivePeriod, mergeMinusList, summarizeKeywordDaily, summarizePositionDaily, normalizeOrders, normalizeOrderFeed, enrichOrders, extractFunnel, summarizeAdStats, campaignProductDaily, withAdBudgets, summarizeKeywords, normalizeStockPreset, normalizePricePreset, adCampaignMayHaveStats, validAdPeriod, historyPeriod, historyChunks, planAdFetch, datesBetween, safeFolderName, funnelDaysToFetch, pairFunnelDays, funnelPeriods, funnelRangeBuckets, funnelRecordCounts, funnelRangeValues, funnelSalesMatrix, summaryTopProducts, summaryDrops, summaryProducts, normalizeFbsStocks, normalizeFbwStocks, normalizePrices, summarizeStockTotals, normalizeNewOrders, summarizeSupplies, normalizeTrbxes, chunkOrders, stickerType, localPhoto, WB_HOSTS } = require('../server');
+const { todoNmId, todoFields, funnelOrdersByNmId, summarizeHourlyOrders, orderFeedPeriod, itemRatingPeriods, normalizeItemRatings, campaignActivePeriod, mergeMinusList, summarizeKeywordDaily, summarizePositionDaily, normalizeOrders, normalizeOrderFeed, enrichOrders, extractFunnel, summarizeAdStats, campaignProductDaily, withAdBudgets, summarizeKeywords, normalizeStockPreset, normalizePricePreset, adCampaignMayHaveStats, validAdPeriod, historyPeriod, historyChunks, planAdFetch, datesBetween, safeFolderName, funnelDaysToFetch, pairFunnelDays, funnelPeriods, funnelRangeBuckets, funnelRecordCounts, funnelRangeValues, funnelSalesMatrix, summaryTopProducts, summaryDrops, summaryProducts, normalizeFbsStocks, normalizeFbwStocks, normalizePrices, summarizeStockTotals, normalizeNewOrders, summarizeSupplies, normalizeTrbxes, chunkOrders, stickerType, localPhoto, WB_HOSTS } = require('../server');
 
 test('заказы из воронки по артикулам: статистика выбранного периода, ответ v3 и старый формат', () => {
   assert.deepEqual(funnelOrdersByNmId([
@@ -424,6 +424,30 @@ test('перекачивает дни воронки, пока они не ст�
   ]);
   const days = funnelDaysToFetch(['2026-09-01', '2026-09-02', '2026-09-05', '2026-09-12', '2026-09-13', '2026-09-14', '2026-09-15', '2025-01-01'], fetched, now, '2026-09-14');
   assert.deepEqual(days, ['2026-09-02', '2026-09-05', '2026-09-12', '2026-09-14']);
+});
+
+test('автообновление воронки: сегодняшний день перезапрашивается через 2 минуты, прошлые — по обычным правилам', () => {
+  const now = Date.parse('2026-09-14T12:00:00Z');
+  const records = new Map([
+    ['2026-09-14', { fetchedAt: '2026-09-14T11:57:00Z', products: {} }],
+    ['2026-09-13', { fetchedAt: '2026-09-14T11:57:00Z', products: {} }]
+  ]);
+  assert.deepEqual(funnelDaysToFetch(['2026-09-13', '2026-09-14'], records, now, '2026-09-14'), []);
+  assert.deepEqual(funnelDaysToFetch(['2026-09-13', '2026-09-14'], records, now, '2026-09-14', 2 * 60_000), ['2026-09-14']);
+  records.set('2026-09-14', { fetchedAt: '2026-09-14T11:59:00Z', products: {} });
+  assert.deepEqual(funnelDaysToFetch(['2026-09-13', '2026-09-14'], records, now, '2026-09-14', 2 * 60_000), []);
+});
+
+test('список дел: артикул числом или ссылкой на товар, поля новой задачи и изменения', () => {
+  assert.equal(todoNmId('123456789'), 123456789);
+  assert.equal(todoNmId(' https://www.wildberries.ru/catalog/123456789/detail.aspx?targetUrl=XS '), 123456789);
+  assert.equal(todoNmId(''), null);
+  assert.throws(() => todoNmId('abc'), /Артикул WB/);
+  assert.deepEqual(todoFields({ text: '  Обжаловать отзыв  ', type: 'review', priority: 'urgent' }),
+    { text: 'Обжаловать отзыв', type: 'review', priority: 'urgent', cabinet: '', nmId: null });
+  assert.deepEqual(todoFields({ text: 'x', type: 'нет такого', priority: '?' }), { text: 'x', type: 'other', priority: 'normal', cabinet: '', nmId: null });
+  assert.deepEqual(todoFields({ priority: 'high' }, false), { priority: 'high' });
+  assert.throws(() => todoFields({ text: '   ' }), /Пустая задача/);
 });
 
 test('собирает дни воронки в пары для запроса, свежие первыми', () => {

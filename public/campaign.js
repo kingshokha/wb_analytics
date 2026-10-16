@@ -231,7 +231,7 @@
     return s.index+1;
   }
   function renderExportProgress(){
-    const s=exportState,now=Date.now();
+    const s=exportState,now=Date.now();if(s.silent)return;
     const saved=s.storedDays?` · из сохранённого: ${s.storedDays} дн.`:'',life=s.lifeNote?` · ${s.lifeNote}`:'';
     if(s.phase==='start'&&!s.known){$('#exportProgress').textContent='Проверяем сохранённую статистику…';return}
     if(s.chunks===0){$('#exportProgress').textContent=`${s.storedDays?'Все дни уже сохранены, запросы к WB не нужны':'Запросы к WB не нужны'}${life}${s.phase==='finalize'?' · подставляем названия и фото товаров…':''}`;return}
@@ -298,14 +298,15 @@
       cpm:viewsKnown?(views?spend/views*1000:0):null,cr:clicks?orders/clicks*100:0,avgPosition:weightedPosition(rows),
       spendShare:sum('spendShare'),cartCost:carts?spend/carts:null,cpo:orders?spend/orders:null};
   }
-  async function loadKeywords(period,refresh=false){
+  // silent — автообновление: таблица не мигает «загрузкой», отмеченные галочками запросы остаются.
+  async function loadKeywords(period,refresh=false,silent=false){
     if(!period)return;
-    keywords.loading=true;keywords.error='';renderKeywords();
+    keywords.loading=true;keywords.error='';if(!silent)renderKeywords();
     try{
       const q=new URLSearchParams({cabinet:params.get('cabinet')||'demo',id:params.get('id')||'',from:period.from,to:period.to,...(refresh?{refresh:'1'}:{})});
       const response=await fetch(`/api/advertising/campaign/keywords?${q}`);
       if(!response.ok)throw new Error((await response.json()).error||'Не удалось получить ключевые запросы');
-      keywords.data=await response.json();keywords.selected.clear();
+      keywords.data=await response.json();if(!silent)keywords.selected.clear();
       if(!keywords.data.byNmId?.[keywords.product])keywords.product='';
     }catch(e){keywords.error=e.message}
     // Средняя позиция артикулов в «Статистике по дням каждого артикула» берётся из ключевых запросов — перерисовываем и её.
@@ -397,8 +398,8 @@
   $('#keywordSearch').addEventListener('click',event=>event.stopPropagation());
   // Средняя позиция по дням для графика — догружается после выгрузки, график перерисовывается.
   let positionsRequest=0;
-  async function loadPositions(period){
-    if(!period)return;const request=++positionsRequest;state.positions=new Map();
+  async function loadPositions(period,silent=false){
+    if(!period)return;const request=++positionsRequest;if(!silent)state.positions=new Map();
     try{
       const response=await fetch(`/api/advertising/campaign/positions?${new URLSearchParams({cabinet:params.get('cabinet')||'demo',id:params.get('id')||'',from:period.from,to:period.to})}`);
       const result=await response.json();if(!response.ok)throw new Error(result.error||'');
@@ -832,32 +833,20 @@
   $('#keywordSearch').oninput=event=>{keywords.search=event.target.value;keywords.page=1;renderKeywords()};
   $('#keywordOnlyInactive').onchange=event=>{keywords.onlyInactive=event.target.checked;keywords.page=1;renderKeywords()};
   $('#keywordRefresh').onclick=()=>loadKeywords(keywords.data?.period||state.period,true);
-  async function exportHistory(){
+  // silent — автообновление: тот же период, что выгружен последним, без прогресса и блокировки кнопок;
+  // выбранные запросы, позиции и прошлый период не сбрасываются, при ошибке остаются прежние данные.
+  async function exportHistory(silent=false){
     const button=$('#exportHistory'),controls=[button,$('#exportPreset'),$('#exportFrom'),$('#exportTo')];
-    const from=$('#exportFrom').value,to=$('#exportTo').value;
+    const from=silent?exportState.loaded?.from:$('#exportFrom').value,to=silent?exportState.loaded?.to:$('#exportTo').value;
+    if(silent&&(!from||!to))return;
     if(!from||!to)return alert('Выберите даты начала и конца выгрузки');
     if(from>to)return alert('Дата начала должна быть не позже даты конца');
-    Object.assign(exportState,{started:Date.now(),chunks:0,index:0,phase:'start',reason:'',waitUntil:0,failed:0,storedDays:0,known:false,lifeNote:''});
+    if(silent){exportState.silent=true;exportState.running=true;try{await exportHistoryRun(from,to,true)}catch{/* тихо: остаются прежние данные */}finally{exportState.silent=false;exportState.running=false}return}
+    Object.assign(exportState,{started:Date.now(),chunks:0,index:0,phase:'start',reason:'',waitUntil:0,failed:0,storedDays:0,known:false,lifeNote:'',running:true});
     controls.forEach(control=>control.disabled=true);button.textContent='Выгрузка…';
     renderExportProgress();clearInterval(exportState.timer);exportState.timer=setInterval(renderExportProgress,250);
     try{
-      const q=new URLSearchParams({cabinet:params.get('cabinet')||'demo',id:params.get('id')||'',from,to});
-      const response=await fetch(`/api/advertising/campaign/history?${q}`);
-      if(!response.ok||!response.body)throw new Error('Не удалось начать выгрузку');
-      const reader=response.body.getReader(),decoder=new TextDecoder();let buffer='',result=null;
-      for(;;){
-        const {value,done}=await reader.read();
-        buffer+=decoder.decode(value||new Uint8Array(),{stream:!done});
-        let newline;
-        while((newline=buffer.indexOf('\n'))>=0){const line=buffer.slice(0,newline).trim();buffer=buffer.slice(newline+1);if(line)result=handleExportEvent(JSON.parse(line))||result}
-        if(done)break;
-      }
-      if(!result)throw new Error('Выгрузка прервалась без результата');
-      state.rows=result.campaign.daily||[];state.productDaily=result.productDaily||[];
-      renderMeta(result.campaign);renderSummary(result.campaign);renderSetup(result.setup);renderOptions();renderChart();renderTable();renderProductTable();loadPositions(result.activePeriod||result.period);
-      $('#campaignTitle').textContent=result.campaign.name||`Кампания #${result.campaign.id}`;document.title=`${$('#campaignTitle').textContent} — WB Pulse`;renderCampaignHeader(result);
-      state.period=result.activePeriod||result.period;loadKeywords(state.period);loadPrevious(result.period,result.campaign);
-      $('#periodLabel').textContent=`${date(result.period.from)} — ${date(result.period.to)}${result.folder?` · ${result.folder}`:''}`;
+      const result=await exportHistoryRun(from,to,false);
       clearInterval(exportState.timer);
       const took=formatSeconds(Math.max(1,Math.round((Date.now()-exportState.started)/1000)));
       const saved=result.storedDays?` · из сохранённого: ${result.storedDays} дн.`:'';
@@ -866,9 +855,41 @@
     }catch(e){
       clearInterval(exportState.timer);$('#exportProgress').textContent=`Ошибка: ${e.message}`;
     }finally{
-      clearInterval(exportState.timer);controls.forEach(control=>control.disabled=false);button.textContent='Выгрузить';
+      clearInterval(exportState.timer);controls.forEach(control=>control.disabled=false);button.textContent='Выгрузить';exportState.running=false;
     }
   }
+  async function exportHistoryRun(from,to,silent){
+    const q=new URLSearchParams({cabinet:params.get('cabinet')||'demo',id:params.get('id')||'',from,to});
+    const response=await fetch(`/api/advertising/campaign/history?${q}`);
+    if(!response.ok||!response.body)throw new Error('Не удалось начать выгрузку');
+    const reader=response.body.getReader(),decoder=new TextDecoder();let buffer='',result=null;
+    for(;;){
+      const {value,done}=await reader.read();
+      buffer+=decoder.decode(value||new Uint8Array(),{stream:!done});
+      let newline;
+      while((newline=buffer.indexOf('\n'))>=0){const line=buffer.slice(0,newline).trim();buffer=buffer.slice(newline+1);if(line)result=handleExportEvent(JSON.parse(line))||result}
+      if(done)break;
+    }
+    if(!result)throw new Error('Выгрузка прервалась без результата');
+    exportState.loaded={from,to};
+    state.rows=result.campaign.daily||[];state.productDaily=result.productDaily||[];
+    renderMeta(result.campaign);renderSummary(result.campaign);renderSetup(result.setup);renderOptions();renderChart();renderTable();renderProductTable();loadPositions(result.activePeriod||result.period,silent);
+    $('#campaignTitle').textContent=result.campaign.name||`Кампания #${result.campaign.id}`;document.title=`${$('#campaignTitle').textContent} — WB Pulse`;renderCampaignHeader(result);
+    state.period=result.activePeriod||result.period;
+    if(silent){if(!keywords.loading)loadKeywords(state.period,true,true)}else{loadKeywords(state.period);loadPrevious(result.period,result.campaign)}
+    $('#periodLabel').textContent=`${date(result.period.from)} — ${date(result.period.to)}${result.folder?` · ${result.folder}`:''}`;
+    if(silent)$('#autoRefreshNote').textContent=`Обновлено ${new Date().toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit'})} · автообновление раз в 2 минуты`;
+    return result;
+  }
+  // Автообновление: раз в 2 минуты, пока вкладка видна. Пропускается, пока идёт выгрузка или открыто окно, меню,
+  // заметки или поле ввода в них — чтобы ничего не закрылось и не сбилось под рукой.
+  const AUTO_REFRESH_MS=2*60_000;let autoRefreshAt=Date.now();
+  function autoRefreshBusy(){
+    return document.hidden||exportState.running||keywords.busy||campaignNotes.open||!$('#keywordTagMenu').hidden||!$('#keywordHistoryPop').hidden||
+      [...document.querySelectorAll('.modal')].some(modal=>!modal.hidden)||Boolean(document.activeElement?.closest('textarea,.note-form'));
+  }
+  setInterval(()=>{if(Date.now()-autoRefreshAt<AUTO_REFRESH_MS||autoRefreshBusy())return;autoRefreshAt=Date.now();exportHistory(true)},10_000);
+  $('#exportHistory').addEventListener('click',()=>{autoRefreshAt=Date.now()});
   // Ширину колонок можно тянуть мышью, как в «Ценах и скидках»; значения хранятся в браузере.
   function initResizableTables(scope=document){
     scope.querySelectorAll('table').forEach((table,tableIndex)=>{
@@ -916,7 +937,7 @@
   new MutationObserver(()=>initResizableTables()).observe(document.body,{childList:true,subtree:true});
   initResizableTables();
   function load(){const from=params.get('from')||'',to=params.get('to')||'',fromInput=$('#exportFrom'),toInput=$('#exportTo');if(/^\d{4}-\d{2}-\d{2}$/.test(from)&&/^\d{4}-\d{2}-\d{2}$/.test(to)&&from<=to&&from>=fromInput.min&&to<=toInput.max){fromInput.value=from;toInput.value=to;fromInput.onchange()}exportHistory()}
-  $('#dailyHead').addEventListener('click',event=>{if(event.target.closest('.column-resizer'))return;const h=event.target.closest('th[data-key]');if(!h)return;const k=h.dataset.key;state.sort=state.sort.key===k?{key:k,direction:state.sort.direction==='asc'?'desc':'asc'}:{key:k,direction:'desc'};renderTable()});$('#productHead').addEventListener('click',event=>{if(event.target.closest('.column-resizer'))return;const h=event.target.closest('th[data-product-key]');if(!h)return;const k=h.dataset.productKey;state.productSort=state.productSort.key===k?{key:k,direction:state.productSort.direction==='asc'?'desc':'asc'}:{key:k,direction:'desc'};renderProductTable()});['daily','product','keywords'].forEach(renderColumnsMenu);renderDailyHead();renderProductHead();renderKeywordHead();buildExportPresets();$('#exportHistory').onclick=exportHistory;document.querySelectorAll('[data-modal-close]').forEach(el=>el.onclick=closeProductModal);document.addEventListener('keydown',event=>{if(event.key==='Escape')closeProductModal()});load();
+  $('#dailyHead').addEventListener('click',event=>{if(event.target.closest('.column-resizer'))return;const h=event.target.closest('th[data-key]');if(!h)return;const k=h.dataset.key;state.sort=state.sort.key===k?{key:k,direction:state.sort.direction==='asc'?'desc':'asc'}:{key:k,direction:'desc'};renderTable()});$('#productHead').addEventListener('click',event=>{if(event.target.closest('.column-resizer'))return;const h=event.target.closest('th[data-product-key]');if(!h)return;const k=h.dataset.productKey;state.productSort=state.productSort.key===k?{key:k,direction:state.productSort.direction==='asc'?'desc':'asc'}:{key:k,direction:'desc'};renderProductTable()});['daily','product','keywords'].forEach(renderColumnsMenu);renderDailyHead();renderProductHead();renderKeywordHead();buildExportPresets();$('#exportHistory').onclick=()=>exportHistory();document.querySelectorAll('[data-modal-close]').forEach(el=>el.onclick=closeProductModal);document.addEventListener('keydown',event=>{if(event.key==='Escape')closeProductModal()});load();
 })();
 
 

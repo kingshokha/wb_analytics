@@ -1157,6 +1157,92 @@ function setCampaignNote(cabinet, campaignId, body = {}) {
   fs.renameSync(`${CAMPAIGN_NOTES_FILE}.tmp`, CAMPAIGN_NOTES_FILE);
   return { notes: data[key] || [] };
 }
+// --- Список дел (вкладка «Дела»): data/todos.json, { tasks: [...] } ---
+// У задачи: текст, тип дела, приоритет, кабинет и артикул (последние два — необязательно). Выполненные не удаляются,
+// а уходят в архив с датой выполнения; у каждой задачи журнал: создана, изменена (что было → что стало),
+// комментарий, выполнена, возвращена в работу.
+const TODOS_FILE = path.join(ROOT, 'data', 'todos.json');
+const TODO_TYPES = ['review', 'client', 'ads', 'prices', 'stock', 'card', 'check', 'other'];
+const TODO_PRIORITIES = ['normal', 'high', 'urgent'];
+const TODO_LIMIT = 5000;
+const TODO_LOG_LIMIT = 200;
+function readTodos() {
+  try { const data = JSON.parse(fs.readFileSync(TODOS_FILE, 'utf8')); return Array.isArray(data?.tasks) ? data.tasks : []; } catch { return []; }
+}
+function writeTodos(tasks) {
+  fs.mkdirSync(path.dirname(TODOS_FILE), { recursive: true });
+  fs.writeFileSync(`${TODOS_FILE}.tmp`, JSON.stringify({ tasks }, null, 2));
+  fs.renameSync(`${TODOS_FILE}.tmp`, TODOS_FILE);
+}
+// Артикул WB: число или ссылка на товар (…/catalog/123456/detail.aspx) — из ссылки берём nmID.
+function todoNmId(value) {
+  const text = String(value ?? '').trim();
+  if (!text) return null;
+  const match = text.match(/catalog\/(\d{4,12})(?:\/|$|\?)/) || text.match(/^(\d{4,12})$/);
+  if (!match) throw apiError(400, 'Артикул WB — число или ссылка на товар WB');
+  return Number(match[1]);
+}
+// Новая задача берёт все поля (пустые — по умолчанию), изменение — только присланные.
+function todoFields(body = {}, isNew = true) {
+  const fields = {}, has = key => isNew || Object.hasOwn(body, key);
+  if (has('text')) {
+    const text = String(body.text || '').trim();
+    if (!text) throw apiError(400, 'Пустая задача');
+    if (text.length > 4000) throw apiError(400, 'Задача длиннее 4000 символов');
+    fields.text = text;
+  }
+  if (has('type')) fields.type = TODO_TYPES.includes(body.type) ? body.type : 'other';
+  if (has('priority')) fields.priority = TODO_PRIORITIES.includes(body.priority) ? body.priority : 'normal';
+  if (has('cabinet')) {
+    const cabinet = body.cabinet && body.cabinet !== 'demo' ? String(body.cabinet) : '';
+    if (cabinet && !cabinets().some(item => item.id === cabinet)) throw apiError(400, 'Кабинет не найден');
+    fields.cabinet = cabinet;
+  }
+  if (has('nmId')) fields.nmId = todoNmId(body.nmId);
+  return fields;
+}
+// Название и фото товара — из карточек кабинета задачи (без кабинета — ищем во всех: артикул WB уникален).
+async function todoProducts(tasks) {
+  const wanted = new Set(tasks.filter(task => task.nmId).map(task => String(task.nmId))), products = new Map();
+  if (!wanted.size) return products;
+  const ids = new Set(tasks.filter(task => task.nmId).flatMap(task => task.cabinet ? [task.cabinet] : cabinets().map(item => item.id)));
+  for (const id of ids) {
+    if (!cabinets().some(item => item.id === id)) continue;
+    const cards = await cachedAnalytics(`product-cards:${id}`, () => loadProductCards(tokenFor(id)), 10 * 60_000).catch(() => []);
+    for (const card of cards) if (wanted.has(String(card.nmID))) products.set(String(card.nmID), { name: card.title || '', vendorCode: card.vendorCode || '', photo: cardPhoto(card) });
+  }
+  return products;
+}
+async function todos() {
+  const tasks = readTodos(), products = await todoProducts(tasks);
+  return { tasks: tasks.map(task => ({ ...task, product: task.nmId ? products.get(String(task.nmId)) || null : null })) };
+}
+// Без id — новая задача. С id: поля для изменения, done (выполнена / вернуть), comment (запись в журнал), remove.
+function saveTodo(body = {}) {
+  const tasks = readTodos(), now = new Date().toISOString();
+  if (!body.id) {
+    if (tasks.length >= TODO_LIMIT) throw apiError(400, `Задач больше ${TODO_LIMIT} — удалите старые из архива`);
+    const task = { id: keywordEventId(), ...todoFields(body), createdAt: now, updatedAt: now, doneAt: null, log: [{ at: now, action: 'created' }] };
+    tasks.push(task); writeTodos(tasks);
+    return { task };
+  }
+  const index = tasks.findIndex(task => task.id === body.id);
+  if (index < 0) throw apiError(404, 'Задача не найдена — обновите страницу');
+  if (body.remove) { tasks.splice(index, 1); writeTodos(tasks); return { removed: body.id }; }
+  const task = { ...tasks[index] }, log = [...(task.log || [])], fields = todoFields(body, false);
+  const changes = Object.entries(fields).filter(([key, value]) => value !== (task[key] ?? (key === 'nmId' ? null : ''))).map(([field, to]) => ({ field, from: task[field] ?? null, to }));
+  if (changes.length) { Object.assign(task, fields); log.push({ at: now, action: 'edited', changes }); }
+  const comment = String(body.comment || '').trim();
+  if (comment.length > 2000) throw apiError(400, 'Комментарий длиннее 2000 символов');
+  if (comment) log.push({ at: now, action: 'comment', text: comment });
+  if (Object.hasOwn(body, 'done') && Boolean(body.done) !== Boolean(task.doneAt)) {
+    task.doneAt = body.done ? now : null;
+    log.push({ at: now, action: body.done ? 'done' : 'reopened' });
+  }
+  if (log.length === (task.log || []).length) return { task };
+  task.log = log.slice(-TODO_LOG_LIMIT); task.updatedAt = now; tasks[index] = task; writeTodos(tasks);
+  return { task };
+}
 function setKeywordNote(cabinet, campaignId, body = {}) {
   const key = keywordTagsKey(cabinet, campaignId), query = keywordQuery(body.query), text = String(body.text || '').trim();
   if (!body.remove && !text) throw apiError(400, 'Пустой комментарий');
@@ -1819,11 +1905,14 @@ function funnelRangeNeedsFetch(to, fetchedAt, now = Date.now()) {
   return now - fetched >= FUNNEL_REFRESH_MINUTES * 60_000;
 }
 
-function funnelDaysToFetch(dates = [], records = new Map(), now = Date.now(), today = moscowDate(0)) {
+// liveMs — для автообновления открытой вкладки: сегодняшний день перезапрашивается, если сохранён раньше liveMs назад,
+// а не раз в FUNNEL_REFRESH_MINUTES. Прошлые дни это не трогает.
+function funnelDaysToFetch(dates = [], records = new Map(), now = Date.now(), today = moscowDate(0), liveMs = 0) {
   const earliest = addDays(today, -FUNNEL_MAX_DEPTH_DAYS);
   return [...new Set(dates)].filter(date => {
     if (date > today || date < earliest) return false;
     const record = records.get(date);
+    if (liveMs && record?.products && date === today && now - (Date.parse(record.fetchedAt || '') || 0) >= liveMs) return true;
     return !record?.products || funnelRangeNeedsFetch(date, record.fetchedAt, now);
   });
 }
@@ -1981,7 +2070,7 @@ function normalizeFunnelNmIds(nmIds) {
   return [...new Set(nmIds.map(value => String(value)).filter(value => /^\d{1,15}$/.test(value)))].slice(0, 5000);
 }
 
-async function funnelHistory(id, from, to, grouping = 'day', nmIdsInput = null) {
+async function funnelHistory(id, from, to, grouping = 'day', nmIdsInput = null, live = false) {
   const safeGrouping = ['day', 'week', 'month'].includes(grouping) ? grouping : 'day';
   const nmIds = normalizeFunnelNmIds(nmIdsInput);
   const periods = funnelPeriods(from, to);
@@ -1995,7 +2084,7 @@ async function funnelHistory(id, from, to, grouping = 'day', nmIdsInput = null) 
     storedFrom: funnelStoredFrom(id), earliestAvailable: addDays(moscowDate(0), -FUNNEL_MAX_DEPTH_DAYS),
     folder: `data/Funnel/${cabinetFolderName(id)}`, warnings: [] };
   if (safeGrouping === 'day') {
-    scheduleFunnelSync(id, funnelDaysToFetch(dates, new Map(stored.map(day => [day.date, day]))));
+    scheduleFunnelSync(id, funnelDaysToFetch(dates, new Map(stored.map(day => [day.date, day])), Date.now(), moscowDate(0), live ? SUMMARY_REFRESH_MS : 0));
     return { ...base, buckets: [], sync: funnelSyncStatus(id, dates) };
   }
   const byDate = new Map(stored.map(day => [day.date, day])); const storedRanges = readFunnelRanges(id);
@@ -2205,7 +2294,7 @@ async function summary(id, from, to, refresh = false) {
   // Запрос итогов ставится в очередь воронки раньше догрузки дней, чтобы карточки появились первыми.
   const rangesJob = summaryFunnelRanges(id, token, periods, refresh);
   rangesJob.catch(() => {});
-  const history = await funnelHistory(id, periods.current.from, periods.current.to, 'day');
+  const history = await funnelHistory(id, periods.current.from, periods.current.to, 'day', null, refresh);
   const cards = await cachedAnalytics(`product-cards:${id}`, () => loadProductCards(token), 10 * 60_000)
     .catch(error => (warnings.push(`Карточки товаров: ${error.message}`), []));
   const ranges = await rangesJob;
@@ -2755,6 +2844,12 @@ async function handleApi(req, res, url) {
     const body = await readJson(req);
     return send(res, 200, setKeywordTag(body.cabinet || 'demo', body.id, body));
   }
+  if (req.method === 'GET' && url.pathname === '/api/todos') {
+    return send(res, 200, await todos());
+  }
+  if (req.method === 'POST' && url.pathname === '/api/todos') {
+    return send(res, 200, saveTodo(await readJson(req)));
+  }
   if (req.method === 'GET' && url.pathname === '/api/campaign-notes') {
     return send(res, 200, campaignNotes(url.searchParams.get('cabinet') || 'demo', url.searchParams.get('id')));
   }
@@ -2813,7 +2908,7 @@ async function handleApi(req, res, url) {
   }
   if (req.method === 'POST' && url.pathname === '/api/funnel/history') {
     const body = await readJson(req);
-    return send(res, 200, await funnelHistory(body.cabinet || 'demo', body.from, body.to, body.grouping, body.nmIds));
+    return send(res, 200, await funnelHistory(body.cabinet || 'demo', body.from, body.to, body.grouping, body.nmIds, body.live === true));
   }
   if (req.method === 'POST' && url.pathname === '/api/funnel/refetch') {
     const body = await readJson(req);
@@ -2959,7 +3054,7 @@ if (require.main === module) server.listen(PORT, '127.0.0.1', () => {
   console.log(`WB Analytics: http://127.0.0.1:${PORT}`);
 });
 
-module.exports = { server, cabinets, campaignActivePeriod, mergeMinusList, funnelOrdersByNmId, summarizeHourlyOrders, orderFeedPeriod, itemRatingPeriods, normalizeItemRatings, summarizeKeywordDaily, summarizePositionDaily, normalizeOrders, normalizeOrderFeed, enrichOrders, extractFunnel, summarizeAdStats, campaignProductDaily, withAdBudgets, summarizeKeywords, normalizeStockPreset, normalizePricePreset, adCampaignMayHaveStats, validAdPeriod, historyPeriod, historyChunks, planAdFetch, datesBetween, safeFolderName, funnelDaysToFetch, pairFunnelDays, funnelPeriods, funnelRangeBuckets, funnelRecordCounts, funnelRangeValues, funnelSalesMatrix, summaryTopProducts, summaryDrops, summaryProducts, normalizeFbsStocks, normalizeFbwStocks, normalizePrices, summarizeStockTotals, normalizeNewOrders, summarizeSupplies, normalizeTrbxes, chunkOrders, stickerType, localPhoto, WB_HOSTS };
+module.exports = { server, cabinets, campaignActivePeriod, mergeMinusList, todoNmId, todoFields, funnelOrdersByNmId, summarizeHourlyOrders, orderFeedPeriod, itemRatingPeriods, normalizeItemRatings, summarizeKeywordDaily, summarizePositionDaily, normalizeOrders, normalizeOrderFeed, enrichOrders, extractFunnel, summarizeAdStats, campaignProductDaily, withAdBudgets, summarizeKeywords, normalizeStockPreset, normalizePricePreset, adCampaignMayHaveStats, validAdPeriod, historyPeriod, historyChunks, planAdFetch, datesBetween, safeFolderName, funnelDaysToFetch, pairFunnelDays, funnelPeriods, funnelRangeBuckets, funnelRecordCounts, funnelRangeValues, funnelSalesMatrix, summaryTopProducts, summaryDrops, summaryProducts, normalizeFbsStocks, normalizeFbwStocks, normalizePrices, summarizeStockTotals, normalizeNewOrders, summarizeSupplies, normalizeTrbxes, chunkOrders, stickerType, localPhoto, WB_HOSTS };
 
 
 
