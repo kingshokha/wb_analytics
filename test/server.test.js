@@ -1,7 +1,36 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { todoNmId, todoFields, funnelOrdersByNmId, summarizeHourlyOrders, orderFeedPeriod, itemRatingPeriods, normalizeItemRatings, campaignActivePeriod, mergeMinusList, summarizeKeywordDaily, summarizePositionDaily, normalizeOrders, normalizeOrderFeed, enrichOrders, extractFunnel, summarizeAdStats, campaignProductDaily, withAdBudgets, summarizeKeywords, normalizeStockPreset, normalizePricePreset, adCampaignMayHaveStats, validAdPeriod, historyPeriod, historyChunks, planAdFetch, datesBetween, safeFolderName, funnelDaysToFetch, pairFunnelDays, funnelPeriods, funnelRangeBuckets, funnelRecordCounts, funnelRangeValues, funnelSalesMatrix, summaryTopProducts, summaryDrops, summaryProducts, normalizeFbsStocks, normalizeFbwStocks, normalizePrices, summarizeStockTotals, normalizeNewOrders, summarizeSupplies, normalizeTrbxes, chunkOrders, stickerType, localPhoto, WB_HOSTS } = require('../server');
+const { todoNmId, todoFields, funnelOrdersByNmId, summarizeHourlyOrders, orderFeedPeriod, itemRatingPeriods, normalizeItemRatings, itemReturnsPeriod, normalizeItemReturns, returnStatusGroup, campaignActivePeriod, mergeMinusList, summarizeKeywordDaily, summarizePositionDaily, normalizeOrders, normalizeOrderFeed, enrichOrders, extractFunnel, summarizeAdStats, campaignProductDaily, withAdBudgets, summarizeKeywords, normalizeStockPreset, normalizePricePreset, adCampaignMayHaveStats, validAdPeriod, historyPeriod, historyChunks, planAdFetch, datesBetween, safeFolderName, funnelDaysToFetch, pairFunnelDays, funnelPeriods, funnelRangeBuckets, funnelRecordCounts, funnelRangeValues, funnelSalesMatrix, summaryTopProducts, summaryDrops, summaryProducts, normalizeFbsStocks, normalizeFbwStocks, normalizePrices, summarizeStockTotals, normalizeNewOrders, summarizeSupplies, normalizeTrbxes, chunkOrders, stickerType, localPhoto, WB_HOSTS } = require('../server');
+
+test('возвраты: группы статусов, даты WB с пробелом, карточка товара, нулевой orderId', () => {
+  assert.equal(returnStatusGroup('Готов к выдаче', true), 'ready');
+  assert.equal(returnStatusGroup('В пути в пвз', true), 'transit');
+  assert.equal(returnStatusGroup('Погружен в машину до СЦ/РЦ', true), 'transit');
+  assert.equal(returnStatusGroup('Выдано', false), 'done');
+  assert.equal(returnStatusGroup('Истек срок хранения на пвз', false), 'expired');
+  assert.equal(returnStatusGroup('Отмена по задержке', false), 'cancel');
+  const [item] = normalizeItemReturns([{ sku: '2049388499349', brand: '', completedDt: null, dstOfficeAddress: ' Барнаул, улица Сергея Семёнова 25/1 ', dstOfficeId: 50149517,
+    expiredDt: null, kiz: null, nmId: 859747686, orderDt: '2026-10-08', orderId: 0, readyToReturnDt: '2026-10-14 08:09:39', returnType: 'Возврат брака',
+    shkId: 52201342022, srid: '86aee7dfaa', returnStatus: 'Готов к выдаче', stickerId: '51268173993', subjectName: 'Чехлы для телефонов', techSize: '0' }],
+  [{ nmID: 859747686, title: 'Чехол для iPhone 17', vendorCode: 'CASE-17', photos: [{ c246x328: 'https://basket.example/1.webp' }] }], true);
+  assert.equal(item.title, 'Чехол для iPhone 17');
+  assert.equal(item.vendorCode, 'CASE-17');
+  assert.equal(item.readyAt, '2026-10-14T08:09:39');
+  assert.equal(item.orderId, null);
+  assert.equal(item.techSize, '');
+  assert.equal(item.officeAddress, 'Барнаул, улица Сергея Семёнова 25/1');
+  assert.equal(item.status, 'ready');
+  assert.equal(item.shkId, '52201342022');
+});
+
+test('возвраты: период — не позже сегодня и не длиннее 366 дней, по умолчанию 30 дней', () => {
+  const far = itemReturnsPeriod('2020-01-01', '2099-01-01');
+  assert.equal(datesBetween(far.from, far.to).length, 366);
+  const fallback = itemReturnsPeriod('', '');
+  assert.equal(datesBetween(fallback.from, fallback.to).length, 30);
+  assert.deepEqual(itemReturnsPeriod('2026-09-01', '2026-09-10'), { from: '2026-09-01', to: '2026-09-10' });
+});
 
 test('заказы из воронки по артикулам: статистика выбранного периода, ответ v3 и старый формат', () => {
   assert.deepEqual(funnelOrdersByNmId([
