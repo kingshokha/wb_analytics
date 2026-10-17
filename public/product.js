@@ -226,7 +226,8 @@
       const top = 10 + flag.level * 20, color = flag.merged ? '#555b66' : view.colors.get(flag.id) || '#555b66';
       const when = ddmm(days[flag.day].date), ids = flag.merged || [flag.id];
       const what = { start: flag.merged ? 'Запущены' : 'первый день с показами', stop: flag.merged ? 'Остановлены' : 'первый день без показов', blip: flag.merged ? 'Показы только в этот день' : 'показы только в этот день', ongoing: flag.merged ? 'Работали уже на начало периода' : 'работала уже на начало периода' }[flag.kind];
-      const title = flag.merged ? `${what} ${when}: ${flag.merged.map(campaignName).join(', ')} — нажмите, чтобы выбрать кампанию` : `${campaignName(flag.id)}: ${what}${flag.kind === 'ongoing' ? '' : ` ${when}`} — нажмите, чтобы открыть детализацию кампании`;
+      const removed = data.campaigns.find(item => item.id === flag.id)?.removed ? ' (сейчас товар из кампании убран)' : '';
+      const title = flag.merged ? `${what} ${when}: ${flag.merged.map(campaignName).join(', ')} — нажмите, чтобы выбрать кампанию` : `${campaignName(flag.id)}${removed}: ${what}${flag.kind === 'ongoing' ? '' : ` ${when}`} — нажмите, чтобы открыть детализацию кампании`;
       const body = `<title>${esc(title)}</title><line x1="${flag.x}" x2="${flag.x}" y1="${top + 16}" y2="${mT + ph}" stroke="${color}" stroke-width="1.5" stroke-dasharray="4 3"/>` +
         `<rect x="${flag.fx}" y="${top}" width="${flag.width}" height="16" rx="4" fill="${color}"/><text class="flag-text" x="${flag.fx + 7}" y="${top + 12}">${esc(flag.text)}</text>`;
       svg += flag.merged ? `<g class="camp flag-merged" data-campaigns="${ids.join(',')}" data-day="${flag.day}" data-kind="${flag.kind}" data-x="${flag.fx}" data-y="${top + 18}" tabindex="0" role="button">${body}</g>`
@@ -447,7 +448,7 @@
   function renderCampaigns() {
     const body = $('#campaignsBody'), list = view.data.campaigns;
     if (!list.length) { body.innerHTML = '<tr><td colspan="10" style="text-align:center;color:var(--muted)">За период у товара не было рекламы</td></tr>'; return; }
-    body.innerHTML = list.map(campaign => `<tr data-campaign="${campaign.id}"><td><div class="camp-name"><i style="background:${view.colors.get(campaign.id)}"></i><a href="${esc(campaignLink(campaign.id))}" target="_blank" rel="noopener noreferrer" title="Открыть детализацию кампании">${esc(campaign.name)}</a><small>№ ${esc(campaign.id)}</small></div></td>` +
+    body.innerHTML = list.map(campaign => `<tr data-campaign="${campaign.id}"><td><div class="camp-name"><i style="background:${view.colors.get(campaign.id)}"></i><a href="${esc(campaignLink(campaign.id))}" target="_blank" rel="noopener noreferrer" title="Открыть детализацию кампании">${esc(campaign.name)}</a><small>№ ${esc(campaign.id)}</small>${campaign.removed ? '<small class="removed" title="Показы за период были, но сейчас товара в настройках кампании нет">убран из кампании</small>' : ''}</div></td>` +
       `<td>${fmtNum(campaign.activeDays)}</td><td>${fmtNum(campaign.views)}</td><td>${fmtNum(campaign.clicks)}</td><td>${fmtPct(campaign.ctr)}</td><td>${fmtRub(campaign.spend)}</td><td>${fmtNum(campaign.carts)}</td><td>${fmtNum(campaign.orders)}</td><td>${fmtRub(campaign.revenue)}</td><td>${campaign.revenue ? fmtPct(campaign.drr) : '—'}</td></tr>`).join('');
   }
   $('#campaignsBody').addEventListener('pointerover', event => { const row = event.target.closest('tr[data-campaign]'); setCampaignHover(row ? [Number(row.dataset.campaign)] : null); });

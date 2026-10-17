@@ -1136,30 +1136,37 @@ async function productDetail(id, nmIdInput, from, to, live = false) {
   const token = tokenFor(id), warnings = [], today = moscowDate(0);
   const cardsJob = cachedAnalytics(`product-cards:${id}`, () => loadProductCards(token), 10 * 60_000).catch(error => (warnings.push(`Карточки товаров: ${error.message}`), []));
   const funnelJob = funnelHistory(id, period.from, period.to, 'day', [nmId], live);
-  let adCampaigns = [];
+  let allCampaigns = [];
   try {
     const campaignData = await cachedAnalytics(`ad-campaigns:${id}`, () => wbRequest(token, AD_CAMPAIGNS_URL), 3 * 60_000);
-    adCampaigns = (Array.isArray(campaignData?.adverts) ? campaignData.adverts : []).filter(item => campaignProductIds(item).map(String).includes(nmId) && adCampaignMayHaveStats(item, period.from, period.to));
+    allCampaigns = Array.isArray(campaignData?.adverts) ? campaignData.adverts : [];
   } catch (error) { warnings.push(`Рекламные кампании: ${error.message}`); }
+  const inSettings = new Set(allCampaigns.filter(item => campaignProductIds(item).map(String).includes(nmId)).map(item => String(item.id)));
+  // Статистика — по всем кампаниям кабинета, а не только по тем, где товар есть в настройках сейчас: если артикул
+  // из кампании убрали, его показы за прошлые дни всё равно должны попасть на график. Товар ищется в самой статистике.
+  // Запросы те же, что у вкладки «Реклама» (loadAdStats), поэтому за тот же период до 31 дня ответ общий с ней.
+  // Кусок с ошибкой WB в кэше не остаётся — при следующем обновлении он запросится заново.
   const adsJob = (async () => {
     const stats = [];
     for (const chunk of historyChunks(period)) {
-      const ids = adCampaigns.filter(item => adCampaignMayHaveStats(item, chunk.from, chunk.to)).map(item => item.id);
-      for (let offset = 0; offset < ids.length; offset += 50) {
-        const part = ids.slice(offset, offset + 50).join(',');
-        try {
-          const value = await cachedAnalytics(`product-ad-stats:${id}:${chunk.from}:${chunk.to}:${part}`, () => fullstatsRequest(id, token, part, chunk.from, chunk.to), chunk.to < today ? 6 * 60 * 60_000 : 2 * 60_000);
-          if (Array.isArray(value)) stats.push(...value);
-        } catch (error) { warnings.push(`Статистика рекламы ${chunk.from.split('-').reverse().join('.')} – ${chunk.to.split('-').reverse().join('.')}: ${error.message}`); }
-      }
+      const key = `product-ad-all:${id}:${chunk.from}:${chunk.to}`;
+      const result = await cachedAnalytics(key, async () => { const chunkWarnings = []; const loaded = await loadAdStats(id, token, chunk, chunkWarnings); return { stats: loaded.stats, warnings: chunkWarnings }; },
+        chunk.to < today ? 6 * 60 * 60_000 : 2 * 60_000).catch(error => ({ stats: [], warnings: [`Статистика рекламы: ${error.message}`], failed: true }));
+      if (result.warnings.length) { if (!result.failed) analyticsCache.delete(key); warnings.push(...result.warnings); }
+      stats.push(...result.stats);
     }
     return stats;
   })();
-  // Позиция в поиске — по поисковым кластерам кампаний с этим товаром (как в детализации кампании), взвешенно по показам.
-  const positionsJob = adCampaigns.length ? cachedAnalytics(`product-positions:${id}:${nmId}:${period.from}:${period.to}:${adCampaigns.map(item => item.id).join(',')}`,
-    () => normqueryRequest(id, token, { from: period.from, to: period.to, items: adCampaigns.slice(0, 100).map(item => ({ advertId: Number(item.id), nmId: Number(nmId) })) }, NORMQUERY_DAILY_URL), 10 * 60_000)
-    .then(response => new Map(summarizePositionDaily(response?.items || [], dates).map(day => [day.date, day.avgPosition])))
-    .catch(error => (warnings.push(`Позиция в поиске: ${error.message}`), new Map())) : Promise.resolve(new Map());
+  // Позиция в поиске — по поисковым кластерам кампаний с этим товаром (как в детализации кампании), взвешенно по показам:
+  // кампании, где товар есть сейчас, и те, где у него была статистика за период.
+  const positionsJob = adsJob.then(stats => {
+    const withStats = [...productAdDays(stats, nmId, dates).campaigns].filter(([, metrics]) => metrics.views || metrics.clicks || metrics.spend || metrics.orders).map(([campaignId]) => campaignId);
+    const ids = [...new Set([...inSettings, ...withStats])].filter(campaignId => allCampaigns.some(item => String(item.id) === campaignId) && adCampaignMayHaveStats(allCampaigns.find(item => String(item.id) === campaignId), period.from, period.to)).slice(0, 100);
+    if (!ids.length) return new Map();
+    return cachedAnalytics(`product-positions:${id}:${nmId}:${period.from}:${period.to}:${ids.join(',')}`,
+      () => normqueryRequest(id, token, { from: period.from, to: period.to, items: ids.map(campaignId => ({ advertId: Number(campaignId), nmId: Number(nmId) })) }, NORMQUERY_DAILY_URL), 10 * 60_000)
+      .then(response => new Map(summarizePositionDaily(response?.items || [], dates).map(day => [day.date, day.avgPosition])));
+  }).catch(error => (warnings.push(`Позиция в поиске: ${error.message}`), new Map()));
   const [funnel, stats, positions, cards] = await Promise.all([funnelJob, adsJob, positionsJob, cardsJob]);
   const ads = productAdDays(stats, nmId, dates), funnelByDate = new Map((funnel.current || []).map(day => [day.date, day]));
   const days = dates.map(date => {
@@ -1168,9 +1175,13 @@ async function productDetail(id, nmIdInput, from, to, live = false) {
   });
   const card = cards.find(item => String(item.nmID) === nmId);
   // createdAt / startedAt — чтобы на графике отличить кампанию, запущенную в первый день периода, от работавшей раньше.
-  const campaigns = adCampaigns.map(item => ({ id: item.id, name: item.settings?.name || `Кампания #${item.id}`, status: item.status, type: item.type ?? null,
-    paymentType: item.settings?.payment_type || '', createdAt: item.timestamps?.created || '', startedAt: item.timestamps?.started || '', ...finalizeAdMetrics(ads.campaigns.get(String(item.id)) || { ...emptyAdMetrics(), activeDays: 0 }) }))
-    .filter(item => item.activeDays || item.spend || item.views).sort((a, b) => b.spend - a.spend);
+  // removed — у товара была статистика в кампании, но сейчас его в настройках кампании нет (убрали).
+  const campaigns = [...ads.campaigns].map(([campaignId, metrics]) => {
+    const item = allCampaigns.find(campaign => String(campaign.id) === campaignId) || { id: Number(campaignId) };
+    return { id: Number(campaignId), name: item.settings?.name || `Кампания #${campaignId}`, status: item.status ?? null, type: item.type ?? null,
+      paymentType: item.settings?.payment_type || '', createdAt: item.timestamps?.created || '', startedAt: item.timestamps?.started || '',
+      removed: !inSettings.has(campaignId), ...finalizeAdMetrics(metrics) };
+  }).filter(item => item.activeDays || item.spend || item.views || item.orders).sort((a, b) => b.spend - a.spend);
   return { demo: false, period, fetchedAt: new Date().toISOString(),
     product: { nmId: Number(nmId), name: card?.title || `Товар ${nmId}`, vendorCode: card?.vendorCode || '', brand: card?.brand || '', subject: card?.subjectName || '', photo: card ? cardPhoto(card) : '' },
     days, campaigns, sync: funnel.sync || { pending: 0 }, warnings: [...warnings, ...(funnel.warnings || [])] };
