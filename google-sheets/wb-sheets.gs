@@ -19,12 +19,14 @@ const WB_URLS = {
 };
 const SHEET_NAMES = { prices: 'Цены', ads: 'Реклама', history: 'История', log: 'Журнал обновлений' };
 const PRICE_HEADERS = ['Кабинет', 'Артикул WB', 'Артикул продавца', 'Название', 'Цена до скидки, ₽', 'Скидка продавца, %', 'Цена со скидкой, ₽', 'Скидка WB Клуба, %', 'Цена в WB Клубе, ₽', 'Цены по размерам', 'Обновлено'];
-const AD_HEADERS = ['Кабинет', 'ID кампании', 'Название', 'Статус', 'Ставка', 'Оплата', 'Где показывается', 'Товаров', 'Создана', 'Запущена', 'Изменена', 'Обновлено'];
+const AD_HEADERS = ['Кабинет', 'ID кампании', 'Название', 'Статус', 'Ставка', 'Оплата', 'Где показывается', 'Товаров', 'Артикулы WB', 'Артикулы продавца', 'Создана', 'Запущена', 'Изменена', 'Обновлено'];
 const HISTORY_HEADERS = ['Когда', 'Кабинет', 'Раздел', 'ID', 'Товар или кампания', 'Что изменилось', 'Было', 'Стало'];
 const LOG_HEADERS = ['Когда', 'Кабинет', 'Результат'];
 // Какие столбцы сравниваются с прошлым обновлением (номера столбцов с нуля).
 const PRICE_TRACKED = [4, 5, 6, 7, 8];
-const AD_TRACKED = [2, 3, 4, 5, 6, 7];
+const AD_TRACKED = [2, 3, 4, 5, 6, 8];
+// Состав кампании в «Истории» — не два длинных списка, а что добавили и что убрали.
+const AD_LIST_COLUMN = 8;
 const AD_STATUSES = { '-1': 'Удаляется', 4: 'Готова к запуску', 7: 'Завершена', 8: 'Отменена', 9: 'Активна', 11: 'На паузе' };
 const AD_STATUS_ORDER = { 'Активна': 0, 'На паузе': 1, 'Готова к запуску': 2, 'Завершена': 3, 'Отменена': 4, 'Удаляется': 5 };
 const BID_TYPES = { unified: 'Единая', manual: 'Ручная' };
@@ -122,36 +124,47 @@ function loadPrices(token) {
   }
   return goods;
 }
-// Названия товаров — из карточек (API цен их не отдаёт). Без категории «Контент» столбец будет пустым.
-function loadCardNames(token) {
-  const names = {};
+// Названия и артикулы продавца — из карточек (API цен и рекламы их не отдают): { nmID: { title, vendorCode } }.
+// Без категории «Контент» названия и артикулы продавца будут пустыми.
+function loadCards(token) {
+  const cardsById = {};
   let cursor = { limit: 100 };
   for (let page = 0; page < 200; page++) {
     const response = wbFetch(WB_URLS.cards, token, { settings: { sort: { ascending: false }, cursor: cursor, filter: { withPhoto: -1 } } });
     const cards = response.cards || [];
-    cards.forEach(function (card) { names[card.nmID] = card.title || ''; });
+    cards.forEach(function (card) { cardsById[card.nmID] = { title: card.title || '', vendorCode: card.vendorCode || '' }; });
     if (cards.length < 100 || !response.cursor || !response.cursor.nmID) break;
     cursor = { limit: 100, updatedAt: response.cursor.updatedAt, nmID: response.cursor.nmID };
     if ((page + 1) % 5 === 0) Utilities.sleep(700);
   }
-  return names;
+  return cardsById;
 }
 function loadAdverts(token) { return wbFetch(WB_URLS.adverts, token).adverts || []; }
 
 // ---------- Строки листов ----------
-function priceRow(cabinet, good, names, now) {
+function priceRow(cabinet, good, cards, now) {
   const sizes = good.sizes || [], first = sizes[0] || {};
   const distinct = sizes.map(function (size) { return Number(size.discountedPrice); }).filter(function (value, index, all) { return all.indexOf(value) === index; });
   const bySize = distinct.length > 1 ? sizes.map(function (size) { return (size.techSizeName || size.sizeID) + ': ' + round2(size.discountedPrice); }).join(', ') : '';
-  return [cabinet, Number(good.nmID), good.vendorCode || '', names[good.nmID] || '', round2(first.price), Number(good.discount || 0), round2(first.discountedPrice),
+  return [cabinet, Number(good.nmID), good.vendorCode || '', (cards[good.nmID] || {}).title || '', round2(first.price), Number(good.discount || 0), round2(first.discountedPrice),
     Number(good.clubDiscount || 0), round2(first.clubDiscountedPrice), bySize, now];
 }
-function adRow(cabinet, advert, now) {
+// Артикулы кампании — из nm_settings: артикулы WB по возрастанию и артикулы продавца в том же порядке.
+function adRow(cabinet, advert, cards, now) {
   const settings = advert.settings || {}, placements = settings.placements || {}, times = advert.timestamps || {};
   const where = [placements.search ? 'Поиск' : '', placements.recommendations ? 'Рекомендации' : ''].filter(String).join(', ');
+  const nmIds = (advert.nm_settings || []).map(function (item) { return Number(item.nm_id); }).filter(function (id) { return id > 0; }).sort(function (a, b) { return a - b; });
+  const vendorCodes = nmIds.map(function (id) { return (cards[id] || {}).vendorCode || '—'; });
   return [cabinet, Number(advert.id), settings.name || ('Кампания #' + advert.id), AD_STATUSES[advert.status] || ('Статус ' + advert.status),
     BID_TYPES[advert.bid_type] || advert.bid_type || '', PAYMENT_TYPES[settings.payment_type] || settings.payment_type || '', where || '—',
-    (advert.nm_settings || []).length, toDate(times.created), toDate(times.started), toDate(times.updated), now];
+    nmIds.length, nmIds.join(', '), vendorCodes.join(', '), toDate(times.created), toDate(times.started), toDate(times.updated), now];
+}
+// «1, 2, 3» и «2, 3, 4» → ['убраны: 1', 'добавлены: 4'] для «Истории».
+function listDiff(before, after) {
+  const split = function (value) { return String(value || '').split(',').map(function (item) { return item.trim(); }).filter(String); };
+  const was = split(before), now = split(after);
+  const removed = was.filter(function (item) { return now.indexOf(item) < 0; }), added = now.filter(function (item) { return was.indexOf(item) < 0; });
+  return [removed.length ? 'убраны: ' + removed.join(', ') : '—', added.length ? 'добавлены: ' + added.join(', ') : '—'];
 }
 function round2(value) { return Math.round(Number(value || 0) * 100) / 100; }
 // Даты WB — строки с часовым поясом; «2100-01-01» и пустые означают «нет даты».
@@ -173,16 +186,17 @@ function refreshAll() {
     const priceRows = [], adRows = [], logRows = [], failedPrices = {}, failedAds = {};
     cabinets.forEach(function (cabinet) {
       const notes = [];
+      // Карточки нужны обоим листам: названия — ценам, артикулы продавца — рекламе.
+      let cards = {};
+      try { cards = loadCards(cabinet.token); } catch (error) { notes.push('карточки (названия и артикулы продавца) не получены: ' + error.message); }
       try {
         const goods = loadPrices(cabinet.token);
-        let names = {};
-        try { names = loadCardNames(cabinet.token); } catch (error) { notes.push('названия товаров не получены: ' + error.message); }
-        goods.forEach(function (good) { priceRows.push(priceRow(cabinet.name, good, names, now)); });
+        goods.forEach(function (good) { priceRows.push(priceRow(cabinet.name, good, cards, now)); });
         notes.unshift('цены: ' + goods.length + ' товаров');
       } catch (error) { failedPrices[cabinet.name] = true; notes.unshift('цены: ошибка — ' + error.message); }
       try {
         const adverts = loadAdverts(cabinet.token);
-        adverts.forEach(function (advert) { adRows.push(adRow(cabinet.name, advert, now)); });
+        adverts.forEach(function (advert) { adRows.push(adRow(cabinet.name, advert, cards, now)); });
         notes.push('реклама: ' + adverts.length + ' кампаний');
       } catch (error) { failedAds[cabinet.name] = true; notes.push('реклама: ошибка — ' + error.message); }
       logRows.push([now, cabinet.name, notes.join('; ')]);
@@ -194,7 +208,7 @@ function refreshAll() {
     writeWithHistory(book, SHEET_NAMES.prices, PRICE_HEADERS, priceRows, failedPrices, PRICE_TRACKED, 'Цены', function (row) { return [row[2], row[3]].filter(String).join(' · '); }, history, now,
       { 5: '#,##0', 6: '0', 7: '#,##0', 8: '0', 9: '#,##0', 11: DATE_FORMAT });
     writeWithHistory(book, SHEET_NAMES.ads, AD_HEADERS, adRows, failedAds, AD_TRACKED, 'Реклама', function (row) { return row[2]; }, history, now,
-      { 9: DATE_FORMAT, 10: DATE_FORMAT, 11: DATE_FORMAT, 12: DATE_FORMAT });
+      { 9: '@', 10: '@', 11: DATE_FORMAT, 12: DATE_FORMAT, 13: DATE_FORMAT, 14: DATE_FORMAT });
     prependRows(sheet(book, SHEET_NAMES.history), HISTORY_HEADERS, history, HISTORY_LIMIT, { 1: DATE_FORMAT });
     prependRows(sheet(book, SHEET_NAMES.log), LOG_HEADERS, logRows, LOG_LIMIT, { 1: DATE_FORMAT });
     notify('Готово: товаров ' + priceRows.length + ', кампаний ' + adRows.length + ', изменений ' + history.length);
@@ -203,8 +217,12 @@ function refreshAll() {
 
 // Пишет лист заново и складывает в history отличия от того, что было на листе до обновления.
 // Строки кабинетов, по которым WB сейчас ответил ошибкой, остаются прежними — ошибка не стирает данные.
+// Если столбцы листа изменились (новая версия скрипта), старые строки не сравниваются и не сохраняются — иначе
+// значения съехавших столбцов попали бы в «Историю» как изменения.
 function writeWithHistory(book, name, headers, rows, failed, tracked, section, title, history, now, formats) {
-  const target = sheet(book, name), old = target.getLastRow() > 1 ? target.getRange(2, 1, target.getLastRow() - 1, headers.length).getValues() : [];
+  const target = sheet(book, name), lastColumn = Math.max(1, target.getLastColumn ? target.getLastColumn() : headers.length);
+  const sameLayout = target.getLastRow() > 0 && target.getRange(1, 1, 1, lastColumn).getValues()[0].filter(String).join('|') === headers.join('|');
+  const old = sameLayout && target.getLastRow() > 1 ? target.getRange(2, 1, target.getLastRow() - 1, headers.length).getValues() : [];
   const key = function (row) { return row[0] + '|' + row[1]; }, oldByKey = {}, newKeys = {}, oldCabinets = {};
   old.forEach(function (row) { oldByKey[key(row)] = row; oldCabinets[row[0]] = true; });
   const kept = old.filter(function (row) { return failed[row[0]]; });
@@ -215,7 +233,8 @@ function writeWithHistory(book, name, headers, rows, failed, tracked, section, t
     if (!before) { if (oldCabinets[row[0]]) history.push([now, row[0], section, row[1], title(row), 'Появилось в списке', '—', section === 'Реклама' ? row[3] : row[6]]); return; }
     tracked.forEach(function (index) {
       if (same(before[index], row[index])) return;
-      history.push([now, row[0], section, row[1], title(row), headers[index], display(before[index]), display(row[index])]);
+      const values = section === 'Реклама' && index === AD_LIST_COLUMN ? listDiff(before[index], row[index]) : [display(before[index]), display(row[index])];
+      history.push([now, row[0], section, row[1], title(row), headers[index], values[0], values[1]]);
     });
   });
   old.forEach(function (row) {
@@ -239,7 +258,7 @@ function applyFormats(target, startRow, count, formats) {
   Object.keys(formats || {}).forEach(function (column) { target.getRange(startRow, Number(column), count, 1).setNumberFormat(formats[column]); });
 }
 function writeSheet(target, headers, rows, formats) {
-  target.clearContents();
+  target.clear();
   header(target, headers);
   if (rows.length) { target.getRange(2, 1, rows.length, headers.length).setValues(rows); applyFormats(target, 2, rows.length, formats); }
   if (target.getLastRow() < 200) target.autoResizeColumns(1, headers.length);
