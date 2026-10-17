@@ -1081,6 +1081,135 @@ async function campaignPositions(id, campaignId, from, to) {
   return { demo: false, period, days: summarizePositionDaily(response?.items || [], dates) };
 }
 
+// --- Детализация товара (product.html): воронка по дням с разбивкой «органика / реклама», реклама товара, позиция ---
+// Органика = воронка товара за день минус рекламная статистика этого товара за тот же день: переходы — минус клики
+// рекламы, корзины — минус корзины, заказы — минус рекламные заказы. WB считает рекламу и воронку по-разному, поэтому
+// разность может уйти в минус — тогда органика 0 (это делает страница). Реклама — только кампании, где есть этот товар;
+// кампания «включена» в день, когда у товара были показы, клики или расход. Куски рекламы до 31 дня (ограничение WB);
+// прошлые куски не меняются и кэшируются на 6 часов, текущий — на 2 минуты.
+const PRODUCT_DETAIL_MAX_DAYS = 93;
+function productDetailPeriod(from, to, today = moscowDate(0)) {
+  const pattern = /^\d{4}-\d{2}-\d{2}$/;
+  const safeTo = pattern.test(to || '') ? (to > today ? today : to) : today;
+  const safeFrom = pattern.test(from || '') ? from : addDays(safeTo, -13);
+  if (safeFrom > safeTo) throw apiError(400, 'Начало периода должно быть не позже конца');
+  if (datesBetween(safeFrom, safeTo).length > PRODUCT_DETAIL_MAX_DAYS) throw apiError(400, `Выберите период не длиннее ${PRODUCT_DETAIL_MAX_DAYS} дней`);
+  const earliest = addDays(today, -FUNNEL_MAX_DEPTH_DAYS);
+  if (safeFrom < earliest) throw apiError(400, `WB отдаёт воронку только с ${earliest.split('-').reverse().join('.')}`);
+  return { from: safeFrom, to: safeTo };
+}
+// Реклама одного товара по дням из ответа fullstats: сумма по кампаниям и список кампаний, включённых в этот день.
+function productAdDays(stats = [], nmId, dates = []) {
+  const days = new Map(dates.map(date => [date, { ...emptyAdMetrics(), campaigns: [] }])), campaigns = new Map();
+  for (const stat of stats) for (const day of stat.days || []) {
+    const date = String(day.date || '').slice(0, 10), row = days.get(date);
+    if (!row) continue;
+    const metrics = emptyAdMetrics();
+    for (const app of day.apps || []) for (const nm of app.nms || []) if (String(nm.nmId ?? nm.nm) === String(nmId)) addAdMetrics(metrics, nm);
+    addAdMetrics(row, metrics);
+    const key = String(stat.advertId);
+    if (!campaigns.has(key)) campaigns.set(key, { ...emptyAdMetrics(), activeDays: 0 });
+    addAdMetrics(campaigns.get(key), metrics);
+    if (metrics.views || metrics.clicks || metrics.spend) { row.campaigns.push(Number(stat.advertId)); campaigns.get(key).activeDays += 1; }
+  }
+  return { days, campaigns };
+}
+function demoProductDetail(nmId, period, dates) {
+  const campaigns = [{ id: 901, name: 'Поиск — основной', type: 9 }, { id: 902, name: 'Авто — весь каталог', type: 8 }, { id: 903, name: 'Поиск — распродажа', type: 9 }];
+  const active = (id, index) => id === 901 ? true : id === 902 ? index >= 3 && index < dates.length - 4 : index >= Math.floor(dates.length / 2);
+  const days = dates.map((date, index) => {
+    const wave = 1 + .15 * Math.sin(index / 1.7), on = campaigns.filter(item => active(item.id, index)).map(item => item.id);
+    const opens = Math.round(900 * wave), carts = Math.round(opens * .12), orders = Math.round(carts * .3);
+    const adClicks = Math.round(opens * (.18 + on.length * .07)), adCarts = Math.round(adClicks * .1), adOrders = Math.round(adCarts * .3), spend = Math.round(adClicks * 14);
+    return { date, funnel: { openCount: opens, cartCount: carts, orderCount: orders, orderSum: orders * 1890, buyoutCount: Math.round(orders * .7), buyoutSum: Math.round(orders * .7) * 1890, addToWishlistCount: Math.round(opens * .03) },
+      ads: finalizeAdMetrics({ ...emptyAdMetrics(), views: adClicks * 30, clicks: adClicks, spend, carts: adCarts, orders: adOrders, revenue: adOrders * 1890 }), campaigns: on, avgPosition: Math.round((14 - on.length * 2 + Math.sin(index) * 2) * 10) / 10 };
+  });
+  return { demo: true, period, product: { nmId: Number(nmId), name: 'Демо-товар: худи оверсайз', vendorCode: 'HOODIE-01', brand: 'Демо', subject: 'Худи', photo: '' },
+    days, campaigns: campaigns.map(item => ({ ...item, status: 9, activeDays: days.filter(day => day.campaigns.includes(item.id)).length, ...finalizeAdMetrics(emptyAdMetrics()) })),
+    sync: { pending: 0 }, warnings: [], fetchedAt: new Date().toISOString() };
+}
+async function productDetail(id, nmIdInput, from, to, live = false) {
+  const nmId = String(nmIdInput || '');
+  if (!/^\d{1,15}$/.test(nmId)) throw apiError(400, 'Некорректный артикул');
+  const period = productDetailPeriod(from, to), dates = datesBetween(period.from, period.to);
+  if (id === 'demo' || !cabinets().length) return demoProductDetail(nmId, period, dates);
+  const token = tokenFor(id), warnings = [], today = moscowDate(0);
+  const cardsJob = cachedAnalytics(`product-cards:${id}`, () => loadProductCards(token), 10 * 60_000).catch(error => (warnings.push(`Карточки товаров: ${error.message}`), []));
+  const funnelJob = funnelHistory(id, period.from, period.to, 'day', [nmId], live);
+  let adCampaigns = [];
+  try {
+    const campaignData = await cachedAnalytics(`ad-campaigns:${id}`, () => wbRequest(token, AD_CAMPAIGNS_URL), 3 * 60_000);
+    adCampaigns = (Array.isArray(campaignData?.adverts) ? campaignData.adverts : []).filter(item => campaignProductIds(item).map(String).includes(nmId) && adCampaignMayHaveStats(item, period.from, period.to));
+  } catch (error) { warnings.push(`Рекламные кампании: ${error.message}`); }
+  const adsJob = (async () => {
+    const stats = [];
+    for (const chunk of historyChunks(period)) {
+      const ids = adCampaigns.filter(item => adCampaignMayHaveStats(item, chunk.from, chunk.to)).map(item => item.id);
+      for (let offset = 0; offset < ids.length; offset += 50) {
+        const part = ids.slice(offset, offset + 50).join(',');
+        try {
+          const value = await cachedAnalytics(`product-ad-stats:${id}:${chunk.from}:${chunk.to}:${part}`, () => fullstatsRequest(id, token, part, chunk.from, chunk.to), chunk.to < today ? 6 * 60 * 60_000 : 2 * 60_000);
+          if (Array.isArray(value)) stats.push(...value);
+        } catch (error) { warnings.push(`Статистика рекламы ${chunk.from.split('-').reverse().join('.')} – ${chunk.to.split('-').reverse().join('.')}: ${error.message}`); }
+      }
+    }
+    return stats;
+  })();
+  // Позиция в поиске — по поисковым кластерам кампаний с этим товаром (как в детализации кампании), взвешенно по показам.
+  const positionsJob = adCampaigns.length ? cachedAnalytics(`product-positions:${id}:${nmId}:${period.from}:${period.to}:${adCampaigns.map(item => item.id).join(',')}`,
+    () => normqueryRequest(id, token, { from: period.from, to: period.to, items: adCampaigns.slice(0, 100).map(item => ({ advertId: Number(item.id), nmId: Number(nmId) })) }, NORMQUERY_DAILY_URL), 10 * 60_000)
+    .then(response => new Map(summarizePositionDaily(response?.items || [], dates).map(day => [day.date, day.avgPosition])))
+    .catch(error => (warnings.push(`Позиция в поиске: ${error.message}`), new Map())) : Promise.resolve(new Map());
+  const [funnel, stats, positions, cards] = await Promise.all([funnelJob, adsJob, positionsJob, cardsJob]);
+  const ads = productAdDays(stats, nmId, dates), funnelByDate = new Map((funnel.current || []).map(day => [day.date, day]));
+  const days = dates.map(date => {
+    const { campaigns, ...metrics } = ads.days.get(date), day = funnelByDate.get(date);
+    return { date, funnel: day ? pickFunnelCounts(day) : null, ads: finalizeAdMetrics(metrics), campaigns, avgPosition: positions.get(date) ?? null };
+  });
+  const card = cards.find(item => String(item.nmID) === nmId);
+  // createdAt / startedAt — чтобы на графике отличить кампанию, запущенную в первый день периода, от работавшей раньше.
+  const campaigns = adCampaigns.map(item => ({ id: item.id, name: item.settings?.name || `Кампания #${item.id}`, status: item.status, type: item.type ?? null,
+    paymentType: item.settings?.payment_type || '', createdAt: item.timestamps?.created || '', startedAt: item.timestamps?.started || '', ...finalizeAdMetrics(ads.campaigns.get(String(item.id)) || { ...emptyAdMetrics(), activeDays: 0 }) }))
+    .filter(item => item.activeDays || item.spend || item.views).sort((a, b) => b.spend - a.spend);
+  return { demo: false, period, fetchedAt: new Date().toISOString(),
+    product: { nmId: Number(nmId), name: card?.title || `Товар ${nmId}`, vendorCode: card?.vendorCode || '', brand: card?.brand || '', subject: card?.subjectName || '', photo: card ? cardPhoto(card) : '' },
+    days, campaigns, sync: funnel.sync || { pending: 0 }, warnings: [...warnings, ...(funnel.warnings || [])] };
+}
+// Отметки на графике товара: data/product-notes.json, { "кабинет:артикул": [{ id, date, text, at }] } — свои заметки
+// продавца: смена цены или СПП, ставки, акция. WB историю этого не отдаёт, поэтому их вносят вручную.
+const PRODUCT_NOTES_FILE = path.join(ROOT, 'data', 'product-notes.json');
+function productNotesKey(cabinet, nmId) {
+  if (!/^[\w-]{1,40}$/.test(String(cabinet || '')) || !/^\d{1,15}$/.test(String(nmId || ''))) throw apiError(400, 'Некорректный кабинет или артикул');
+  return `${cabinet}:${nmId}`;
+}
+function readProductNotes() {
+  try { const data = JSON.parse(fs.readFileSync(PRODUCT_NOTES_FILE, 'utf8')); return data && typeof data === 'object' && !Array.isArray(data) ? data : {}; } catch { return {}; }
+}
+function productNotes(cabinet, nmId) {
+  return { notes: [...(readProductNotes()[productNotesKey(cabinet, nmId)] || [])].sort((a, b) => a.date.localeCompare(b.date) || a.at.localeCompare(b.at)) };
+}
+// Без noteId — новая отметка; с noteId — изменить дату и текст или удалить (remove).
+function setProductNote(cabinet, nmId, body = {}) {
+  const key = productNotesKey(cabinet, nmId), text = String(body.text || '').trim(), date = String(body.date || '');
+  if (!body.remove) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw apiError(400, 'Укажите дату отметки');
+    if (!text) throw apiError(400, 'Пустая отметка');
+    if (text.length > 300) throw apiError(400, 'Отметка длиннее 300 символов');
+  }
+  const data = readProductNotes(), notes = [...(data[key] || [])];
+  if (!body.noteId) notes.push({ id: keywordEventId(), date, text, at: new Date().toISOString() });
+  else {
+    const index = notes.findIndex(note => note.id === body.noteId);
+    if (index < 0) throw apiError(404, 'Отметка не найдена — обновите страницу');
+    if (body.remove) notes.splice(index, 1); else notes[index] = { ...notes[index], date, text, editedAt: new Date().toISOString() };
+  }
+  if (notes.length) data[key] = notes.slice(-500); else delete data[key];
+  fs.mkdirSync(path.dirname(PRODUCT_NOTES_FILE), { recursive: true });
+  fs.writeFileSync(`${PRODUCT_NOTES_FILE}.tmp`, JSON.stringify(data, null, 2));
+  fs.renameSync(`${PRODUCT_NOTES_FILE}.tmp`, PRODUCT_NOTES_FILE);
+  return productNotes(cabinet, nmId);
+}
+
 // --- Отметки ключевых запросов (data/keyword-tags.json) ---
 function readKeywordTags() {
   try { const data = JSON.parse(fs.readFileSync(KEYWORD_TAGS_FILE, 'utf8')); return { colors: data.colors || {}, campaigns: data.campaigns || {} }; } catch { return { colors: {}, campaigns: {} }; }
@@ -2942,6 +3071,16 @@ async function handleApi(req, res, url) {
     const body = await readJson(req);
     return send(res, 200, setKeywordTag(body.cabinet || 'demo', body.id, body));
   }
+  if (req.method === 'GET' && url.pathname === '/api/product-detail') {
+    return send(res, 200, await productDetail(url.searchParams.get('cabinet') || 'demo', url.searchParams.get('nmId'), url.searchParams.get('from'), url.searchParams.get('to'), url.searchParams.get('live') === '1'));
+  }
+  if (req.method === 'GET' && url.pathname === '/api/product-notes') {
+    return send(res, 200, productNotes(url.searchParams.get('cabinet') || 'demo', url.searchParams.get('nmId')));
+  }
+  if (req.method === 'POST' && url.pathname === '/api/product-notes') {
+    const body = await readJson(req);
+    return send(res, 200, setProductNote(body.cabinet || 'demo', body.nmId, body));
+  }
   if (req.method === 'GET' && url.pathname === '/api/todos') {
     return send(res, 200, await todos());
   }
@@ -3152,7 +3291,7 @@ if (require.main === module) server.listen(PORT, '127.0.0.1', () => {
   console.log(`WB Analytics: http://127.0.0.1:${PORT}`);
 });
 
-module.exports = { server, cabinets, campaignActivePeriod, mergeMinusList, todoNmId, todoFields, funnelOrdersByNmId, summarizeHourlyOrders, orderFeedPeriod, itemRatingPeriods, normalizeItemRatings, itemReturnsPeriod, normalizeItemReturns, returnStatusGroup, summarizeKeywordDaily, summarizePositionDaily, normalizeOrders, normalizeOrderFeed, enrichOrders, extractFunnel, summarizeAdStats, campaignProductDaily, withAdBudgets, summarizeKeywords, normalizeStockPreset, normalizePricePreset, adCampaignMayHaveStats, validAdPeriod, historyPeriod, historyChunks, planAdFetch, datesBetween, safeFolderName, funnelDaysToFetch, pairFunnelDays, funnelPeriods, funnelRangeBuckets, funnelRecordCounts, funnelRangeValues, funnelSalesMatrix, summaryTopProducts, summaryDrops, summaryProducts, normalizeFbsStocks, normalizeFbwStocks, normalizePrices, summarizeStockTotals, normalizeNewOrders, summarizeSupplies, normalizeTrbxes, chunkOrders, stickerType, localPhoto, WB_HOSTS };
+module.exports = { server, cabinets, campaignActivePeriod, mergeMinusList, todoNmId, todoFields, productAdDays, productDetailPeriod, funnelOrdersByNmId, summarizeHourlyOrders, orderFeedPeriod, itemRatingPeriods, normalizeItemRatings, itemReturnsPeriod, normalizeItemReturns, returnStatusGroup, summarizeKeywordDaily, summarizePositionDaily, normalizeOrders, normalizeOrderFeed, enrichOrders, extractFunnel, summarizeAdStats, campaignProductDaily, withAdBudgets, summarizeKeywords, normalizeStockPreset, normalizePricePreset, adCampaignMayHaveStats, validAdPeriod, historyPeriod, historyChunks, planAdFetch, datesBetween, safeFolderName, funnelDaysToFetch, pairFunnelDays, funnelPeriods, funnelRangeBuckets, funnelRecordCounts, funnelRangeValues, funnelSalesMatrix, summaryTopProducts, summaryDrops, summaryProducts, normalizeFbsStocks, normalizeFbwStocks, normalizePrices, summarizeStockTotals, normalizeNewOrders, summarizeSupplies, normalizeTrbxes, chunkOrders, stickerType, localPhoto, WB_HOSTS };
 
 
 

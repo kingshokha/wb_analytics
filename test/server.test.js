@@ -1,7 +1,7 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { todoNmId, todoFields, funnelOrdersByNmId, summarizeHourlyOrders, orderFeedPeriod, itemRatingPeriods, normalizeItemRatings, itemReturnsPeriod, normalizeItemReturns, returnStatusGroup, campaignActivePeriod, mergeMinusList, summarizeKeywordDaily, summarizePositionDaily, normalizeOrders, normalizeOrderFeed, enrichOrders, extractFunnel, summarizeAdStats, campaignProductDaily, withAdBudgets, summarizeKeywords, normalizeStockPreset, normalizePricePreset, adCampaignMayHaveStats, validAdPeriod, historyPeriod, historyChunks, planAdFetch, datesBetween, safeFolderName, funnelDaysToFetch, pairFunnelDays, funnelPeriods, funnelRangeBuckets, funnelRecordCounts, funnelRangeValues, funnelSalesMatrix, summaryTopProducts, summaryDrops, summaryProducts, normalizeFbsStocks, normalizeFbwStocks, normalizePrices, summarizeStockTotals, normalizeNewOrders, summarizeSupplies, normalizeTrbxes, chunkOrders, stickerType, localPhoto, WB_HOSTS } = require('../server');
+const { productAdDays, productDetailPeriod, todoNmId, todoFields, funnelOrdersByNmId, summarizeHourlyOrders, orderFeedPeriod, itemRatingPeriods, normalizeItemRatings, itemReturnsPeriod, normalizeItemReturns, returnStatusGroup, campaignActivePeriod, mergeMinusList, summarizeKeywordDaily, summarizePositionDaily, normalizeOrders, normalizeOrderFeed, enrichOrders, extractFunnel, summarizeAdStats, campaignProductDaily, withAdBudgets, summarizeKeywords, normalizeStockPreset, normalizePricePreset, adCampaignMayHaveStats, validAdPeriod, historyPeriod, historyChunks, planAdFetch, datesBetween, safeFolderName, funnelDaysToFetch, pairFunnelDays, funnelPeriods, funnelRangeBuckets, funnelRecordCounts, funnelRangeValues, funnelSalesMatrix, summaryTopProducts, summaryDrops, summaryProducts, normalizeFbsStocks, normalizeFbwStocks, normalizePrices, summarizeStockTotals, normalizeNewOrders, summarizeSupplies, normalizeTrbxes, chunkOrders, stickerType, localPhoto, WB_HOSTS } = require('../server');
 
 test('возвраты: группы статусов, даты WB с пробелом, карточка товара, нулевой orderId', () => {
   assert.equal(returnStatusGroup('Готов к выдаче', true), 'ready');
@@ -465,6 +465,33 @@ test('автообновление воронки: сегодняшний ден
   assert.deepEqual(funnelDaysToFetch(['2026-09-13', '2026-09-14'], records, now, '2026-09-14', 2 * 60_000), ['2026-09-14']);
   records.set('2026-09-14', { fetchedAt: '2026-09-14T11:59:00Z', products: {} });
   assert.deepEqual(funnelDaysToFetch(['2026-09-13', '2026-09-14'], records, now, '2026-09-14', 2 * 60_000), []);
+});
+
+test('детализация товара: реклама только этого товара по дням, кампания включена в дни с показами или расходом', () => {
+  const stats = [
+    { advertId: 1, days: [
+      { date: '2026-10-01T00:00:00Z', apps: [{ nms: [{ nmId: 7, views: 100, clicks: 5, sum: 50, atbs: 2, orders: 1, sum_price: 990 }, { nmId: 8, views: 900, clicks: 40, sum: 400 }] }] },
+      { date: '2026-10-02T00:00:00Z', apps: [{ nms: [{ nmId: 7, views: 0, clicks: 0, sum: 0, orders: 1 }] }] }
+    ] },
+    { advertId: 2, days: [{ date: '2026-10-01T00:00:00Z', apps: [{ nms: [{ nmId: 7, views: 50, clicks: 1, sum: 10 }] }, { nms: [{ nmId: 7, views: 10 }] }] }] }
+  ];
+  const { days, campaigns } = productAdDays(stats, '7', ['2026-10-01', '2026-10-02', '2026-10-03']);
+  const first = days.get('2026-10-01');
+  assert.deepEqual([first.views, first.clicks, first.spend, first.carts, first.orders, first.revenue], [160, 6, 60, 2, 1, 990]);
+  assert.deepEqual(first.campaigns, [1, 2]);
+  // Заказ без показов (WB засчитал его позже) — в сумме есть, но кампания в этот день не «включена».
+  assert.equal(days.get('2026-10-02').orders, 1);
+  assert.deepEqual(days.get('2026-10-02').campaigns, []);
+  assert.deepEqual(days.get('2026-10-03').campaigns, []);
+  assert.equal(campaigns.get('1').activeDays, 1);
+  assert.equal(campaigns.get('2').views, 60);
+});
+
+test('детализация товара: период не позже сегодняшнего дня и не длиннее 93 дней', () => {
+  assert.deepEqual(productDetailPeriod('2026-10-01', '2026-10-30', '2026-10-17'), { from: '2026-10-01', to: '2026-10-17' });
+  assert.deepEqual(productDetailPeriod('', '', '2026-10-17'), { from: '2026-10-04', to: '2026-10-17' });
+  assert.throws(() => productDetailPeriod('2026-06-01', '2026-10-17', '2026-10-17'), /93/);
+  assert.throws(() => productDetailPeriod('2026-10-10', '2026-10-01', '2026-10-17'), /Начало периода/);
 });
 
 test('список дел: артикул числом или ссылкой на товар, поля новой задачи и изменения', () => {

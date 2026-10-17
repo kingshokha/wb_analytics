@@ -833,7 +833,9 @@ function renderFunnelDetails(){
   const total=funnelTotalValues(rows),totalPast=rows.some(row=>row.past)?funnelTotalValues(rows.map(row=>row.past||{})):null;
   const previous=state.funnelPeriods?.previous;
   const totalRow=rows.length?`<tr class="funnel-total-row"><td><strong>Итого по товарам</strong>${previous?`<small>к ${trendFullDate(previous.from)} – ${trendFullDate(previous.to)}</small>`:''}</td><td></td><td></td><td></td>${cells(total,totalPast)}</tr>`:'';
-  $('#funnelProductsBody').innerHTML=totalRow+(pageRows.map(row=>`<tr><td class="funnel-product-cell">${row.photo?`<img class="stock-product-photo" src="${escapeHtml(row.photo)}" alt="" loading="lazy">`:''}<strong>${escapeHtml(row.title)}</strong></td>`+
+  // Квадрат со стрелкой слева от товара — детализация товара (product.html) в новой вкладке за тот же период.
+  const productLink=row=>`<a class="campaign-open funnel-product-open" href="/product.html?${new URLSearchParams({cabinet:state.cabinet,nmId:row.nmId,from:$('#dateFrom').value,to:$('#dateTo').value})}" target="_blank" rel="noopener noreferrer" title="Открыть детализацию товара: органика и реклама по дням" aria-label="Открыть детализацию товара «${escapeHtml(row.title)}»"><svg viewBox="0 0 16 16" aria-hidden="true"><rect x="1.75" y="1.75" width="12.5" height="12.5" rx="3"/><path d="M6.25 9.75l3.5-3.5M6.75 6.25h3v3"/></svg></a>`;
+  $('#funnelProductsBody').innerHTML=totalRow+(pageRows.map(row=>`<tr><td class="funnel-product-cell"><div class="funnel-product-name">${row.nmId?productLink(row):''}${row.photo?`<img class="stock-product-photo" src="${escapeHtml(row.photo)}" alt="" loading="lazy">`:''}<strong>${escapeHtml(row.title)}</strong></div></td>`+
     `<td>${escapeHtml(row.vendorCode||'—')}</td><td>${escapeHtml(row.nmId||'—')}</td><td>${escapeHtml(row.subjectName)}</td>${cells(row,row.past)}</tr>`).join('')||
     `<tr><td colspan="14" class="empty-row">${all.length?'Нет товаров по выбранным фильтрам':'Нет данных по товарам за период'}</td></tr>`);
   renderFunnelPagination(pageCount);

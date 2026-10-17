@@ -9,6 +9,7 @@ data/price-presets.json
 data/keyword-tags.json
 data/campaign-notes.json
 data/todos.json
+data/product-notes.json
 *.log
 .DS_Store
 statistics.json
