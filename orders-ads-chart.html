@@ -1,0 +1,750 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Заказы и реклама</title>
+<style>
+  :root {
+    --bg: #f5f4ef;
+    --panel: #ffffff;
+    --ink: #1d1c1a;
+    --muted: #77736b;
+    --line: #e4e1d8;
+    --series: #1d1c1a;
+    --area: rgba(29, 28, 26, .06);
+    --good: #18875c;
+    --bad: #c2412d;
+    --shadow: 0 1px 2px rgba(0,0,0,.05), 0 8px 24px rgba(0,0,0,.05);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #151514;
+      --panel: #1f1f1d;
+      --ink: #f0eee8;
+      --muted: #9a968d;
+      --line: #32312e;
+      --series: #f0eee8;
+      --area: rgba(240, 238, 232, .07);
+      --good: #4cc596;
+      --bad: #f0806c;
+      --shadow: none;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font: 15px/1.45 "Segoe UI", system-ui, -apple-system, Roboto, sans-serif;
+  }
+  main { max-width: 1080px; margin: 0 auto; padding: 28px 16px 48px; }
+  h1 { font-size: 24px; margin: 0 0 4px; letter-spacing: -.01em; }
+  .sub { color: var(--muted); margin: 0 0 20px; }
+
+  .tabs { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; }
+  .tab, .seg button, .btn {
+    font: inherit; color: var(--ink); cursor: pointer;
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: 8px; padding: 7px 12px;
+  }
+  .tab[aria-pressed="true"], .seg button[aria-pressed="true"] {
+    background: var(--ink); color: var(--bg); border-color: var(--ink);
+  }
+  .btn.primary { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+  button:focus-visible, input:focus-visible, select:focus-visible {
+    outline: 2px solid #2f6fed; outline-offset: 2px;
+  }
+
+  .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 14px; }
+  .stat { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; }
+  .stat .k { color: var(--muted); font-size: 13px; }
+  .stat .v { font-size: 24px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .stat .v.good { color: var(--good); } .stat .v.bad { color: var(--bad); }
+
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; box-shadow: var(--shadow); }
+  .card-head { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between; padding: 14px 16px 0; }
+  .card-head h2 { font-size: 16px; margin: 0; }
+  .controls { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+  .seg { display: inline-flex; }
+  .seg button { white-space: nowrap; border-radius: 0; padding: 5px 11px; font-size: 14px; }
+  .seg button:first-child { border-radius: 8px 0 0 8px; }
+  .seg button + button { border-left: 0; }
+  .seg button:last-child { border-radius: 0 8px 8px 0; }
+  .check { display: inline-flex; gap: 6px; align-items: center; font-size: 14px; color: var(--muted); cursor: pointer; }
+
+  #chart { position: relative; padding: 6px 4px 8px; touch-action: pan-y; }
+  #chart svg { display: block; width: 100%; }
+  .grid { stroke: var(--line); stroke-width: 1; }
+  .axis { fill: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+  .series { fill: none; stroke: var(--series); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+  .area { fill: var(--area); }
+  .pt, .bar { fill: var(--series); }
+  .guide { stroke: var(--muted); stroke-width: 1; stroke-dasharray: 3 3; }
+  .hoverdot { fill: var(--panel); stroke: var(--series); stroke-width: 2; }
+  #view { flex-wrap: wrap; gap: 6px; }
+  #view button, #view button:first-child, #view button:last-child { border-radius: 8px; border: 1px solid var(--line); }
+  #view button[aria-pressed="true"] { border-color: var(--ink); }
+  #chips { display: flex; flex-wrap: wrap; gap: 6px; padding: 12px 16px 0; }
+  #chips[hidden] { display: none; }
+  .chip { font: inherit; font-size: 13px; color: var(--muted); cursor: pointer; display: inline-flex; align-items: center; gap: 6px;
+          background: none; border: 1px solid var(--line); border-radius: 999px; padding: 4px 10px; }
+  .chip .sw { opacity: .35; border-radius: 50%; }
+  .chip[aria-pressed="true"] { color: var(--ink); border-color: var(--ink); background: var(--area); }
+  .chip[aria-pressed="true"] .sw { opacity: 1; }
+  .flag-text { fill: #fff; font-size: 11px; font-weight: 600; pointer-events: none; }
+  .stem { stroke: var(--muted); stroke-width: 1; }
+  svg .camp.sel .fillrect { opacity: .2; }
+  .cell { fill: var(--series); }
+  .cell-text { fill: var(--ink); font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums; pointer-events: none; }
+  .viewnote { color: var(--muted); font-size: 13px; padding: 0 16px 14px; margin: 0; }
+  .ctl { display: inline-flex; align-items: center; gap: 8px; font-size: 14px; color: var(--muted); }
+  .lane-text { fill: #fff; font-size: 12px; font-weight: 600; pointer-events: none; }
+  .camp { transition: opacity .15s; }
+  .camp.dim { opacity: .25; }
+  .camp line, .camp .fillrect { pointer-events: none; }
+  .camp .fillrect { opacity: .13; transition: opacity .15s; }
+  svg.nofill .camp .fillrect { opacity: 0; }
+  svg .camp.hl .fillrect { opacity: .24; }
+  tr.row.on td { background: var(--area); }
+
+  #tip {
+    position: absolute; pointer-events: none; display: none; min-width: 170px;
+    background: var(--ink); color: var(--bg); border-radius: 10px; padding: 9px 11px;
+    font-size: 13px; z-index: 2;
+  }
+  #tip .d { opacity: .7; }
+  #tip .n { font-size: 18px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  #tip .c { display: flex; align-items: center; gap: 6px; margin-top: 3px; }
+  .sw { width: 10px; height: 10px; border-radius: 3px; flex: none; display: inline-block; }
+
+  .cols { display: grid; grid-template-columns: 1.5fr 1fr; gap: 14px; margin-top: 14px; }
+  .pad { padding: 14px 16px 16px; }
+  .pad h2 { font-size: 16px; margin: 0 0 10px; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th { text-align: left; color: var(--muted); font-weight: 500; font-size: 13px; padding: 4px 8px 6px 0; }
+  td { padding: 8px 8px 8px 0; border-top: 1px solid var(--line); vertical-align: middle; font-variant-numeric: tabular-nums; }
+  td.num, th.num { text-align: right; }
+  tr.row:hover td { background: var(--area); }
+  .name { display: flex; align-items: center; gap: 8px; }
+  .type { color: var(--muted); font-size: 12px; }
+  .del { border: 0; background: none; color: var(--muted); cursor: pointer; font-size: 18px; line-height: 1; padding: 2px 6px; border-radius: 6px; }
+  .del:hover { color: var(--bad); }
+  .empty { color: var(--muted); padding: 10px 0; }
+
+  .form { display: grid; gap: 10px; }
+  label { display: grid; gap: 4px; font-size: 13px; color: var(--muted); }
+  input[type=text], input[type=date], select {
+    font: inherit; color: var(--ink); background: var(--bg);
+    border: 1px solid var(--line); border-radius: 8px; padding: 7px 9px; width: 100%;
+  }
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .err { color: var(--bad); font-size: 13px; min-height: 18px; }
+  .note { color: var(--muted); font-size: 13px; margin-top: 14px; }
+
+  @media (max-width: 760px) {
+    .ctl { flex-wrap: wrap; }
+    .seg button { padding: 5px 9px; }
+    .stats { grid-template-columns: repeat(2, 1fr); }
+    .cols { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<main>
+  <h1>Заказы и рекламные периоды</h1>
+  <p class="sub">Цветные полосы показывают дни, когда реклама была включена. Переключатель «Метки рекламы» меняет способ показа кампаний. Наведите на график, чтобы увидеть день подробно, или на кампанию в таблице, чтобы подсветить её период.</p>
+
+  <div class="tabs" id="tabs"></div>
+
+  <div class="stats" id="stats"></div>
+
+  <section class="card">
+    <div class="card-head">
+      <h2>Заказы по дням, шт.</h2>
+      <div class="controls">
+        <div class="ctl">Метки рекламы
+          <div class="seg" id="view">
+            <button type="button" data-view="flags" aria-pressed="true">Флажки</button>
+            <button type="button" data-view="dots" aria-pressed="false">Значки</button>
+            <button type="button" data-view="chips" aria-pressed="false">Выбор</button>
+            <button type="button" data-view="thin" aria-pressed="false">Полоски</button>
+            <button type="button" data-view="count" aria-pressed="false">Счётчик</button>
+            <button type="button" data-view="below" aria-pressed="false" title="Ряды кампаний под графиком">Снизу</button>
+            <button type="button" data-view="rows" aria-pressed="false" title="Ряды кампаний над графиком">Ряды</button>
+          </div>
+        </div>
+        <label class="check"><input type="checkbox" id="fill" checked> Заливка периодов</label>
+        <div class="seg" id="mode">
+          <button type="button" data-mode="line" aria-pressed="true">Линия</button>
+          <button type="button" data-mode="bars" aria-pressed="false">Столбцы</button>
+        </div>
+      </div>
+    </div>
+    <div id="chips" hidden></div>
+    <div id="chart"><div id="tip"></div></div>
+    <p class="viewnote" id="viewnote"></p>
+  </section>
+
+  <div class="cols">
+    <section class="card pad">
+      <h2>Рекламные кампании</h2>
+      <div id="list"></div>
+    </section>
+    <section class="card pad">
+      <h2>Добавить период</h2>
+      <div id="form" class="form">
+        <label>Название
+          <input type="text" id="f-name" placeholder="Например, Поиск — платья" maxlength="40">
+        </label>
+        <label>Тип
+          <select id="f-type">
+            <option value="search">Поиск</option>
+            <option value="auto">Автокампания</option>
+            <option value="other">Другое</option>
+          </select>
+        </label>
+        <div class="two">
+          <label>С <input type="date" id="f-from" required></label>
+          <label>По <input type="date" id="f-to" required></label>
+        </div>
+        <div class="err" id="f-err"></div>
+        <button class="btn primary" type="button" id="f-add">Добавить на график</button>
+      </div>
+    </section>
+  </div>
+
+  <p class="note">Данные демонстрационные. Сравнение «с рекламой / без» — грубая оценка: оно не учитывает сезонность, акции и остатки.</p>
+</main>
+
+<script>
+/* ============================================================
+   ДАННЫЕ. Чтобы подставить свои, замените SCENARIOS:
+   orders — массив заказов по дням начиная со START (N значений),
+   camps  — рекламные периоды {name, type, from, to} (даты включительно).
+   ============================================================ */
+const START = '2026-09-10';
+const N = 30; // дней на графике: 10 сен — 9 окт
+
+const TYPES = {
+  search: { label: 'Поиск',        color: '#2f6fed', lift: 0.55 },
+  auto:   { label: 'Автокампания', color: '#e07a1f', lift: 0.35 },
+  other:  { label: 'Другое',       color: '#8a4fd3', lift: 0.30 }
+};
+
+const SCENARIOS = [
+  { title: 'Одна кампания', seed: 11, camps: [
+      { name: 'Поиск', type: 'search', from: '2026-10-01', to: '2026-10-05' } ] },
+  { title: 'Несколько кампаний', seed: 27, camps: [
+      { name: 'Автокампания', type: 'auto',   from: '2026-09-14', to: '2026-09-20' },
+      { name: 'Поиск',        type: 'search', from: '2026-09-26', to: '2026-09-29' },
+      { name: 'Поиск',        type: 'search', from: '2026-10-03', to: '2026-10-08' } ] },
+  { title: 'Кампании пересекаются', seed: 5, camps: [
+      { name: 'Поиск',        type: 'search', from: '2026-09-18', to: '2026-10-02' },
+      { name: 'Автокампания', type: 'auto',   from: '2026-09-28', to: '2026-10-06' } ] },
+  // dense: true — заливка по умолчанию выключена, иначе 5–6 слоёв сливаются в один цвет.
+  // color — свой цвет кампании (если не задан, берётся цвет типа).
+  { title: 'Много кампаний одновременно', seed: 42, dense: true, camps: [
+      { name: 'Поиск — платья',      type: 'search', color: '#2f6fed', from: '2026-09-10', to: '2026-10-09' },
+      { name: 'Авто — весь каталог', type: 'auto',   color: '#e07a1f', from: '2026-09-10', to: '2026-10-09' },
+      { name: 'Поиск — бренд',       type: 'search', color: '#18875c', from: '2026-09-10', to: '2026-09-27' },
+      { name: 'Авто — новинки',      type: 'auto',   color: '#c2412d', from: '2026-09-10', to: '2026-09-21' },
+      { name: 'Поиск — юбки',        type: 'search', color: '#8a4fd3', from: '2026-09-10', to: '2026-10-03' },
+      { name: 'Карточка товара',     type: 'other',  color: '#0e8ea8', from: '2026-09-16', to: '2026-10-09' },
+      { name: 'Поиск — распродажа',  type: 'search', color: '#b5367f', from: '2026-09-22', to: '2026-10-09' },
+      { name: 'Авто — остатки',      type: 'auto',   color: '#8a6a1f', from: '2026-09-28', to: '2026-10-09' },
+      { name: 'Каталог — осень',     type: 'other',  color: '#5d6b12', from: '2026-10-04', to: '2026-10-09' } ] }
+];
+const colorOf = c => c.color || TYPES[c.type].color;
+
+/* Кампании для примеров 5–7. Поле g связывает несколько периодов одной кампании:
+   они рисуются в одном ряду и подсвечиваются вместе (кампания с паузами). */
+const K = {
+  dress: { name: 'Поиск — платья',      type: 'search', color: '#2f6fed', g: 'dress' },
+  auto:  { name: 'Авто — весь каталог', type: 'auto',   color: '#e07a1f', g: 'auto'  },
+  brand: { name: 'Поиск — бренд',       type: 'search', color: '#18875c', g: 'brand' },
+  fresh: { name: 'Авто — новинки',      type: 'auto',   color: '#c2412d', g: 'fresh' },
+  skirt: { name: 'Поиск — юбки',        type: 'search', color: '#8a4fd3', g: 'skirt' },
+  card:  { name: 'Карточка товара',     type: 'other',  color: '#0e8ea8', g: 'card'  },
+  sale:  { name: 'Поиск — распродажа',  type: 'search', color: '#b5367f', g: 'sale'  },
+  stock: { name: 'Авто — остатки',      type: 'auto',   color: '#8a6a1f', g: 'stock' },
+  fall:  { name: 'Каталог — осень',     type: 'other',  color: '#5d6b12', g: 'fall'  },
+  wknd:  { name: 'Акция — выходные',    type: 'other',  color: '#555b66', g: 'wknd'  }
+};
+const P = (k, from, to) => ({ ...K[k], from: '2026-' + from, to: '2026-' + to });
+SCENARIOS.push(
+  // 6 кампаний, каждая время от времени встаёт на паузу — в любой день активно 5 или 6
+  { title: 'Кампании с паузами', seed: 73, dense: true, camps: [
+      P('dress', '09-10', '09-19'), P('dress', '09-23', '10-09'),
+      P('auto',  '09-10', '09-13'), P('auto',  '09-16', '10-09'),
+      P('brand', '09-10', '09-25'), P('brand', '09-29', '10-09'),
+      P('fresh', '09-10', '10-01'), P('fresh', '10-05', '10-09'),
+      P('skirt', '09-10', '09-16'), P('skirt', '09-20', '10-05'), P('skirt', '10-08', '10-09'),
+      P('card',  '09-10', '10-09') ] },
+  // всё работало, 24–27 сентября реклама полностью стояла, потом запуск заново
+  { title: 'Общая остановка на несколько дней', seed: 8, dense: true, camps: [
+      P('dress', '09-10', '09-23'), P('dress', '09-28', '10-09'),
+      P('auto',  '09-10', '09-23'), P('auto',  '09-28', '10-09'),
+      P('brand', '09-10', '09-23'), P('brand', '09-28', '10-09'),
+      P('card',  '09-10', '09-23'), P('card',  '09-28', '10-09'),
+      P('skirt', '09-10', '09-23'), P('skirt', '09-30', '10-09'),
+      P('fresh', '09-10', '09-23'), P('sale',  '09-28', '10-09') ] },
+  // 4 кампании идут весь месяц, поверх них — сменяющие друг друга и акции по выходным
+  { title: 'Постоянные и сменяющиеся кампании', seed: 31, dense: true, camps: [
+      P('dress', '09-10', '10-09'), P('auto', '09-10', '10-09'),
+      P('brand', '09-10', '10-09'), P('card', '09-10', '10-09'),
+      P('skirt', '09-10', '09-15'), P('fresh', '09-16', '09-22'),
+      P('sale',  '09-23', '09-30'), P('fall',  '10-01', '10-09'),
+      P('wknd',  '09-11', '09-13'), P('wknd',  '09-18', '09-20'),
+      P('wknd',  '09-25', '09-27'), P('wknd',  '10-02', '10-04') ] }
+);
+
+/* ---------- даты ---------- */
+const MON = ['янв','фев','мар','апр','мая','июн','июл','авг','сен','окт','ноя','дек'];
+const DOW = ['вс','пн','вт','ср','чт','пт','сб'];
+function addDays(iso, k) {
+  const d = new Date(iso + 'T00:00:00Z');
+  d.setUTCDate(d.getUTCDate() + k);
+  return d.toISOString().slice(0, 10);
+}
+const DAYS = Array.from({ length: N }, (_, i) => addDays(START, i));
+const END = DAYS[N - 1];
+const fmt = iso => (+iso.slice(8)) + ' ' + MON[+iso.slice(5, 7) - 1];
+const dow = iso => new Date(iso + 'T00:00:00Z').getUTCDay();
+const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+
+/* ---------- генерация демо-заказов ---------- */
+function rng(seed) {
+  return () => (seed = (seed * 1664525 + 1013904223) % 4294967296) / 4294967296;
+}
+function genOrders(camps, seed) {
+  const r = rng(seed);
+  return DAYS.map((d, i) => {
+    let v = 36 + i * 0.3;
+    if (dow(d) === 0 || dow(d) === 6) v *= 1.12;
+    let lift = 0;
+    camps.forEach(c => {
+      if (d >= c.from && d <= c.to) lift += TYPES[c.type].lift * (d === c.from ? 0.6 : 1);
+      if (d === addDays(c.to, 1)) lift += 0.12; // небольшой «хвост» после отключения
+    });
+    v *= 1 + 1.1 * (1 - Math.exp(-lift)); // каждая следующая кампания добавляет меньше
+    v *= 0.88 + r() * 0.24;
+    return Math.round(v);
+  });
+}
+SCENARIOS.forEach(s => { if (!s.orders) s.orders = genOrders(s.camps, s.seed); });
+
+/* ---------- состояние ---------- */
+let uid = 0;
+const state = { scenario: 0, view: 'flags', sel: null, mode: 'line', fill: true, camps: [], orders: [], hover: null };
+
+function loadScenario(i) {
+  state.scenario = i;
+  state.orders = SCENARIOS[i].orders.slice();
+  state.camps = SCENARIOS[i].camps.map(c => ({ ...c, id: ++uid }));
+  state.fill = !SCENARIOS[i].dense;
+  state.hover = null;
+  state.sel = null;
+  document.getElementById('fill').checked = state.fill;
+  renderAll();
+}
+
+/* индексы кампании на графике (с обрезкой по диапазону) */
+function span(c) {
+  const from = c.from < START ? START : c.from;
+  const to = c.to > END ? END : c.to;
+  return [DAYS.indexOf(from), DAYS.indexOf(to)];
+}
+function activeAt(i) {
+  return state.camps.filter(c => { const [a, b] = span(c); return i >= a && i <= b; });
+}
+const groupOf = c => c.g ? 'g:' + c.g : 'id:' + c.id;
+function assignLanes(camps) {
+  // периоды одной кампании (общий g) занимают один ряд на всём своём протяжении
+  const groups = new Map();
+  camps.forEach(c => {
+    const [a, b] = span(c), k = groupOf(c);
+    const g = groups.get(k) || { a, b, items: [] };
+    g.a = Math.min(g.a, a); g.b = Math.max(g.b, b); g.items.push(c);
+    groups.set(k, g);
+  });
+  const ends = [];
+  [...groups.values()].sort((x, y) => x.a - y.a).forEach(g => {
+    let l = ends.findIndex(e => e < g.a);
+    if (l === -1) { l = ends.length; ends.push(g.b); } else ends[l] = g.b;
+    g.items.forEach(c => { c.lane = l; });
+  });
+  return ends.length;
+}
+const avg = a => a.length ? a.reduce((s, v) => s + v, 0) / a.length : null;
+
+/* ---------- график ---------- */
+const chartEl = document.getElementById('chart');
+const tip = document.getElementById('tip');
+let geo = null;
+
+const VIEW_NOTES = {
+  flags: 'Флажок стоит только там, где что-то изменилось: ▶ кампания запущена, ■ остановлена. Если в один день меняются три кампании и больше — один общий флажок. Кампании без изменений места не занимают.',
+  dots:  'Значки стоят прямо на линии заказов в день изменения: ▶ первый день с кампанией, ■ первый день без неё. Места над графиком почти не нужно.',
+  chips: 'Нажмите на кампанию, чтобы показать или скрыть её период на графике. Удобно, когда кампаний много, а смотреть нужно одну-две.',
+  thin:  'Каждая кампания — тонкая полоска. Высота блока не растёт, сколько бы кампаний ни было; названия — при наведении и в таблице.',
+  count: 'Число в ячейке — сколько кампаний активно в этот день (чем темнее, тем больше). ▶ — кампания запущена, ■ — остановлена. Высота блока постоянная.',
+  below: 'Ряды кампаний вынесены под график: сам график остаётся на месте и не сжимается.',
+  rows:  'Каждая кампания — отдельный ряд с названием над графиком. Чем больше кампаний, тем выше блок.'
+};
+
+function renderChart() {
+  const W = Math.max(320, chartEl.clientWidth - 8);
+  const lanes = assignLanes(state.camps);
+  const v = state.view;
+  const mR = 12, mB = 30, mL = 40;
+  const pw = W - mL - mR, sw = pw / N;
+  const thinH = Math.max(2, Math.min(8, Math.floor(48 / Math.max(lanes, 1)) - 2));
+
+  // события: запуск и остановка кампаний внутри диапазона графика (края диапазона событием не считаем)
+  const events = [];
+  state.camps.forEach(c => {
+    const [a, b] = span(c);
+    if (c.from > START) events.push({ c, kind: 'start', day: a, x: mL + a * sw });
+    if (c.to < END) events.push({ c, kind: 'stop', day: b + 1, x: mL + (b + 1) * sw });
+  });
+  events.sort((p, q) => p.x - q.x || (p.kind < q.kind ? 1 : -1));
+  let flagLevels = 0;
+  const flags = [];
+  if (v === 'flags') {
+    // если в один день запускаются или останавливаются 3+ кампании — один общий флажок вместо стопки
+    const byKey = {};
+    events.forEach(e => (byKey[e.kind + e.day] = byKey[e.kind + e.day] || []).push(e));
+    Object.values(byKey).forEach(g => {
+      if (g.length >= 3) flags.push({ kind: g[0].kind, x: g[0].x, merged: g.map(e => e.c.name) });
+      else flags.push(...g);
+    });
+    flags.sort((p, q) => p.x - q.x || (p.kind < q.kind ? 1 : -1));
+    const maxLen = W < 560 ? 9 : 18, ends = [];
+    flags.forEach(f => { // раскладываем по уровням, чтобы подписи не наезжали друг на друга
+      const n = f.merged && f.merged.length;
+      const nm = f.merged ? `${n} ${n < 5 ? 'кампании' : 'кампаний'}`
+               : f.c.name.length > maxLen ? f.c.name.slice(0, maxLen - 1) + '…' : f.c.name;
+      f.text = (f.kind === 'start' ? '▶ ' : '■ ') + nm;
+      f.w = f.text.length * 6.4 + 14;
+      f.fx = Math.max(mL, Math.min(f.x, W - mR - f.w));
+      let l = ends.findIndex(t => t < f.fx - 4);
+      if (l === -1) { l = ends.length; ends.push(0); }
+      ends[l] = f.fx + f.w; f.level = l;
+    });
+    flagLevels = ends.length;
+  }
+  if (v === 'chips' && !state.sel) { // по умолчанию показываем одну кампанию — первую, что идёт не весь период
+    const first = state.camps.find(c => c.from > START || c.to < END) || state.camps[0];
+    state.sel = new Set(first ? [groupOf(first)] : []);
+  }
+  const isSel = c => v === 'chips' && state.sel.has(groupOf(c));
+
+  const topBand = v === 'rows' ? lanes * 26 : v === 'thin' ? lanes * (thinH + 2) + 2 : v === 'count' ? 40
+                : v === 'flags' ? Math.max(1, flagLevels) * 20 + 2 : v === 'dots' ? 22 : 0;
+  const botBand = v === 'below' ? lanes * 20 + 8 : 0;
+  const mT = 12 + topBand + 8;
+  const ph = W < 560 ? 220 : 300;               // высота самого графика не зависит от числа кампаний
+  const H = mT + ph + mB + botBand;
+  const max = Math.max(...state.orders, 1);
+  const step = [5, 10, 20, 25, 50, 100, 200, 500, 1000].find(s => max / s <= 6) || 2000;
+  const top = Math.ceil(max / step) * step;
+  const x = i => mL + sw * (i + 0.5);
+  const y = v => mT + ph - (v / top) * ph;
+  geo = { mL, sw, mT, ph, x, y, W, bottom: mT + ph + mB };
+
+  let s = `<svg viewBox="0 0 ${W} ${H}" height="${H}" class="${state.fill && v !== 'chips' ? '' : 'nofill'}" role="img" aria-label="График заказов с отметками рекламных периодов">`;
+
+  for (let t = 0; t <= top; t += step) {
+    s += `<line class="grid" x1="${mL}" x2="${W - mR}" y1="${y(t)}" y2="${y(t)}"/>`;
+    s += `<text class="axis" x="${mL - 8}" y="${y(t) + 4}" text-anchor="end">${t}</text>`;
+  }
+
+  // вид «Счётчик»: полоса с числом активных кампаний по дням
+  if (v === 'count') {
+    const counts = DAYS.map((_, i) => activeAt(i).length);
+    const cmax = Math.max(...counts, 1), cmin = Math.min(...counts);
+    const shade = n => !n ? 0.03 : cmax === cmin ? 0.3 : 0.1 + 0.3 * (n - cmin) / (cmax - cmin); // темнее = больше кампаний
+    s += `<text class="axis" x="${mL - 8}" y="27" text-anchor="end">РК</text>`;
+    counts.forEach((n, i) => {
+      s += `<rect class="cell" x="${mL + i * sw + 0.5}" y="12" width="${Math.max(1, sw - 1)}" height="22" rx="3" style="opacity:${shade(n)}"/>`;
+      if (sw >= 14) s += `<text class="cell-text" x="${x(i)}" y="27" text-anchor="middle">${n || '·'}</text>`;
+    });
+  }
+
+  // рекламные периоды
+  const startsAt = {}, stopsAt = {}, dotsAt = {};
+  state.camps.forEach(c => {
+    const [a, b] = span(c);
+    const col = colorOf(c);
+    const bx = mL + a * sw, bw = (b - a + 1) * sw, ex = bx + bw;
+    const label = `${c.name} · ${fmt(c.from)} – ${fmt(c.to)}`;
+    const dash = (xx, y1) => `<line x1="${xx}" x2="${xx}" y1="${y1}" y2="${mT + ph}" stroke="${col}" stroke-width="1.5" stroke-dasharray="4 3"/>`;
+    s += `<g class="camp${isSel(c) ? ' sel' : ''}" data-id="${c.id}"><title>${esc(label)}</title>`;
+    s += `<rect class="fillrect" x="${bx}" y="${mT}" width="${bw}" height="${ph}" fill="${col}"/>`;
+
+    if (v === 'rows' || v === 'below') {
+      const bh = v === 'rows' ? 20 : 16;
+      const ly = v === 'rows' ? 12 + c.lane * 26 : mT + ph + mB + 4 + c.lane * 20;
+      const cap = Math.floor((bw - 12) / 6.6);
+      const text = label.length <= cap ? label : (c.name.length <= cap ? c.name : (cap >= 3 ? c.name.slice(0, cap - 1) + '…' : ''));
+      s += dash(bx, v === 'rows' ? ly + bh : mT) + dash(ex, v === 'rows' ? ly + bh : mT);
+      s += `<rect x="${bx}" y="${ly}" width="${bw}" height="${bh}" rx="5" fill="${col}"/>`;
+      if (text) s += `<text class="lane-text" x="${bx + 7}" y="${ly + bh / 2 + 4}">${esc(text)}</text>`;
+    } else if (v === 'thin') {
+      const ly = 12 + c.lane * (thinH + 2);
+      s += dash(bx, ly + thinH) + dash(ex, ly + thinH);
+      s += `<rect x="${bx}" y="${ly}" width="${bw}" height="${thinH}" rx="${Math.min(3, thinH / 2)}" fill="${col}"/>`;
+    } else if (v === 'flags') {
+      flags.filter(e => e.c === c).forEach(e => {
+        const fy = 12 + e.level * 20;
+        s += dash(e.x, fy + 16);
+        s += `<rect x="${e.fx}" y="${fy}" width="${e.w}" height="16" rx="4" fill="${col}"/>`;
+        s += `<text class="flag-text" x="${e.fx + 7}" y="${fy + 12}">${esc(e.text)}</text>`;
+      });
+    } else if (v === 'dots') {
+      events.filter(e => e.c === c).forEach(e => {
+        const px = x(e.day), py = y(state.orders[e.day]);
+        const k = dotsAt[e.day] = (dotsAt[e.day] || 0) + 1;
+        const gy = Math.max(4, py - 20 - (k - 1) * 11);
+        if (k === 1) s += `<line class="stem" x1="${px}" x2="${px}" y1="${py - 5}" y2="${gy + 9}"/>`;
+        s += e.kind === 'start'
+          ? `<path d="M${px - 4},${gy} l9,4.5 l-9,4.5 Z" fill="${col}"/>`
+          : `<rect x="${px - 4}" y="${gy + 0.5}" width="8" height="8" rx="1.5" fill="${col}"/>`;
+      });
+    } else if (v === 'chips') {
+      if (isSel(c)) s += dash(bx, mT) + dash(ex, mT);
+    } else { // count: значки запуска и остановки (границы диапазона графика не считаем событием)
+      const my = 39;
+      if (c.from > START) {
+        const k = startsAt[a] = (startsAt[a] || 0) + 1, mx = bx + 2 + (k - 1) * 10;
+        s += dash(bx, my + 9) + `<path d="M${mx},${my} l8,4.5 l-8,4.5 Z" fill="${col}"/>`;
+      }
+      if (c.to < END) {
+        const k = stopsAt[b] = (stopsAt[b] || 0) + 1, mx = ex - 10 - (k - 1) * 10;
+        s += dash(ex, my + 9) + `<rect x="${mx}" y="${my + 0.5}" width="8" height="8" rx="1.5" fill="${col}"/>`;
+      }
+    }
+    s += `</g>`;
+  });
+
+  flags.filter(f => f.merged).forEach(f => { // общие флажки
+    const fy = 12 + f.level * 20;
+    s += `<g><title>${esc((f.kind === 'start' ? 'Запущены: ' : 'Остановлены: ') + f.merged.join(', '))}</title>`;
+    s += `<line x1="${f.x}" x2="${f.x}" y1="${fy + 16}" y2="${mT + ph}" stroke="#6b7078" stroke-width="1.5" stroke-dasharray="4 3"/>`;
+    s += `<rect x="${f.fx}" y="${fy}" width="${f.w}" height="16" rx="4" fill="#555b66"/>`;
+    s += `<text class="flag-text" x="${f.fx + 7}" y="${fy + 12}">${esc(f.text)}</text></g>`;
+  });
+
+  // заказы
+  if (state.mode === 'line') {
+    const pts = state.orders.map((o, i) => `${x(i).toFixed(1)},${y(o).toFixed(1)}`);
+    s += `<path class="area" d="M${x(0)},${y(0)} L${pts.join(' L')} L${x(N - 1)},${y(0)} Z"/>`;
+    s += `<path class="series" d="M${pts.join(' L')}"/>`;
+    state.orders.forEach((o, i) => { s += `<circle class="pt" cx="${x(i)}" cy="${y(o)}" r="2.5"/>`; });
+  } else {
+    const bw = Math.max(2, sw * 0.64);
+    state.orders.forEach((o, i) => {
+      s += `<rect class="bar" x="${x(i) - bw / 2}" y="${y(o)}" width="${bw}" height="${y(0) - y(o)}" rx="2"/>`;
+    });
+  }
+
+  // ось X
+  const every = Math.max(1, Math.ceil(52 / sw));
+  DAYS.forEach((d, i) => {
+    if (i % every === 0) s += `<text class="axis" x="${x(i)}" y="${mT + ph + 21}" text-anchor="middle">${fmt(d)}</text>`;
+  });
+
+  s += `<line class="guide" id="guide" y1="${mT}" y2="${mT + ph}" style="display:none"/>`;
+  s += `<circle class="hoverdot" id="hdot" r="5" style="display:none"/>`;
+  s += `</svg>`;
+
+  const old = chartEl.querySelector('svg');
+  if (old) old.remove();
+  chartEl.insertAdjacentHTML('beforeend', s);
+  document.getElementById('viewnote').textContent = VIEW_NOTES[v];
+  renderChips();
+  applyHover();
+}
+
+/* вид «Выбор»: кнопки кампаний над графиком, нажатие показывает или скрывает период */
+function renderChips() {
+  const el = document.getElementById('chips');
+  if (state.view !== 'chips') { el.hidden = true; el.innerHTML = ''; return; }
+  const seen = new Set();
+  el.innerHTML = state.camps.filter(c => !seen.has(groupOf(c)) && seen.add(groupOf(c))).map(c =>
+    `<button type="button" class="chip" data-g="${esc(groupOf(c))}" data-id="${c.id}" aria-pressed="${state.sel.has(groupOf(c))}">` +
+    `<span class="sw" style="background:${colorOf(c)}"></span>${esc(c.name)}</button>`).join('');
+  el.hidden = false;
+}
+const chipsEl = document.getElementById('chips');
+chipsEl.addEventListener('click', e => {
+  const b = e.target.closest('.chip'); if (!b) return;
+  state.sel.has(b.dataset.g) ? state.sel.delete(b.dataset.g) : state.sel.add(b.dataset.g);
+  renderChart();
+});
+chipsEl.addEventListener('mouseover', e => { const b = e.target.closest('.chip'); setHover(b ? +b.dataset.id : null); });
+chipsEl.addEventListener('mouseleave', () => setHover(null));
+
+/* подсветка одной кампании: остальные приглушаются, её период заливается */
+function applyHover() {
+  const cur = state.camps.find(c => c.id === state.hover);
+  const key = cur ? groupOf(cur) : null;
+  const same = el => { const c = state.camps.find(c => c.id === +el.dataset.id); return !!c && groupOf(c) === key; };
+  chartEl.querySelectorAll('g.camp').forEach(g => {
+    g.classList.toggle('hl', key !== null && same(g));
+    g.classList.toggle('dim', key !== null && !same(g));
+  });
+  document.querySelectorAll('#list tr.row').forEach(r => r.classList.toggle('on', key !== null && same(r)));
+}
+function setHover(id) { if (id !== state.hover) { state.hover = id; applyHover(); } }
+
+function showTip(e) {
+  const svg = chartEl.querySelector('svg');
+  if (!svg || !geo) return;
+  const r = svg.getBoundingClientRect();
+  const i = Math.floor((e.clientX - r.left - geo.mL) / geo.sw);
+  if (i < 0 || i >= N || e.clientY - r.top < geo.mT || e.clientY - r.top > geo.bottom) return hideTip(); // над полосами кампаний подсказку не показываем
+  const d = DAYS[i], v = state.orders[i], cx = geo.x(i), cy = geo.y(v);
+  const guide = svg.querySelector('#guide'), dot = svg.querySelector('#hdot');
+  guide.setAttribute('x1', cx); guide.setAttribute('x2', cx); guide.style.display = '';
+  dot.setAttribute('cx', cx); dot.setAttribute('cy', cy); dot.style.display = '';
+  const act = activeAt(i);
+  tip.innerHTML =
+    `<div class="d">${fmt(d)}, ${DOW[dow(d)]}</div><div class="n">${v} заказов</div>` +
+    (act.length
+      ? (act.length > 1 ? `<div class="c d">Активно кампаний: ${act.length}</div>` : '') +
+        act.map(c => `<div class="c"><span class="sw" style="background:${colorOf(c)}"></span>${esc(c.name)}</div>`).join('')
+      : `<div class="c d">Реклама выключена</div>`);
+  tip.style.display = 'block';
+  const off = svg.offsetLeft, tw = tip.offsetWidth;
+  let left = off + cx + 14;
+  if (left + tw > chartEl.clientWidth - 4) left = off + cx - tw - 14;
+  tip.style.left = Math.max(4, left) + 'px';
+  tip.style.top = Math.max(4, svg.offsetTop + cy - tip.offsetHeight / 2) + 'px';
+}
+function hideTip() {
+  tip.style.display = 'none';
+  const svg = chartEl.querySelector('svg');
+  if (!svg) return;
+  svg.querySelector('#guide').style.display = 'none';
+  svg.querySelector('#hdot').style.display = 'none';
+}
+chartEl.addEventListener('pointermove', showTip);
+chartEl.addEventListener('pointerdown', showTip);
+chartEl.addEventListener('pointerleave', hideTip);
+
+/* ---------- сводка ---------- */
+function renderStats() {
+  const on = [], off = [];
+  state.orders.forEach((v, i) => (activeAt(i).length ? on : off).push(v));
+  const aOn = avg(on), aOff = avg(off);
+  const total = state.orders.reduce((s, v) => s + v, 0);
+  const diff = aOn !== null && aOff ? (aOn / aOff - 1) * 100 : null;
+  const f = v => v === null ? '—' : v.toFixed(1).replace('.', ',');
+  const counts = DAYS.map((_, i) => activeAt(i).length);
+  if (state.camps.length && !off.length) { // реклама идёт каждый день — сравнивать «с/без» не с чем
+    document.getElementById('stats').innerHTML = `
+    <div class="stat"><div class="k">Всего заказов</div><div class="v">${total}</div></div>
+    <div class="stat"><div class="k">В среднем заказов в день</div><div class="v">${f(aOn)}</div></div>
+    <div class="stat"><div class="k">Кампаний в день, в среднем</div><div class="v">${f(avg(counts))}</div></div>
+    <div class="stat"><div class="k">Максимум одновременно</div><div class="v">${Math.max(...counts)}</div></div>`;
+    return;
+  }
+  document.getElementById('stats').innerHTML = `
+    <div class="stat"><div class="k">Всего заказов</div><div class="v">${total}</div></div>
+    <div class="stat"><div class="k">В среднем в день с рекламой (${on.length} дн.)</div><div class="v">${f(aOn)}</div></div>
+    <div class="stat"><div class="k">В среднем в день без рекламы (${off.length} дн.)</div><div class="v">${f(aOff)}</div></div>
+    <div class="stat"><div class="k">Разница</div><div class="v ${diff === null ? '' : diff >= 0 ? 'good' : 'bad'}">${diff === null ? '—' : (diff >= 0 ? '+' : '−') + Math.abs(diff).toFixed(0) + '%'}</div></div>`;
+}
+
+/* ---------- список кампаний ---------- */
+function renderList() {
+  const el = document.getElementById('list');
+  if (!state.camps.length) { el.innerHTML = '<div class="empty">Периодов нет. Добавьте первый в форме справа.</div>'; return; }
+  const rows = state.camps.slice().sort((a, b) => a.from < b.from ? -1 : 1).map(c => {
+    const [a, b] = span(c);
+    const sl = state.orders.slice(a, b + 1);
+    return `<tr class="row" data-id="${c.id}">
+      <td><div class="name"><span class="sw" style="background:${colorOf(c)}"></span>
+        <div>${esc(c.name)}<div class="type">${TYPES[c.type].label}</div></div></div></td>
+      <td>${fmt(c.from)} – ${fmt(c.to)}</td>
+      <td class="num">${b - a + 1}</td>
+      <td class="num">${sl.reduce((s, v) => s + v, 0)}</td>
+      <td class="num">${avg(sl).toFixed(1).replace('.', ',')}</td>
+      <td class="num"><button class="del" data-del="${c.id}" aria-label="Удалить период ${esc(c.name)}" title="Удалить">×</button></td>
+    </tr>`;
+  }).join('');
+  el.innerHTML = `<table><thead><tr><th>Кампания</th><th>Период</th><th class="num">Дней</th><th class="num">Заказов</th><th class="num">В день</th><th></th></tr></thead><tbody>${rows}</tbody></table>`;
+}
+const listEl = document.getElementById('list');
+listEl.addEventListener('click', e => {
+  const id = e.target.dataset.del;
+  if (!id) return;
+  state.camps = state.camps.filter(c => c.id !== +id);
+  state.hover = null;
+  renderAll();
+});
+listEl.addEventListener('mouseover', e => {
+  const row = e.target.closest('tr.row');
+  const id = row ? +row.dataset.id : null;
+  setHover(id);
+});
+listEl.addEventListener('mouseleave', () => setHover(null));
+chartEl.addEventListener('mouseover', e => {
+  const g = e.target.closest('g.camp');
+  setHover(g ? +g.dataset.id : null);
+});
+chartEl.addEventListener('mouseleave', () => setHover(null));
+
+/* ---------- вкладки, переключатели, форма ---------- */
+function renderTabs() {
+  document.getElementById('tabs').innerHTML = SCENARIOS.map((s, i) =>
+    `<button type="button" class="tab" data-i="${i}" aria-pressed="${i === state.scenario}">Пример ${i + 1}. ${s.title}</button>`).join('');
+}
+document.getElementById('tabs').addEventListener('click', e => {
+  const b = e.target.closest('.tab'); if (b) loadScenario(+b.dataset.i);
+});
+document.getElementById('mode').addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  state.mode = b.dataset.mode;
+  document.querySelectorAll('#mode button').forEach(x => x.setAttribute('aria-pressed', x === b));
+  renderChart();
+});
+document.getElementById('view').addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  state.view = b.dataset.view;
+  document.querySelectorAll('#view button').forEach(x => x.setAttribute('aria-pressed', x === b));
+  renderChart();
+});
+document.getElementById('fill').addEventListener('change', e => { state.fill = e.target.checked; renderChart(); });
+
+const fFrom = document.getElementById('f-from'), fTo = document.getElementById('f-to');
+[fFrom, fTo].forEach(i => { i.min = START; i.max = END; });
+fFrom.value = '2026-09-22'; fTo.value = '2026-09-25';
+// Обычная кнопка, а не отправка формы: в предпросмотре (изолированный iframe) отправка форм заблокирована.
+function addCamp() {
+  const err = document.getElementById('f-err');
+  const from = fFrom.value, to = fTo.value, type = document.getElementById('f-type').value;
+  if (!from || !to) { err.textContent = 'Укажите обе даты.'; return; }
+  if (from > to) { err.textContent = 'Дата начала позже даты окончания.'; return; }
+  if (from < START || to > END) { err.textContent = `Период должен быть в пределах ${fmt(START)} – ${fmt(END)}.`; return; }
+  err.textContent = '';
+  const name = document.getElementById('f-name').value.trim() || TYPES[type].label;
+  const c = { id: ++uid, name, type, from, to };
+  state.camps.push(c);
+  if (state.sel) state.sel.add(groupOf(c)); // в виде «Выбор» новая кампания сразу показана
+  state.hover = c.id;                        // и подсвечена, пока не уведёте курсор
+  renderAll();
+}
+document.getElementById('f-add').addEventListener('click', addCamp);
+document.getElementById('form').addEventListener('keydown', e => {
+  if (e.key === 'Enter' && e.target.tagName === 'INPUT') { e.preventDefault(); addCamp(); }
+});
+
+function renderAll() { renderTabs(); renderStats(); renderChart(); renderList(); }
+let rt; window.addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(renderChart, 80); });
+loadScenario(3); // открываемся на примере с 5–6 кампаниями
+</script>
+</body>
+</html>

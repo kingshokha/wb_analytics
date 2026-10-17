@@ -1,0 +1,451 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Варианты графиков — WB Pulse</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    /* Цвета сайта + палитра линий. Порядок линий проверен на различимость при дальтонизме
+       (валидатор палитры: соседние пары ΔE ≥ 9, обычное зрение ≥ 24). */
+    :root{--ink:#17211d;--ink-2:#4b5550;--muted:#6f7974;--line:#e4e8e5;--grid:#eef1ee;--axis:#d3d9d5;--bg:#f5f6f3;--surface:#fff;--purple:#7651e5;--shadow:0 15px 50px rgba(29,42,35,.07);--context:#cfd5d1}
+    *{box-sizing:border-box}
+    body{margin:0;background:var(--bg);color:var(--ink);font-family:Manrope,system-ui,sans-serif;font-size:14px}
+    main{max-width:1180px;margin:0 auto;padding:28px 20px 60px}
+    .eyebrow{color:var(--purple);font-size:11px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;margin:0}
+    h1{font-size:26px;margin:4px 0 8px}
+    .lead{color:var(--muted);margin:0;max-width:780px;line-height:1.55}
+    .cards{display:grid;gap:20px;margin-top:22px}
+    .card{background:var(--surface);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);padding:20px 22px 14px;min-width:0}
+    .card h2{font-size:17px;margin:0 0 4px}
+    .num{display:inline-grid;place-items:center;width:24px;height:24px;border-radius:7px;background:#f0ebff;color:#6740d2;font-size:12px;font-weight:800;margin-right:8px;vertical-align:1px}
+    .desc{color:var(--muted);margin:0;line-height:1.5;max-width:760px}
+    .pros{display:flex;gap:6px 18px;flex-wrap:wrap;margin:10px 0 0;padding:0;list-style:none;font-size:12.5px;color:var(--ink-2)}
+    .pros li::before{content:'+ ';color:#257a52;font-weight:800}
+    .pros li.con::before{content:'− ';color:#c24d4d}
+    .legend{display:flex;flex-wrap:wrap;gap:4px 10px;margin:16px 0 6px;padding:0;list-style:none}
+    .legend .item{display:inline-flex;align-items:center;gap:8px;border:0;background:none;padding:5px 8px;border-radius:7px;font:inherit;font-size:13px;color:var(--ink)}
+    .legend button.item{cursor:pointer}
+    .legend button.item:hover,.legend button.item:focus-visible{background:#f4f2fc;outline:0}
+    .legend button.item[aria-pressed="false"]{color:var(--muted)}
+    .legend button.item[aria-pressed="false"] .key{background:var(--context)!important}
+    .key{width:16px;height:3px;border-radius:2px;flex:0 0 16px}
+    .chart{position:relative;width:100%;min-width:0}
+    .chart svg{display:block;overflow:visible}
+    .overlay{fill:transparent;cursor:crosshair;outline:none}
+    .overlay:focus-visible{stroke:var(--purple);stroke-width:1}
+    .grid line{stroke:var(--grid);stroke-width:1}
+    .baseline{stroke:var(--axis);stroke-width:1}
+    .ticks text{fill:var(--muted);font-size:11px;font-variant-numeric:tabular-nums}
+    .series{transition:opacity .18s}
+    .series .line{fill:none;stroke-linejoin:round;stroke-linecap:round;transition:stroke-width .18s}
+    .chart.has-focus .series:not(.is-focus){opacity:.13}
+    .chart.has-focus .series.is-focus .line{stroke-width:2.75}
+    .chart.has-focus .endlabels g:not(.is-focus){opacity:.3}
+    .endlabels text{font-size:12px;fill:var(--ink);font-weight:700}
+    .endlabels tspan.v{fill:var(--muted);font-weight:600}
+    .leader{stroke:var(--axis);stroke-width:1}
+    .event-label{font-size:11.5px;fill:var(--ink-2);font-weight:700}
+    .event-notes{list-style:none;margin:4px 0 0;padding:0;font-size:12px;color:var(--ink-2);display:grid;gap:2px}
+    .event-notes:empty{display:none}
+    .end-dot,.hover circle{stroke:var(--surface);stroke-width:2}
+    .hover line{stroke:#a7afaa;stroke-width:1}
+    .tooltip{position:absolute;pointer-events:none;background:var(--surface);border:1px solid var(--line);border-radius:10px;box-shadow:0 10px 30px rgba(23,33,29,.13);padding:10px 12px;min-width:190px;max-width:260px;font-size:12.5px;z-index:2;opacity:0;transition:opacity .12s}
+    .tooltip.show{opacity:1}
+    .t-date{color:var(--muted);font-size:11.5px;margin-bottom:6px;font-weight:700}
+    .t-row{display:grid;grid-template-columns:14px auto minmax(0,1fr);align-items:center;gap:8px;padding:2px 0;transition:opacity .12s}
+    .t-row b{font-variant-numeric:tabular-nums;font-weight:800;white-space:nowrap}
+    .t-row span{color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .t-row.dim{opacity:.45}
+    .t-row .k{width:14px;height:3px;border-radius:2px}
+    .t-foot{border-top:1px solid var(--line);margin-top:6px;padding-top:6px;display:flex;justify-content:space-between;gap:12px;color:var(--muted)}
+    .t-foot b{color:var(--ink);font-variant-numeric:tabular-nums}
+    .chips{display:flex;flex-wrap:wrap;gap:6px;margin:16px 0 4px}
+    .chips button{border:1px solid var(--line);background:var(--surface);border-radius:20px;padding:6px 12px;font:inherit;font-size:12.5px;font-weight:700;color:var(--ink-2);cursor:pointer;display:inline-flex;align-items:center;gap:7px}
+    .chips button:hover{border-color:#c9c0f3}
+    .chips button[aria-pressed="true"]{border-color:var(--ink);color:var(--ink);background:#f7f8f6}
+    .multiples{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:12px;margin-top:16px}
+    .mini{border:1px solid var(--line);border-radius:12px;padding:12px 12px 4px;min-width:0}
+    .mini h3{font-size:12.5px;margin:0;display:flex;align-items:center;gap:8px;font-weight:700}
+    .mini .sum{font-size:20px;font-weight:800;margin:6px 0 0}
+    .mini .sub{font-size:11.5px;color:var(--muted);margin-bottom:4px}
+    .stat{display:flex;gap:30px;flex-wrap:wrap;margin:16px 0 6px}
+    .stat small{display:block;color:var(--muted);font-size:12px;margin-bottom:2px}
+    .stat strong{font-size:24px;font-weight:800}
+    .stat em{font-style:normal;font-size:13px;font-weight:800;margin-left:8px;color:var(--ink-2)}
+    .table-toggle{margin-top:8px;border:0;background:none;color:var(--purple);font:inherit;font-size:12.5px;font-weight:700;cursor:pointer;padding:4px 0}
+    .data-table{display:none;margin-top:6px;max-height:300px;overflow:auto;border:1px solid var(--line);border-radius:10px}
+    .data-table.open{display:block}
+    .data-table table{border-collapse:collapse;width:100%;font-size:12.5px}
+    .data-table th,.data-table td{padding:6px 10px;text-align:right;border-bottom:1px solid var(--grid);white-space:nowrap;font-variant-numeric:tabular-nums}
+    .data-table th:first-child,.data-table td:first-child{text-align:left}
+    .data-table thead th{position:sticky;top:0;background:#f7f8f6;font-size:11.5px;color:var(--muted);font-weight:700}
+    @media(max-width:640px){main{padding:18px 16px 40px}.card{padding:16px 14px 12px}h1{font-size:21px}}
+  </style>
+</head>
+<body>
+<main>
+  <p class="eyebrow">Черновик · выбор оформления</p>
+  <h1>Варианты линейных графиков</h1>
+  <p class="lead">Во всех вариантах одни и те же демо-данные: расход пяти рекламных кампаний по дням за 30 дней. Наведите на график — появится линия-курсор и подсказка со всеми значениями этого дня; на клавиатуре — Tab и стрелки ← →. Под каждым графиком данные можно открыть таблицей.</p>
+  <div class="cards" id="cards"></div>
+</main>
+
+<script>
+'use strict';
+// ---------- Демо-данные ----------
+const N = 30, DAY = 864e5, END = Date.UTC(2026, 9, 15);
+const DATES = Array.from({ length: N }, (_, i) => new Date(END - (N - 1 - i) * DAY));
+const PALETTE = ['#7651e5', '#eb6834', '#1baf7a', '#2a78d6', '#e87ba4'];
+const PREV_COLOR = '#a3aba6', CONTEXT_COLOR = '#cfd5d1';
+function seeded(seed) { let s = seed >>> 0; return () => (s = (s * 1664525 + 1013904223) >>> 0) / 4294967296; }
+const CAMPAIGNS = [
+  { id: 'promax', name: 'Единая Pro Max', base: 6200, trend: .010, amp: .10, noise: .10 },
+  { id: 'auto', name: 'Автокампания · хиты', base: 4600, trend: -.012, amp: .14, noise: .12 },
+  { id: 'search', name: 'Поиск · базовая', base: 2500, trend: .030, amp: .08, noise: .14 },
+  { id: 'new', name: 'Новинки октября', base: 1100, trend: .16, amp: .06, noise: .16, start: 11 },
+  { id: 'promo', name: 'Промо · распродажа', base: 2900, trend: 0, amp: .22, noise: .12, pause: [17, 20] }
+];
+const SERIES = CAMPAIGNS.map((c, k) => {
+  const r = seeded(97 + k * 31);
+  const values = DATES.map((_, d) => {
+    if (c.start && d < c.start) return null;            // кампании ещё не было — разрыв, а не ноль
+    if (c.pause && d >= c.pause[0] && d <= c.pause[1]) { r(); return 0; } // пауза — честный ноль
+    const t = c.start ? d - c.start : d;
+    return Math.max(0, Math.round(c.base * (1 + c.trend * t) * (1 + c.amp * Math.sin((d + k) * 2 * Math.PI / 7)) * (1 + c.noise * (r() - .5) * 2)));
+  });
+  return { id: c.id, name: c.name, color: PALETTE[k], values };
+});
+const TOTAL = DATES.map((_, d) => SERIES.reduce((sum, s) => sum + (s.values[d] || 0), 0));
+// Показатели одной кампании очень разного масштаба: показы — тысячи, клики — сотни, корзины — десятки, заказы — единицы.
+const METRICS = (() => {
+  const r = seeded(777), out = { views: [], clicks: [], carts: [], orders: [], spend: [] };
+  for (let d = 0; d < N; d++) {
+    const views = Math.round(11000 * (1 + .008 * d) * (1 + .12 * Math.sin((d + 2) * 2 * Math.PI / 7)) * (1 + (r() - .5) * .16));
+    const clicks = Math.round(views * .028 * (1 + (r() - .5) * .25)), carts = Math.round(clicks * .12 * (1 + (r() - .5) * .4));
+    out.views.push(views); out.clicks.push(clicks); out.carts.push(carts);
+    out.orders.push(Math.max(0, Math.round(carts * .18 * (1 + (r() - .5) * .7)))); out.spend.push(Math.round(views / 1000 * 250 * (1 + (r() - .5) * .05)));
+  }
+  return out;
+})();
+const fmtNum = v => v == null ? '—' : Math.round(v).toLocaleString('ru-RU');
+const METRIC_SERIES = [
+  { id: 'views', name: 'Показы', values: METRICS.views, fmt: fmtNum },
+  { id: 'clicks', name: 'Клики', values: METRICS.clicks, fmt: fmtNum },
+  { id: 'carts', name: 'Корзины', values: METRICS.carts, fmt: fmtNum },
+  { id: 'orders', name: 'Заказы', values: METRICS.orders, fmt: fmtNum },
+  { id: 'spend', name: 'Расход', values: METRICS.spend, fmt: v => fmtRub(v), fmtShort: v => `${fmtShort(v)} ₽` }
+].map((s, k) => ({ ...s, color: PALETTE[k] }));
+const PREV_TOTAL = (() => { const r = seeded(4242); return TOTAL.map((v, d) => Math.round(v * (.8 + .1 * Math.sin(d / 4)) * (1 + (r() - .5) * .16))); })();
+
+// ---------- Форматы ----------
+const sum = arr => arr.reduce((a, v) => a + (v || 0), 0);
+const fmtRub = v => v == null ? '—' : `${Math.round(v).toLocaleString('ru-RU')} ₽`;
+const fmtShort = v => v >= 1e6 ? `${(v / 1e6).toLocaleString('ru-RU', { maximumFractionDigits: 1 })} млн` : v >= 1000 ? `${(v / 1000).toLocaleString('ru-RU', { maximumFractionDigits: v >= 1e4 ? 0 : 1 })} тыс` : v.toLocaleString('ru-RU', { maximumFractionDigits: v < 10 ? 1 : 0 });
+const fmtDay = d => d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short', timeZone: 'UTC' }).replace('.', '');
+const fmtDayLong = d => d.toLocaleDateString('ru-RU', { weekday: 'short', day: 'numeric', month: 'long', timeZone: 'UTC' });
+const fmtDelta = (cur, prev) => { if (!prev) return ''; const p = (cur - prev) / prev * 100; return `${p >= 0 ? '▲' : '▼'} ${Math.abs(p).toLocaleString('ru-RU', { maximumFractionDigits: 1 })}%`; };
+
+// ---------- DOM-помощники (подписи — только через textContent) ----------
+const NS = 'http://www.w3.org/2000/svg';
+function svgEl(tag, attrs, parent) { const e = document.createElementNS(NS, tag); for (const k in attrs) e.setAttribute(k, attrs[k]); if (parent) parent.appendChild(e); return e; }
+function h(tag, cls, text, parent) { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; if (parent) parent.appendChild(e); return e; }
+function niceScale(max, count, integer) { const raw = max / count, p = 10 ** Math.floor(Math.log10(raw)), f = raw / p; let step = (f <= 1 ? 1 : f <= 2 ? 2 : f <= 2.5 ? 2.5 : f <= 5 ? 5 : 10) * p; if (integer) step = step < 1 ? 1 : Number.isInteger(step) ? step : Math.floor(step); return { max: Math.ceil(max / step) * step, step }; }
+
+// Монотонная кривая (Fritsch–Carlson): сглаживает, но не выдумывает пиков и провалов между точками.
+function monotone(p) {
+  const n = p.length, dx = [], m = [], t = [];
+  for (let i = 0; i < n - 1; i++) { dx[i] = p[i + 1].x - p[i].x; m[i] = (p[i + 1].y - p[i].y) / dx[i]; }
+  t[0] = m[0]; t[n - 1] = m[n - 2];
+  for (let i = 1; i < n - 1; i++) t[i] = m[i - 1] * m[i] <= 0 ? 0 : 3 * (dx[i - 1] + dx[i]) / ((2 * dx[i] + dx[i - 1]) / m[i - 1] + (dx[i] + 2 * dx[i - 1]) / m[i]);
+  let d = `M${p[0].x.toFixed(1)},${p[0].y.toFixed(1)}`;
+  for (let i = 0; i < n - 1; i++) { const k = dx[i] / 3; d += `C${(p[i].x + k).toFixed(1)},${(p[i].y + t[i] * k).toFixed(1)} ${(p[i + 1].x - k).toFixed(1)},${(p[i + 1].y - t[i + 1] * k).toFixed(1)} ${p[i + 1].x.toFixed(1)},${p[i + 1].y.toFixed(1)}`; }
+  return d;
+}
+function segments(points) { const segs = []; let cur = []; for (const p of points) { if (p) cur.push(p); else if (cur.length) { segs.push(cur); cur = []; } } if (cur.length) segs.push(cur); return segs; }
+const lineD = (seg, curve) => curve && seg.length > 2 ? monotone(seg) : 'M' + seg.map(p => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join('L');
+
+// ---------- Общий линейный график ----------
+// series: [{id, name, color, values, role: 'main' | 'context' | 'prev', hidden}]
+let uid = 0;
+function lineChart(box, o) {
+  const id = ++uid; let lastWidth = 0, idx = null;
+  box.classList.add('chart');
+  const tip = h('div', 'tooltip', null, box); tip.setAttribute('role', 'status');
+  const notes = h('ol', 'event-notes', null, box);
+  function render() {
+    box.querySelector('svg')?.remove();
+    const W = Math.max(260, box.clientWidth), H = o.height || 300, narrow = W < 600;
+    const labels = o.endLabels && !narrow;
+    const m = { top: o.events ? 50 : 12, right: labels ? 196 : (o.compact ? 6 : 14), bottom: o.compact ? 22 : 30, left: o.compact ? 34 : 54 };
+    const vis = o.series.filter(s => !s.hidden), n = o.dates.length;
+    const pw = W - m.left - m.right, ph = H - m.top - m.bottom, bottom = m.top + ph;
+    const x = i => m.left + i * pw / (n - 1);
+    // Шкала Y: «linear» — общая для всех линий; «log» — 1, 10, 100, 1 000… (маленькие и большие числа на одном графике);
+    // «normalized» — у каждой линии своя: 100% = её максимум за период. yv(s, v) переводит значение линии в пиксели.
+    const scale = o.scale || 'linear', ticksY = [], all = vis.flatMap(s => s.values.filter(v => v != null));
+    let yv;
+    if (scale === 'normalized') {
+      const own = new Map(vis.map(s => [s.id, Math.max(0, ...s.values.filter(v => v != null)) || 1]));
+      yv = (s, v) => bottom - v / own.get(s.id) * ph;
+      for (const f of [0, .5, 1]) ticksY.push({ y: bottom - f * ph, label: `${f * 100}%` });
+    } else if (scale === 'log') {
+      const lo = -0.3, hi = Math.max(1, Math.ceil(Math.log10(Math.max(10, ...all))));
+      const pos = v => bottom - ((v > 0 ? Math.max(lo, Math.log10(v)) : lo) - lo) / (hi - lo) * ph;
+      yv = (s, v) => pos(v);
+      ticksY.push({ y: bottom, label: '0' }); for (let k = 0; k <= hi; k++) ticksY.push({ y: pos(10 ** k), label: fmtShort(10 ** k) });
+    } else {
+      // Целые данные (штуки, рубли) — целый шаг сетки: при максимуме 7 подписи 0, 2, 4, 6, 8, а не 0, 2,5, 5.
+      const { max, step } = niceScale(o.yMax ?? Math.max(1, ...all), o.compact ? 2 : 4, all.every(Number.isInteger));
+      yv = (s, v) => bottom - v / max * ph;
+      for (let v = 0; v <= max + 1e-9; v += step) ticksY.push({ y: bottom - v / max * ph, label: v === 0 ? '0' : fmtShort(v) });
+    }
+    const svg = svgEl('svg', { viewBox: `0 0 ${W} ${H}`, width: W, height: H, role: 'img', 'aria-label': o.label || 'Линейный график' }, box);
+    box.insertBefore(svg, tip);
+    const grid = svgEl('g', { class: 'grid' }, svg), ticks = svgEl('g', { class: 'ticks' }, svg);
+    for (const t of ticksY) {
+      if (t.y < bottom - .5) svgEl('line', { x1: m.left, x2: W - m.right, y1: t.y, y2: t.y }, grid);
+      svgEl('text', { x: m.left - 8, y: t.y + 4, 'text-anchor': 'end' }, ticks).textContent = t.label;
+    }
+    svgEl('line', { class: 'baseline', x1: m.left, x2: W - m.right, y1: bottom, y2: bottom }, svg);
+    const every = o.compact ? n - 1 : Math.ceil(n / (narrow ? 4 : 8));
+    for (let i = n - 1; i >= 0; i -= every) svgEl('text', { x: x(i), y: H - 8, 'text-anchor': o.compact ? (i === 0 ? 'start' : 'end') : 'middle' }, ticks).textContent = fmtDay(o.dates[i]);
+
+    // События: период — светлая полоса, разовое событие — вертикальная линия; подпись над графиком.
+    if (o.events) {
+      // Подписи событий в два ряда: наезжающая подпись поднимается во второй ряд; если места нет и там,
+      // а на узком экране — всегда, на графике остаётся номер, а расшифровка — под графиком.
+      const ev = svgEl('g', { class: 'events' }, svg), half = pw / (n - 1) / 2, rowEnd = [-Infinity, -Infinity], numbered = [];
+      [...o.events].sort((a, b) => a.from - b.from).forEach(e => {
+        const x1 = x(e.from) - (e.to != null ? half : 0), x2 = e.to != null ? x(e.to) + half : x1, cx = (x1 + x2) / 2;
+        if (e.to != null) svgEl('rect', { x: x1, y: m.top, width: x2 - x1, height: ph, fill: '#f1f2ef' }, ev);
+        let text = e.label, tw = text.length * 6.4, left = Math.min(Math.max(cx - tw / 2, m.left), W - m.right - tw);
+        let row = narrow ? undefined : [0, 1].find(r => left > rowEnd[r] + 10);
+        if (row === undefined) { numbered.push(e.label); text = String(numbered.length); tw = 8; left = cx - 4; row = [0, 1].find(r => left > rowEnd[r] + 6) ?? 0; }
+        rowEnd[row] = left + tw;
+        const top = m.top - 14 - row * 17;
+        svgEl('line', { x1: cx, x2: cx, y1: top + 4, y2: e.to != null ? m.top : bottom, stroke: '#b9c0bb', 'stroke-width': 1 }, ev);
+        svgEl('text', { x: left, y: top, class: 'event-label' }, ev).textContent = text;
+      });
+      notes.replaceChildren(...numbered.map((label, k) => h('li', null, `${k + 1} — ${label}`)));
+    }
+    // Серые линии контекста и прошлого периода — снизу, цветные — поверх.
+    const rank = s => s.role === 'context' ? 0 : s.role === 'prev' || s.role === 'raw' ? 1 : 2;
+    const layer = svgEl('g', {}, svg), defs = svgEl('defs', {}, svg);
+    for (const s of [...vis].sort((a, b) => rank(a) - rank(b))) {
+      const g = svgEl('g', { class: 'series', 'data-id': s.id }, layer);
+      const pts = s.values.map((v, i) => v == null ? null : { x: x(i), y: yv(s, v) });
+      const segs = segments(pts);
+      if (o.area && s.role !== 'context' && s.role !== 'prev') {
+        const gid = `grad-${id}-${s.id}`, lg = svgEl('linearGradient', { id: gid, x1: 0, x2: 0, y1: 0, y2: 1 }, defs);
+        svgEl('stop', { offset: '0%', 'stop-color': s.color, 'stop-opacity': .16 }, lg); svgEl('stop', { offset: '100%', 'stop-color': s.color, 'stop-opacity': .01 }, lg);
+        for (const seg of segs) if (seg.length > 1) svgEl('path', { d: `${lineD(seg, o.curve)}L${seg.at(-1).x.toFixed(1)},${bottom}L${seg[0].x.toFixed(1)},${bottom}Z`, fill: `url(#${gid})` }, g);
+      }
+      const width = s.width ?? (s.role === 'context' ? 1.25 : s.role === 'prev' ? 1.75 : 2);
+      for (const seg of segs) svgEl('path', { class: 'line', d: lineD(seg, o.curve), stroke: s.role === 'context' ? CONTEXT_COLOR : s.color, 'stroke-width': width, 'stroke-opacity': s.opacity ?? 1 }, g);
+    }
+
+    // Подписи на концах линий: имя + последнее значение; при наложении раздвигаются с выносной линией.
+    if (labels) {
+      const lg = svgEl('g', { class: 'endlabels' }, svg), lx = W - m.right + 14, gap = 17;
+      const items = vis.filter(s => s.role !== 'context').map(s => { const li = s.values.findLastIndex(v => v != null); return li < 0 ? null : { s, li, y0: yv(s, s.values[li]), y: yv(s, s.values[li]) }; }).filter(Boolean).sort((a, b) => a.y0 - b.y0);
+      for (let i = 1; i < items.length; i++) items[i].y = Math.max(items[i].y, items[i - 1].y + gap);
+      if (items.length && items.at(-1).y > bottom) { items.at(-1).y = bottom; for (let i = items.length - 2; i >= 0; i--) items[i].y = Math.min(items[i].y, items[i + 1].y - gap); }
+      for (const it of items) {
+        const g = svgEl('g', { 'data-id': it.s.id }, lg), ex = x(it.li);
+        if (Math.abs(it.y - it.y0) > 2 || it.li < n - 1) svgEl('path', { class: 'leader', d: `M${ex + 6},${it.y0}L${lx - 4},${it.y}`, fill: 'none' }, g);
+        svgEl('circle', { class: 'end-dot', cx: ex, cy: it.y0, r: 4, fill: it.s.color }, g);
+        const t = svgEl('text', { x: lx, y: it.y + 4 }, g), name = it.s.label || it.s.name;
+        t.append(name.length > 20 ? name.slice(0, 19) + '…' : name);
+        const v = svgEl('tspan', { class: 'v', dx: 6 }, t); v.textContent = (it.s.fmtShort || fmtShort)(it.s.values[it.li]);
+      }
+    }
+
+    // Курсор: вертикальная линия по ближайшему дню, точки на всех цветных линиях, одна подсказка на все линии.
+    const hov = svgEl('g', { class: 'hover', visibility: 'hidden' }, svg);
+    svgEl('line', { y1: m.top, y2: m.top + ph }, hov);
+    const dots = vis.filter(s => s.role !== 'context').map(s => ({ s, c: svgEl('circle', { r: 4.5, fill: s.color }, hov) }));
+    const overlay = svgEl('rect', { class: 'overlay', x: m.left, y: m.top, width: pw, height: ph + m.bottom - 4, tabindex: 0, 'aria-label': `${o.label || 'График'}: стрелки влево и вправо — по дням` }, svg);
+    const show = (i, py) => {
+      idx = Math.max(0, Math.min(n - 1, i)); const cx = x(idx);
+      hov.setAttribute('visibility', 'visible');
+      const ln = hov.querySelector('line'); ln.setAttribute('x1', cx); ln.setAttribute('x2', cx);
+      for (const d of dots) { const v = d.s.values[idx]; d.c.setAttribute('visibility', v == null ? 'hidden' : 'visible'); if (v != null) { d.c.setAttribute('cx', cx); d.c.setAttribute('cy', yv(d.s, v)); } }
+      let focusId = null;
+      if (o.nearestFocus && py != null) { let best = 22; for (const d of dots) { const v = d.s.values[idx]; if (v != null && Math.abs(yv(d.s, v) - py) < best) { best = Math.abs(yv(d.s, v) - py); focusId = d.s.id; } } o.onFocus?.(focusId); }
+      fillTip(idx, focusId ?? o.focusId?.());
+      const tw = tip.offsetWidth || 200, left = cx + 16 + tw > W ? cx - 16 - tw : cx + 16;
+      tip.style.left = `${Math.max(0, left)}px`; tip.style.top = `${m.top}px`; tip.classList.add('show');
+    };
+    const hide = () => { hov.setAttribute('visibility', 'hidden'); tip.classList.remove('show'); idx = null; if (o.nearestFocus) o.onFocus?.(null); };
+    const pick = e => { const r = svg.getBoundingClientRect(); return [Math.round((e.clientX - r.left - m.left) / pw * (n - 1)), e.clientY - r.top]; };
+    overlay.addEventListener('pointermove', e => { const [i, py] = pick(e); show(i, py); });
+    overlay.addEventListener('pointerleave', hide);
+    overlay.addEventListener('blur', hide);
+    overlay.addEventListener('keydown', e => { if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return; e.preventDefault(); show((idx ?? (e.key === 'ArrowLeft' ? n : -1)) + (e.key === 'ArrowLeft' ? -1 : 1)); });
+  }
+  // Подсказка: сначала значение (крупно), потом название; строки по убыванию значения.
+  function fillTip(i, focusId) {
+    tip.replaceChildren(); h('div', 't-date', fmtDayLong(o.dates[i]), tip);
+    let rows = o.series.filter(s => !s.hidden && (o.tooltipContext || s.role !== 'context'));
+    if (!o.keepOrder) rows = rows.sort((a, b) => (b.values[i] ?? -1) - (a.values[i] ?? -1));
+    for (const s of rows) {
+      const r = h('div', 't-row' + ((focusId && s.id !== focusId) || s.role === 'context' ? ' dim' : ''), null, tip);
+      h('i', 'k', null, r).style.background = s.role === 'context' ? CONTEXT_COLOR : s.color;
+      h('b', null, (s.fmt || fmtRub)(s.values[i]), r); h('span', null, s.name, r);
+    }
+    o.tooltipFoot?.(i, tip);
+  }
+  new ResizeObserver(() => { if (box.clientWidth !== lastWidth) { lastWidth = box.clientWidth; render(); } }).observe(box);
+  return { render: () => { lastWidth = box.clientWidth; render(); } };
+}
+
+// ---------- Обвязка карточек ----------
+function card({ num, title, desc, pros = [], cons = [] }) {
+  const c = h('section', 'card', null, document.getElementById('cards'));
+  const t = h('h2', null, null, c); h('span', 'num', String(num), t); t.append(title);
+  h('p', 'desc', desc, c);
+  const ul = h('ul', 'pros', null, c); pros.forEach(p => h('li', null, p, ul)); cons.forEach(p => h('li', 'con', p, ul));
+  return c;
+}
+function legend(parent, series, { toggle, onToggle, onHover } = {}) {
+  const ul = h('ul', 'legend', null, parent);
+  for (const s of series) {
+    const li = h('li', null, null, ul), item = h(toggle ? 'button' : 'span', 'item', null, li);
+    if (toggle) { item.type = 'button'; item.setAttribute('aria-pressed', String(!s.hidden)); item.title = 'Скрыть или показать линию'; item.onclick = () => { s.hidden = !s.hidden; item.setAttribute('aria-pressed', String(!s.hidden)); onToggle?.(); }; }
+    if (onHover) { item.addEventListener('pointerenter', () => onHover(s.id)); item.addEventListener('pointerleave', () => onHover(null)); item.addEventListener('focus', () => onHover(s.id)); item.addEventListener('blur', () => onHover(null)); }
+    h('i', 'key', null, item).style.background = s.role === 'prev' ? PREV_COLOR : s.color; item.append(s.name);
+  }
+  return ul;
+}
+function tableView(parent, columns) {
+  const btn = h('button', 'table-toggle', 'Показать таблицей', parent); btn.type = 'button';
+  const wrap = h('div', 'data-table', null, parent), table = h('table', null, null, wrap);
+  const hr = h('tr', null, null, h('thead', null, null, table)); h('th', null, 'Дата', hr); columns.forEach(c => h('th', null, c.name, hr));
+  const tb = h('tbody', null, null, table);
+  DATES.forEach((d, i) => { const r = h('tr', null, null, tb); h('td', null, fmtDay(d), r); columns.forEach(c => h('td', null, (c.fmt || fmtRub)(c.values[i]), r)); });
+  if (columns.every(c => !c.noTotal)) { const fr = h('tr', null, null, tb); h('td', null, 'Итого', fr).style.fontWeight = 800; columns.forEach(c => { const td = h('td', null, (c.fmt || fmtRub)(sum(c.values)), fr); td.style.fontWeight = 800; }); }
+  btn.onclick = () => { const open = wrap.classList.toggle('open'); btn.textContent = open ? 'Скрыть таблицу' : 'Показать таблицей'; };
+}
+const totalFoot = series => (i, tip) => { const f = h('div', 't-foot', null, tip); h('span', null, 'Всего за день', f); h('b', null, fmtRub(sum(series.filter(s => !s.hidden && s.role !== 'context').map(s => s.values[i]))), f); };
+const copySeries = (extra = {}) => SERIES.map(s => ({ ...s, ...extra }));
+
+// 1. Классический
+{
+  const c = card({ num: 1, title: 'Классический', desc: 'Все линии в цвете, тонкие, сетка едва заметна. Справа у каждой линии подпись с последним значением — не нужно искать цвет в легенде.', pros: ['сразу видно всё', 'подписи на концах линий'], cons: ['при 6+ линиях становится тесно'] });
+  const series = copySeries(); legend(c, series);
+  lineChart(h('div', null, null, c), { dates: DATES, series, height: 320, endLabels: true, label: 'Расход по кампаниям', tooltipFoot: totalFoot(series) });
+  tableView(c, series);
+}
+// 2. Фокус при наведении
+{
+  const c = card({ num: 2, title: 'Фокус при наведении', desc: 'Наведите на линию или на пункт легенды — она выделяется, остальные гаснут. Клик по легенде скрывает линию, шкала подстраивается под оставшиеся. Цвет кампании при этом не меняется.', pros: ['легко читать даже 8–10 линий', 'можно убрать лишнее'], cons: ['выделение заметно только при наведении'] });
+  const series = copySeries(); let chart;
+  const setFocus = focus => { box.classList.toggle('has-focus', !!focus); box.querySelectorAll('[data-id]').forEach(n => n.classList.toggle('is-focus', n.dataset.id === focus)); };
+  legend(c, series, { toggle: true, onToggle: () => chart.render(), onHover: setFocus });
+  const box = h('div', null, null, c);
+  chart = lineChart(box, { dates: DATES, series, height: 320, endLabels: true, nearestFocus: true, onFocus: setFocus, label: 'Расход по кампаниям', tooltipFoot: totalFoot(series) });
+  tableView(c, series);
+}
+// 3. Одна в цвете, остальные — серый фон
+{
+  const c = card({ num: 3, title: 'Одна линия в цвете, остальные — серым фоном', desc: 'Выбранная кампания нарисована цветом, остальные — тонкими серыми линиями для сравнения. Переключение — кнопками над графиком.', pros: ['максимально спокойно', 'видно место кампании среди остальных'], cons: ['сравнивать две конкретные линии неудобно'] });
+  const chips = h('div', 'chips', null, c); let active = SERIES[0].id; const series = copySeries();
+  const apply = () => series.forEach(s => s.role = s.id === active ? 'main' : 'context');
+  apply();
+  const box = h('div', null, null, c);
+  const chart = lineChart(box, { dates: DATES, series, height: 300, endLabels: true, area: true, label: 'Расход выбранной кампании на фоне остальных', tooltipContext: true });
+  for (const s of SERIES) {
+    const b = h('button', null, null, chips); b.type = 'button'; b.setAttribute('aria-pressed', String(s.id === active));
+    h('i', 'key', null, b).style.background = s.color; b.append(s.name);
+    b.onclick = () => { active = s.id; chips.querySelectorAll('button').forEach((x, k) => x.setAttribute('aria-pressed', String(SERIES[k].id === active))); apply(); chart.render(); };
+  }
+  tableView(c, series);
+}
+// 4. Плавные линии с заливкой
+{
+  const c = card({ num: 4, title: 'Плавные линии с лёгкой заливкой', desc: 'Сглаженные линии (без выдуманных пиков между точками) и прозрачная заливка под ними. Красиво для 2–3 линий; здесь — три крупнейшие кампании.', pros: ['самый «мягкий» и современный вид', 'хорошо для дашборда'], cons: ['заливки смешиваются при 4+ линиях'] });
+  const top = copySeries().sort((a, b) => sum(b.values) - sum(a.values)).slice(0, 3).sort((a, b) => PALETTE.indexOf(a.color) - PALETTE.indexOf(b.color));
+  legend(c, top);
+  lineChart(h('div', null, null, c), { dates: DATES, series: top, height: 300, curve: true, area: true, endLabels: true, label: 'Расход трёх крупнейших кампаний', tooltipFoot: totalFoot(top) });
+  tableView(c, top);
+}
+// 5. Маленькие графики
+{
+  const c = card({ num: 5, title: 'Маленькие графики по каждой кампании', desc: 'Каждая кампания — на своём мини-графике с общей шкалой, остальные видны серым фоном. Сверху — сумма за период.', pros: ['ничего не перекрывается', 'видна форма каждой кампании'], cons: ['занимает больше места'] });
+  legend(c, SERIES);
+  const grid = h('div', 'multiples', null, c), yMax = Math.max(...SERIES.flatMap(s => s.values.filter(v => v != null)));
+  for (const s of SERIES) {
+    const m = h('div', 'mini', null, grid), t = h('h3', null, null, m); h('i', 'key', null, t).style.background = s.color; t.append(s.name);
+    h('div', 'sum', fmtRub(sum(s.values)), m); h('div', 'sub', 'расход за 30 дней', m);
+    const series = SERIES.map(x => ({ ...x, role: x.id === s.id ? 'main' : 'context' }));
+    lineChart(h('div', null, null, m), { dates: DATES, series, height: 130, compact: true, area: true, yMax, label: `Расход: ${s.name}` });
+  }
+  tableView(c, SERIES);
+}
+// 6. С прошлым периодом
+{
+  const c = card({ num: 6, title: 'Сравнение с прошлым периодом', desc: 'Общий расход за 30 дней цветом и такой же отрезок до него — серой линией. В подсказке — изменение к тому же дню прошлого периода.', pros: ['сразу видно рост или падение', 'одна линия — никакой путаницы'], cons: ['подходит для одного показателя, не для кампаний'] });
+  const cur = sum(TOTAL), prev = sum(PREV_TOTAL), st = h('div', 'stat', null, c);
+  const a = h('div', null, null, st); h('small', null, 'Расход за 30 дней', a); const s1 = h('strong', null, fmtRub(cur), a); h('em', null, fmtDelta(cur, prev), s1);
+  const b = h('div', null, null, st); h('small', null, 'Прошлые 30 дней', b); h('strong', null, fmtRub(prev), b);
+  // Рост расхода сам по себе не хорош и не плох — изменение показываем нейтральным цветом, без зелёного/красного.
+  const series = [{ id: 'cur', name: 'Текущий период', label: 'Текущий', color: PALETTE[0], values: TOTAL, role: 'main' }, { id: 'prev', name: 'Прошлый период', label: 'Прошлый', color: PREV_COLOR, values: PREV_TOTAL, role: 'prev' }];
+  legend(c, series);
+  lineChart(h('div', null, null, c), { dates: DATES, series, height: 300, area: true, endLabels: true, keepOrder: true, label: 'Расход: текущий и прошлый период',
+    tooltipFoot: (i, tip) => { const f = h('div', 't-foot', null, tip); h('span', null, 'Изменение', f); h('b', null, fmtDelta(TOTAL[i], PREV_TOTAL[i]), f); } });
+  tableView(c, [{ name: 'Текущий период', values: TOTAL }, { name: 'Прошлый период', values: PREV_TOTAL }]);
+}
+// 7. Показатели разного масштаба — переключатель шкалы
+{
+  const c = card({ num: 7, title: 'Показатели разного масштаба: переключатель шкалы', desc: 'Показы — тысячи в день, заказы — 3–12. На общей шкале маленькие линии прижимаются к нулю. «Своя у каждой»: каждая линия растянута на всю высоту (100% — её максимум за период), а в подписях и подсказке — настоящие числа. «Логарифмическая»: шкала 1, 10, 100, 1 000 — видно и маленькие, и большие значения сразу.', pros: ['видны колебания и заказов, и показов', 'настоящие числа в подписях и подсказке'], cons: ['в режиме «своя» высоту разных линий сравнивать нельзя'] });
+  const modes = [['normalized', 'Своя шкала у каждой'], ['log', 'Логарифмическая'], ['linear', 'Общая шкала']];
+  const chips = h('div', 'chips', null, c), series = METRIC_SERIES.map(s => ({ ...s }));
+  const box = document.createElement('div'), setFocus = focus => { box.classList.toggle('has-focus', !!focus); box.querySelectorAll('[data-id]').forEach(n => n.classList.toggle('is-focus', n.dataset.id === focus)); };
+  legend(c, series, { onHover: setFocus }); c.appendChild(box);
+  const opts = { dates: DATES, series, height: 320, endLabels: true, keepOrder: true, nearestFocus: true, onFocus: setFocus, scale: 'normalized', label: 'Показатели кампании по дням' };
+  const chart = lineChart(box, opts);
+  for (const [mode, title] of modes) {
+    const b = h('button', null, title, chips); b.type = 'button'; b.setAttribute('aria-pressed', String(mode === opts.scale));
+    b.onclick = () => { opts.scale = mode; chips.querySelectorAll('button').forEach((x, k) => x.setAttribute('aria-pressed', String(modes[k][0] === mode))); chart.render(); };
+  }
+  tableView(c, series);
+}
+// 8. Мини-графики, у каждого своя шкала
+{
+  const c = card({ num: 8, title: 'Мини-графики, у каждого своя шкала', desc: 'Каждый показатель — на своём графике со своей шкалой и настоящими числами на ней. Сверху — сумма за период и среднее в день.', pros: ['честные числа на каждой шкале', 'маленькие значения не теряются'], cons: ['занимает больше места', 'нельзя наложить линии друг на друга'] });
+  const grid = h('div', 'multiples', null, c);
+  for (const s of METRIC_SERIES) {
+    const m = h('div', 'mini', null, grid), t = h('h3', null, null, m); h('i', 'key', null, t).style.background = s.color; t.append(s.name);
+    h('div', 'sum', s.fmt(sum(s.values)), m); h('div', 'sub', `за 30 дней · в среднем ${s.fmt(sum(s.values) / N)} в день`, m);
+    lineChart(h('div', null, null, m), { dates: DATES, series: [{ ...s, role: 'main' }], height: 130, compact: true, area: true, label: s.name });
+  }
+  tableView(c, METRIC_SERIES);
+}
+// 9. Скользящее среднее
+{
+  const c = card({ num: 9, title: 'Скользящее среднее для маленьких и «скачущих» чисел', desc: 'Заказов в день мало (3–12), и линия скачет. Бледная линия — каждый день, жирная — среднее за последние 7 дней: сразу видно, растут заказы или падают.', pros: ['тренд виден даже на маленьких числах', 'дневные значения не потеряны'], cons: ['первые 6 дней среднего нет'] });
+  const orders = METRICS.orders, fmt1 = v => v == null ? '—' : v.toLocaleString('ru-RU', { maximumFractionDigits: 1 });
+  const ma = orders.map((_, i) => i < 6 ? null : Math.round(sum(orders.slice(i - 6, i + 1)) / 7 * 10) / 10);
+  const series = [
+    { id: 'ma', name: 'Среднее за 7 дней', color: PALETTE[3], values: ma, width: 2.5, fmt: fmt1, fmtShort: fmt1 },
+    { id: 'day', name: 'Заказы за день', color: PALETTE[3], values: orders, width: 1.25, opacity: .4, fmt: fmtNum, role: 'raw' }
+  ];
+  const lg = legend(c, series); lg.querySelectorAll('.key')[1].style.opacity = .4;
+  lineChart(h('div', null, null, c), { dates: DATES, series, height: 280, endLabels: true, keepOrder: true, label: 'Заказы по дням и среднее за 7 дней' });
+  tableView(c, [{ name: 'Заказы за день', values: orders, fmt: fmtNum }, { name: 'Среднее за 7 дней', values: ma, fmt: fmt1, noTotal: true }]);
+}
+// 10. С отметками событий
+{
+  const c = card({ num: 10, title: 'С отметками событий', desc: 'Прямо на графике — что происходило: запуск кампании, смена ставки, пауза (серая полоса). Видно, к чему привело каждое действие.', pros: ['причина изменений видна сразу', 'удобно разбирать прошлые решения'], cons: ['события нужно где-то записывать (например, из истории изменений кампании)'] });
+  const series = SERIES.filter(s => ['promax', 'new', 'promo'].includes(s.id)).map(s => ({ ...s }));
+  legend(c, series);
+  lineChart(h('div', null, null, c), { dates: DATES, series, height: 330, endLabels: true, label: 'Расход кампаний с событиями', tooltipFoot: totalFoot(series),
+    events: [{ from: 11, label: 'Старт «Новинок октября»' }, { from: 14, label: 'Ставка Pro Max +20%' }, { from: 17, to: 20, label: 'Пауза «Промо»' }] });
+  tableView(c, series);
+}
+</script>
+</body>
+</html>
