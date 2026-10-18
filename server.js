@@ -1469,6 +1469,20 @@ function mergeMinusList(before = [], queries = [], action = 'exclude') {
   const selected = new Set(queries);
   return action === 'exclude' ? [...new Set([...before, ...queries])] : before.filter(query => !selected.has(query));
 }
+// Что отправить в set-minus. Кластеры, которые WB перевёл в архив, в список не попадают: get-minus их ещё
+// возвращает, но set-minus отклоняет весь запрос («cannot exclude archived presets: …»). Показов у архивных
+// кластеров нет, так что убрать их из минус-фраз безопасно. Исключать архивный запрос не нужно — он пропускается.
+function minusPlan(before = [], queries = [], action = 'exclude', archived = new Set()) {
+  const skipped = action === 'exclude' ? queries.filter(query => archived.has(query)) : [];
+  const usable = queries.filter(query => !skipped.includes(query));
+  const next = mergeMinusList(before, usable, action).filter(query => !archived.has(query));
+  return { next, usable, skipped, dropped: before.filter(query => archived.has(query)) };
+}
+// Названия архивных кластеров из ошибки WB: «cannot exclude archived presets: 'a', 'b'».
+function archivedPresetsFromError(message = '') {
+  const tail = String(message).match(/archived presets?:\s*(.+)$/i)?.[1] || '';
+  return [...tail.matchAll(/'([^']+)'/g)].map(match => match[1]);
+}
 
 async function readMinusList(token, campaignId, nmId) {
   const response = await wbRequest(token, NORMQUERY_GET_MINUS_URL, { method: 'POST', body: { items: [{ advert_id: Number(campaignId), nm_id: Number(nmId) }] } });
@@ -1501,14 +1515,27 @@ async function campaignMinus(id, campaignId, action, queriesInput, nmIdsInput) {
     if (!mine.length) continue;
     if (results.length) await wait(NORMQUERY_LIST_INTERVAL);
     try {
-      const before = await readMinusList(token, campaignId, nmId);
-      const next = mergeMinusList(before, mine, action);
-      if (next.length === before.length && next.every(query => before.includes(query))) { results.push({ nmId, ok: true, changed: 0, queries: mine }); continue; }
-      if (next.length > NORMQUERY_MINUS_LIMIT) throw apiError(400, `у товара было бы больше ${NORMQUERY_MINUS_LIMIT} минус-фраз — это предел WB`);
-      await wbRequest(token, NORMQUERY_SET_MINUS_URL, { method: 'POST', body: { advert_id: Number(campaignId), nm_id: Number(nmId), norm_queries: next } });
+      const before = await readMinusList(token, campaignId, nmId), archived = new Set(lists?.archived || []);
+      let plan = minusPlan(before, mine, action, archived);
+      const skippedNote = plan.skipped.length ? `в архиве WB, исключать не нужно: ${plan.skipped.join(', ')}` : '';
+      if (!plan.usable.length) { results.push({ nmId, ok: false, changed: 0, queries: mine, error: skippedNote }); continue; }
+      const unchanged = plan.next.length === before.length && plan.next.every(query => before.includes(query));
+      if (unchanged) { results.push({ nmId, ok: true, changed: 0, queries: mine, note: skippedNote }); continue; }
+      if (plan.next.length > NORMQUERY_MINUS_LIMIT) throw apiError(400, `у товара было бы больше ${NORMQUERY_MINUS_LIMIT} минус-фраз — это предел WB`);
+      const send = () => wbRequest(token, NORMQUERY_SET_MINUS_URL, { method: 'POST', body: { advert_id: Number(campaignId), nm_id: Number(nmId), norm_queries: plan.next } });
+      try { await send(); }
+      catch (error) {
+        // Список архивных из normquery/list мог отстать — убираем то, что WB назвал в ошибке, и пробуем ещё раз.
+        const named = archivedPresetsFromError(error.message);
+        if (!named.length || named.every(query => archived.has(query))) throw error;
+        named.forEach(query => archived.add(query)); plan = minusPlan(before, mine, action, archived);
+        await wait(NORMQUERY_LIST_INTERVAL); await send();
+      }
       const after = await readMinusList(token, campaignId, nmId);
-      const ok = mine.every(query => action === 'exclude' ? after.includes(query) : !after.includes(query));
-      results.push({ nmId, ok, changed: Math.abs(after.length - before.length), queries: mine, error: ok ? '' : 'WB принял запрос, но список минус-фраз не изменился' });
+      const ok = plan.usable.every(query => action === 'exclude' ? after.includes(query) : !after.includes(query));
+      const changed = plan.usable.filter(query => before.includes(query) !== after.includes(query)).length;
+      const note = [skippedNote, plan.dropped.length ? `из минус-фраз убраны кластеры в архиве WB: ${plan.dropped.join(', ')}` : ''].filter(Boolean).join('; ');
+      results.push({ nmId, ok, changed, queries: mine, note, error: ok ? '' : 'WB принял запрос, но список минус-фраз не изменился' });
     } catch (error) { results.push({ nmId, ok: false, changed: 0, queries: mine, error: error.message }); }
   }
   if (!results.length) throw apiError(400, 'Выбранные запросы не относятся к товарам кампании');
@@ -3302,7 +3329,7 @@ if (require.main === module) server.listen(PORT, '127.0.0.1', () => {
   console.log(`WB Analytics: http://127.0.0.1:${PORT}`);
 });
 
-module.exports = { server, cabinets, campaignActivePeriod, mergeMinusList, todoNmId, todoFields, productAdDays, productDetailPeriod, funnelOrdersByNmId, summarizeHourlyOrders, orderFeedPeriod, itemRatingPeriods, normalizeItemRatings, itemReturnsPeriod, normalizeItemReturns, returnStatusGroup, summarizeKeywordDaily, summarizePositionDaily, normalizeOrders, normalizeOrderFeed, enrichOrders, extractFunnel, summarizeAdStats, campaignProductDaily, withAdBudgets, summarizeKeywords, normalizeStockPreset, normalizePricePreset, adCampaignMayHaveStats, validAdPeriod, historyPeriod, historyChunks, planAdFetch, datesBetween, safeFolderName, funnelDaysToFetch, pairFunnelDays, funnelPeriods, funnelRangeBuckets, funnelRecordCounts, funnelRangeValues, funnelSalesMatrix, summaryTopProducts, summaryDrops, summaryProducts, normalizeFbsStocks, normalizeFbwStocks, normalizePrices, summarizeStockTotals, normalizeNewOrders, summarizeSupplies, normalizeTrbxes, chunkOrders, stickerType, localPhoto, WB_HOSTS };
+module.exports = { server, cabinets, campaignActivePeriod, mergeMinusList, minusPlan, archivedPresetsFromError, todoNmId, todoFields, productAdDays, productDetailPeriod, funnelOrdersByNmId, summarizeHourlyOrders, orderFeedPeriod, itemRatingPeriods, normalizeItemRatings, itemReturnsPeriod, normalizeItemReturns, returnStatusGroup, summarizeKeywordDaily, summarizePositionDaily, normalizeOrders, normalizeOrderFeed, enrichOrders, extractFunnel, summarizeAdStats, campaignProductDaily, withAdBudgets, summarizeKeywords, normalizeStockPreset, normalizePricePreset, adCampaignMayHaveStats, validAdPeriod, historyPeriod, historyChunks, planAdFetch, datesBetween, safeFolderName, funnelDaysToFetch, pairFunnelDays, funnelPeriods, funnelRangeBuckets, funnelRecordCounts, funnelRangeValues, funnelSalesMatrix, summaryTopProducts, summaryDrops, summaryProducts, normalizeFbsStocks, normalizeFbwStocks, normalizePrices, summarizeStockTotals, normalizeNewOrders, summarizeSupplies, normalizeTrbxes, chunkOrders, stickerType, localPhoto, WB_HOSTS };
 
 
 

@@ -1,7 +1,7 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { productAdDays, productDetailPeriod, todoNmId, todoFields, funnelOrdersByNmId, summarizeHourlyOrders, orderFeedPeriod, itemRatingPeriods, normalizeItemRatings, itemReturnsPeriod, normalizeItemReturns, returnStatusGroup, campaignActivePeriod, mergeMinusList, summarizeKeywordDaily, summarizePositionDaily, normalizeOrders, normalizeOrderFeed, enrichOrders, extractFunnel, summarizeAdStats, campaignProductDaily, withAdBudgets, summarizeKeywords, normalizeStockPreset, normalizePricePreset, adCampaignMayHaveStats, validAdPeriod, historyPeriod, historyChunks, planAdFetch, datesBetween, safeFolderName, funnelDaysToFetch, pairFunnelDays, funnelPeriods, funnelRangeBuckets, funnelRecordCounts, funnelRangeValues, funnelSalesMatrix, summaryTopProducts, summaryDrops, summaryProducts, normalizeFbsStocks, normalizeFbwStocks, normalizePrices, summarizeStockTotals, normalizeNewOrders, summarizeSupplies, normalizeTrbxes, chunkOrders, stickerType, localPhoto, WB_HOSTS } = require('../server');
+const { minusPlan, archivedPresetsFromError, productAdDays, productDetailPeriod, todoNmId, todoFields, funnelOrdersByNmId, summarizeHourlyOrders, orderFeedPeriod, itemRatingPeriods, normalizeItemRatings, itemReturnsPeriod, normalizeItemReturns, returnStatusGroup, campaignActivePeriod, mergeMinusList, summarizeKeywordDaily, summarizePositionDaily, normalizeOrders, normalizeOrderFeed, enrichOrders, extractFunnel, summarizeAdStats, campaignProductDaily, withAdBudgets, summarizeKeywords, normalizeStockPreset, normalizePricePreset, adCampaignMayHaveStats, validAdPeriod, historyPeriod, historyChunks, planAdFetch, datesBetween, safeFolderName, funnelDaysToFetch, pairFunnelDays, funnelPeriods, funnelRangeBuckets, funnelRecordCounts, funnelRangeValues, funnelSalesMatrix, summaryTopProducts, summaryDrops, summaryProducts, normalizeFbsStocks, normalizeFbwStocks, normalizePrices, summarizeStockTotals, normalizeNewOrders, summarizeSupplies, normalizeTrbxes, chunkOrders, stickerType, localPhoto, WB_HOSTS } = require('../server');
 
 test('возвраты: группы статусов, даты WB с пробелом, карточка товара, нулевой orderId', () => {
   assert.equal(returnStatusGroup('Готов к выдаче', true), 'ready');
@@ -745,6 +745,23 @@ test('минус-фразы: исключение добавляет к теку
   assert.deepEqual(mergeMinusList(before, ['плойки', 'расческа выпрямитель'], 'exclude'), ['расческа выпрямитель', 'плойка детская', 'плойки']);
   assert.deepEqual(mergeMinusList(before, ['плойка детская', 'фен'], 'include'), ['расческа выпрямитель']);
   assert.deepEqual(mergeMinusList([], ['фен'], 'include'), []);
+});
+
+test('минус-фразы: кластеры в архиве WB не отправляются — иначе set-minus отклоняет весь список', () => {
+  const archived = new Set(['подарки на 8 марта дочке взрослой', 'старый кластер']);
+  const before = ['фен дорожный', 'подарки на 8 марта дочке взрослой'];
+  // Исключение: архивные из текущего списка убираются, выбранный архивный запрос пропускается.
+  const exclude = minusPlan(before, ['фен мощный', 'старый кластер'], 'exclude', archived);
+  assert.deepEqual(exclude.next, ['фен дорожный', 'фен мощный']);
+  assert.deepEqual(exclude.usable, ['фен мощный']);
+  assert.deepEqual(exclude.skipped, ['старый кластер']);
+  assert.deepEqual(exclude.dropped, ['подарки на 8 марта дочке взрослой']);
+  // Включение: выбранный убирается, архивные тоже не уходят.
+  assert.deepEqual(minusPlan(before, ['фен дорожный'], 'include', archived).next, []);
+  assert.deepEqual(minusPlan(['а', 'б'], ['в'], 'exclude').next, ['а', 'б', 'в']);
+  assert.deepEqual(archivedPresetsFromError("WB 400: cannot exclude archived presets: 'подарки для женщин оригинальные на новый год', 'подарки на 8 марта дочке взрослой'"),
+    ['подарки для женщин оригинальные на новый год', 'подарки на 8 марта дочке взрослой']);
+  assert.deepEqual(archivedPresetsFromError('другая ошибка'), []);
 });
 
 test('статистика ключевого запроса по дням: суммирует товары, заполняет пустые дни, без показов у CPC', () => {

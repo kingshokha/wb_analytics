@@ -816,8 +816,10 @@
       if(!response.ok)throw new Error(result.error||'WB не принял изменение');
       const failed=result.results.filter(item=>!item.ok),changed=result.results.filter(item=>item.ok&&item.changed);
       const verb=action==='exclude'?'Исключено':'Включено';
-      keywordMessage(failed.length?`${verb} для ${number(changed.length)} из ${number(result.results.length)} артикулов. Не получилось: ${failed.map(item=>`${item.nmId} — ${item.error}`).join('; ')}`:
-        changed.length?`${verb} ${number(queries.length)} ${plural(queries.length,['запрос','запроса','запросов'])} для ${number(changed.length)} ${plural(changed.length,['артикула','артикулов','артикулов'])}. Статусы обновляются…`:'Изменений не потребовалось: запросы уже в нужном состоянии',failed.length?'error':'ok');
+      // Пояснения сервера: какие запросы в архиве WB пропущены и какие архивные кластеры убраны из минус-фраз.
+      const notes=result.results.filter(item=>item.ok&&item.note).map(item=>`${item.nmId}: ${item.note}`).join('; ');
+      keywordMessage((failed.length?`${verb} для ${number(changed.length)} из ${number(result.results.length)} артикулов. Не получилось: ${failed.map(item=>`${item.nmId} — ${item.error}`).join('; ')}`:
+        changed.length?`${verb} ${number(queries.length)} ${plural(queries.length,['запрос','запроса','запросов'])} для ${number(changed.length)} ${plural(changed.length,['артикула','артикулов','артикулов'])}. Статусы обновляются…`:'Изменений не потребовалось: запросы уже в нужном состоянии')+(notes?` Примечание — ${notes}`:''),failed.length?'error':'ok');
       closeConfirm();keywords.selected.clear();
       loadKeywords(keywords.data?.period||state.period,true);
     }catch(e){keywordMessage(`Не удалось: ${e.message}`,'error');closeConfirm()}
