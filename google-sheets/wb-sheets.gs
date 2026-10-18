@@ -159,12 +159,12 @@ function adRow(cabinet, advert, cards, now) {
     BID_TYPES[advert.bid_type] || advert.bid_type || '', PAYMENT_TYPES[settings.payment_type] || settings.payment_type || '', where || '—',
     nmIds.length, nmIds.join(', '), vendorCodes.join(', '), toDate(times.created), toDate(times.started), toDate(times.updated), now];
 }
-// «1, 2, 3» и «2, 3, 4» → ['убраны: 1', 'добавлены: 4'] для «Истории».
+// «1, 2, 3» → «2, 3, 4»: «убран 1, добавлен 4» — пишется в «Что изменилось»; «Было» и «Стало» — списки целиком.
 function listDiff(before, after) {
   const split = function (value) { return String(value || '').split(',').map(function (item) { return item.trim(); }).filter(String); };
   const was = split(before), now = split(after);
   const removed = was.filter(function (item) { return now.indexOf(item) < 0; }), added = now.filter(function (item) { return was.indexOf(item) < 0; });
-  return [removed.length ? 'убраны: ' + removed.join(', ') : '—', added.length ? 'добавлены: ' + added.join(', ') : '—'];
+  return [removed.length ? (removed.length > 1 ? 'убраны ' : 'убран ') + removed.join(', ') : '', added.length ? (added.length > 1 ? 'добавлены ' : 'добавлен ') + added.join(', ') : ''].filter(String).join(', ');
 }
 function round2(value) { return Math.round(Number(value || 0) * 100) / 100; }
 // Даты WB — строки с часовым поясом; «2100-01-01» и пустые означают «нет даты».
@@ -233,8 +233,8 @@ function writeWithHistory(book, name, headers, rows, failed, tracked, section, t
     if (!before) { if (oldCabinets[row[0]]) history.push([now, row[0], section, row[1], title(row), 'Появилось в списке', '—', section === 'Реклама' ? row[3] : row[6]]); return; }
     tracked.forEach(function (index) {
       if (same(before[index], row[index])) return;
-      const values = section === 'Реклама' && index === AD_LIST_COLUMN ? listDiff(before[index], row[index]) : [display(before[index]), display(row[index])];
-      history.push([now, row[0], section, row[1], title(row), headers[index], values[0], values[1]]);
+      const what = section === 'Реклама' && index === AD_LIST_COLUMN ? headers[index] + ': ' + listDiff(before[index], row[index]) : headers[index];
+      history.push([now, row[0], section, row[1], title(row), what, display(before[index]), display(row[index])]);
     });
   });
   old.forEach(function (row) {
