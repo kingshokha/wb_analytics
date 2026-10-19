@@ -9,6 +9,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Unbounded:wght@600;700&display=swap">
   <link rel="stylesheet" href="/date-range.css">
+  <link rel="stylesheet" href="/mini-charts.css">
   <style>
     /* Оформление — как у детализации кампании: те же цвета, шрифты, панели и боковое меню. */
     :root{--ink:#17211d;--muted:#6f7974;--line:#e4e8e5;--grid:#eef1ee;--bg:#f5f6f3;--purple:#7651e5;--violet:#9d77ff;--lime:#c9f27c;--red:#e76464;--green:#318f68;--shadow:0 15px 50px rgba(29,42,35,.07);
@@ -147,18 +148,6 @@
     .note-form button{height:34px;padding:0 14px;border:1px solid var(--line);border-radius:8px;background:white;color:var(--ink);font-size:12px;font-weight:700;cursor:pointer}
     .note-form button.primary{border-color:var(--purple);background:var(--purple);color:white}
     .hint{font-size:11.5px;color:var(--muted);line-height:1.5}
-    /* Мини-графики: у каждого своя шкала, сверху итог и среднее в день */
-    .mini-group{margin-top:16px}
-    .mini-group:first-child{margin-top:0}
-    .mini-group h3{margin:0 0 9px;font-size:11px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
-    .multiples{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:12px}
-    .mini{position:relative;min-width:0;padding:12px 12px 4px;border:1px solid var(--line);border-radius:12px}
-    .mini h4{display:flex;align-items:center;gap:8px;margin:0;font-size:12.5px;font-weight:700}
-    .mini h4 i{width:14px;height:3px;border-radius:2px;flex:0 0 14px}
-    .mini .sum{margin:6px 0 0;font-size:20px;font-weight:800}
-    .mini .sub{margin-bottom:4px;font-size:11.5px;color:var(--muted)}
-    .mini svg{display:block;width:100%;overflow:visible}
-    .mini .chart-tooltip{min-width:0;white-space:nowrap}
     /* Кампании товара */
     .table-wrap{overflow:auto}
     table{width:100%;border-collapse:collapse}
@@ -239,6 +228,7 @@
   function escapeHtml(value) { return String(value ?? '').replace(/[&<>"]/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[char])); }
 </script>
 <script src="/notifications.js"></script>
+<script src="/mini-charts.js"></script>
 <script src="/product.js"></script>
 </body>
 </html>

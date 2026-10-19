@@ -155,6 +155,18 @@ a.nav-item{text-decoration:none}a.nav-item:focus-visible{outline:2px solid var(-
 .price-product-note.error,.price-down{color:#b84949}
 .price-up{color:var(--green)}
 .price-down,.price-up{font-size:11px;font-weight:800}
+/* История цены в окне товара (данные из Google Таблицы) */
+.price-history-chart{padding:0}
+.price-history-legend{margin:2px 0 6px}
+.price-legend{display:inline-block;width:16px;border-top:3px solid var(--purple);border-radius:2px}
+.price-legend.base{border-top:2px dashed #9aa39e}
+.price-step{fill:none;stroke-width:2.5;stroke-linejoin:round}
+.price-step.current{stroke:var(--purple)}
+.price-step.base{stroke:#9aa39e;stroke-width:2;stroke-dasharray:5 4}
+.price-history-table{max-height:240px;overflow:auto;border:1px solid var(--line);border-radius:10px}
+.price-history-table table{width:100%;min-width:0!important}
+.price-history-table th,.price-history-table td{padding:7px 12px;font-size:12px;white-space:nowrap}
+.price-history-table tr.price-history-now td{background:#f6f4fd;font-weight:700}
 .price-edit{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 .price-edit-preview{margin:8px 0;font-size:13px}
 .price-edit-confirm{padding:12px 14px;border-radius:10px;background:#faf9ff;border:1px solid #e6defd}
@@ -263,6 +275,11 @@ tr.rating-row-attention td:first-child{box-shadow:inset 3px 0 0 var(--red)}
 .sidebar:not(.expanded) .cabinet>span:not(.avatar),.sidebar:not(.expanded) .cabinet em{display:none}
 .sidebar-backdrop{position:fixed;inset:0;z-index:49;background:#17211d59;opacity:0;pointer-events:none;transition:opacity .2s ease}
 body.sidebar-open .sidebar-backdrop{opacity:1;pointer-events:auto}
+/* «Реклама», столбец «Артикулы»: число товаров в кампании и сколько с показами за период */
+.ad-articles{display:grid;gap:2px;cursor:help}
+.ad-articles strong{font-size:13px}
+.ad-articles small{color:var(--green);font-size:11px;font-weight:700;white-space:nowrap}
+.ad-articles small.muted{color:var(--muted);font-weight:600}
 /* «Дела» (public/todo.js) */
 .t-review{--dot:#e05656}.t-client{--dot:#3a7fc2}.t-ads{--dot:#7651e5}.t-prices{--dot:#e8912f}.t-stock{--dot:#318f68}.t-card{--dot:#b955bd}.t-check{--dot:#22a19b}.t-other{--dot:#98a19c}
 .todo-add{display:grid;gap:10px;padding:16px 18px}

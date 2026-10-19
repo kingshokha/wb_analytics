@@ -1,0 +1,23 @@
+/* Мини-графики (public/mini-charts.js): детализация товара и детализация кампании */
+.mini-charts .mini-group{margin-top:16px}
+.mini-charts .mini-group:first-child{margin-top:0}
+.mini-charts .mini-group h3{margin:0 0 9px;font-size:11px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:#6f7974}
+.mini-charts .multiples{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:12px}
+.mini-charts .mini{position:relative;min-width:0;padding:12px 12px 4px;border:1px solid #e4e8e5;border-radius:12px;background:#fff}
+.mini-charts .mini h4{display:flex;align-items:center;gap:8px;margin:0;font-size:12.5px;font-weight:700;color:#17211d}
+.mini-charts .mini h4 i{width:14px;height:3px;border-radius:2px;flex:0 0 14px}
+.mini-charts .sum{margin:6px 0 0;font-size:20px;font-weight:800;color:#17211d}
+.mini-charts .sub{margin-bottom:4px;font-size:11.5px;color:#6f7974}
+.mini-charts .mini-chart{position:relative}
+.mini-charts svg{display:block;width:100%;overflow:visible}
+.mini-charts .mc-axis{fill:#6f7974;font-size:11px;font-variant-numeric:tabular-nums}
+.mini-charts .mc-grid{stroke:#eef1ee;stroke-width:1}
+.mini-charts .mc-base{stroke:#d3d9d5;stroke-width:1}
+.mini-charts .mini-overlay{cursor:crosshair}
+.mini-charts .mini-tip{position:absolute;z-index:4;padding:9px 11px;border-radius:10px;background:#17211df2;color:#fff;box-shadow:0 12px 35px #17211d38;pointer-events:none;font-size:11px;line-height:1.4;white-space:nowrap}
+.mini-charts .mini-tip[hidden]{display:none}
+.mini-charts .mini-tip strong{display:block;margin-bottom:4px;font-size:11.5px}
+.mini-charts .mini-tip .row{display:flex;gap:12px;color:#cbd3cf}
+.mini-charts .mini-tip .row b{margin-left:auto;color:#fff}
+.mini-charts .mini-empty{margin:0;color:#6f7974}
+@media(max-width:680px){.mini-charts .multiples{grid-template-columns:1fr}}

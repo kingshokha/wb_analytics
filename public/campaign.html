@@ -298,6 +298,39 @@
     .keyword-status.active{background:#e7f5ee;color:#277653}
     .keyword-status.excluded{background:#fdecec;color:#b84949}
     .keyword-status.archived{background:#f0f1ef;color:var(--muted)}
+    .keyword-status.partial{background:#fdf0e1;color:#a8650f;cursor:help}
+    /* Карандаш у названия кампании и форма переименования */
+    .campaign-rename{width:30px;height:30px;margin-left:8px;padding:0;display:inline-grid;place-items:center;border:1px solid var(--line);border-radius:8px;background:white;color:var(--muted);vertical-align:middle;cursor:pointer}
+    .campaign-rename:hover,.campaign-rename:focus-visible{border-color:var(--purple);color:var(--purple);outline:0}
+    .campaign-rename svg{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linejoin:round;stroke-linecap:round}
+    .rename-form{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:0 0 10px}
+    .rename-form input{flex:1 1 360px;min-width:0;height:42px;padding:0 12px;border:1px solid var(--purple);border-radius:10px;font:700 18px Manrope,Arial,sans-serif;color:var(--ink);outline:0}
+    .rename-form button{height:42px;padding:0 16px;border:1px solid var(--line);border-radius:10px;background:white;color:var(--ink);font-size:13px;font-weight:700;cursor:pointer}
+    .rename-form button.primary{border-color:var(--purple);background:var(--purple);color:white}
+    .rename-form small{flex-basis:100%;color:var(--muted);font-size:12px}
+    .rename-form small.error{color:#b84949}
+    /* Мини-графики под графиком по датам */
+    .minis-panel .panel-head{flex-wrap:wrap}
+    .minis-note{font-size:12px}
+    .minis-body{padding:16px 20px 20px}
+    /* «Размещение и ставки» → «История»: изменения статуса и ставок из Google Таблицы */
+    .setup-history{display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 12px;border:1px solid var(--line);border-radius:9px;background:white;color:var(--ink);font-size:12px;font-weight:700;cursor:pointer}
+    .setup-history:hover,.setup-history:focus-visible{border-color:var(--purple);color:var(--purple);outline:0}
+    .setup-history svg{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}
+    .history-dialog{width:min(760px,100%)}
+    .setup-history-body{max-height:min(620px,72vh);overflow:auto;padding:6px 20px 20px}
+    .history-day{margin:14px 0 6px;color:var(--muted);font-size:11px;font-weight:800;letter-spacing:.06em;text-transform:uppercase}
+    .history-item{display:grid;grid-template-columns:52px minmax(0,1fr);gap:10px;padding:8px 0;border-bottom:1px solid #eef0ee;font-size:12.5px;line-height:1.45}
+    .history-item time{color:var(--muted);font-size:11.5px;font-variant-numeric:tabular-nums}
+    .history-item b{font-weight:800}
+    .history-item .was{color:var(--muted);text-decoration:line-through}
+    .history-item small{display:block;color:var(--muted);font-size:11.5px}
+    .history-empty{margin:16px 0;color:var(--muted);font-size:13px;line-height:1.6}
+    /* Фильтр запросов по статусу: Все / Активные / Исключённые */
+    .keyword-filter{display:inline-flex;height:38px;padding:3px;gap:2px;border:1px solid var(--line);border-radius:9px;background:#fafbfa}
+    .keyword-filter button{padding:0 11px;border:0;border-radius:6px;background:transparent;color:var(--muted);font-size:12px;font-weight:700;cursor:pointer}
+    .keyword-filter button:hover{color:var(--ink)}
+    .keyword-filter button[aria-pressed=true]{background:white;color:#5b36c8;box-shadow:0 1px 3px #17211d1f}
     tbody tr.keyword-off td{background:#fdf7f6}
     tbody tr.keyword-off:hover td{background:#fbefed}
     tbody tr.keyword-selected td{background:#f4f2ff}
@@ -374,6 +407,7 @@
     @media(max-width:680px){.shell{display:block}.sidebar{display:none}main{padding:20px 14px 100px}h1{font-size:21px}.summary{grid-template-columns:1fr 1fr}.metric strong{font-size:15px}.chart-wrap{padding:10px}.chart-wrap svg{min-width:680px}.keyword-actions{left:50%;width:calc(100% - 20px);flex-wrap:wrap;justify-content:center}}
   </style>
   <link rel="stylesheet" href="/date-range.css">
+  <link rel="stylesheet" href="/mini-charts.css">
 </head>
 <body>
 <div class="shell">
@@ -398,7 +432,7 @@
   <main>
     <header class="page-head">
       <div class="page-title">
-        <h1><a id="campaignWbLink" class="campaign-title-link" target="_blank" rel="noopener noreferrer" title="Открыть кампанию в кабинете WB"><span id="campaignTitle">Детализация кампании</span></a><button type="button" class="campaign-id" id="campaignId" title="Скопировать номер кампании" hidden></button></h1>
+        <h1><a id="campaignWbLink" class="campaign-title-link" target="_blank" rel="noopener noreferrer" title="Открыть кампанию в кабинете WB"><span id="campaignTitle">Детализация кампании</span></a><button type="button" class="campaign-rename" id="campaignRename" title="Переименовать кампанию" aria-label="Переименовать кампанию" hidden><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M10.9 2.6l2.5 2.5-7.6 7.6-3.1.6.6-3.1z"/><path d="M9.6 3.9l2.5 2.5"/></svg></button><button type="button" class="campaign-id" id="campaignId" title="Скопировать номер кампании" hidden></button></h1>
         <div class="campaign-meta-row"><p id="campaignMeta" class="campaign-meta"></p>
           <span class="info-wrap"><button type="button" class="info-button" id="campaignInfoButton" aria-label="Подробности выгрузки" aria-describedby="campaignInfoPop">i</button>
             <span class="info-pop" id="campaignInfoPop" role="tooltip"><span id="periodLabel" class="period-label">Загрузка данных…</span><span id="exportProgress" class="export-progress" role="status" aria-live="polite"></span><span id="autoRefreshNote" class="export-progress"></span></span></span>
@@ -408,7 +442,7 @@
     </header>
     <section class="summary" id="summary"></section>
     <section class="panel setup-panel" id="setupPanel" hidden>
-      <div class="panel-head"><h2>Размещение и ставки</h2><div class="setup-head"><div class="setup-chips" id="setupPlacements"></div><p id="setupNote"></p></div></div>
+      <div class="panel-head"><h2>Размещение и ставки</h2><div class="setup-head"><div class="setup-chips" id="setupPlacements"></div><button type="button" class="setup-history" id="setupHistoryButton" title="История статуса и ставок из Google Таблицы"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 8a5.5 5.5 0 1 0 1.6-3.9"/><path d="M2.3 2.6v2.6h2.6"/><path d="M8 5v3.2l2.1 1.3"/></svg>История</button></div></div>
       <div class="table-wrap"><table class="setup-table"><thead><tr id="setupHead"><th>Товар</th><th>Предмет</th><th>Ставка в поиске</th><th>Ставка в рекомендациях</th></tr></thead><tbody id="setupBids"></tbody></table></div>
     </section>
     <section class="panel chart-panel">
@@ -416,6 +450,10 @@
       <div class="chart-controls" id="chartOptions" aria-label="Данные графика"></div>
       <div class="chart-wrap"><svg id="dailyChart" viewBox="0 0 1200 290" role="img" aria-label="Линейный график рекламной кампании"></svg><div id="chartTooltip" class="chart-tooltip" hidden></div></div>
       <p class="chart-scale-note" id="chartScaleNote"></p>
+    </section>
+    <section class="panel minis-panel">
+      <div class="panel-head"><h2>Показатели по дням</h2><p class="minis-note">У каждого графика своя шкала. Сверху — итог за период и среднее в день; у долей и средних — значение за период. Пунктир — ваши заметки по кампании.</p></div>
+      <div class="minis-body" id="campaignMinis"></div>
     </section>
     <section class="panel">
       <div class="panel-head"><h2>Статистика по датам</h2><details class="columns-menu" data-columns-table="daily"><summary>Столбцы</summary><div class="columns-options"></div></details></div>
@@ -426,7 +464,7 @@
       <div class="table-wrap"><table class="product-table metrics-table"><thead><tr id="productHead"></tr></thead><tbody id="productDailyBody"></tbody></table></div>
     </section>
     <section class="panel">
-      <div class="panel-head keywords-head"><h2>Ключевые запросы</h2><div class="keywords-controls"><label class="keyword-toggle"><input type="checkbox" id="keywordOnlyInactive"> Только неактивные</label><select id="keywordProduct" aria-label="Артикул"><option value="">Все артикулы</option></select><button id="keywordRangeReset" class="secondary-button" type="button" hidden>Сбросить «от — до»</button><details class="columns-menu" data-columns-table="keywords"><summary>Столбцы</summary><div class="columns-options"></div></details><button id="keywordRefresh" type="button">Обновить</button></div></div>
+      <div class="panel-head keywords-head"><h2>Ключевые запросы</h2><div class="keywords-controls"><div class="keyword-filter" id="keywordStatusFilter" role="group" aria-label="Какие запросы показать"><button type="button" data-keyword-filter="all" aria-pressed="true">Все</button><button type="button" data-keyword-filter="active" aria-pressed="false">Активные</button><button type="button" data-keyword-filter="excluded" aria-pressed="false" title="Неактивные, частично исключённые и в архиве">Исключённые</button></div><select id="keywordProduct" aria-label="Артикул"><option value="">Все артикулы</option></select><button id="keywordRangeReset" class="secondary-button" type="button" hidden>Сбросить «от — до»</button><details class="columns-menu" data-columns-table="keywords"><summary>Столбцы</summary><div class="columns-options"></div></details><button id="keywordRefresh" type="button">Обновить</button></div></div>
       <p id="keywordsNote" class="keywords-note">Загрузка ключевых запросов…</p>
       <div id="keywordMessage" class="keyword-message" role="status" aria-live="polite"></div>
       <div class="table-wrap"><table class="keywords-table metrics-table"><thead><tr id="keywordHead"><th><input type="checkbox" id="keywordSelectAll" aria-label="Выбрать все запросы на странице"></th><th data-keyword-key="query"><span class="keyword-search"><input id="keywordSearch" type="search" placeholder="Поиск по запросу" autocomplete="off" aria-label="Поиск по запросу"></span>Запрос ↕</th><th data-keyword-key="status">Статус ↕</th></tr></thead><tbody id="keywordsBody"></tbody></table></div>
@@ -442,9 +480,11 @@
 <div id="keywordHistoryPop" class="history-pop" role="dialog" aria-label="История отметок и комментариев запроса" hidden></div>
 <div id="tagColorsModal" class="modal" hidden><div class="modal-backdrop" data-tag-colors-close></div><div class="modal-dialog small" role="dialog" aria-modal="true" aria-labelledby="tagColorsTitle"><div class="modal-head"><h2 id="tagColorsTitle">Цвета отметок</h2><button type="button" class="modal-close" data-tag-colors-close aria-label="Закрыть">×</button></div><div class="confirm-body" id="tagColorsBody"></div></div></div>
 <div id="keywordDailyModal" class="modal" hidden><div class="modal-backdrop" data-kwday-close></div><div class="modal-dialog" role="dialog" aria-modal="true" aria-labelledby="keywordDailyTitle"><div class="modal-head"><div><h2 id="keywordDailyTitle">Запрос по дням</h2><p id="keywordDailyNote" class="kwday-note"></p></div><button type="button" class="modal-close" data-kwday-close aria-label="Закрыть">×</button></div><div class="modal-table-wrap"><div class="kwday-metrics" id="keywordDailyMetrics"></div><div class="kwday-chart" id="keywordDailyChart"></div><table class="kwday-table"><thead><tr><th>Дата</th><th class="views-col">Показы</th><th>Клики</th><th class="views-col">CTR</th><th class="views-col">CPM</th><th>CPC</th><th>Затраты</th><th>Корзины</th><th>Заказы</th><th>CR</th><th>Ср. позиция</th></tr></thead><tbody id="keywordDailyBody"></tbody></table></div></div></div>
+<div id="setupHistoryModal" class="modal" hidden><div class="modal-backdrop" data-setup-history-close></div><div class="modal-dialog small history-dialog" role="dialog" aria-modal="true" aria-labelledby="setupHistoryTitle"><div class="modal-head"><div><h2 id="setupHistoryTitle">История кампании</h2><p id="setupHistoryNote" class="kwday-note"></p></div><button type="button" class="modal-close" data-setup-history-close aria-label="Закрыть">×</button></div><div class="setup-history-body" id="setupHistoryBody"></div></div></div>
 <div id="productModal" class="modal" hidden><div class="modal-backdrop" data-modal-close></div><div class="modal-dialog" role="dialog" aria-modal="true" aria-labelledby="productModalTitle"><div class="modal-head"><h2 id="productModalTitle">Статистика артикула</h2><button type="button" class="modal-close" data-modal-close aria-label="Закрыть">×</button></div><div class="modal-table-wrap"><table><thead><tr><th>Дата</th><th>Показы</th><th>Клики</th><th>CTR</th><th>CPC</th><th>Корзины</th><th>Заказы</th><th>Отмены</th><th>Сумма заказов</th><th>Затраты</th><th>ДРР, %</th></tr></thead><tbody id="productModalBody"></tbody></table></div></div></div>
 <script src="/sidebar.js"></script>
 <script src="/date-range.js"></script>
+<script src="/mini-charts.js"></script>
 <script src="/campaign.js"></script>
 </body>
 </html>

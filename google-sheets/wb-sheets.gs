@@ -17,7 +17,12 @@ const WB_URLS = {
   cards: 'https://content-api.wildberries.ru/content/v2/get/cards/list',
   adverts: 'https://advert-api.wildberries.ru/api/advert/v2/adverts?statuses=4,7,8,9,11'
 };
-const SHEET_NAMES = { prices: 'Цены', ads: 'Реклама', history: 'История', log: 'Журнал обновлений' };
+const SHEET_NAMES = { prices: 'Цены', ads: 'Реклама', bids: 'Ставки', history: 'История', log: 'Журнал обновлений' };
+// «Ставки»: строка на пару «кампания + артикул» — ставки в поиске и рекомендациях из nm_settings.bids_kopecks.
+// Только кампании, которые могут показываться (активна, на паузе, готова к запуску): у завершённых ставки не меняются.
+const BID_HEADERS = ['Кабинет', 'ID кампании', 'Кампания', 'Статус', 'Ставка', 'Артикул WB', 'Артикул продавца', 'Предмет', 'Ставка в поиске, ₽', 'Ставка в рекомендациях, ₽', 'Обновлено'];
+const BID_TRACKED = [8, 9];
+const BID_STATUSES = { 4: true, 9: true, 11: true };
 const PRICE_HEADERS = ['Кабинет', 'Артикул WB', 'Артикул продавца', 'Название', 'Цена до скидки, ₽', 'Скидка продавца, %', 'Цена со скидкой, ₽', 'Скидка WB Клуба, %', 'Цена в WB Клубе, ₽', 'Цены по размерам', 'Обновлено'];
 const AD_HEADERS = ['Кабинет', 'ID кампании', 'Название', 'Статус', 'Ставка', 'Оплата', 'Где показывается', 'Товаров', 'Артикулы WB', 'Артикулы продавца', 'Создана', 'Запущена', 'Изменена', 'Обновлено'];
 const HISTORY_HEADERS = ['Когда', 'Кабинет', 'Раздел', 'ID', 'Товар или кампания', 'Что изменилось', 'Было', 'Стало'];
@@ -45,7 +50,37 @@ function onOpen() {
     .addSeparator()
     .addItem('Включить обновление раз в час', 'enableHourly')
     .addItem('Выключить автообновление', 'disableHourly')
+    .addSeparator()
+    .addItem('Ключ для сайта', 'showSiteKey')
     .addToUi();
+}
+
+// ---------- Данные для сайта WB Pulse (веб-приложение) ----------
+// Сайт берёт отсюда «Историю» — для графика цены товара и истории статусов и ставок кампании:
+//   GET <адрес веб-приложения>?key=<ключ>&id=<артикул WB или ID кампании, можно через запятую>&sections=Цены,Ставки
+// Без верного ключа — ошибка. Ключ создаётся пунктом меню «WB → Ключ для сайта» и хранится в свойствах скрипта.
+function doGet(e) {
+  const params = (e && e.parameter) || {}, key = PropertiesService.getScriptProperties().getProperty('WB_SITE_KEY');
+  if (!key || params.key !== key) return jsonOutput({ error: 'Неверный ключ доступа к таблице' });
+  const book = SpreadsheetApp.getActive(), history = book.getSheetByName(SHEET_NAMES.history), log = book.getSheetByName(SHEET_NAMES.log);
+  const list = function (value) { return String(value || '').split(',').map(function (item) { return item.trim(); }).filter(String); };
+  const ids = list(params.id), sections = list(params.sections);
+  const rows = history && history.getLastRow() > 1 ? history.getRange(2, 1, history.getLastRow() - 1, HISTORY_HEADERS.length).getValues() : [];
+  const items = rows.filter(function (row) { return (!ids.length || ids.indexOf(String(row[3])) >= 0) && (!sections.length || sections.indexOf(String(row[2])) >= 0); })
+    .slice(0, 3000).map(function (row) { return { at: isoDate(row[0]), cabinet: row[1], section: row[2], id: String(row[3]), title: row[4], what: row[5], before: row[6], after: row[7] }; });
+  // since — первое обновление таблицы: раньше этого момента изменений не видно (журнал — новые сверху).
+  const since = log && log.getLastRow() > 1 ? isoDate(log.getRange(log.getLastRow(), 1).getValue()) : null;
+  return jsonOutput({ items: items, since: since, now: new Date().toISOString() });
+}
+function jsonOutput(value) { return ContentService.createTextOutput(JSON.stringify(value)).setMimeType(ContentService.MimeType.JSON); }
+function isoDate(value) { return value instanceof Date ? value.toISOString() : (value ? String(value) : null); }
+function showSiteKey() {
+  const props = PropertiesService.getScriptProperties();
+  let key = props.getProperty('WB_SITE_KEY');
+  if (!key) { key = (Utilities.getUuid() + Utilities.getUuid()).replace(/-/g, ''); props.setProperty('WB_SITE_KEY', key); }
+  SpreadsheetApp.getUi().alert('Ключ для сайта WB Pulse',
+    'Впишите в файл .env сайта строку и перезапустите сервер:\n\nWB_SHEET_KEY=' + key +
+    '\n\nКлюч даёт доступ к «Истории» таблицы (цены, статусы, ставки) — никому его не пересылайте и не публикуйте.', SpreadsheetApp.getUi().ButtonSet.OK);
 }
 
 // ---------- Кабинеты: [{ name, token }] в свойствах скрипта ----------
@@ -159,6 +194,17 @@ function adRow(cabinet, advert, cards, now) {
     BID_TYPES[advert.bid_type] || advert.bid_type || '', PAYMENT_TYPES[settings.payment_type] || settings.payment_type || '', where || '—',
     nmIds.length, nmIds.join(', '), vendorCodes.join(', '), toDate(times.created), toDate(times.started), toDate(times.updated), now];
 }
+// Ставки кампании по артикулам. Если место показа выключено, ставки там нет — пустая ячейка, а не 0.
+function bidRows(cabinet, advert, cards, now) {
+  if (!BID_STATUSES[advert.status]) return [];
+  const settings = advert.settings || {}, placements = settings.placements || {};
+  return (advert.nm_settings || []).filter(function (item) { return Number(item.nm_id) > 0; }).map(function (item) {
+    const bids = item.bids_kopecks || {}, nmId = Number(item.nm_id);
+    return [cabinet, Number(advert.id), settings.name || ('Кампания #' + advert.id), AD_STATUSES[advert.status] || ('Статус ' + advert.status),
+      BID_TYPES[advert.bid_type] || advert.bid_type || '', nmId, (cards[nmId] || {}).vendorCode || '', (item.subject || {}).name || '',
+      placements.search ? round2(Number(bids.search || 0) / 100) : '', placements.recommendations ? round2(Number(bids.recommendations || 0) / 100) : '', now];
+  });
+}
 // «1, 2, 3» → «2, 3, 4»: «убран 1, добавлен 4» — пишется в «Что изменилось»; «Было» и «Стало» — списки целиком.
 function listDiff(before, after) {
   const split = function (value) { return String(value || '').split(',').map(function (item) { return item.trim(); }).filter(String); };
@@ -183,7 +229,7 @@ function refreshAll() {
     if (!cabinets.length) { notify('Сначала добавьте кабинет: WB → Добавить кабинет (токен)'); return; }
     notify('Обновляю цены и рекламу…');
     const book = SpreadsheetApp.getActive(), now = new Date();
-    const priceRows = [], adRows = [], logRows = [], failedPrices = {}, failedAds = {};
+    const priceRows = [], adRows = [], bidRowsAll = [], logRows = [], failedPrices = {}, failedAds = {};
     cabinets.forEach(function (cabinet) {
       const notes = [];
       // Карточки нужны обоим листам: названия — ценам, артикулы продавца — рекламе.
@@ -196,7 +242,7 @@ function refreshAll() {
       } catch (error) { failedPrices[cabinet.name] = true; notes.unshift('цены: ошибка — ' + error.message); }
       try {
         const adverts = loadAdverts(cabinet.token);
-        adverts.forEach(function (advert) { adRows.push(adRow(cabinet.name, advert, cards, now)); });
+        adverts.forEach(function (advert) { adRows.push(adRow(cabinet.name, advert, cards, now)); bidRowsAll.push.apply(bidRowsAll, bidRows(cabinet.name, advert, cards, now)); });
         notes.push('реклама: ' + adverts.length + ' кампаний');
       } catch (error) { failedAds[cabinet.name] = true; notes.push('реклама: ошибка — ' + error.message); }
       logRows.push([now, cabinet.name, notes.join('; ')]);
@@ -204,14 +250,22 @@ function refreshAll() {
     priceRows.sort(function (a, b) { return String(a[0]).localeCompare(b[0]) || String(a[2]).localeCompare(b[2]) || a[1] - b[1]; });
     const statusOrder = function (row) { return row[3] in AD_STATUS_ORDER ? AD_STATUS_ORDER[row[3]] : 9; };
     adRows.sort(function (a, b) { return String(a[0]).localeCompare(b[0]) || statusOrder(a) - statusOrder(b) || String(a[2]).localeCompare(b[2]); });
+    bidRowsAll.sort(function (a, b) { return String(a[0]).localeCompare(b[0]) || statusOrder(a) - statusOrder(b) || String(a[2]).localeCompare(b[2]) || String(a[6]).localeCompare(b[6]) || a[5] - b[5]; });
     const history = [];
-    writeWithHistory(book, SHEET_NAMES.prices, PRICE_HEADERS, priceRows, failedPrices, PRICE_TRACKED, 'Цены', function (row) { return [row[2], row[3]].filter(String).join(' · '); }, history, now,
-      { 5: '#,##0', 6: '0', 7: '#,##0', 8: '0', 9: '#,##0', 11: DATE_FORMAT });
-    writeWithHistory(book, SHEET_NAMES.ads, AD_HEADERS, adRows, failedAds, AD_TRACKED, 'Реклама', function (row) { return row[2]; }, history, now,
-      { 9: '@', 10: '@', 11: DATE_FORMAT, 12: DATE_FORMAT, 13: DATE_FORMAT, 14: DATE_FORMAT });
+    writeWithHistory(book, history, now, { name: SHEET_NAMES.prices, headers: PRICE_HEADERS, rows: priceRows, failed: failedPrices, tracked: PRICE_TRACKED, section: 'Цены',
+      title: function (row) { return [row[2], row[3]].filter(String).join(' · '); }, summary: function (row) { return row[6]; },
+      formats: { 5: '#,##0', 6: '0', 7: '#,##0', 8: '0', 9: '#,##0', 11: DATE_FORMAT } });
+    writeWithHistory(book, history, now, { name: SHEET_NAMES.ads, headers: AD_HEADERS, rows: adRows, failed: failedAds, tracked: AD_TRACKED, section: 'Реклама',
+      title: function (row) { return row[2]; }, summary: function (row) { return row[3]; }, listColumn: AD_LIST_COLUMN,
+      formats: { 9: '@', 10: '@', 11: DATE_FORMAT, 12: DATE_FORMAT, 13: DATE_FORMAT, 14: DATE_FORMAT } });
+    // Ставки: ключ — кабинет, кампания и артикул; появление и пропажа артикулов уже видны в «Реклама → Артикулы WB».
+    writeWithHistory(book, history, now, { name: SHEET_NAMES.bids, headers: BID_HEADERS, rows: bidRowsAll, failed: failedAds, tracked: BID_TRACKED, section: 'Ставки',
+      key: function (row) { return row[0] + '|' + row[1] + '|' + row[5]; }, presence: false,
+      title: function (row) { return row[2] + ' · ' + row[5] + (row[6] ? ' (' + row[6] + ')' : ''); },
+      formats: { 9: '#,##0.00', 10: '#,##0.00', 11: DATE_FORMAT } });
     prependRows(sheet(book, SHEET_NAMES.history), HISTORY_HEADERS, history, HISTORY_LIMIT, { 1: DATE_FORMAT });
     prependRows(sheet(book, SHEET_NAMES.log), LOG_HEADERS, logRows, LOG_LIMIT, { 1: DATE_FORMAT });
-    notify('Готово: товаров ' + priceRows.length + ', кампаний ' + adRows.length + ', изменений ' + history.length);
+    notify('Готово: товаров ' + priceRows.length + ', кампаний ' + adRows.length + ', ставок ' + bidRowsAll.length + ', изменений ' + history.length);
   } finally { lock.releaseLock(); }
 }
 
@@ -219,29 +273,34 @@ function refreshAll() {
 // Строки кабинетов, по которым WB сейчас ответил ошибкой, остаются прежними — ошибка не стирает данные.
 // Если столбцы листа изменились (новая версия скрипта), старые строки не сравниваются и не сохраняются — иначе
 // значения съехавших столбцов попали бы в «Историю» как изменения.
-function writeWithHistory(book, name, headers, rows, failed, tracked, section, title, history, now, formats) {
-  const target = sheet(book, name), lastColumn = Math.max(1, target.getLastColumn ? target.getLastColumn() : headers.length);
+// Настройки листа: name, headers, rows, failed (кабинеты с ошибкой WB), tracked (сравниваемые столбцы), section,
+// title(row) — подпись в «Истории», summary(row) — значение для «Появилось / Пропало», key(row) — по умолчанию
+// кабинет + ID, presence: false — не писать «Появилось / Пропало», listColumn — столбец-список, formats.
+function writeWithHistory(book, history, now, options) {
+  const headers = options.headers, rows = options.rows, failed = options.failed, section = options.section, title = options.title;
+  const key = options.key || function (row) { return row[0] + '|' + row[1]; }, presence = options.presence !== false;
+  const target = sheet(book, options.name), lastColumn = Math.max(1, target.getLastColumn ? target.getLastColumn() : headers.length);
   const sameLayout = target.getLastRow() > 0 && target.getRange(1, 1, 1, lastColumn).getValues()[0].filter(String).join('|') === headers.join('|');
   const old = sameLayout && target.getLastRow() > 1 ? target.getRange(2, 1, target.getLastRow() - 1, headers.length).getValues() : [];
-  const key = function (row) { return row[0] + '|' + row[1]; }, oldByKey = {}, newKeys = {}, oldCabinets = {};
+  const oldByKey = {}, newKeys = {}, oldCabinets = {};
   old.forEach(function (row) { oldByKey[key(row)] = row; oldCabinets[row[0]] = true; });
   const kept = old.filter(function (row) { return failed[row[0]]; });
   rows.forEach(function (row) {
     newKeys[key(row)] = true;
     const before = oldByKey[key(row)];
     // Первое обновление кабинета — без истории: сравнивать не с чем.
-    if (!before) { if (oldCabinets[row[0]]) history.push([now, row[0], section, row[1], title(row), 'Появилось в списке', '—', section === 'Реклама' ? row[3] : row[6]]); return; }
-    tracked.forEach(function (index) {
+    if (!before) { if (presence && oldCabinets[row[0]]) history.push([now, row[0], section, row[1], title(row), 'Появилось в списке', '—', display(options.summary(row))]); return; }
+    options.tracked.forEach(function (index) {
       if (same(before[index], row[index])) return;
-      const what = section === 'Реклама' && index === AD_LIST_COLUMN ? headers[index] + ': ' + listDiff(before[index], row[index]) : headers[index];
+      const what = index === options.listColumn ? headers[index] + ': ' + listDiff(before[index], row[index]) : headers[index];
       history.push([now, row[0], section, row[1], title(row), what, display(before[index]), display(row[index])]);
     });
   });
-  old.forEach(function (row) {
+  if (presence) old.forEach(function (row) {
     if (failed[row[0]] || newKeys[key(row)] || !rowsHaveCabinet(rows, row[0])) return;
-    history.push([now, row[0], section, row[1], title(row), 'Пропало из списка', section === 'Реклама' ? row[3] : row[6], '—']);
+    history.push([now, row[0], section, row[1], title(row), 'Пропало из списка', display(options.summary(row)), '—']);
   });
-  writeSheet(target, headers, rows.concat(kept), formats);
+  writeSheet(target, headers, rows.concat(kept), options.formats);
 }
 function rowsHaveCabinet(rows, cabinet) { return rows.some(function (row) { return row[0] === cabinet; }); }
 function same(a, b) { return normalize(a) === normalize(b); }

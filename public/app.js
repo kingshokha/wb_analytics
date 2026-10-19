@@ -116,11 +116,24 @@ const AD_TIPS={
 function adWbCampaignUrl(id){const from=$('#dateFrom').value,to=$('#dateTo').value,period=/^\d{4}-\d{2}-\d{2}$/.test(from)&&/^\d{4}-\d{2}-\d{2}$/.test(to)?`?from=${from}T00:00:00Z&to=${to}T00:00:00Z`:'';return `https://cmp.wildberries.ru/campaigns/edit/${encodeURIComponent(id)}${period}`}
 // Без заказов стоимость заказа не определена — показываем прочерк, а не 0 ₽.
 function adCpo(x){return Number(x.orders)?fmtRub(x.cpo):'—'}
+// «Артикулы»: сколько товаров в кампании сейчас и сколько из них с показами или кликами за период. Товары, которые
+// за период показывались, но из кампании уже убраны, считаются отдельно. В подсказке — списки с артикулами продавца.
+function adArticlesCell(x){
+  const total=Number(x.nmCount||0),active=Number(x.nmActive||0),removed=Number(x.nmRemovedActive||0),codes=x.nmVendorCodes||{};
+  if(!total&&!active&&!removed)return '—';
+  const activeIds=new Set((x.activeNmIds||[]).map(String)),inside=(x.nmInCampaign?.length?x.nmInCampaign:x.nmIds||[]).map(String),insideSet=new Set(inside);
+  const line=(id,mark)=>`${mark} ${id}${codes[id]?` — ${codes[id]}`:''}`;
+  const list=inside.slice(0,100).map(id=>line(id,activeIds.has(id)?'✓':'·')).join('\n');
+  const gone=[...activeIds].filter(id=>!insideSet.has(id)).slice(0,50).map(id=>line(id,'×')).join('\n');
+  const title=`В кампании: ${total}, с показами за период: ${active}${list?`\n${list}`:''}${inside.length>100?'\n…':''}${gone?`\n\nУбраны из кампании, но показывались за период: ${removed}\n${gone}`:''}`;
+  return `<span class="ad-articles" title="${escapeHtml(title)}"><strong>${fmtNum(total)}</strong><small class="${active?'':'muted'}">${active?`с показами ${fmtNum(active)}`:'без показов'}</small>${removed?`<small class="muted">+${fmtNum(removed)} убран${removed===1?'':'о'} из РК</small>`:''}</span>`;
+}
 function adDateTime(value){const match=String(value||'').match(/^(\d{4})-(\d{2})-(\d{2})(?:T(\d{2}):(\d{2}))?/);return match?`<strong>${match[3]}.${match[2]}.${match[1]}</strong>${match[4]?`<small>${match[4]}:${match[5]}</small>`:''}`:'—'}
 const AD_CAMPAIGN_COLUMNS=[
   // Детализация открывается иконкой слева, название ведёт в кампанию в кабинете WB, клик по ID копирует его (общий обработчик [data-copy]).
   {key:'name',label:'Кампания',fixed:true,width:295,cell:x=>{const photo=x.photo?`<img class="ad-product-photo" src="${escapeHtml(x.photo)}" alt="" loading="lazy">`:'',query=new URLSearchParams({cabinet:state.cabinet,id:x.id,from:$('#dateFrom').value,to:$('#dateTo').value});return `<div class="ad-product-name"><a class="campaign-open" href="/campaign.html?${query}" target="_blank" rel="noopener noreferrer" title="Открыть детализацию кампании" aria-label="Открыть детализацию кампании «${escapeHtml(x.name)}»"><svg viewBox="0 0 16 16" aria-hidden="true"><rect x="1.75" y="1.75" width="12.5" height="12.5" rx="3"/><path d="M6.25 9.75l3.5-3.5M6.75 6.25h3v3"/></svg></a>${photo}<span><strong><a class="campaign-wb-link" href="${escapeHtml(adWbCampaignUrl(x.id))}" target="_blank" rel="noopener noreferrer" title="Открыть кампанию в кабинете WB">${escapeHtml(x.name)}</a></strong><small><button type="button" class="copy-article" data-copy="${escapeHtml(x.id)}" title="Скопировать ID">ID ${escapeHtml(x.id)}</button> · ${escapeHtml((x.paymentType||'—').toUpperCase())} · ${escapeHtml(adBidType(x.bidType))}</small></span></div>`}},
   {key:'status',width:110,label:'Статус',cell:x=>{const s=adStatus(x.status);return `<span class="status ${s[1]}">${s[0]}</span>`}},
+  {key:'nmCount',width:115,label:'Артикулы',hint:'в кампании и с показами за период',cell:x=>adArticlesCell(x)},
   {key:'createdAt',width:105,label:'Создана',hint:'дата создания',cell:x=>adCreatedDate(x.createdAt)},
   {key:'startedAt',width:105,label:'Запуск',hint:'последний запуск',cell:x=>adDateTime(x.startedAt)},
   {key:'updatedAt',width:105,label:'Изменена',hint:'последнее изменение',cell:x=>adDateTime(x.updatedAt)},

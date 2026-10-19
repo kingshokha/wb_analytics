@@ -591,7 +591,7 @@ test('складывает поисковые запросы кампании п
   assert.equal(result.byNmId['100'][1].query, 'чехол');
 });
 
-test('отмечает неактивные и архивные поисковые запросы', () => {
+test('отмечает неактивные, частично исключённые и архивные поисковые запросы', () => {
   const groups = [
     { nm_id: 100, stats: [{ norm_query: 'чехол', views: 100 }, { norm_query: 'чехол magsafe', views: 50 }, { norm_query: 'чехол кожаный', views: 10 }] },
     { nm_id: 200, stats: [{ norm_query: 'чехол', views: 80 }] }
@@ -602,8 +602,10 @@ test('отмечает неактивные и архивные поисковы
   ]);
   const result = summarizeKeywords(groups, statuses);
   const byQuery = Object.fromEntries(result.total.map(row => [row.query, row]));
-  assert.equal(byQuery['чехол'].status, 'active');
+  // У товара 100 запрос исключён, у товара 200 активен — «частично исключён».
+  assert.equal(byQuery['чехол'].status, 'partial');
   assert.equal(byQuery['чехол'].excludedIn, 1);
+  assert.equal(byQuery['чехол'].activeIn, 1);
   assert.equal(byQuery['чехол magsafe'].status, 'excluded');
   assert.equal(byQuery['чехол кожаный'].status, 'archived');
   assert.equal(result.byNmId['100'].find(row => row.query === 'чехол').status, 'excluded');

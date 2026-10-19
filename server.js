@@ -741,9 +741,15 @@ function summarizeAdStats(campaigns = [], stats = [], from, to) {
   for (const stat of stats) {
     const campaign = campaignById.get(String(stat.advertId));
     const nmIds = [...new Set([...campaignProductIds(campaign), ...(stat.days || []).flatMap(day => (day.apps || []).flatMap(app => (app.nms || []).map(nm => Number(nm.nmId || nm.nm)).filter(Number.isInteger)))])];
+    // Для столбца «Артикулы»: сколько товаров в кампании сейчас и у скольких были показы или клики за период.
+    const inCampaign = campaignProductIds(campaign);
+    const activeNmIds = [...new Set((stat.days || []).flatMap(day => (day.apps || []).flatMap(app => (app.nms || [])
+      .filter(nm => Number(nm.views || 0) > 0 || Number(nm.clicks || 0) > 0).map(nm => Number(nm.nmId || nm.nm)).filter(Number.isInteger))))];
     rows.push({ id: stat.advertId, name: campaign?.settings?.name || `Кампания #${stat.advertId}`,
       status: campaign?.status, type: campaign?.type ?? null, paymentType: campaign?.settings?.payment_type || '', bidType: campaign?.bid_type || '',
-      createdAt: campaign?.timestamps?.created || '', startedAt: campaign?.timestamps?.started || '', updatedAt: campaign?.timestamps?.updated || '', nmIds, daily: (stat.days || []).map(day => ({ date: String(day.date || '').slice(0, 10), ...adMetrics(day) })), ...adMetrics(stat) });
+      createdAt: campaign?.timestamps?.created || '', startedAt: campaign?.timestamps?.started || '', updatedAt: campaign?.timestamps?.updated || '', nmIds, nmInCampaign: inCampaign, nmCount: inCampaign.length || nmIds.length,
+      nmActive: inCampaign.length ? activeNmIds.filter(nmId => inCampaign.includes(nmId)).length : activeNmIds.length,
+      nmRemovedActive: inCampaign.length ? activeNmIds.filter(nmId => !inCampaign.includes(nmId)).length : 0, activeNmIds, daily: (stat.days || []).map(day => ({ date: String(day.date || '').slice(0, 10), ...adMetrics(day) })), ...adMetrics(stat) });
     for (const day of stat.days || []) {
       const date = String(day.date || '').slice(0, 10);
       if (!daily.has(date)) daily.set(date, emptyAdMetrics({ date }));
@@ -766,7 +772,7 @@ function summarizeAdStats(campaigns = [], stats = [], from, to) {
   for (const campaign of campaigns) {
     if (!rows.some(row => String(row.id) === String(campaign.id))) rows.push({ id: campaign.id,
       name: campaign.settings?.name || `Кампания #${campaign.id}`, status: campaign.status, type: campaign.type ?? null,
-      paymentType: campaign.settings?.payment_type || '', bidType: campaign.bid_type || '', createdAt: campaign.timestamps?.created || '', startedAt: campaign.timestamps?.started || '', updatedAt: campaign.timestamps?.updated || '', nmIds: campaignProductIds(campaign),
+      paymentType: campaign.settings?.payment_type || '', bidType: campaign.bid_type || '', createdAt: campaign.timestamps?.created || '', startedAt: campaign.timestamps?.started || '', updatedAt: campaign.timestamps?.updated || '', nmIds: campaignProductIds(campaign), nmInCampaign: campaignProductIds(campaign), nmCount: campaignProductIds(campaign).length, nmActive: 0, nmRemovedActive: 0, activeNmIds: [],
       ...finalizeAdMetrics(emptyAdMetrics()) });
   }
   const total = emptyAdMetrics(); rows.forEach(row => addAdMetrics(total, row));
@@ -790,7 +796,9 @@ function enrichAdvertising(summary, cards = []) {
     photo: cardPhoto(card),
     barcode: card.sizes?.[0]?.skus?.[0] || '' }]));
   const products = (summary.products || []).map(product => ({ ...product, ...(byNmId.get(String(product.nmId)) || {}) }));
-  const campaigns = (summary.campaigns || []).map(campaign => ({ ...campaign, photo: (campaign.nmIds || []).map(nmId => byNmId.get(String(nmId))?.photo).find(Boolean) || '' }));
+  // nmVendorCodes — артикулы продавца для подсказки столбца «Артикулы» (до 100 товаров кампании).
+  const campaigns = (summary.campaigns || []).map(campaign => ({ ...campaign, photo: (campaign.nmIds || []).map(nmId => byNmId.get(String(nmId))?.photo).find(Boolean) || '',
+    nmVendorCodes: Object.fromEntries((campaign.nmIds || []).slice(0, 100).map(nmId => [nmId, byNmId.get(String(nmId))?.vendorCode || ''])) }));
   const productDaily = (summary.productDaily || []).map(row => ({ ...row, ...(byNmId.get(String(row.nmId)) || {}) }));
   return { ...summary, products, campaigns, productDaily };
 }
@@ -1221,6 +1229,28 @@ function setProductNote(cabinet, nmId, body = {}) {
   return productNotes(cabinet, nmId);
 }
 
+// --- История из Google Таблицы (google-sheets/wb-sheets.gs, веб-приложение) ---
+// Цены, статусы и ставки таблица записывает раз в час; сайт берёт оттуда историю для графика цены товара и для
+// истории кампании. Адрес веб-приложения и ключ — WB_SHEET_URL и WB_SHEET_KEY в .env; без них — configured: false.
+const SHEET_SECTIONS = ['Цены', 'Реклама', 'Ставки'];
+async function sheetHistory(idsInput, sectionsInput) {
+  const url = String(process.env.WB_SHEET_URL || '').trim(), key = String(process.env.WB_SHEET_KEY || '').trim();
+  if (!url || !key) return { configured: false, items: [], since: null };
+  const ids = [...new Set(String(idsInput || '').split(',').map(id => id.trim()).filter(id => /^\d{1,15}$/.test(id)))].slice(0, 50);
+  if (!ids.length) throw apiError(400, 'Не указан артикул или кампания');
+  const sections = String(sectionsInput || '').split(',').map(item => item.trim()).filter(item => SHEET_SECTIONS.includes(item));
+  return cachedAnalytics(`sheet-history:${ids.join(',')}:${sections.join(',')}`, async () => {
+    const target = new URL(url);
+    target.searchParams.set('key', key); target.searchParams.set('id', ids.join(','));
+    if (sections.length) target.searchParams.set('sections', sections.join(','));
+    let data;
+    try { data = await (await fetch(target, { redirect: 'follow', signal: AbortSignal.timeout(30_000) })).json(); }
+    catch (error) { throw apiError(502, `Google Таблица не ответила: ${error.message}`); }
+    if (data?.error) throw apiError(502, `Google Таблица: ${data.error}`);
+    return { configured: true, items: Array.isArray(data?.items) ? data.items : [], since: data?.since || null };
+  }, 5 * 60_000);
+}
+
 // --- Отметки ключевых запросов (data/keyword-tags.json) ---
 function readKeywordTags() {
   try { const data = JSON.parse(fs.readFileSync(KEYWORD_TAGS_FILE, 'utf8')); return { colors: data.colors || {}, campaigns: data.campaigns || {} }; } catch { return { colors: {}, campaigns: {} }; }
@@ -1542,6 +1572,25 @@ async function campaignMinus(id, campaignId, action, queriesInput, nmIdsInput) {
   return { action, results };
 }
 
+// Переименование кампании (карандаш в шапке детализации): POST /adv/v0/rename, название до 100 символов.
+// После успеха сбрасывается кэш списка кампаний — новое название сразу видно во «Рекламе».
+async function renameCampaign(id, campaignId, nameInput) {
+  if (id === 'demo' || !cabinets().length) throw apiError(400, 'В демо-режиме переименовывать кампании нельзя');
+  if (!/^\d{1,15}$/.test(String(campaignId || ''))) throw apiError(400, 'Некорректный номер кампании');
+  const name = String(nameInput || '').replace(/\s+/g, ' ').trim();
+  if (!name) throw apiError(400, 'Название не может быть пустым');
+  if (name.length > 100) throw apiError(400, 'Название длиннее 100 символов — это предел WB');
+  const token = tokenFor(id);
+  try { await wbRequest(token, 'https://advert-api.wildberries.ru/adv/v0/rename', { method: 'POST', body: { advertId: Number(campaignId), name } }); }
+  catch (error) {
+    // На 400/422 WB отвечает простым текстом — показываем его, а не «WB API вернул 400».
+    const text = typeof error.details === 'string' ? error.details.trim() : '';
+    throw apiError(error.status || 502, text ? `WB: ${text.slice(0, 200)}` : error.message);
+  }
+  analyticsCache.delete(`ad-campaigns:${id}`);
+  return { ok: true, id: Number(campaignId), name };
+}
+
 async function fetchNormqueryStatuses(id, token, campaignId, nmIds = []) {
   const statuses = new Map();
   for (let offset = 0; offset < nmIds.length; offset += NORMQUERY_CHUNK) {
@@ -1584,8 +1633,8 @@ function addKeyword(target, row = {}) {
 
 function finalizeKeyword(row) {
   const { positionWeight, positionBase, ...rest } = row;
-  // Запрос считается неактивным, если он выключен у всех артикулов, где встречается.
-  const status = rest.activeIn ? 'active' : rest.excludedIn ? 'excluded' : rest.archivedIn ? 'archived' : '';
+  // Запрос неактивен, если он выключен у всех артикулов, где встречается; частично — у одних активен, у других исключён.
+  const status = rest.activeIn && rest.excludedIn ? 'partial' : rest.activeIn ? 'active' : rest.excludedIn ? 'excluded' : rest.archivedIn ? 'archived' : '';
   const known = rest.viewsKnown;
   return { ...rest, status, views: known ? rest.views : null, ctr: known ? safeRatio(row.clicks, row.views) : null, cpc: safeRatio(row.spend, row.clicks, 1),
     cpm: known ? safeRatio(row.spend, row.views, 1000) : null, cr: safeRatio(row.orders, row.clicks),
@@ -3111,6 +3160,13 @@ async function handleApi(req, res, url) {
   }
   if (req.method === 'GET' && url.pathname === '/api/product-detail') {
     return send(res, 200, await productDetail(url.searchParams.get('cabinet') || 'demo', url.searchParams.get('nmId'), url.searchParams.get('from'), url.searchParams.get('to'), url.searchParams.get('live') === '1'));
+  }
+  if (req.method === 'GET' && url.pathname === '/api/sheet-history') {
+    return send(res, 200, await sheetHistory(url.searchParams.get('id'), url.searchParams.get('sections')));
+  }
+  if (req.method === 'POST' && url.pathname === '/api/advertising/campaign/rename') {
+    const body = await readJson(req);
+    return send(res, 200, await renameCampaign(body.cabinet || 'demo', body.id, body.name));
   }
   if (req.method === 'GET' && url.pathname === '/api/product-notes') {
     return send(res, 200, productNotes(url.searchParams.get('cabinet') || 'demo', url.searchParams.get('nmId')));

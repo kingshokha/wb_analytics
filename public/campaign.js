@@ -257,7 +257,7 @@
     return event.type==='result'?event:null;
   }
   const KEYWORD_PAGE_SIZE=100;
-  const keywords={data:null,loading:false,error:'',product:'',search:'',onlyInactive:false,sort:{key:'views',direction:'desc'},page:1,selected:new Set(),busy:false,shown:[],ranges:{}};
+  const keywords={data:null,loading:false,error:'',product:'',search:'',statusFilter:'all',sort:{key:'views',direction:'desc'},page:1,selected:new Set(),busy:false,shown:[],ranges:{}};
   // Первые три столбца (галочка, запрос, статус) постоянные; показатели — из меню «Столбцы» (visibleColumns('keywords')).
   const plural=(count,forms)=>{const n=Math.abs(Number(count)||0)%100,d=n%10;return forms[n>10&&n<20?2:d===1?0:d>1&&d<5?1:2]};
   // Исключать запросы (минус-фразы) WB позволяет только в кампаниях с оплатой за показы.
@@ -266,11 +266,20 @@
   function keywordView(){
     const data=keywords.data;if(!data)return {rows:[]};
     const base=keywords.product?(data.byNmId?.[keywords.product]||[]):(data.total||[]),spend=base.reduce((total,row)=>total+Number(row.spend||0),0);
-    const rows=base.map(row=>({...row,spendShare:spend?Number(row.spend||0)/spend*100:0,cartCost:row.carts?Number(row.spend||0)/row.carts:null,cpo:row.orders?Number(row.spend||0)/row.orders:null}));
+    // Частично исключён: у одних артикулов кампании запрос активен, у других исключён. Считаем и здесь —
+    // в сохранённых раньше запросах у сервера такого статуса ещё не было.
+    const rows=base.map(row=>({...row,status:row.activeIn&&row.excludedIn?'partial':row.status,spendShare:spend?Number(row.spend||0)/spend*100:0,cartCost:row.carts?Number(row.spend||0)/row.carts:null,cpo:row.orders?Number(row.spend||0)/row.orders:null}));
     return {rows};
   }
-  const KEYWORD_STATUSES={active:'Активен',excluded:'Неактивен',archived:'В архиве'};
-  const keywordStatusCell=row=>row.status?`<span class="keyword-status ${row.status}">${KEYWORD_STATUSES[row.status]}</span>`:'<span class="keyword-status archived">Нет данных</span>';
+  const KEYWORD_STATUSES={active:'Активен',partial:'Частично исключён',excluded:'Неактивен',archived:'В архиве'};
+  // Фильтр над таблицей: «Исключённые» — неактивные, частично исключённые и архивные.
+  const KEYWORD_FILTERS={all:()=>true,active:row=>row.status==='active',excluded:row=>['excluded','partial','archived'].includes(row.status)};
+  const keywordStatusCell=row=>{
+    if(!row.status)return '<span class="keyword-status archived">Нет данных</span>';
+    const total=Number(row.activeIn||0)+Number(row.excludedIn||0)+Number(row.archivedIn||0);
+    const title=row.status==='partial'?` title="Исключён у ${number(row.excludedIn)} из ${number(total)} артикулов, у остальных активен"`:'';
+    return `<span class="keyword-status ${row.status}"${title}>${KEYWORD_STATUSES[row.status]}${row.status==='partial'?` · ${number(row.excludedIn)}/${number(total)}`:''}</span>`;
+  };
   // null — WB этот показатель не прислал (показы, CTR и CPM по CPC-кампаниям), поэтому прочерк, а не 0.
   const keywordValue=(key,value)=>key==='query'?String(value??''):metricText(key,value);
   function keywordRows(view){
@@ -279,15 +288,15 @@
     // Фильтры «от — до» над столбцами: строка без значения (прочерк) при заданной границе не проходит.
     const ranges=Object.entries(keywords.ranges).filter(([,range])=>range.min!=null||range.max!=null);
     const inRanges=row=>ranges.every(([key,range])=>{const value=row[key];if(value==null)return false;return (range.min==null||value>=range.min)&&(range.max==null||value<=range.max)});
-    const filtered=view.rows.filter(row=>(!term||row.query.toLowerCase().includes(term))&&(!keywords.onlyInactive||row.status==='excluded'||row.status==='archived')&&inRanges(row));
+    const filtered=view.rows.filter(row=>(!term||row.query.toLowerCase().includes(term))&&(KEYWORD_FILTERS[keywords.statusFilter]||KEYWORD_FILTERS.all)(row)&&inRanges(row));
     // Без показов (CPC-кампании) сортировка по показам, CTR или CPM ничего не упорядочит — тогда сортируем по кликам.
     const unknown=data.viewsAvailable===false&&['views','ctr','cpm'].includes(keywords.sort.key),sort=unknown?{key:'clicks',direction:keywords.sort.direction}:keywords.sort;
     // Строки без значения (нет заказов для CPO, нет корзин для их цены) всегда в конце, в любом направлении.
     return [...sorted(filtered.filter(row=>row[sort.key]!=null),sort),...filtered.filter(row=>row[sort.key]==null)];
   }
   function keywordStatusNote(rows){
-    const off=rows.filter(row=>row.status==='excluded').length,archived=rows.filter(row=>row.status==='archived').length;
-    return [off?`неактивных: ${number(off)}`:'',archived?`в архиве: ${number(archived)}`:''].filter(Boolean);
+    const off=rows.filter(row=>row.status==='excluded').length,partial=rows.filter(row=>row.status==='partial').length,archived=rows.filter(row=>row.status==='archived').length;
+    return [off?`неактивных: ${number(off)}`:'',partial?`частично исключённых: ${number(partial)}`:'',archived?`в архиве: ${number(archived)}`:''].filter(Boolean);
   }
   function keywordTotals(rows){
     const sum=key=>rows.reduce((total,row)=>total+Number(row[key]||0),0);
@@ -340,7 +349,7 @@
     if(keywords.error)notes.push(`ошибка обновления: ${keywords.error}`);
     (data.warnings||[]).forEach(text=>notes.push(text));
     note.textContent=notes.join(' · ');
-    const empty=keywords.search.trim()||rangeCount?'Нет запросов по заданным фильтрам':keywords.onlyInactive?'Неактивных запросов нет':'WB не вернул поисковые запросы за этот период';
+    const empty=keywords.search.trim()||rangeCount?'Нет запросов по заданным фильтрам':keywords.statusFilter==='excluded'?'Исключённых запросов нет':keywords.statusFilter==='active'?'Активных запросов нет':'WB не вернул поисковые запросы за этот период';
     keywords.shown=shown;
     const rowClass=row=>[row.status==='excluded'||row.status==='archived'?'keyword-off':'',keywords.selected.has(row.query)?'keyword-selected':''].filter(Boolean).join(' ');
     const columns=visibleColumns('keywords'),cells=row=>columns.map(column=>`<td class="c-metric c-${column.key}">${esc(keywordValue(column.key,row[column.key]))}</td>`).join('');
@@ -405,7 +414,7 @@
       const result=await response.json();if(!response.ok)throw new Error(result.error||'');
       if(request!==positionsRequest)return;
       state.positions=new Map((result.days||[]).filter(day=>day.avgPosition!=null).map(day=>[day.date,day.avgPosition]));
-      renderChart();renderTable();
+      renderChart();renderTable();renderCampaignMinis();
     }catch{/* без позиции график остаётся как есть */}
   }
   // --- Шапка: название ведёт в кампанию в кабинете продвижения WB, номер рядом копируется по клику ---
@@ -414,7 +423,100 @@
     if(result.folder&&/^\d+$/.test(String(id)))link.href=`https://cmp.wildberries.ru/campaigns/edit/${encodeURIComponent(id)}?from=${period.from}T00:00:00Z&to=${period.to}T00:00:00Z`;
     else link.removeAttribute('href');
     idButton.textContent=id;idButton.dataset.copy=id;idButton.hidden=false;
+    $('#campaignRename').hidden=Boolean(result.demo)||(params.get('cabinet')||'demo')==='demo';
   }
+  // --- Переименование кампании: карандаш у названия → поле ввода → POST /api/advertising/campaign/rename (WB /adv/v0/rename) ---
+  function openRename(){
+    const title=$('#campaignTitle').textContent.trim(),h1=$('.page-title h1');if(!h1||$('#renameForm'))return;
+    h1.hidden=true;
+    h1.insertAdjacentHTML('afterend',`<form class="rename-form" id="renameForm"><input id="renameInput" maxlength="100" value="${esc(title)}" aria-label="Новое название кампании"><button type="submit" class="primary">Сохранить</button><button type="button" data-rename-cancel>Отмена</button><small id="renameNote">До 100 символов. Название сразу поменяется в кабинете WB.</small></form>`);
+    const input=$('#renameInput');input.focus();input.select();
+  }
+  function closeRename(){$('#renameForm')?.remove();const h1=$('.page-title h1');if(h1)h1.hidden=false}
+  $('#campaignRename').onclick=openRename;
+  document.addEventListener('click',event=>{if(event.target.closest('[data-rename-cancel]'))closeRename()});
+  document.addEventListener('keydown',event=>{if(event.key==='Escape'&&$('#renameForm'))closeRename()});
+  document.addEventListener('submit',async event=>{
+    if(event.target.id!=='renameForm')return;event.preventDefault();
+    const form=event.target,input=$('#renameInput'),note=$('#renameNote'),name=input.value.replace(/\s+/g,' ').trim();
+    if(!name){note.textContent='Название не может быть пустым';note.classList.add('error');return}
+    if(name===$('#campaignTitle').textContent.trim()){closeRename();return}
+    form.querySelectorAll('button,input').forEach(control=>{control.disabled=true});note.classList.remove('error');note.textContent='Отправляем в WB…';
+    try{
+      const response=await fetch('/api/advertising/campaign/rename',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({cabinet:params.get('cabinet')||'demo',id:params.get('id')||'',name})});
+      const result=await response.json();if(!response.ok)throw new Error(result.error||'WB не принял название');
+      $('#campaignTitle').textContent=result.name;document.title=`${result.name} — WB Pulse`;closeRename();
+    }catch(e){form.querySelectorAll('button,input').forEach(control=>{control.disabled=false});note.textContent=`Не удалось: ${e.message}`;note.classList.add('error');input.focus()}
+  });
+  // --- «Размещение и ставки» → «История»: изменения статуса, настроек и ставок кампании из Google Таблицы ---
+  const SHEET_MONEY=/₽/;
+  // У ставок пустое значение — место показа выключено (таблица пишет «—»).
+  function historyValue(what,value,section){
+    if(value===''||value==null||value==='—')return section==='Ставки'?'выкл.':'—';
+    return SHEET_MONEY.test(what)&&Number.isFinite(Number(value))?money(Number(value)):esc(String(value));
+  }
+  async function openSetupHistory(){
+    const modal=$('#setupHistoryModal'),body=$('#setupHistoryBody'),note=$('#setupHistoryNote'),id=params.get('id')||'';
+    modal.hidden=false;body.innerHTML='<p class="history-empty">Загрузка из Google Таблицы…</p>';note.textContent=`Кампания № ${id}`;
+    try{
+      const response=await fetch(`/api/sheet-history?${new URLSearchParams({id,sections:'Реклама,Ставки'})}`),data=await response.json();
+      if(!response.ok)throw new Error(data.error||'Таблица не ответила');
+      if(!data.configured){body.innerHTML='<p class="history-empty">Google Таблица не подключена: впишите в .env сайта WB_SHEET_URL и WB_SHEET_KEY (ключ — в таблице «WB → Ключ для сайта») и перезапустите сервер. Инструкция — google-sheets/README.md.</p>';return}
+      const since=data.since?`таблица следит за изменениями с ${new Date(data.since).toLocaleString('ru-RU',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'})}`:'';
+      note.textContent=`Кампания № ${id}${since?` · ${since}`:''} · обновляется раз в час`;
+      const items=(data.items||[]).slice().sort((a,b)=>String(b.at).localeCompare(String(a.at)));
+      if(!items.length){body.innerHTML='<p class="history-empty">Изменений статуса, настроек и ставок пока нет. Таблица сравнивает каждое обновление с предыдущим и записывает только то, что поменялось.</p>';return}
+      let lastDay='';
+      body.innerHTML=items.map(item=>{
+        const at=new Date(item.at),day=at.toLocaleDateString('ru-RU',{day:'numeric',month:'long'})+(at.getFullYear()!==new Date().getFullYear()?` ${at.getFullYear()}`:''),time=at.toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit'});
+        const head=day!==lastDay?`<div class="history-day">${esc(day)}</div>`:'';lastDay=day;
+        // Ставки — по артикулам: в подписи таблицы «Кампания · артикул (артикул продавца)».
+        const product=item.section==='Ставки'?String(item.title||'').split(' · ').slice(1).join(' · '):'';
+        const what=String(item.what||'').replace(/, ₽$/,'');
+        const list=/^Артикулы WB:/.test(item.what||'');
+        const values=list?'':`<span class="was">${historyValue(item.what,item.before,item.section)}</span> → <b>${historyValue(item.what,item.after,item.section)}</b>`;
+        return `${head}<div class="history-item"><time>${esc(time)}</time><div><b>${esc(what)}</b>${product?` · артикул ${esc(product)}`:''}${values?`<br>${values}`:''}</div></div>`;
+      }).join('');
+    }catch(e){body.innerHTML=`<p class="history-empty">Не удалось загрузить историю: ${esc(e.message)}</p>`}
+  }
+  function closeSetupHistory(){$('#setupHistoryModal').hidden=true}
+  $('#setupHistoryButton').onclick=openSetupHistory;
+  document.addEventListener('click',event=>{if(event.target.closest('[data-setup-history-close]'))closeSetupHistory()});
+  document.addEventListener('keydown',event=>{if(event.key==='Escape'&&!$('#setupHistoryModal').hidden)closeSetupHistory()});
+  // --- Мини-графики под графиком по датам (общий модуль mini-charts.js, как в детализации товара) ---
+  const sumOf=key=>day=>day[key]==null?null:Number(day[key]||0);
+  // Нет значения (нет показов у CPC-кампании, нет заказов для CPO) — прочерк, а не «0».
+  const orDash=format=>value=>value==null||!Number.isFinite(Number(value))?'—':format(value);
+  const miniNumber=orDash(number),miniMoney=orDash(money),miniPercent=orDash(percent);
+  const CAMPAIGN_MINIS=[
+    {title:'Показы и клики',items:[
+      {label:'Показы',num:sumOf('views'),fmt:miniNumber},
+      {label:'Клики',num:sumOf('clicks'),fmt:miniNumber},
+      {label:'CTR',num:sumOf('clicks'),den:sumOf('views'),scale:100,fmt:miniPercent,axis:'%'},
+      {label:'CPM',num:sumOf('spend'),den:sumOf('views'),scale:1000,fmt:miniMoney}]},
+    {title:'Деньги',items:[
+      {label:'Затраты',num:sumOf('spend'),fmt:miniMoney},
+      {label:'CPC',num:sumOf('spend'),den:sumOf('clicks'),scale:1,fmt:miniMoney},
+      {label:'Сумма заказов',num:sumOf('revenue'),fmt:miniMoney},
+      {label:'ДРР',num:sumOf('spend'),den:sumOf('revenue'),scale:100,fmt:miniPercent,axis:'%'},
+      {label:'CPO',num:sumOf('spend'),den:sumOf('orders'),scale:1,fmt:miniMoney}]},
+    {title:'Результат',items:[
+      {label:'Корзины',num:sumOf('carts'),fmt:miniNumber},
+      {label:'Заказы',num:sumOf('orders'),fmt:miniNumber},
+      {label:'CR',num:sumOf('orders'),den:sumOf('clicks'),scale:100,fmt:miniPercent,axis:'%'},
+      {label:'Отмены',num:sumOf('canceled'),fmt:miniNumber}]},
+    {title:'Позиция в поиске',items:[
+      {label:'Средняя позиция',num:day=>state.positions?.has(day.date)?Number(state.positions.get(day.date)):null,average:true,invert:true,fmt:value=>value==null||!Number.isFinite(Number(value))?'—':Number(value).toLocaleString('ru-RU',{maximumFractionDigits:1}),
+        averageNote:'меньше — выше в поиске',emptyNote:'нет данных по поисковым кластерам'}]}];
+  function renderCampaignMinis(){
+    const box=$('#campaignMinis');if(!box||!window.MiniCharts)return;
+    const days=[...(state.rows||[])].filter(day=>/^\d{4}-\d{2}-\d{2}/.test(day.date||'')).map(day=>({...day,date:String(day.date).slice(0,10)})).sort((a,b)=>a.date.localeCompare(b.date));
+    // CPC-кампании WB присылает без показов — тогда графики показов, CTR и CPM пустые («нет данных»).
+    const markers=(campaignNotes?.list||[]).map(item=>String(item.at||'').slice(0,10)).filter(Boolean);
+    window.MiniCharts.render(box,CAMPAIGN_MINIS,days,{markers});
+  }
+  let minisWidth=0;
+  new ResizeObserver(()=>{const width=$('#campaignMinis')?.clientWidth||0;if(width&&width!==minisWidth){minisWidth=width;renderCampaignMinis()}}).observe($('#campaignMinis'));
   $('#campaignId').onclick=event=>{const button=event.currentTarget,text=button.dataset.copy;navigator.clipboard?.writeText(text).then(()=>{button.textContent='Скопировано';setTimeout(()=>{button.textContent=text},1200)})};
   // Кнопка «i»: подробности выгрузки видны при наведении, а на телефоне — по нажатию.
   $('#campaignInfoButton').onclick=event=>{event.stopPropagation();event.currentTarget.closest('.info-wrap').classList.toggle('open')};
@@ -423,10 +525,9 @@
   function renderSetup(setup){
     const panel=$('#setupPanel');if(!setup){panel.hidden=true;return}
     panel.hidden=false;
-    const cpc=String(setup.paymentType).toLowerCase()==='cpc',unit=cpc?'за клик':'за 1000 показов',p=setup.placements||{};
+    const p=setup.placements||{};
     // Единая ставка одинакова в поиске и рекомендациях — показываем её одним столбцом.
     const unified=setup.bidType==='unified';
-    $('#setupNote').textContent=`Оплата ${cpc?'за клики (CPC)':'за показы (CPM)'} · ${unified?`единая ставка ${unit} для поиска и рекомендаций`:`ставки ${unit}`}`;
     $('#setupHead').innerHTML=`<th>Товар</th><th>Предмет</th>${unified?'<th>Ставка</th>':'<th>Ставка в поиске</th><th>Ставка в рекомендациях</th>'}`;
     $('#setupPlacements').innerHTML=[['search','Поиск'],['recommendations','Рекомендации']].map(([key,label])=>
       `<span class="placement ${p[key]?'on':'off'}" title="Размещение ${p[key]?'включено':'отключено'}"><i></i>${label}${p[key]?'':' · выкл.'}</span>`).join('');
@@ -723,7 +824,7 @@
   async function loadCampaignNotes(){
     try{const response=await fetch(`/api/campaign-notes?${new URLSearchParams(notesQuery())}`),data=await response.json();if(!response.ok)throw new Error(data.error);campaignNotes.list=data.notes||[]}
     catch{campaignNotes.list=[]}
-    renderCampaignNotesButton();if(campaignNotes.open)renderCampaignNotes();
+    renderCampaignNotesButton();if(campaignNotes.open)renderCampaignNotes();renderCampaignMinis();
   }
   function renderCampaignNotesButton(){const count=$('#campaignNotesCount');count.textContent=campaignNotes.list.length;count.hidden=!campaignNotes.list.length}
   function renderCampaignNotes(){
@@ -833,7 +934,8 @@
   document.addEventListener('click',event=>{if(event.target.closest('[data-confirm-close]'))closeConfirm()});
   document.addEventListener('keydown',event=>{if(event.key==='Escape'&&!$('#confirmModal').hidden)closeConfirm()});
   $('#keywordSearch').oninput=event=>{keywords.search=event.target.value;keywords.page=1;renderKeywords()};
-  $('#keywordOnlyInactive').onchange=event=>{keywords.onlyInactive=event.target.checked;keywords.page=1;renderKeywords()};
+  $('#keywordStatusFilter').addEventListener('click',event=>{const button=event.target.closest('[data-keyword-filter]');if(!button)return;keywords.statusFilter=button.dataset.keywordFilter;keywords.page=1;
+    document.querySelectorAll('#keywordStatusFilter [data-keyword-filter]').forEach(item=>item.setAttribute('aria-pressed',String(item===button)));renderKeywords()});
   $('#keywordRefresh').onclick=()=>loadKeywords(keywords.data?.period||state.period,true);
   // silent — автообновление: тот же период, что выгружен последним, без прогресса и блокировки кнопок;
   // выбранные запросы, позиции и прошлый период не сбрасываются, при ошибке остаются прежние данные.
@@ -875,7 +977,7 @@
     if(!result)throw new Error('Выгрузка прервалась без результата');
     exportState.loaded={from,to};
     state.rows=result.campaign.daily||[];state.productDaily=result.productDaily||[];
-    renderMeta(result.campaign);renderSummary(result.campaign);renderSetup(result.setup);renderOptions();renderChart();renderTable();renderProductTable();loadPositions(result.activePeriod||result.period,silent);
+    renderMeta(result.campaign);renderSummary(result.campaign);renderSetup(result.setup);renderOptions();renderChart();renderTable();renderProductTable();renderCampaignMinis();loadPositions(result.activePeriod||result.period,silent);
     $('#campaignTitle').textContent=result.campaign.name||`Кампания #${result.campaign.id}`;document.title=`${$('#campaignTitle').textContent} — WB Pulse`;renderCampaignHeader(result);
     state.period=result.activePeriod||result.period;
     if(silent){if(!keywords.loading)loadKeywords(state.period,true,true)}else{loadKeywords(state.period);loadPrevious(result.period,result.campaign)}

@@ -39,7 +39,6 @@
   ];
   // Цвета кампаний не совпадают с синим «органики» и оранжевым «рекламы».
   const CAMPAIGN_COLORS = ['#7651e5', '#18875c', '#c2412d', '#0e8ea8', '#b5367f', '#8a6a1f', '#5d6b12', '#555b66', '#c79a12', '#2f9e9e'];
-  const MINI_COLORS = ['#7651e5', '#eb6834', '#1baf7a', '#2a78d6', '#e87ba4', '#0e8ea8', '#8a6a1f', '#555b66'];
   // setNotices / addNotice — из notifications.js (колокольчик); если файл не загрузился, страница работает без него.
   const setNotices = (...args) => window.setNotices?.(...args), addNotice = (...args) => window.addNotice?.(...args);
   const view = { data: null, notes: [], metric: 'cartCount', colors: new Map(), hoverCampaign: null, editing: null, confirmDelete: null, request: 0, pollTimer: 0, autoAt: Date.now(), loading: false };
@@ -367,81 +366,15 @@
       { label: 'В заказах', num: adValue('orders'), den: funnelValue('orderCount'), scale: 100, fmt: fmtPct, cap: true }
     ] },
     { title: 'Позиция в поиске', items: [
-      { label: 'Средняя позиция', num: day => finite(day.avgPosition) ? Number(day.avgPosition) : null, average: true, invert: true, fmt: fmtDec }
+      { label: 'Средняя позиция', num: day => finite(day.avgPosition) ? Number(day.avgPosition) : null, average: true, invert: true, fmt: fmtDec,
+        averageNote: 'меньше — выше в поиске', emptyNote: 'нет данных по поисковым кластерам' }
     ] }
   ];
-  function miniSeries(item, days) {
-    const daily = days.map(day => {
-      const num = item.num(day); if (num === null) return null;
-      if (!item.den) return num;
-      const den = item.den(day); if (!den) return null;
-      const value = num / den * item.scale; return item.cap ? Math.min(100, value) : value;
-    });
-    const known = daily.filter(finite);
-    let headline, sub;
-    if (item.den) {
-      const totals = days.reduce((sum, day) => { const num = item.num(day), den = item.den(day); return num === null || den === null ? sum : { num: sum.num + num, den: sum.den + den }; }, { num: 0, den: 0 });
-      headline = totals.den ? (item.cap ? Math.min(100, totals.num / totals.den * item.scale) : totals.num / totals.den * item.scale) : null;
-      sub = known.length ? `за период · по дням от ${item.fmt(Math.min(...known))} до ${item.fmt(Math.max(...known))}` : 'за период — нет данных';
-    } else if (item.average) {
-      headline = known.length ? known.reduce((a, b) => a + b, 0) / known.length : null;
-      sub = known.length ? `в среднем за ${known.length} дн. · меньше — выше в поиске` : 'нет данных по поисковым кластерам';
-    } else {
-      const total = known.reduce((a, b) => a + b, 0); headline = known.length ? total : null;
-      sub = known.length ? `за ${known.length} дн. · в среднем ${item.fmt(total / known.length)} в день` : 'нет данных';
-    }
-    return { daily, headline, sub };
-  }
+  // Рисует общий модуль mini-charts.js; ваши отметки — тонкие пунктиры, чтобы было видно, что после них изменилось.
   function renderMinis() {
-    const box = $('#minis'), data = view.data; if (!data) return;
-    let colorIndex = 0;
-    box.innerHTML = MINI_GROUPS.map(group => `<div class="mini-group"><h3>${group.title}</h3><div class="multiples">${group.items.map(item => {
-      const color = MINI_COLORS[colorIndex++ % MINI_COLORS.length], series = miniSeries(item, data.days);
-      return `<div class="mini" data-mini="${esc(item.label)}" style="--c:${color}"><h4><i style="background:${color}"></i>${esc(item.label)}</h4><div class="sum">${item.fmt(series.headline)}</div><div class="sub">${esc(series.sub)}</div><div class="mini-chart"></div></div>`;
-    }).join('')}</div></div>`).join('');
-    const items = MINI_GROUPS.flatMap(group => group.items);
-    box.querySelectorAll('.mini').forEach((element, index) => drawMini(element, items[index], miniSeries(items[index], data.days).daily, data.days));
-  }
-  function drawMini(element, item, values, days) {
-    const holder = element.querySelector('.mini-chart'), color = element.style.getPropertyValue('--c'), W = Math.max(200, holder.clientWidth || 250), H = 120;
-    const m = { top: 8, right: 6, bottom: 20, left: 40 }, pw = W - m.left - m.right, ph = H - m.top - m.bottom, count = days.length;
-    const x = index => m.left + (count === 1 ? pw / 2 : index * pw / (count - 1)), known = values.filter(finite);
-    if (!known.length) { holder.innerHTML = `<svg viewBox="0 0 ${W} ${H}" height="${H}"><text class="axis" x="${W / 2}" y="${H / 2}" text-anchor="middle">нет данных</text></svg>`; return; }
-    let low = 0, high, ticks;
-    if (item.invert) {
-      // Позиция: 1 — лучше всего, поэтому шкала перевёрнута — чем выше линия, тем выше товар в поиске.
-      const min = Math.min(...known), max = Math.max(...known), pad = Math.max(1, (max - min) * .15);
-      low = Math.max(1, Math.floor(min - pad)); high = Math.ceil(max + pad); ticks = [low, high];
-    } else { const scale = niceScale(Math.max(...known), 2); high = scale.max; ticks = [0, scale.max / 2, scale.max]; }
-    const y = value => item.invert ? m.top + (value - low) / (high - low || 1) * ph : m.top + ph - (value - low) / (high - low || 1) * ph;
-    let svg = `<svg viewBox="0 0 ${W} ${H}" height="${H}" role="img" aria-label="${esc(item.label)} по дням">`;
-    ticks.forEach(value => { svg += `${value !== ticks[0] || item.invert ? `<line class="gridline" x1="${m.left}" x2="${W - m.right}" y1="${y(value)}" y2="${y(value)}"/>` : ''}<text class="axis" x="${m.left - 6}" y="${y(value) + 4}" text-anchor="end">${item.fmt === fmtRub ? `${fmtShort(value)}` : item.fmt === fmtPct ? `${fmtShort(value)}%` : fmtShort(value)}</text>`; });
-    svg += `<line class="baseline" x1="${m.left}" x2="${W - m.right}" y1="${m.top + ph}" y2="${m.top + ph}"/>`;
-    // Ваши отметки — тонкие пунктиры, чтобы и на мини-графиках было видно, что после них изменилось.
-    notesNumbered().forEach(note => { const index = days.findIndex(day => day.date === note.date); if (index >= 0) svg += `<line x1="${x(index)}" x2="${x(index)}" y1="${m.top}" y2="${m.top + ph}" stroke="#9aa39e" stroke-width="1" stroke-dasharray="2 3"/>`; });
-    const segments = []; let current = [];
-    values.forEach((value, index) => { if (finite(value)) current.push([x(index), y(value)]); else if (current.length) { segments.push(current); current = []; } });
-    if (current.length) segments.push(current);
-    for (const segment of segments) {
-      const line = segment.map(([px, py], index) => `${index ? 'L' : 'M'}${px.toFixed(1)},${py.toFixed(1)}`).join('');
-      if (!item.invert && segment.length > 1) svg += `<path d="${line}L${segment.at(-1)[0].toFixed(1)},${m.top + ph}L${segment[0][0].toFixed(1)},${m.top + ph}Z" fill="${color}" opacity=".1"/>`;
-      svg += segment.length > 1 ? `<path d="${line}" fill="none" stroke="${color}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>` : `<circle cx="${segment[0][0]}" cy="${segment[0][1]}" r="2.5" fill="${color}"/>`;
-    }
-    svg += `<text class="axis" x="${m.left}" y="${H - 4}">${ddmm(days[0].date)}</text><text class="axis" x="${W - m.right}" y="${H - 4}" text-anchor="end">${ddmm(days.at(-1).date)}</text>`;
-    svg += `<g class="mini-hover" visibility="hidden"><line y1="${m.top}" y2="${m.top + ph}" stroke="#a7afaa"/><circle r="4" fill="${color}" stroke="#fff" stroke-width="2"/></g>`;
-    svg += `<rect x="${m.left}" y="${m.top}" width="${pw}" height="${ph + m.bottom}" fill="transparent" style="cursor:crosshair"/></svg>`;
-    holder.innerHTML = `${svg}<div class="chart-tooltip" hidden></div>`;
-    const svgEl = holder.querySelector('svg'), tip = holder.querySelector('.chart-tooltip'), hover = svgEl.querySelector('.mini-hover');
-    const overlay = svgEl.querySelector('rect:last-of-type');
-    overlay.addEventListener('pointermove', event => {
-      const rect = svgEl.getBoundingClientRect(), index = Math.max(0, Math.min(count - 1, Math.round(((event.clientX - rect.left) / rect.width * W - m.left) / pw * (count - 1)))), value = values[index];
-      hover.setAttribute('visibility', 'visible'); hover.querySelector('line').setAttribute('x1', x(index)); hover.querySelector('line').setAttribute('x2', x(index));
-      const dot = hover.querySelector('circle'); dot.setAttribute('visibility', finite(value) ? 'visible' : 'hidden'); if (finite(value)) { dot.setAttribute('cx', x(index)); dot.setAttribute('cy', y(value)); }
-      tip.innerHTML = `<strong>${esc(dayLong(days[index].date))}</strong><div class="row">${esc(item.label)}<b>${item.fmt(value)}</b></div>`; tip.hidden = false;
-      const scaleX = rect.width / W, px = x(index) * scaleX, width = tip.offsetWidth;
-      tip.style.left = `${px + 12 + width > holder.clientWidth ? Math.max(0, px - 12 - width) : px + 12}px`; tip.style.top = '-6px';
-    });
-    overlay.addEventListener('pointerleave', () => { hover.setAttribute('visibility', 'hidden'); tip.hidden = true; });
+    const data = view.data; if (!data) return;
+    const groups = MINI_GROUPS.map(group => ({ ...group, items: group.items.map(item => ({ ...item, axis: item.fmt === fmtPct ? '%' : '' })) }));
+    window.MiniCharts?.render($('#minis'), groups, data.days, { markers: view.notes.map(note => note.date) });
   }
 
   // --- Кампании товара ---
