@@ -275,6 +275,31 @@ tr.rating-row-attention td:first-child{box-shadow:inset 3px 0 0 var(--red)}
 .sidebar:not(.expanded) .cabinet>span:not(.avatar),.sidebar:not(.expanded) .cabinet em{display:none}
 .sidebar-backdrop{position:fixed;inset:0;z-index:49;background:#17211d59;opacity:0;pointer-events:none;transition:opacity .2s ease}
 body.sidebar-open .sidebar-backdrop{opacity:1;pointer-events:auto}
+/* «История остатков» (public/stock-history.js): фильтры, график, список изменений */
+.stock-history h2{margin:2px 0 4px}
+.stock-history-note{margin:0 0 10px;color:var(--muted);font-size:12px;line-height:1.5}
+.stock-history-filters{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-bottom:6px}
+.stock-history-filters select{height:35px;padding:0 10px;border:1px solid var(--line);border-radius:8px;background:#fafbfa;font:600 11px Manrope;color:var(--ink)}
+.stock-history-filters .multi-filter>div{left:0;right:auto;min-width:280px;max-height:320px}
+.stock-history-filters .multi-filter label span{display:grid;gap:1px;white-space:normal}
+.stock-history-filters .multi-filter label small{color:var(--muted);font-size:10px}
+.sh-periods{display:inline-flex;height:35px;padding:3px;gap:2px;border:1px solid var(--line);border-radius:8px;background:#fafbfa}
+.sh-periods button{padding:0 10px;border:0;border-radius:6px;background:transparent;color:var(--muted);font:700 11px Manrope;cursor:pointer}
+.sh-periods button[aria-pressed=true]{background:white;color:#5b36c8;box-shadow:0 1px 3px #17211d1f}
+.sh-search{width:100%;height:32px;margin:0 0 6px;padding:0 9px;border:1px solid var(--line);border-radius:7px;font:600 11px Manrope;outline:0}
+.sh-search:focus{border-color:var(--purple)}
+.sh-clear{width:100%;margin-top:6px;padding:7px;border:0;border-radius:6px;background:#f1efff;color:#5b36c8;font:700 11px Manrope;cursor:pointer}
+.stock-history-chart{padding:6px 0 4px}
+.stock-history-legend{display:flex;flex-wrap:wrap;gap:6px 16px;margin:2px 0 12px;font-size:11px;color:var(--ink)}
+.stock-history-legend span{display:inline-flex;align-items:center;gap:7px}
+.stock-history-legend i{width:16px;border-radius:2px}
+.stock-history-table{max-height:300px;overflow:auto;border:1px solid var(--line);border-radius:10px}
+.stock-history-table table{width:100%;min-width:0!important}
+.stock-history-table th,.stock-history-table td{padding:7px 10px;font-size:12px;white-space:nowrap}
+.stock-history-table td small{display:block;color:var(--muted);font-size:10.5px}
+.sh-product{display:inline-block;max-width:320px;overflow:hidden;text-overflow:ellipsis;vertical-align:bottom}
+.sh-down{color:#b84949;font-weight:800}
+.sh-up{color:var(--green);font-weight:800}
 /* «Реклама», столбец «Артикулы»: число товаров в кампании и сколько с показами за период */
 .ad-articles{display:grid;gap:2px;cursor:help}
 .ad-articles strong{font-size:13px}

@@ -459,7 +459,7 @@
     const modal=$('#setupHistoryModal'),body=$('#setupHistoryBody'),note=$('#setupHistoryNote'),id=params.get('id')||'';
     modal.hidden=false;body.innerHTML='<p class="history-empty">Загрузка из Google Таблицы…</p>';note.textContent=`Кампания № ${id}`;
     try{
-      const response=await fetch(`/api/sheet-history?${new URLSearchParams({id,sections:'Реклама,Ставки'})}`),data=await response.json();
+      const response=await fetch(`/api/sheet-history?${new URLSearchParams({id,sections:'Реклама,Ставки,Ключевые слова'})}`),data=await response.json();
       if(!response.ok)throw new Error(data.error||'Таблица не ответила');
       if(!data.configured){body.innerHTML='<p class="history-empty">Google Таблица не подключена: впишите в .env сайта WB_SHEET_URL и WB_SHEET_KEY (ключ — в таблице «WB → Ключ для сайта») и перезапустите сервер. Инструкция — google-sheets/README.md.</p>';return}
       const since=data.since?`таблица следит за изменениями с ${new Date(data.since).toLocaleString('ru-RU',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'})}`:'';
@@ -470,8 +470,9 @@
       body.innerHTML=items.map(item=>{
         const at=new Date(item.at),day=at.toLocaleDateString('ru-RU',{day:'numeric',month:'long'})+(at.getFullYear()!==new Date().getFullYear()?` ${at.getFullYear()}`:''),time=at.toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit'});
         const head=day!==lastDay?`<div class="history-day">${esc(day)}</div>`:'';lastDay=day;
-        // Ставки — по артикулам: в подписи таблицы «Кампания · артикул (артикул продавца)».
-        const product=item.section==='Ставки'?String(item.title||'').split(' · ').slice(1).join(' · '):'';
+        // Ставки и ключевые слова — по артикулам: в подписи таблицы «Кампания · артикул (артикул продавца)».
+        // У ключевых слов в «Было / Стало» — число исключённых запросов, а какие — в «Что изменилось».
+        const product=['Ставки','Ключевые слова'].includes(item.section)?String(item.title||'').split(' · ').slice(1).join(' · '):'';
         const what=String(item.what||'').replace(/, ₽$/,'');
         const list=/^Артикулы WB:/.test(item.what||'');
         const values=list?'':`<span class="was">${historyValue(item.what,item.before,item.section)}</span> → <b>${historyValue(item.what,item.after,item.section)}</b>`;

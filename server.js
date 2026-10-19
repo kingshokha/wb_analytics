@@ -1232,22 +1232,28 @@ function setProductNote(cabinet, nmId, body = {}) {
 // --- История из Google Таблицы (google-sheets/wb-sheets.gs, веб-приложение) ---
 // Цены, статусы и ставки таблица записывает раз в час; сайт берёт оттуда историю для графика цены товара и для
 // истории кампании. Адрес веб-приложения и ключ — WB_SHEET_URL и WB_SHEET_KEY в .env; без них — configured: false.
-const SHEET_SECTIONS = ['Цены', 'Реклама', 'Ставки'];
-async function sheetHistory(idsInput, sectionsInput) {
+// «Остатки FBW / FBS» — история остатков (лист «История остатков»): артикул не обязателен, к ответу добавляются
+// текущие остатки (current); days — изменения только за последние N дней.
+const SHEET_SECTIONS = ['Цены', 'Реклама', 'Ставки', 'Ключевые слова', 'Остатки FBW', 'Остатки FBS'];
+async function sheetHistory(idsInput, sectionsInput, daysInput) {
   const url = String(process.env.WB_SHEET_URL || '').trim(), key = String(process.env.WB_SHEET_KEY || '').trim();
-  if (!url || !key) return { configured: false, items: [], since: null };
+  if (!url || !key) return { configured: false, items: [], current: null, since: null };
   const ids = [...new Set(String(idsInput || '').split(',').map(id => id.trim()).filter(id => /^\d{1,15}$/.test(id)))].slice(0, 50);
-  if (!ids.length) throw apiError(400, 'Не указан артикул или кампания');
   const sections = String(sectionsInput || '').split(',').map(item => item.trim()).filter(item => SHEET_SECTIONS.includes(item));
-  return cachedAnalytics(`sheet-history:${ids.join(',')}:${sections.join(',')}`, async () => {
+  const stocks = sections.some(item => item.startsWith('Остатки '));
+  if (!ids.length && !stocks) throw apiError(400, 'Не указан артикул или кампания');
+  const days = Math.min(365, Math.max(0, Math.round(Number(daysInput) || 0)));
+  return cachedAnalytics(`sheet-history:${ids.join(',')}:${sections.join(',')}:${days}`, async () => {
     const target = new URL(url);
-    target.searchParams.set('key', key); target.searchParams.set('id', ids.join(','));
+    target.searchParams.set('key', key);
+    if (ids.length) target.searchParams.set('id', ids.join(','));
     if (sections.length) target.searchParams.set('sections', sections.join(','));
+    if (days) target.searchParams.set('days', String(days));
     let data;
     try { data = await (await fetch(target, { redirect: 'follow', signal: AbortSignal.timeout(30_000) })).json(); }
     catch (error) { throw apiError(502, `Google Таблица не ответила: ${error.message}`); }
     if (data?.error) throw apiError(502, `Google Таблица: ${data.error}`);
-    return { configured: true, items: Array.isArray(data?.items) ? data.items : [], since: data?.since || null };
+    return { configured: true, items: Array.isArray(data?.items) ? data.items : [], current: Array.isArray(data?.current) ? data.current : null, since: data?.since || null };
   }, 5 * 60_000);
 }
 
@@ -3162,7 +3168,7 @@ async function handleApi(req, res, url) {
     return send(res, 200, await productDetail(url.searchParams.get('cabinet') || 'demo', url.searchParams.get('nmId'), url.searchParams.get('from'), url.searchParams.get('to'), url.searchParams.get('live') === '1'));
   }
   if (req.method === 'GET' && url.pathname === '/api/sheet-history') {
-    return send(res, 200, await sheetHistory(url.searchParams.get('id'), url.searchParams.get('sections')));
+    return send(res, 200, await sheetHistory(url.searchParams.get('id'), url.searchParams.get('sections'), url.searchParams.get('days')));
   }
   if (req.method === 'POST' && url.pathname === '/api/advertising/campaign/rename') {
     const body = await readJson(req);
