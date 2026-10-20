@@ -4,7 +4,7 @@
 // начинают отсчёт заново. Детализация кампании обновляется так же — её код в campaign.js.
 const AUTO_REFRESH_MS=2*60_000;
 const AUTO_REFRESH_PAGES={
-  summary:()=>Promise.all([loadSummary(true,true),loadSummaryAds(summaryView.key)]).then(()=>!summaryView.error),
+  summary:()=>Promise.all([loadSummary(true,true),loadSummaryAds(summaryView.key)]),
   ads:()=>refreshAdsSilently(),
   funnel:()=>loadFunnelDetails(true)
 };
@@ -14,10 +14,9 @@ document.addEventListener('change',event=>{if(event.target.closest('#dateFrom,#d
 document.addEventListener('visibilitychange',()=>{if(!document.hidden)autoRefreshTick()});
 function autoRefreshBusy(){return document.hidden||$('#modal')?.classList.contains('open')||$('#refresh')?.classList.contains('loading')}
 async function autoRefreshTick(){
-  const page=state.activePage,run=AUTO_REFRESH_PAGES[page];
+  const run=AUTO_REFRESH_PAGES[state.activePage];
   if(!run||Date.now()-autoRefreshAt<AUTO_REFRESH_MS||autoRefreshBusy())return;
   autoRefreshAt=Date.now();
-  const ok=await run().catch(()=>false);
-  if(ok&&state.activePage===page)$('#syncText').textContent=`Обновлено ${new Date().toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit'})} · авто раз в 2 мин`;
+  await run().catch(()=>{});
 }
 setInterval(autoRefreshTick,10_000);

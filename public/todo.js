@@ -60,7 +60,6 @@ async function loadTodos(quiet=false){
     const data=await api('/api/todos');
     if(request!==todoView.request)return;
     todoView.tasks=data.tasks||[];todoView.error='';
-    if(!quiet)$('#syncText').textContent=`Дела · ${new Date().toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit'})}`;
   }catch(e){if(request!==todoView.request)return;todoView.error=e.message;if(!quiet)toast(e.message)}
   renderTodos();
 }

@@ -766,6 +766,10 @@ test('копия Google Таблицы: склейка без повторов, 
     assert.equal(readSheetHistory({ ids: ['2'], sections: ['Цены'] }, dir).items.length, 0);
     assert.equal(readSheetHistory({ sections: ['Остатки FBW'] }, dir).items.length, 1);
     assert.deepEqual(mergeSheetRows([first[0]], [first[0]]).added, []);
+    // Одинаковое изменение ставки у двух артикулов одной кампании — две строки: артикул в подписи.
+    const bid = title => ({ ...row('2026-10-20T08:45:00.000Z', 'Ставки', '29120597', 'Ставка в поиске, ₽', 977, 500), title });
+    assert.equal(saveSheetRows([bid('Фен дешевый · 221609260 (dyson)'), bid('Фен дешевый · 375812419 (dyson2)')], dir), 2);
+    assert.equal(readSheetHistory({ ids: ['29120597'], sections: ['Ставки'] }, dir).items.length, 2);
   } finally { require('node:fs').rmSync(dir, { recursive: true, force: true }); }
 });
 

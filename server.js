@@ -1242,7 +1242,11 @@ const SHEET_DIR = process.env.WB_SHEET_DIR ? path.resolve(process.env.WB_SHEET_D
 const SHEET_SYNC_EVERY = 60 * 60_000;
 const sheetSyncState = { running: null };
 const sheetConfigured = () => Boolean(String(process.env.WB_SHEET_URL || '').trim() && String(process.env.WB_SHEET_KEY || '').trim());
-const sheetRowKey = item => [item.at, item.cabinet, item.section, item.id, item.what, item.before, item.after].map(value => String(value ?? '')).join('|');
+// Ключ строки для отбрасывания повторов. Подпись (title) обязательна: у ставок и минус-фраз ID — номер кампании,
+// а артикул — только в подписи, и одинаковое изменение у двух артикулов иначе сливалось бы в одну строку.
+const sheetRowKey = item => [item.at, item.cabinet, item.section, item.id, item.title, item.what, item.before, item.after].map(value => String(value ?? '')).join('|');
+// Версия ключа: при смене копия один раз перекачивает всю историю из таблицы и дописывает пропущенные строки.
+const SHEET_KEY_VERSION = 2;
 // Склейка сохранённых строк с новыми: без повторов, по времени.
 function mergeSheetRows(existing = [], incoming = []) {
   const seen = new Set(existing.map(sheetRowKey)), added = [];
@@ -1308,8 +1312,9 @@ function syncSheet() {
     const syncFile = path.join(SHEET_DIR, 'sync.json'), saved = readSheetJson(syncFile, {});
     let added = 0;
     try {
-      const after = saved.cursor ? new Date(Date.parse(saved.cursor) - 60_000).toISOString() : '';
-      let cursor = saved.cursor || '', since = saved.since || null, currentSaved = false;
+      const full = saved.keyVersion !== SHEET_KEY_VERSION;
+      const after = saved.cursor && !full ? new Date(Date.parse(saved.cursor) - 60_000).toISOString() : '';
+      let cursor = full ? '' : saved.cursor || '', since = saved.since || null, currentSaved = false;
       for (let offset = 0, page = 0; page < 50; page++) {
         const target = new URL(String(process.env.WB_SHEET_URL).trim());
         target.searchParams.set('key', String(process.env.WB_SHEET_KEY).trim()); target.searchParams.set('sync', '1');
@@ -1327,7 +1332,7 @@ function syncSheet() {
         if (!data?.more || !items.length) break;
         offset += items.length;
       }
-      const result = { cursor, since, syncedAt: new Date().toISOString(), lastError: '', added };
+      const result = { cursor, since, syncedAt: new Date().toISOString(), lastError: '', added, keyVersion: SHEET_KEY_VERSION };
       writeSheetJson(syncFile, result);
       return result;
     } catch (error) {

@@ -50,13 +50,12 @@ async function loadReturns(force=false){
   if(!force&&returnsView.key===key&&returnsView.data){renderReturns();return}
   const request=++returnsView.request,btn=$('#refresh');
   if(returnsView.key.split(':')[0]!==state.cabinet){returnsView.data=null;returnsView.error='';renderReturns()}
-  btn.classList.add('loading');$('#syncText').textContent='Получаем возвраты… WB отдаёт не больше 10 запросов в минуту';
+  btn.classList.add('loading');
   try{
     const data=await api('/api/returns?'+new URLSearchParams({cabinet:state.cabinet,from:$('#dateFrom').value,to:$('#dateTo').value}));
     if(request!==returnsView.request)return;
     Object.assign(returnsView,{data,key,error:'',page:1});state.demo=data.demo;renderReturns();
-    $('#syncText').textContent=`Возвраты · ${new Date().toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit'})}`;
-  }catch(e){if(request!==returnsView.request)return;returnsView.error=e.message;renderReturns();$('#syncText').textContent='Ошибка загрузки возвратов';toast(e.message);addNotice('returns',`Ошибка загрузки возвратов: ${e.message}`)}
+  }catch(e){if(request!==returnsView.request)return;returnsView.error=e.message;renderReturns();toast(e.message);addNotice('returns',`Ошибка загрузки возвратов: ${e.message}`)}
   finally{if(request===returnsView.request)btn.classList.remove('loading')}
 }
 function renderReturns(){

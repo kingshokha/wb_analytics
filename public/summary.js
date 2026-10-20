@@ -115,17 +115,16 @@ async function loadSummary(force=false,silent=false){
   clearTimeout(summaryView.pollTimer);
   if(!silent){
     if(summaryView.key!==key){summaryView.data=null;summaryView.ads=null}
-    summaryView.key=key;summaryView.loading=true;summaryView.error='';$('#syncText').textContent='Собираем сводку…';renderSummary();loadSummaryAds(key);
+    summaryView.key=key;summaryView.loading=true;summaryView.error='';renderSummary();loadSummaryAds(key);
   }
   try{
     const q=new URLSearchParams({cabinet,from,to});if(force)q.set('refresh','1');
     const data=await api('/api/summary?'+q);
     if(request!==summaryView.requestId)return;
     summaryView.data=data;summaryView.error='';
-    if(!silent)$('#syncText').textContent=`Сводка · ${new Date().toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit'})}`;
     // Пока сервер догружает дни воронки из WB, сводка переспрашивает его и дорисовывает графики.
     if(data.sync?.pending)summaryView.pollTimer=setTimeout(()=>{if(request===summaryView.requestId&&state.activePage==='summary'&&summaryView.key===[state.cabinet,$('#dateFrom').value,$('#dateTo').value].join(':'))loadSummary(false,true)},5000);
-  }catch(e){if(request!==summaryView.requestId)return;summaryView.error=e.message;if(!silent){$('#syncText').textContent='Ошибка сводки';toast(e.message);addNotice('summary',`Ошибка загрузки сводки: ${e.message}`)}}
+  }catch(e){if(request!==summaryView.requestId)return;summaryView.error=e.message;if(!silent){toast(e.message);addNotice('summary',`Ошибка загрузки сводки: ${e.message}`)}}
   finally{if(request===summaryView.requestId){summaryView.loading=false;renderSummary()}}
 }
 async function loadSummaryAds(key){

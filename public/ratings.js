@@ -53,13 +53,12 @@ async function loadRatings(force=false){
   if(!force&&ratings.key===key&&ratings.data){renderRatings();return}
   const request=++ratings.request,btn=$('#refresh');
   if(ratings.key.split(':')[0]!==state.cabinet){ratings.data=null;ratings.error='';renderRatings()}
-  btn.classList.add('loading');$('#syncText').textContent='Получаем оценки товаров…';
+  btn.classList.add('loading');
   try{
     const data=await api('/api/ratings?'+new URLSearchParams({cabinet:state.cabinet,from:$('#dateFrom').value,to:$('#dateTo').value}));
     if(request!==ratings.request)return;
     Object.assign(ratings,{data,key,error:'',page:1});state.demo=data.demo;renderRatings();
-    $('#syncText').textContent=`Оценки · ${new Date().toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit'})}`;
-  }catch(e){if(request!==ratings.request)return;ratings.error=e.message;renderRatings();$('#syncText').textContent='Ошибка загрузки оценок';toast(e.message);addNotice('ratings',`Ошибка загрузки оценок: ${e.message}`)}
+  }catch(e){if(request!==ratings.request)return;ratings.error=e.message;renderRatings();toast(e.message);addNotice('ratings',`Ошибка загрузки оценок: ${e.message}`)}
   finally{if(request===ratings.request)btn.classList.remove('loading')}
 }
 function renderRatings(){
