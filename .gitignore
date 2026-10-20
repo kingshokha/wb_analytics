@@ -10,6 +10,7 @@ data/keyword-tags.json
 data/campaign-notes.json
 data/todos.json
 data/product-notes.json
+data/Sheet/
 # Привязка к своему проекту Apps Script (clasp) — у каждого своя
 google-sheets/.clasp.json
 *.log

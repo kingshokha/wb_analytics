@@ -1,7 +1,7 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { minusPlan, archivedPresetsFromError, productAdDays, productDetailPeriod, todoNmId, todoFields, funnelOrdersByNmId, summarizeHourlyOrders, orderFeedPeriod, itemRatingPeriods, normalizeItemRatings, itemReturnsPeriod, normalizeItemReturns, returnStatusGroup, campaignActivePeriod, mergeMinusList, summarizeKeywordDaily, summarizePositionDaily, normalizeOrders, normalizeOrderFeed, enrichOrders, extractFunnel, summarizeAdStats, campaignProductDaily, withAdBudgets, summarizeKeywords, normalizeStockPreset, normalizePricePreset, adCampaignMayHaveStats, validAdPeriod, historyPeriod, historyChunks, planAdFetch, datesBetween, safeFolderName, funnelDaysToFetch, pairFunnelDays, funnelPeriods, funnelRangeBuckets, funnelRecordCounts, funnelRangeValues, funnelSalesMatrix, summaryTopProducts, summaryDrops, summaryProducts, normalizeFbsStocks, normalizeFbwStocks, normalizePrices, summarizeStockTotals, normalizeNewOrders, summarizeSupplies, normalizeTrbxes, chunkOrders, stickerType, localPhoto, WB_HOSTS } = require('../server');
+const { mergeSheetRows, saveSheetRows, readSheetHistory, minusPlan, archivedPresetsFromError, productAdDays, productDetailPeriod, todoNmId, todoFields, funnelOrdersByNmId, summarizeHourlyOrders, orderFeedPeriod, itemRatingPeriods, normalizeItemRatings, itemReturnsPeriod, normalizeItemReturns, returnStatusGroup, campaignActivePeriod, mergeMinusList, summarizeKeywordDaily, summarizePositionDaily, normalizeOrders, normalizeOrderFeed, enrichOrders, extractFunnel, summarizeAdStats, campaignProductDaily, withAdBudgets, summarizeKeywords, normalizeStockPreset, normalizePricePreset, adCampaignMayHaveStats, validAdPeriod, historyPeriod, historyChunks, planAdFetch, datesBetween, safeFolderName, funnelDaysToFetch, pairFunnelDays, funnelPeriods, funnelRangeBuckets, funnelRecordCounts, funnelRangeValues, funnelSalesMatrix, summaryTopProducts, summaryDrops, summaryProducts, normalizeFbsStocks, normalizeFbwStocks, normalizePrices, summarizeStockTotals, normalizeNewOrders, summarizeSupplies, normalizeTrbxes, chunkOrders, stickerType, localPhoto, WB_HOSTS } = require('../server');
 
 test('возвраты: группы статусов, даты WB с пробелом, карточка товара, нулевой orderId', () => {
   assert.equal(returnStatusGroup('Готов к выдаче', true), 'ready');
@@ -747,6 +747,26 @@ test('минус-фразы: исключение добавляет к теку
   assert.deepEqual(mergeMinusList(before, ['плойки', 'расческа выпрямитель'], 'exclude'), ['расческа выпрямитель', 'плойка детская', 'плойки']);
   assert.deepEqual(mergeMinusList(before, ['плойка детская', 'фен'], 'include'), ['расческа выпрямитель']);
   assert.deepEqual(mergeMinusList([], ['фен'], 'include'), []);
+});
+
+test('копия Google Таблицы: склейка без повторов, файлы по разделам и месяцам, чтение с фильтрами', () => {
+  const dir = require('node:fs').mkdtempSync(require('node:path').join(require('node:os').tmpdir(), 'wb-sheet-'));
+  try {
+    const row = (at, section, id, what, before, after) => ({ at, cabinet: 'Кабинет 1', section, id, title: 't', what, before, after });
+    const first = [row('2026-09-30T10:00:00.000Z', 'Цены', '1', 'Цена со скидкой, ₽', 1500, 1400), row('2026-10-02T10:00:00.000Z', 'Ставки', '77', 'Ставка в поиске, ₽', 3, 4),
+      row('2026-10-02T10:00:00.000Z', 'Остатки FBW', '1', 'Коледино', 10, 7), row('2026-10-02T10:00:00.000Z', 'Неизвестный раздел', '1', 'x', 1, 2)];
+    assert.equal(saveSheetRows(first, dir), 3);
+    // Повторная порция (дозагрузка с запасом в минуту) не добавляет повторов.
+    assert.equal(saveSheetRows([first[1], row('2026-10-03T10:00:00.000Z', 'Цены', '1', 'Цена со скидкой, ₽', 1400, 1450)], dir), 1);
+    const months = require('node:fs').readdirSync(require('node:path').join(dir, 'Цены')).sort();
+    assert.deepEqual(months, ['2026-09.json', '2026-10.json']);
+    const prices = readSheetHistory({ ids: ['1'], sections: ['Цены'] }, dir);
+    assert.deepEqual(prices.items.map(item => item.after), [1450, 1400]);
+    assert.equal(prices.current, null);
+    assert.equal(readSheetHistory({ ids: ['2'], sections: ['Цены'] }, dir).items.length, 0);
+    assert.equal(readSheetHistory({ sections: ['Остатки FBW'] }, dir).items.length, 1);
+    assert.deepEqual(mergeSheetRows([first[0]], [first[0]]).added, []);
+  } finally { require('node:fs').rmSync(dir, { recursive: true, force: true }); }
 });
 
 test('минус-фразы: кластеры в архиве WB не отправляются — иначе set-minus отклоняет весь список', () => {

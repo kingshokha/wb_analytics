@@ -275,6 +275,9 @@ tr.rating-row-attention td:first-child{box-shadow:inset 3px 0 0 var(--red)}
 .sidebar:not(.expanded) .cabinet>span:not(.avatar),.sidebar:not(.expanded) .cabinet em{display:none}
 .sidebar-backdrop{position:fixed;inset:0;z-index:49;background:#17211d59;opacity:0;pointer-events:none;transition:opacity .2s ease}
 body.sidebar-open .sidebar-backdrop{opacity:1;pointer-events:auto}
+/* Окна истории из Google Таблицы: откуда данные — копия с компьютера или дозагрузка (public/sheet-sync.js) */
+.sheet-hint{margin:0 0 10px;padding:7px 10px;border-radius:8px;background:#f5f6f3;color:var(--muted);font-size:11.5px;line-height:1.45}
+.sheet-hint:empty{display:none}
 /* «История остатков» (public/stock-history.js): фильтры, график, список изменений */
 .stock-history h2{margin:2px 0 4px}
 .stock-history-note{margin:0 0 10px;color:var(--muted);font-size:12px;line-height:1.5}

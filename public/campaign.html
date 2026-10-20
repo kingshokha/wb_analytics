@@ -326,6 +326,9 @@
     .history-item .was{color:var(--muted);text-decoration:line-through}
     .history-item small{display:block;color:var(--muted);font-size:11.5px}
     .history-empty{margin:16px 0;color:var(--muted);font-size:13px;line-height:1.6}
+    /* Откуда данные: копия с компьютера или дозагрузка из Google Таблицы (public/sheet-sync.js) */
+    .sheet-hint{margin:10px 20px 0;padding:7px 10px;border-radius:8px;background:#f5f6f3;color:var(--muted);font-size:11.5px;line-height:1.45}
+    .sheet-hint:empty{display:none}
     /* Фильтр запросов по статусу: Все / Активные / Исключённые */
     .keyword-filter{display:inline-flex;height:38px;padding:3px;gap:2px;border:1px solid var(--line);border-radius:9px;background:#fafbfa}
     .keyword-filter button{padding:0 11px;border:0;border-radius:6px;background:transparent;color:var(--muted);font-size:12px;font-weight:700;cursor:pointer}
@@ -480,11 +483,12 @@
 <div id="keywordHistoryPop" class="history-pop" role="dialog" aria-label="История отметок и комментариев запроса" hidden></div>
 <div id="tagColorsModal" class="modal" hidden><div class="modal-backdrop" data-tag-colors-close></div><div class="modal-dialog small" role="dialog" aria-modal="true" aria-labelledby="tagColorsTitle"><div class="modal-head"><h2 id="tagColorsTitle">Цвета отметок</h2><button type="button" class="modal-close" data-tag-colors-close aria-label="Закрыть">×</button></div><div class="confirm-body" id="tagColorsBody"></div></div></div>
 <div id="keywordDailyModal" class="modal" hidden><div class="modal-backdrop" data-kwday-close></div><div class="modal-dialog" role="dialog" aria-modal="true" aria-labelledby="keywordDailyTitle"><div class="modal-head"><div><h2 id="keywordDailyTitle">Запрос по дням</h2><p id="keywordDailyNote" class="kwday-note"></p></div><button type="button" class="modal-close" data-kwday-close aria-label="Закрыть">×</button></div><div class="modal-table-wrap"><div class="kwday-metrics" id="keywordDailyMetrics"></div><div class="kwday-chart" id="keywordDailyChart"></div><table class="kwday-table"><thead><tr><th>Дата</th><th class="views-col">Показы</th><th>Клики</th><th class="views-col">CTR</th><th class="views-col">CPM</th><th>CPC</th><th>Затраты</th><th>Корзины</th><th>Заказы</th><th>CR</th><th>Ср. позиция</th></tr></thead><tbody id="keywordDailyBody"></tbody></table></div></div></div>
-<div id="setupHistoryModal" class="modal" hidden><div class="modal-backdrop" data-setup-history-close></div><div class="modal-dialog small history-dialog" role="dialog" aria-modal="true" aria-labelledby="setupHistoryTitle"><div class="modal-head"><div><h2 id="setupHistoryTitle">История кампании</h2><p id="setupHistoryNote" class="kwday-note"></p></div><button type="button" class="modal-close" data-setup-history-close aria-label="Закрыть">×</button></div><div class="setup-history-body" id="setupHistoryBody"></div></div></div>
+<div id="setupHistoryModal" class="modal" hidden><div class="modal-backdrop" data-setup-history-close></div><div class="modal-dialog small history-dialog" role="dialog" aria-modal="true" aria-labelledby="setupHistoryTitle"><div class="modal-head"><div><h2 id="setupHistoryTitle">История кампании</h2><p id="setupHistoryNote" class="kwday-note"></p></div><button type="button" class="modal-close" data-setup-history-close aria-label="Закрыть">×</button></div><p class="sheet-hint" id="setupHistoryHint"></p><div class="setup-history-body" id="setupHistoryBody"></div></div></div>
 <div id="productModal" class="modal" hidden><div class="modal-backdrop" data-modal-close></div><div class="modal-dialog" role="dialog" aria-modal="true" aria-labelledby="productModalTitle"><div class="modal-head"><h2 id="productModalTitle">Статистика артикула</h2><button type="button" class="modal-close" data-modal-close aria-label="Закрыть">×</button></div><div class="modal-table-wrap"><table><thead><tr><th>Дата</th><th>Показы</th><th>Клики</th><th>CTR</th><th>CPC</th><th>Корзины</th><th>Заказы</th><th>Отмены</th><th>Сумма заказов</th><th>Затраты</th><th>ДРР, %</th></tr></thead><tbody id="productModalBody"></tbody></table></div></div></div>
 <script src="/sidebar.js"></script>
 <script src="/date-range.js"></script>
 <script src="/mini-charts.js"></script>
+<script src="/sheet-sync.js"></script>
 <script src="/campaign.js"></script>
 </body>
 </html>

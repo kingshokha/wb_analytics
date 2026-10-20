@@ -455,17 +455,26 @@
     if(value===''||value==null||value==='—')return section==='Ставки'?'выкл.':'—';
     return SHEET_MONEY.test(what)&&Number.isFinite(Number(value))?money(Number(value)):esc(String(value));
   }
-  async function openSetupHistory(){
-    const modal=$('#setupHistoryModal'),body=$('#setupHistoryBody'),note=$('#setupHistoryNote'),id=params.get('id')||'';
-    modal.hidden=false;body.innerHTML='<p class="history-empty">Загрузка из Google Таблицы…</p>';note.textContent=`Кампания № ${id}`;
-    try{
-      const response=await fetch(`/api/sheet-history?${new URLSearchParams({id,sections:'Реклама,Ставки,Ключевые слова'})}`),data=await response.json();
-      if(!response.ok)throw new Error(data.error||'Таблица не ответила');
+  // Сначала история с компьютера (data/Sheet) — окно открывается сразу; потом дозагрузка из Google Таблицы.
+  let setupHistoryRequest=0;
+  function openSetupHistory(){
+    const modal=$('#setupHistoryModal'),body=$('#setupHistoryBody'),note=$('#setupHistoryNote'),hint=$('#setupHistoryHint'),id=params.get('id')||'',request=++setupHistoryRequest;
+    modal.hidden=false;body.innerHTML='<p class="history-empty">Загрузка…</p>';note.textContent=`Кампания № ${id}`;hint.textContent='';
+    window.SheetSync?.load(`/api/sheet-history?${new URLSearchParams({id,sections:'Реклама,Ставки,Ключевые слова'})}`,(data,phase,error,previous)=>{
+      if(request!==setupHistoryRequest||modal.hidden)return;
+      hint.textContent=SheetSync.hint(data,phase,error,previous);
+      if(data)renderSetupHistory(data);
+      else if(error)body.innerHTML=`<p class="history-empty">Не удалось загрузить историю: ${esc(error.message)}</p>`;
+    });
+  }
+  function renderSetupHistory(data){
+    const body=$('#setupHistoryBody'),note=$('#setupHistoryNote'),id=params.get('id')||'';
+    {
       if(!data.configured){body.innerHTML='<p class="history-empty">Google Таблица не подключена: впишите в .env сайта WB_SHEET_URL и WB_SHEET_KEY (ключ — в таблице «WB → Ключ для сайта») и перезапустите сервер. Инструкция — google-sheets/README.md.</p>';return}
       const since=data.since?`таблица следит за изменениями с ${new Date(data.since).toLocaleString('ru-RU',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'})}`:'';
-      note.textContent=`Кампания № ${id}${since?` · ${since}`:''} · обновляется раз в час`;
+      note.textContent=`Кампания № ${id}${since?` · ${since}`:''} · записывается раз в час`;
       const items=(data.items||[]).slice().sort((a,b)=>String(b.at).localeCompare(String(a.at)));
-      if(!items.length){body.innerHTML='<p class="history-empty">Изменений статуса, настроек и ставок пока нет. Таблица сравнивает каждое обновление с предыдущим и записывает только то, что поменялось.</p>';return}
+      if(!items.length){body.innerHTML='<p class="history-empty">Изменений статуса, настроек, ставок и минус-фраз пока нет. Таблица сравнивает каждое обновление с предыдущим и записывает только то, что поменялось.</p>';return}
       let lastDay='';
       body.innerHTML=items.map(item=>{
         const at=new Date(item.at),day=at.toLocaleDateString('ru-RU',{day:'numeric',month:'long'})+(at.getFullYear()!==new Date().getFullYear()?` ${at.getFullYear()}`:''),time=at.toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit'});
@@ -478,7 +487,7 @@
         const values=list?'':`<span class="was">${historyValue(item.what,item.before,item.section)}</span> → <b>${historyValue(item.what,item.after,item.section)}</b>`;
         return `${head}<div class="history-item"><time>${esc(time)}</time><div><b>${esc(what)}</b>${product?` · артикул ${esc(product)}`:''}${values?`<br>${values}`:''}</div></div>`;
       }).join('');
-    }catch(e){body.innerHTML=`<p class="history-empty">Не удалось загрузить историю: ${esc(e.message)}</p>`}
+    }
   }
   function closeSetupHistory(){$('#setupHistoryModal').hidden=true}
   $('#setupHistoryButton').onclick=openSetupHistory;

@@ -11,21 +11,26 @@ const shTime=iso=>new Date(iso).toLocaleString('ru-RU',{day:'2-digit',month:'2-d
 function openStockHistory(){
   stockHistory.type=state.activePage==='stocks'?'FBS':'FBW';
   Object.assign(stockHistory,{data:null,error:'',warehouses:new Set(),articles:new Set(),articleSearch:'',cabinet:''});
-  openModal(`<div class="stock-history"><p class="eyebrow">Остатки ${stockHistory.type}</p><h2>История остатков</h2><p class="stock-history-note" id="shNote">Загрузка из Google Таблицы…</p>
+  openModal(`<div class="stock-history"><p class="eyebrow">Остатки ${stockHistory.type}</p><h2>История остатков</h2><p class="sheet-hint" id="shHint"></p><p class="stock-history-note" id="shNote">Загрузка…</p>
     <div class="stock-history-filters" id="shFilters"></div><div class="summary-chart stock-history-chart" id="shChart"></div><div class="stock-history-legend" id="shLegend"></div><div id="shChanges"></div></div>`,true);
   loadStockHistory();
 }
-async function loadStockHistory(){
+// Сначала копия с компьютера (data/Sheet) — окно рисуется сразу; потом дозагрузка из таблицы — рисуется ещё раз.
+// Новое в подсказке считаем по изменениям текущего типа (FBW или FBS) за выбранный период.
+function loadStockHistory(){
   const request=++stockHistory.request;stockHistory.loading=true;
-  try{
-    const data=await api(`/api/sheet-history?${new URLSearchParams({sections:`Остатки ${stockHistory.type}`,days:String(stockHistory.days)})}`);
-    if(request!==stockHistory.request)return;
-    stockHistory.data=data;stockHistory.error='';
-    // Кабинет по умолчанию — тот, что выбран на сайте, если в таблице он назван так же.
-    const cabinets=stockHistoryCabinets(),siteName=(state.cabinets||[]).find(item=>item.id===state.cabinet)?.name;
-    if(!stockHistory.cabinet||!cabinets.includes(stockHistory.cabinet))stockHistory.cabinet=cabinets.includes(siteName)?siteName:cabinets.length===1?cabinets[0]:'';
-  }catch(error){if(request!==stockHistory.request)return;stockHistory.error=error.message}
-  finally{if(request===stockHistory.request){stockHistory.loading=false;renderStockHistory()}}
+  window.SheetSync?.load(`/api/sheet-history?${new URLSearchParams({sections:`Остатки ${stockHistory.type}`,days:String(stockHistory.days)})}`,(data,phase,error,previous)=>{
+    if(request!==stockHistory.request||!$('#shNote'))return;
+    if($('#shHint'))$('#shHint').textContent=SheetSync.hint(data,phase,error,previous);
+    if(data){
+      stockHistory.data=data;stockHistory.error='';
+      // Кабинет по умолчанию — тот, что выбран на сайте, если в таблице он назван так же.
+      const cabinets=stockHistoryCabinets(),siteName=(state.cabinets||[]).find(item=>item.id===state.cabinet)?.name;
+      if(!stockHistory.cabinet||!cabinets.includes(stockHistory.cabinet))stockHistory.cabinet=cabinets.includes(siteName)?siteName:cabinets.length===1?cabinets[0]:'';
+    }else if(error&&!stockHistory.data)stockHistory.error=error.message;
+    if(phase==='sheet')stockHistory.loading=false;
+    renderStockHistory();
+  });
 }
 function stockHistoryCabinets(){const data=stockHistory.data||{};return [...new Set([...(data.current||[]).map(row=>row.cabinet),...(data.items||[]).map(item=>item.cabinet)].filter(Boolean))].sort((a,b)=>String(a).localeCompare(String(b),'ru'))}
 
@@ -60,7 +65,7 @@ function renderStockHistory(){
   const note=$('#shNote');if(!note)return;
   const data=stockHistory.data;
   if(stockHistory.error){note.textContent=`Не удалось загрузить: ${stockHistory.error}`;return}
-  if(!data){note.textContent='Загрузка из Google Таблицы…';return}
+  if(!data){note.textContent='Загрузка…';return}
   if(!data.configured){note.innerHTML='Google Таблица не подключена: впишите в .env сайта WB_SHEET_URL и WB_SHEET_KEY (ключ — в таблице «WB → Ключ для сайта») и перезапустите сервер. Инструкция — google-sheets/README.md.';return}
   renderStockHistoryFilters();
   const {current,changes}=stockHistoryFiltered();
@@ -126,7 +131,7 @@ document.addEventListener('click',event=>{
   if(event.target.closest('#stockHistoryButton'))return openStockHistory();
   if(!event.target.closest('.stock-history'))return;
   const days=event.target.closest('[data-sh-days]');
-  if(days){stockHistory.days=Number(days.dataset.shDays);$('#shNote').textContent='Загрузка из Google Таблицы…';loadStockHistory();return}
+  if(days){stockHistory.days=Number(days.dataset.shDays);$('#shNote').textContent='Загрузка…';loadStockHistory();return}
   const clear=event.target.closest('[data-sh-clear]');
   if(clear){stockHistory[clear.dataset.shClear].clear();renderStockHistory()}
 });

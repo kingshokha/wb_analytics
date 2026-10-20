@@ -77,6 +77,7 @@ function onOpen() {
 function doGet(e) {
   const params = (e && e.parameter) || {}, key = PropertiesService.getScriptProperties().getProperty('WB_SITE_KEY');
   if (!key || params.key !== key) return jsonOutput({ error: 'Неверный ключ доступа к таблице' });
+  if (params.sync) return jsonOutput(syncExport(params));
   const book = SpreadsheetApp.getActive(), log = book.getSheetByName(SHEET_NAMES.log);
   const list = function (value) { return String(value || '').split(',').map(function (item) { return item.trim(); }).filter(String); };
   const ids = list(params.id), sections = list(params.sections), days = Number(params.days) || 0, fromTime = days > 0 ? Date.now() - days * 86400000 : 0;
@@ -100,6 +101,25 @@ function doGet(e) {
   // since — первое обновление таблицы: раньше этого момента изменений не видно (журнал — новые сверху).
   const since = log && log.getLastRow() > 1 ? isoDate(log.getRange(log.getLastRow(), 1).getValue()) : null;
   return jsonOutput({ items: items, current: current, since: since, now: new Date().toISOString() });
+}
+// Выгрузка для копии на компьютере (сервер сайта, data/Sheet): ?sync=1&after=<ISO>&offset=0&limit=20000.
+// Все строки «Истории» и «Истории остатков» не старше after (включительно — строки одного обновления пишутся
+// в одно время, сайт сам убирает повторы), от старых к новым, порциями; more — есть ли следующая порция.
+// current — текущие остатки с листа «Остатки» (только в первой порции).
+function syncExport(params) {
+  const book = SpreadsheetApp.getActive(), log = book.getSheetByName(SHEET_NAMES.log);
+  const after = params.after ? new Date(params.after).getTime() : 0, offset = Math.max(0, Number(params.offset) || 0), limit = Math.min(30000, Math.max(1, Number(params.limit) || 20000));
+  const rowsOf = function (name, width) { const target = book.getSheetByName(name); return target && target.getLastRow() > 1 ? target.getRange(2, 1, target.getLastRow() - 1, width).getValues() : []; };
+  const fresh = function (row) { return row[0] instanceof Date && (!after || row[0].getTime() >= after); };
+  const items = rowsOf(SHEET_NAMES.history, HISTORY_HEADERS.length).filter(fresh)
+    .map(function (row) { return { at: isoDate(row[0]), cabinet: row[1], section: row[2], id: String(row[3]), title: row[4], what: row[5], before: row[6], after: row[7] }; })
+    .concat(rowsOf(SHEET_NAMES.stockHistory, STOCK_HISTORY_HEADERS.length).filter(fresh)
+      .map(function (row) { return { at: isoDate(row[0]), cabinet: row[1], section: 'Остатки ' + row[2], id: String(row[3]), title: row[4], what: row[5], before: row[6], after: row[7] }; }))
+    .sort(function (a, b) { return a.at < b.at ? -1 : a.at > b.at ? 1 : 0; });
+  const current = offset ? null : rowsOf(SHEET_NAMES.stocks, STOCK_HEADERS.length)
+    .map(function (row) { return { cabinet: row[0], type: row[1], warehouse: row[2], nmId: String(row[3]), vendorCode: row[4], name: row[5], quantity: Number(row[6]) || 0, updatedAt: isoDate(row[7]) }; });
+  const since = log && log.getLastRow() > 1 ? isoDate(log.getRange(log.getLastRow(), 1).getValue()) : null;
+  return { items: items.slice(offset, offset + limit), total: items.length, more: offset + limit < items.length, current: current, since: since, now: new Date().toISOString() };
 }
 function jsonOutput(value) { return ContentService.createTextOutput(JSON.stringify(value)).setMimeType(ContentService.MimeType.JSON); }
 function isoDate(value) { return value instanceof Date ? value.toISOString() : (value ? String(value) : null); }

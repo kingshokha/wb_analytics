@@ -16,12 +16,18 @@ function openPriceProduct(nmId){
   openModal(`<div class="price-product">
     <div class="price-product-head">${row.photo?`<img class="price-product-photo" src="${escapeHtml(row.photo)}" alt="">`:''}<div><p class="eyebrow">Цена товара</p><h2>${escapeHtml(row.name)}</h2><p>${escapeHtml(row.vendorCode||'—')} · nmID ${row.nmId} · ${escapeHtml(row.category)} · ${escapeHtml(row.brand)}</p></div></div>
     <div class="price-product-now">${[['Цена до скидки',fmtRub(row.price)],['Скидка продавца',fmtPercent(row.discount)],['Цена со скидкой',fmtRub(row.discountedPrice)],['Скидка WB Клуба',fmtPercent(row.clubDiscount)],['Цена в WB Клубе',fmtRub(row.clubDiscountedPrice)]].map(([label,value])=>`<div><span>${label}</span><strong>${value}</strong></div>`).join('')}</div>
-    <section class="price-product-section"><h3>История цены</h3><div id="priceHistoryBox"><p class="price-product-note">Загрузка истории из Google Таблицы…</p></div></section>
+    <section class="price-product-section"><h3>История цены</h3><p class="sheet-hint" id="priceHistoryHint"></p><div id="priceHistoryBox"><p class="price-product-note">Загрузка истории…</p></div></section>
     <section class="price-product-section"><h3>Изменить цену</h3>${priceEditForm(row)}</section>
   </div>`,true);
   bindPriceEditForm(row);
-  api(`/api/sheet-history?id=${row.nmId}&sections=${encodeURIComponent('Цены')}`).then(data=>{if(request===priceProduct.request)renderPriceHistory(row,data)})
-    .catch(error=>{if(request===priceProduct.request&&$('#priceHistoryBox'))$('#priceHistoryBox').innerHTML=`<p class="price-product-note error">Не удалось загрузить историю: ${escapeHtml(error.message)}</p>`});
+  // Сначала история с компьютера (data/Sheet), потом дозагрузка из Google Таблицы — окно рисуется дважды.
+  const count=data=>(data?.items||[]).filter(item=>PRICE_HISTORY_FIELDS[item.what]).length;
+  window.SheetSync?.load(`/api/sheet-history?id=${row.nmId}&sections=${encodeURIComponent('Цены')}`,(data,phase,error,previous)=>{
+    if(request!==priceProduct.request||!$('#priceHistoryBox'))return;
+    $('#priceHistoryHint').textContent=SheetSync.hint(data,phase,error,previous,count);
+    if(data)renderPriceHistory(row,data);
+    else if(error)$('#priceHistoryBox').innerHTML=`<p class="price-product-note error">Не удалось загрузить историю: ${escapeHtml(error.message)}</p>`;
+  });
 }
 
 // Точки истории: таблица хранит только изменения (было → стало), поэтому цена до первого изменения — «было» первого,
@@ -47,7 +53,7 @@ function renderPriceHistory(row,data){
   const rows=points.slice().reverse().map((point,index,list)=>{const previous=list[index+1];
     return `<tr${point.now?' class="price-history-now"':''}><td>${point.now?'Сейчас':priceDateTime(point.takenAt)}</td><td>${fmtRub(point.price)}</td><td>${fmtPercent(point.discount)}</td><td><strong>${fmtRub(point.discountedPrice)}</strong> ${previous?priceChange(point.discountedPrice,previous.discountedPrice):''}</td><td>${fmtPercent(point.clubDiscount)}</td></tr>`}).join('');
   box.innerHTML=`<div class="summary-chart price-history-chart" id="priceHistoryChart"></div><div class="summary-legend price-history-legend">${PRICE_SERIES.map(series=>`<span><i class="price-legend ${series.className}"></i>${series.label}</span>`).join('')}</div>`+
-    `<p class="price-product-note">Изменений${since}: ${fmtNum(changes)} · данные из Google Таблицы, она обновляется раз в час</p>`+
+    `<p class="price-product-note">Изменений${since}: ${fmtNum(changes)} · таблица записывает изменения раз в час</p>`+
     `<div class="table-wrap price-history-table"><table><thead><tr><th>Когда</th><th>Цена до скидки</th><th>Скидка</th><th>Со скидкой</th><th>WB Клуб</th></tr></thead><tbody>${rows}</tbody></table></div>`;
   renderPriceHistoryChart(points);
 }

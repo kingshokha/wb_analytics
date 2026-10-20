@@ -1229,32 +1229,129 @@ function setProductNote(cabinet, nmId, body = {}) {
   return productNotes(cabinet, nmId);
 }
 
-// --- История из Google Таблицы (google-sheets/wb-sheets.gs, веб-приложение) ---
-// Цены, статусы и ставки таблица записывает раз в час; сайт берёт оттуда историю для графика цены товара и для
-// истории кампании. Адрес веб-приложения и ключ — WB_SHEET_URL и WB_SHEET_KEY в .env; без них — configured: false.
-// «Остатки FBW / FBS» — история остатков (лист «История остатков»): артикул не обязателен, к ответу добавляются
-// текущие остатки (current); days — изменения только за последние N дней.
+// --- История из Google Таблицы: копия на компьютере (data/Sheet) и дозагрузка ---
+// Таблица (google-sheets/wb-sheets.gs) раз в час записывает изменения цен, статусов, ставок, минус-фраз и остатков.
+// Сервер держит копию в data/Sheet/<раздел>/<ГГГГ-ММ>.json (в «Остатки FBW / FBS» ещё current.json — текущие
+// остатки), в sync.json — до какого момента скачано. Дозагружается только новое (?sync=1&after=…), повторы
+// отбрасываются. Копия хранит всю историю — в самой таблице старые строки со временем удаляются.
+// Окна истории на сайте сначала берут данные с компьютера (source=local), потом просят дозагрузку (source=sheet).
+// Адрес веб-приложения и ключ — WB_SHEET_URL и WB_SHEET_KEY в .env; без них — configured: false.
+// WB_SHEET_DIR — другая папка для копии (для тестов, чтобы не трогать data/).
 const SHEET_SECTIONS = ['Цены', 'Реклама', 'Ставки', 'Ключевые слова', 'Остатки FBW', 'Остатки FBS'];
-async function sheetHistory(idsInput, sectionsInput, daysInput) {
-  const url = String(process.env.WB_SHEET_URL || '').trim(), key = String(process.env.WB_SHEET_KEY || '').trim();
-  if (!url || !key) return { configured: false, items: [], current: null, since: null };
+const SHEET_DIR = process.env.WB_SHEET_DIR ? path.resolve(process.env.WB_SHEET_DIR) : path.join(ROOT, 'data', 'Sheet');
+const SHEET_SYNC_EVERY = 60 * 60_000;
+const sheetSyncState = { running: null };
+const sheetConfigured = () => Boolean(String(process.env.WB_SHEET_URL || '').trim() && String(process.env.WB_SHEET_KEY || '').trim());
+const sheetRowKey = item => [item.at, item.cabinet, item.section, item.id, item.what, item.before, item.after].map(value => String(value ?? '')).join('|');
+// Склейка сохранённых строк с новыми: без повторов, по времени.
+function mergeSheetRows(existing = [], incoming = []) {
+  const seen = new Set(existing.map(sheetRowKey)), added = [];
+  for (const item of incoming) {
+    if (!item?.at || !SHEET_SECTIONS.includes(item.section)) continue;
+    const key = sheetRowKey(item); if (seen.has(key)) continue;
+    seen.add(key); added.push(item);
+  }
+  return { rows: added.length ? [...existing, ...added].sort((a, b) => String(a.at).localeCompare(String(b.at))) : existing, added };
+}
+function readSheetJson(file, fallback) { try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return fallback; } }
+function writeSheetJson(file, value) {
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(`${file}.tmp`, JSON.stringify(value));
+  fs.renameSync(`${file}.tmp`, file);
+}
+function sheetMonths(section, dir = SHEET_DIR) {
+  try { return fs.readdirSync(path.join(dir, section)).filter(name => /^\d{4}-\d{2}\.json$/.test(name)).map(name => name.slice(0, 7)).sort(); } catch { return []; }
+}
+// Порция строк из таблицы → файлы по разделам и месяцам. Возвращает число новых строк.
+function saveSheetRows(items = [], dir = SHEET_DIR) {
+  const groups = new Map();
+  for (const item of items) {
+    if (!SHEET_SECTIONS.includes(item?.section) || !/^\d{4}-\d{2}/.test(String(item.at || ''))) continue;
+    const group = `${item.section}|${String(item.at).slice(0, 7)}`;
+    if (!groups.has(group)) groups.set(group, []);
+    groups.get(group).push(item);
+  }
+  let added = 0;
+  for (const [group, list] of groups) {
+    const [section, month] = group.split('|'), file = path.join(dir, section, `${month}.json`);
+    const merged = mergeSheetRows(readSheetJson(file, { items: [] }).items || [], list);
+    if (merged.added.length) { writeSheetJson(file, { items: merged.rows }); added += merged.added.length; }
+  }
+  return added;
+}
+function saveSheetCurrent(current = [], dir = SHEET_DIR) {
+  for (const type of ['FBW', 'FBS']) writeSheetJson(path.join(dir, `Остатки ${type}`, 'current.json'), { items: current.filter(row => row.type === type) });
+}
+// Чтение копии: строки нужных разделов (по артикулам или кампаниям, за последние days дней), новые сверху;
+// для остатков — ещё текущие остатки.
+function readSheetHistory({ ids = [], sections = [], days = 0 } = {}, dir = SHEET_DIR) {
+  const fromIso = days ? new Date(Date.now() - days * 86_400_000).toISOString() : '', fromMonth = fromIso.slice(0, 7), items = [];
+  for (const section of sections) for (const month of sheetMonths(section, dir)) {
+    if (fromMonth && month < fromMonth) continue;
+    for (const item of readSheetJson(path.join(dir, section, `${month}.json`), { items: [] }).items || []) {
+      if ((!ids.length || ids.includes(String(item.id))) && (!fromIso || String(item.at) >= fromIso)) items.push(item);
+    }
+  }
+  const stockTypes = sections.filter(item => item.startsWith('Остатки ')).map(item => item.slice('Остатки '.length));
+  const current = stockTypes.length ? stockTypes.flatMap(type => (readSheetJson(path.join(dir, `Остатки ${type}`, 'current.json'), { items: [] }).items || [])
+    .filter(row => !ids.length || ids.includes(String(row.nmId)))) : null;
+  items.sort((a, b) => String(b.at).localeCompare(String(a.at)));
+  return { items: items.slice(0, stockTypes.length ? 60_000 : 5_000), current };
+}
+// Дозагрузка: всё новее последней сохранённой строки (минус минута: строки одного обновления таблицы пишутся в одно
+// время, а синхронизация могла попасть между листами — повторы отбросит склейка), порциями по 20 000.
+// Одновременно идёт одна дозагрузка; остальные ждут её.
+function syncSheet() {
+  if (!sheetConfigured()) return Promise.resolve({ configured: false });
+  if (sheetSyncState.running) return sheetSyncState.running;
+  sheetSyncState.running = (async () => {
+    const syncFile = path.join(SHEET_DIR, 'sync.json'), saved = readSheetJson(syncFile, {});
+    let added = 0;
+    try {
+      const after = saved.cursor ? new Date(Date.parse(saved.cursor) - 60_000).toISOString() : '';
+      let cursor = saved.cursor || '', since = saved.since || null, currentSaved = false;
+      for (let offset = 0, page = 0; page < 50; page++) {
+        const target = new URL(String(process.env.WB_SHEET_URL).trim());
+        target.searchParams.set('key', String(process.env.WB_SHEET_KEY).trim()); target.searchParams.set('sync', '1');
+        if (after) target.searchParams.set('after', after);
+        target.searchParams.set('offset', String(offset)); target.searchParams.set('limit', '20000');
+        let data;
+        try { data = await (await fetch(target, { redirect: 'follow', signal: AbortSignal.timeout(180_000) })).json(); }
+        catch (error) { throw new Error(`Google Таблица не ответила: ${error.message}`); }
+        if (data?.error) throw new Error(`Google Таблица: ${data.error}`);
+        const items = Array.isArray(data?.items) ? data.items : [];
+        added += saveSheetRows(items);
+        if (!currentSaved && Array.isArray(data?.current)) { saveSheetCurrent(data.current); currentSaved = true; }
+        for (const item of items) if (String(item.at) > cursor) cursor = String(item.at);
+        since = data?.since || since;
+        if (!data?.more || !items.length) break;
+        offset += items.length;
+      }
+      const result = { cursor, since, syncedAt: new Date().toISOString(), lastError: '', added };
+      writeSheetJson(syncFile, result);
+      return result;
+    } catch (error) {
+      const result = { ...saved, lastError: error.message, failedAt: new Date().toISOString() };
+      writeSheetJson(syncFile, result);
+      console.error('Google Таблица:', error.message);
+      return { ...result, added };
+    } finally { sheetSyncState.running = null; }
+  })();
+  return sheetSyncState.running;
+}
+// /api/sheet-history: source=local — сразу с компьютера; source=sheet — сначала дозагрузка из таблицы.
+// added — сколько новых строк скачано за эту дозагрузку (по всей таблице), syncError — почему не получилось.
+async function sheetHistory(idsInput, sectionsInput, daysInput, source = 'local') {
+  if (!sheetConfigured()) return { configured: false, items: [], current: null, since: null };
   const ids = [...new Set(String(idsInput || '').split(',').map(id => id.trim()).filter(id => /^\d{1,15}$/.test(id)))].slice(0, 50);
   const sections = String(sectionsInput || '').split(',').map(item => item.trim()).filter(item => SHEET_SECTIONS.includes(item));
   const stocks = sections.some(item => item.startsWith('Остатки '));
   if (!ids.length && !stocks) throw apiError(400, 'Не указан артикул или кампания');
   const days = Math.min(365, Math.max(0, Math.round(Number(daysInput) || 0)));
-  return cachedAnalytics(`sheet-history:${ids.join(',')}:${sections.join(',')}:${days}`, async () => {
-    const target = new URL(url);
-    target.searchParams.set('key', key);
-    if (ids.length) target.searchParams.set('id', ids.join(','));
-    if (sections.length) target.searchParams.set('sections', sections.join(','));
-    if (days) target.searchParams.set('days', String(days));
-    let data;
-    try { data = await (await fetch(target, { redirect: 'follow', signal: AbortSignal.timeout(30_000) })).json(); }
-    catch (error) { throw apiError(502, `Google Таблица не ответила: ${error.message}`); }
-    if (data?.error) throw apiError(502, `Google Таблица: ${data.error}`);
-    return { configured: true, items: Array.isArray(data?.items) ? data.items : [], current: Array.isArray(data?.current) ? data.current : null, since: data?.since || null };
-  }, 5 * 60_000);
+  const sync = source === 'sheet' ? await syncSheet() : null;
+  const saved = readSheetJson(path.join(SHEET_DIR, 'sync.json'), {});
+  return { configured: true, source: source === 'sheet' ? 'sheet' : 'local', ...readSheetHistory({ ids, sections: sections.length ? sections : SHEET_SECTIONS.filter(item => !item.startsWith('Остатки ')), days }),
+    since: saved.since || null, syncedAt: saved.syncedAt || null, added: sync?.added || 0, syncError: sync?.lastError || '' };
 }
 
 // --- Отметки ключевых запросов (data/keyword-tags.json) ---
@@ -3168,7 +3265,7 @@ async function handleApi(req, res, url) {
     return send(res, 200, await productDetail(url.searchParams.get('cabinet') || 'demo', url.searchParams.get('nmId'), url.searchParams.get('from'), url.searchParams.get('to'), url.searchParams.get('live') === '1'));
   }
   if (req.method === 'GET' && url.pathname === '/api/sheet-history') {
-    return send(res, 200, await sheetHistory(url.searchParams.get('id'), url.searchParams.get('sections'), url.searchParams.get('days')));
+    return send(res, 200, await sheetHistory(url.searchParams.get('id'), url.searchParams.get('sections'), url.searchParams.get('days'), url.searchParams.get('source')));
   }
   if (req.method === 'POST' && url.pathname === '/api/advertising/campaign/rename') {
     const body = await readJson(req);
@@ -3389,9 +3486,11 @@ const server = http.createServer(async (req, res) => {
 
 if (require.main === module) server.listen(PORT, '127.0.0.1', () => {
   console.log(`WB Analytics: http://127.0.0.1:${PORT}`);
+  // Копия Google Таблицы на компьютере: дозагрузка вскоре после запуска и дальше раз в час.
+  if (sheetConfigured()) { setTimeout(syncSheet, 20_000); setInterval(syncSheet, SHEET_SYNC_EVERY); }
 });
 
-module.exports = { server, cabinets, campaignActivePeriod, mergeMinusList, minusPlan, archivedPresetsFromError, todoNmId, todoFields, productAdDays, productDetailPeriod, funnelOrdersByNmId, summarizeHourlyOrders, orderFeedPeriod, itemRatingPeriods, normalizeItemRatings, itemReturnsPeriod, normalizeItemReturns, returnStatusGroup, summarizeKeywordDaily, summarizePositionDaily, normalizeOrders, normalizeOrderFeed, enrichOrders, extractFunnel, summarizeAdStats, campaignProductDaily, withAdBudgets, summarizeKeywords, normalizeStockPreset, normalizePricePreset, adCampaignMayHaveStats, validAdPeriod, historyPeriod, historyChunks, planAdFetch, datesBetween, safeFolderName, funnelDaysToFetch, pairFunnelDays, funnelPeriods, funnelRangeBuckets, funnelRecordCounts, funnelRangeValues, funnelSalesMatrix, summaryTopProducts, summaryDrops, summaryProducts, normalizeFbsStocks, normalizeFbwStocks, normalizePrices, summarizeStockTotals, normalizeNewOrders, summarizeSupplies, normalizeTrbxes, chunkOrders, stickerType, localPhoto, WB_HOSTS };
+module.exports = { server, cabinets, campaignActivePeriod, mergeSheetRows, saveSheetRows, readSheetHistory, mergeMinusList, minusPlan, archivedPresetsFromError, todoNmId, todoFields, productAdDays, productDetailPeriod, funnelOrdersByNmId, summarizeHourlyOrders, orderFeedPeriod, itemRatingPeriods, normalizeItemRatings, itemReturnsPeriod, normalizeItemReturns, returnStatusGroup, summarizeKeywordDaily, summarizePositionDaily, normalizeOrders, normalizeOrderFeed, enrichOrders, extractFunnel, summarizeAdStats, campaignProductDaily, withAdBudgets, summarizeKeywords, normalizeStockPreset, normalizePricePreset, adCampaignMayHaveStats, validAdPeriod, historyPeriod, historyChunks, planAdFetch, datesBetween, safeFolderName, funnelDaysToFetch, pairFunnelDays, funnelPeriods, funnelRangeBuckets, funnelRecordCounts, funnelRangeValues, funnelSalesMatrix, summaryTopProducts, summaryDrops, summaryProducts, normalizeFbsStocks, normalizeFbwStocks, normalizePrices, summarizeStockTotals, normalizeNewOrders, summarizeSupplies, normalizeTrbxes, chunkOrders, stickerType, localPhoto, WB_HOSTS };
 
 
 
