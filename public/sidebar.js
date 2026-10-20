@@ -19,7 +19,9 @@
     { page: 'funnel', label: 'Воронка', icon: SVG('<path d="M3.5 3.5v17h17"/><path d="M7 15.5l4-4.5 3 3 5.5-6.5"/><path d="M16 7.5h3.5V11"/>') },
     { page: 'ratings', label: 'Оценки товаров', icon: SVG('<path d="M12 3.6l2.6 5.3 5.8.8-4.2 4.1 1 5.8-5.2-2.7-5.2 2.7 1-5.8-4.2-4.1 5.8-.8z"/>') },
     { page: 'ads', label: 'Реклама', icon: 'ADS', iconClass: 'nav-icon-ads' },
-    { page: 'todo', label: 'Дела', icon: SVG('<path d="M4 6.5l1.6 1.6L8.6 5"/><path d="M4 12.5l1.6 1.6 3-3.1"/><path d="M4 18.5l1.6 1.6 3-3.1"/><path d="M12 7h8M12 13h8M12 19h8"/>') }
+    { page: 'todo', label: 'Дела', icon: SVG('<path d="M4 6.5l1.6 1.6L8.6 5"/><path d="M4 12.5l1.6 1.6 3-3.1"/><path d="M4 18.5l1.6 1.6 3-3.1"/><path d="M12 7h8M12 13h8M12 19h8"/>') },
+    // Часы со стрелкой вокруг — история изменений из Google Таблицы.
+    { page: 'history', label: 'История изменений', icon: SVG('<path d="M3.5 12A8.5 8.5 0 1 0 6 6L3.5 8.5"/><path d="M3.5 4v4.5H8"/><path d="M12 7.5V12l3 2"/>') }
   ];
   const sidebar = document.querySelector('.sidebar'), toggle = document.querySelector('.sidebar-toggle'), nav = sidebar?.querySelector('nav');
   if (!sidebar || !toggle || !nav) return;

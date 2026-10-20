@@ -373,3 +373,30 @@ tr.rating-row-attention td:first-child{box-shadow:inset 3px 0 0 var(--red)}
 .returns-table td small{display:block;margin-top:2px;color:var(--muted);font-size:11px}
 .returns-table td.returns-wrap{white-space:normal;line-height:1.35}
 @media(max-width:680px){.returns-type-row{grid-template-columns:minmax(0,1fr) 34px 38px}.returns-type-row .rating-star-track{display:none}.returns-pickup-row{flex-wrap:wrap}.returns-pickup-when{text-align:left}}
+
+/* «История изменений»: кнопки разделов со счётчиками, таблица изменений */
+.change-sections{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px}
+.change-chip{display:inline-flex;align-items:center;gap:7px;height:34px;padding:0 13px;border:1px solid var(--line);border-radius:999px;background:#fff;color:var(--ink);font:700 12px Manrope;cursor:pointer}
+.change-chip b{color:var(--muted);font-weight:800}
+.change-chip:hover{border-color:var(--purple)}
+.change-chip.active{border-color:#d9cffb;background:#f0ebff;color:#5b36c8}
+.change-chip.active b{color:#5b36c8}
+.change-hint{margin:0 20px 10px}
+.change-table{min-width:1250px}
+.change-table td{vertical-align:top}
+.change-table td.change-object,.change-table td.change-what{white-space:normal;line-height:1.35}
+.change-object small{display:block;margin-top:2px;color:var(--muted);font-size:11px}
+.change-link{color:var(--ink);font-weight:700;text-decoration:none;border-bottom:1px solid #d9cffb}
+.change-link:hover{color:var(--purple);border-color:var(--purple)}
+.change-object small .change-link{color:var(--muted);font-weight:600}
+.change-when{color:var(--muted);white-space:nowrap}
+.change-section{display:inline-flex;padding:2px 8px;border-radius:20px;background:#f1f2f0;font-size:11px;font-weight:800;white-space:nowrap}
+.change-section[data-section="Реклама"]{background:#f0ebff;color:#5b36c8}
+.change-section[data-section="Ставки"]{background:#fff1e6;color:#b45a12}
+.change-section[data-section="Ключевые слова"]{background:#e9f4fb;color:#1f6f9c}
+.change-section[data-section="Цены"]{background:#eaf6ef;color:#2c7a55}
+.change-section[data-section^="Остатки"]{background:#f4f1e6;color:#7a6420}
+.change-muted{color:var(--muted)}
+.change-table .change-delta{display:inline;margin-left:6px;font-size:11px;font-weight:800}
+.change-table .change-delta.up{color:var(--green)}
+.change-table .change-delta.down{color:var(--red)}

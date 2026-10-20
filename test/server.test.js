@@ -770,6 +770,10 @@ test('копия Google Таблицы: склейка без повторов, 
     const bid = title => ({ ...row('2026-10-20T08:45:00.000Z', 'Ставки', '29120597', 'Ставка в поиске, ₽', 977, 500), title });
     assert.equal(saveSheetRows([bid('Фен дешевый · 221609260 (dyson)'), bid('Фен дешевый · 375812419 (dyson2)')], dir), 2);
     assert.equal(readSheetHistory({ ids: ['29120597'], sections: ['Ставки'] }, dir).items.length, 2);
+    // «История изменений»: все разделы сразу, новые сверху, без текущих остатков, с ограничением числа строк.
+    const all = readSheetHistory({ sections: ['Цены', 'Ставки', 'Остатки FBW'], limit: 3, current: false }, dir);
+    assert.equal(all.current, null);
+    assert.deepEqual(all.items.map(item => item.at), ['2026-10-20T08:45:00.000Z', '2026-10-20T08:45:00.000Z', '2026-10-03T10:00:00.000Z']);
   } finally { require('node:fs').rmSync(dir, { recursive: true, force: true }); }
 });
 

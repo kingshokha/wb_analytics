@@ -1287,8 +1287,8 @@ function saveSheetCurrent(current = [], dir = SHEET_DIR) {
   for (const type of ['FBW', 'FBS']) writeSheetJson(path.join(dir, `Остатки ${type}`, 'current.json'), { items: current.filter(row => row.type === type) });
 }
 // Чтение копии: строки нужных разделов (по артикулам или кампаниям, за последние days дней), новые сверху;
-// для остатков — ещё текущие остатки.
-function readSheetHistory({ ids = [], sections = [], days = 0 } = {}, dir = SHEET_DIR) {
+// для остатков — ещё текущие остатки. limit — сколько самых новых строк отдать.
+function readSheetHistory({ ids = [], sections = [], days = 0, limit = 0, current: withCurrent = true } = {}, dir = SHEET_DIR) {
   const fromIso = days ? new Date(Date.now() - days * 86_400_000).toISOString() : '', fromMonth = fromIso.slice(0, 7), items = [];
   for (const section of sections) for (const month of sheetMonths(section, dir)) {
     if (fromMonth && month < fromMonth) continue;
@@ -1297,10 +1297,10 @@ function readSheetHistory({ ids = [], sections = [], days = 0 } = {}, dir = SHEE
     }
   }
   const stockTypes = sections.filter(item => item.startsWith('Остатки ')).map(item => item.slice('Остатки '.length));
-  const current = stockTypes.length ? stockTypes.flatMap(type => (readSheetJson(path.join(dir, `Остатки ${type}`, 'current.json'), { items: [] }).items || [])
+  const current = stockTypes.length && withCurrent ? stockTypes.flatMap(type => (readSheetJson(path.join(dir, `Остатки ${type}`, 'current.json'), { items: [] }).items || [])
     .filter(row => !ids.length || ids.includes(String(row.nmId)))) : null;
   items.sort((a, b) => String(b.at).localeCompare(String(a.at)));
-  return { items: items.slice(0, stockTypes.length ? 60_000 : 5_000), current };
+  return { items: items.slice(0, limit || (stockTypes.length ? 60_000 : 5_000)), current };
 }
 // Дозагрузка: всё новее последней сохранённой строки (минус минута: строки одного обновления таблицы пишутся в одно
 // время, а синхронизация могла попасть между листами — повторы отбросит склейка), порциями по 20 000.
@@ -1346,16 +1346,24 @@ function syncSheet() {
 }
 // /api/sheet-history: source=local — сразу с компьютера; source=sheet — сначала дозагрузка из таблицы.
 // added — сколько новых строк скачано за эту дозагрузку (по всей таблице), syncError — почему не получилось.
-async function sheetHistory(idsInput, sectionsInput, daysInput, source = 'local') {
+// all — раздел «История изменений»: все строки всех разделов (или выбранных) без текущих остатков, до 50 000 новых;
+// truncated — за период изменений больше, отданы самые новые.
+const SHEET_ALL_LIMIT = 50_000;
+async function sheetHistory(idsInput, sectionsInput, daysInput, source = 'local', all = false) {
   if (!sheetConfigured()) return { configured: false, items: [], current: null, since: null };
   const ids = [...new Set(String(idsInput || '').split(',').map(id => id.trim()).filter(id => /^\d{1,15}$/.test(id)))].slice(0, 50);
   const sections = String(sectionsInput || '').split(',').map(item => item.trim()).filter(item => SHEET_SECTIONS.includes(item));
   const stocks = sections.some(item => item.startsWith('Остатки '));
-  if (!ids.length && !stocks) throw apiError(400, 'Не указан артикул или кампания');
-  const days = Math.min(365, Math.max(0, Math.round(Number(daysInput) || 0)));
+  if (!ids.length && !stocks && !all) throw apiError(400, 'Не указан артикул или кампания');
+  const days = Math.min(all ? 3660 : 365, Math.max(0, Math.round(Number(daysInput) || 0)));
   const sync = source === 'sheet' ? await syncSheet() : null;
   const saved = readSheetJson(path.join(SHEET_DIR, 'sync.json'), {});
-  return { configured: true, source: source === 'sheet' ? 'sheet' : 'local', ...readSheetHistory({ ids, sections: sections.length ? sections : SHEET_SECTIONS.filter(item => !item.startsWith('Остатки ')), days }),
+  const history = all
+    ? readSheetHistory({ ids, sections: sections.length ? sections : SHEET_SECTIONS, days, limit: SHEET_ALL_LIMIT + 1, current: false })
+    : readSheetHistory({ ids, sections: sections.length ? sections : SHEET_SECTIONS.filter(item => !item.startsWith('Остатки ')), days });
+  const truncated = all && history.items.length > SHEET_ALL_LIMIT;
+  if (truncated) history.items = history.items.slice(0, SHEET_ALL_LIMIT);
+  return { configured: true, source: source === 'sheet' ? 'sheet' : 'local', ...history, ...(all ? { truncated } : {}),
     since: saved.since || null, syncedAt: saved.syncedAt || null, added: sync?.added || 0, syncError: sync?.lastError || '' };
 }
 
@@ -3263,7 +3271,7 @@ async function handleApi(req, res, url) {
     return send(res, 200, await productDetail(url.searchParams.get('cabinet') || 'demo', url.searchParams.get('nmId'), url.searchParams.get('from'), url.searchParams.get('to'), url.searchParams.get('live') === '1'));
   }
   if (req.method === 'GET' && url.pathname === '/api/sheet-history') {
-    return send(res, 200, await sheetHistory(url.searchParams.get('id'), url.searchParams.get('sections'), url.searchParams.get('days'), url.searchParams.get('source')));
+    return send(res, 200, await sheetHistory(url.searchParams.get('id'), url.searchParams.get('sections'), url.searchParams.get('days'), url.searchParams.get('source'), url.searchParams.get('all') === '1'));
   }
   if (req.method === 'POST' && url.pathname === '/api/advertising/campaign/rename') {
     const body = await readJson(req);
