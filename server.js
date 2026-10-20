@@ -531,7 +531,7 @@ function demoPrices() {
   return { demo: true, ...normalizePrices(goods, cards), warnings: [] };
 }
 
-// Цены и скидки всех товаров кабинета — для таблицы цен и для снимка «Снять цены сейчас».
+// Цены и скидки всех товаров кабинета — для таблицы цен.
 async function loadPriceGoods(token) {
   const goods = [];
   for (let offset = 0; offset < 100_000; offset += 1000) {
@@ -3188,13 +3188,6 @@ async function fillTrbx(body) {
   return { ok: true, trbxId: body.trbxId, added: orderIds.length };
 }
 
-async function removeOrderFromTrbx(body) {
-  const token = tokenFor(body.cabinet);
-  if (!body.supplyId || !body.trbxId || !Number.isInteger(Number(body.orderId))) throw apiError(400, 'Не указано задание');
-  await wbRequest(token, `${MARKETPLACE_API}/api/v3/supplies/${encodeURIComponent(body.supplyId)}/trbx/${encodeURIComponent(body.trbxId)}/orders/${Number(body.orderId)}`, { method: 'DELETE' });
-  return { ok: true };
-}
-
 async function trbxStickers(body) {
   const type = stickerType(body.type);
   const trbxIds = (Array.isArray(body.trbxIds) ? body.trbxIds : []).map(String).filter(Boolean);
@@ -3459,11 +3452,6 @@ async function handleApi(req, res, url) {
     if (!body.confirm) throw apiError(400, 'Подтвердите раскладку заданий по грузоместам');
     return send(res, 200, await fillTrbx(body));
   }
-  if (req.method === 'POST' && url.pathname === '/api/supplies/trbx/orders/remove') {
-    const body = await readJson(req);
-    if (!body.confirm) throw apiError(400, 'Подтвердите удаление задания из грузоместа');
-    return send(res, 200, await removeOrderFromTrbx(body));
-  }
   if (req.method === 'POST' && url.pathname === '/api/supplies/trbx/stickers') {
     return send(res, 200, await trbxStickers(await readJson(req)));
   }
@@ -3495,7 +3483,7 @@ if (require.main === module) server.listen(PORT, '127.0.0.1', () => {
   if (sheetConfigured()) { setTimeout(syncSheet, 20_000); setInterval(syncSheet, SHEET_SYNC_EVERY); }
 });
 
-module.exports = { server, cabinets, campaignActivePeriod, mergeSheetRows, saveSheetRows, readSheetHistory, mergeMinusList, minusPlan, archivedPresetsFromError, todoNmId, todoFields, productAdDays, productDetailPeriod, funnelOrdersByNmId, summarizeHourlyOrders, orderFeedPeriod, itemRatingPeriods, normalizeItemRatings, itemReturnsPeriod, normalizeItemReturns, returnStatusGroup, summarizeKeywordDaily, summarizePositionDaily, normalizeOrders, normalizeOrderFeed, enrichOrders, extractFunnel, summarizeAdStats, campaignProductDaily, withAdBudgets, summarizeKeywords, normalizeStockPreset, normalizePricePreset, adCampaignMayHaveStats, validAdPeriod, historyPeriod, historyChunks, planAdFetch, datesBetween, safeFolderName, funnelDaysToFetch, pairFunnelDays, funnelPeriods, funnelRangeBuckets, funnelRecordCounts, funnelRangeValues, funnelSalesMatrix, summaryTopProducts, summaryDrops, summaryProducts, normalizeFbsStocks, normalizeFbwStocks, normalizePrices, summarizeStockTotals, normalizeNewOrders, summarizeSupplies, normalizeTrbxes, chunkOrders, stickerType, localPhoto, WB_HOSTS };
+module.exports = { server, campaignActivePeriod, mergeSheetRows, saveSheetRows, readSheetHistory, mergeMinusList, minusPlan, archivedPresetsFromError, todoNmId, todoFields, productAdDays, productDetailPeriod, funnelOrdersByNmId, summarizeHourlyOrders, orderFeedPeriod, itemRatingPeriods, normalizeItemRatings, itemReturnsPeriod, normalizeItemReturns, returnStatusGroup, summarizeKeywordDaily, summarizePositionDaily, normalizeOrders, normalizeOrderFeed, enrichOrders, extractFunnel, summarizeAdStats, campaignProductDaily, withAdBudgets, summarizeKeywords, normalizeStockPreset, normalizePricePreset, adCampaignMayHaveStats, validAdPeriod, historyPeriod, historyChunks, planAdFetch, datesBetween, safeFolderName, funnelDaysToFetch, pairFunnelDays, funnelPeriods, funnelRangeBuckets, funnelRecordCounts, funnelRangeValues, funnelSalesMatrix, summaryTopProducts, summaryDrops, summaryProducts, normalizeFbsStocks, normalizeFbwStocks, normalizePrices, summarizeStockTotals, normalizeNewOrders, summarizeSupplies, normalizeTrbxes, chunkOrders, stickerType, localPhoto, WB_HOSTS };
 
 
 
