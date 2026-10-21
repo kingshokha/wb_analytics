@@ -1,7 +1,7 @@
 // --- «История изменений»: всё, что Google Таблица записала в историю, — одной лентой с фильтрами ---
 // Данные — /api/sheet-history?all=1: цены, кампании (статус, название, места показа, состав), ставки, минус-фразы
 // и остатки FBW / FBS. Сначала копия с компьютера (data/Sheet), потом дозагрузка из таблицы (SheetSync).
-// Период — общий период сайта (даты сверху). Фильтры: поиск, разделы (кнопки со счётчиками), кабинет, вид изменения.
+// Период — общий период сайта (даты сверху), время и дни — местные (Душанбе), дни отделены строкой с датой. Фильтры: поиск, разделы (кнопки со счётчиками), кабинет, вид изменения.
 // Кампании (реклама, ставки, минус-фразы) — ссылками на детализацию кампании, товары — на детализацию товара.
 // В таблице кабинет записан названием: ссылка ведёт в кабинет сайта с тем же названием, иначе — в выбранный на сайте.
 // Файл подключается до app.js: $, state, escapeHtml и прочее из app.js используются только внутри функций.
@@ -10,8 +10,13 @@ const CHANGE_CAMPAIGN_SECTIONS=['Реклама','Ставки','Ключевы�
 const CHANGE_PAGE_SIZE=100;
 const changeView={data:null,error:'',loading:false,request:0,key:'',sections:new Set(),cabinet:'',kind:'',search:'',page:1};
 
-const changeDay=iso=>new Date(iso).toLocaleDateString('sv-SE',{timeZone:'Europe/Moscow'});
-const changeTime=iso=>new Date(iso).toLocaleString('ru-RU',{timeZone:'Europe/Moscow',day:'2-digit',month:'2-digit',year:'2-digit',hour:'2-digit',minute:'2-digit'}).replace(',','');
+// Время — местное, Душанбе (как в «Заказах по часам»); по нему же дни периода и разделители дней в таблице.
+const CHANGE_TIMEZONE='Asia/Dushanbe';
+const changeDay=iso=>new Date(iso).toLocaleDateString('sv-SE',{timeZone:CHANGE_TIMEZONE});
+const changeTime=iso=>new Date(iso).toLocaleString('ru-RU',{timeZone:CHANGE_TIMEZONE,day:'2-digit',month:'2-digit',year:'2-digit',hour:'2-digit',minute:'2-digit'}).replace(',','');
+const changeClock=iso=>new Date(iso).toLocaleTimeString('ru-RU',{timeZone:CHANGE_TIMEZONE,hour:'2-digit',minute:'2-digit'});
+// «Вторник, 20 октября 2026»: заглавная только первая буква, без «г.».
+const changeDayTitle=iso=>{const text=new Date(iso).toLocaleDateString('ru-RU',{timeZone:CHANGE_TIMEZONE,day:'numeric',month:'long',year:'numeric',weekday:'long'}).replace(/\s*г\.$/,'');return text.charAt(0).toUpperCase()+text.slice(1)};
 // Вид изменения для фильтра: у остатков «что» — склад, у минус-фраз и состава кампании — текст после двоеточия.
 const changeKind=item=>item.section.startsWith('Остатки ')?'Остаток на складе':String(item.what||'').split(':')[0].replace(/, ₽$/,'').trim()||'—';
 
@@ -112,12 +117,16 @@ function renderChangeHistory(){
   const rows=changeRows(period),pageCount=Math.ceil(rows.length/CHANGE_PAGE_SIZE);
   v.page=Math.min(Math.max(1,v.page),Math.max(1,pageCount));
   const since=data.since?` · таблица следит с ${changeTime(data.since)}`:'';
-  $('#changeCount').textContent=`${fmtNum(rows.length)} из ${fmtNum(period.length)} за период${since}${data.truncated?' · показаны 50 000 самых новых — сократите период':''}`;
-  body.innerHTML=rows.slice((v.page-1)*CHANGE_PAGE_SIZE,v.page*CHANGE_PAGE_SIZE).map(item=>`<tr>
-    <td class="change-when">${escapeHtml(changeTime(item.at))}</td><td>${escapeHtml(item.cabinet||'—')}</td>
+  $('#changeCount').textContent=`${fmtNum(rows.length)} из ${fmtNum(period.length)} за период${since} · время местное (Душанбе)${data.truncated?' · показаны 50 000 самых новых — сократите период':''}`;
+  // Перед первой строкой каждого дня — строка-разделитель с датой (и в начале страницы, чтобы день был виден сразу).
+  let lastDay='';
+  body.innerHTML=rows.slice((v.page-1)*CHANGE_PAGE_SIZE,v.page*CHANGE_PAGE_SIZE).map(item=>{
+    const day=changeDay(item.at),head=day!==lastDay?`<tr class="change-day-row"><td colspan="7">${escapeHtml(changeDayTitle(item.at))}</td></tr>`:'';lastDay=day;
+    return `${head}<tr>
+    <td class="change-when">${escapeHtml(changeClock(item.at))}</td><td>${escapeHtml(item.cabinet||'—')}</td>
     <td><span class="change-section" data-section="${escapeHtml(item.section)}">${escapeHtml(item.section)}</span></td>
     <td class="change-object">${changeObject(item)}</td><td class="change-what">${changeWhat(item)}</td>
-    <td>${changeValue(item,item.before)}</td><td>${changeValue(item,item.after)}${changeDelta(item)}</td></tr>`).join('');
+    <td class="change-value">${changeValue(item,item.before)}</td><td class="change-value">${changeValue(item,item.after)}${changeDelta(item)}</td></tr>`}).join('');
   $('#emptyChangesText').textContent=period.length?'Измените фильтры.':'Таблица записывает изменения раз в час — за этот период их нет. Выберите другой период.';
   $('#emptyChanges').classList.toggle('hidden',rows.length>0);
   const el=$('#changePagination');

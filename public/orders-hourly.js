@@ -3,9 +3,9 @@
 // WB задаётся по Москве (на 2 часа меньше), поэтому в подсказке по рекламе часы дублируются по МСК.
 // Данные — /api/orders/hourly (8 дней ленты заказов).
 // Заказ — по времени оформления, выкуп — по времени, когда покупатель забрал товар.
-const ordersHourly={data:null,error:'',series:'orders',metric:'count',compare:'yesterday',request:0,cabinet:''};
+const ordersHourly={data:null,error:'',series:'orders',metric:'sum',compare:'yesterday',request:0,cabinet:''};
 const HOURLY_SERIES=[['orders','Заказы'],['buyouts','Выкупы']];
-const HOURLY_METRICS=[['count','шт'],['sum','₽']];
+const HOURLY_METRICS=[['sum','₽'],['count','шт']];
 const HOURLY_COMPARE=[['yesterday','Вчера'],['week','Среднее за 7 дней']];
 const hourLabel=hour=>`${String(((hour%24)+24)%24).padStart(2,'0')}:00`;
 const hourRange=(from,to)=>`${hourLabel(from)}–${hourLabel(to)}`;
@@ -128,7 +128,7 @@ function renderOrdersHourlyInsights(data,series){
     `<p><b>Пиковые часы выкупов</b> (среднее за 7 дней): ${peaks.ranges.map(range=>hourRange(range.from,range.to)).join(', ')} — ${Math.round(peaks.peakShare*100)}% ${what}. В эти часы покупатели чаще всего забирают заказы из пунктов выдачи.</p>`:
     `<p><b>Пиковые часы</b> (среднее за 7 дней): ${peaks.ranges.map(range=>hourRangeMsk(range.from,range.to,data)).join(', ')} — ${Math.round(peaks.peakShare*100)}% ${what}. Подсказка для расписания показов (в кабинете WB время московское): в эти часы реклама должна быть включена.`+
     (peaks.quiet.share<.1?` Меньше всего — ${hourRangeMsk(peaks.quiet.from,peaks.quiet.from+6,data)}: всего ${Math.max(1,Math.round(peaks.quiet.share*100))}% ${what}, эти часы можно исключить из показов, чтобы не тратить бюджет.`:'')+'</p>';
-  $('#ordersHourlyInsights').innerHTML=`<div class="hourly-cards">${card('orders','count','Заказы, шт')}${card('orders','sum','Заказы, ₽')}${card('buyouts','count','Выкупы, шт')}${card('buyouts','sum','Выкупы, ₽')}</div>`+advice;
+  $('#ordersHourlyInsights').innerHTML=`<div class="hourly-cards">${card('orders','sum','Заказы, ₽')}${card('orders','count','Заказы, шт')}${card('buyouts','sum','Выкупы, ₽')}${card('buyouts','count','Выкупы, шт')}</div>`+advice;
 }
 let ordersHourlyResize=0;
 window.addEventListener('resize',()=>{clearTimeout(ordersHourlyResize);ordersHourlyResize=setTimeout(()=>{if(ordersHourly.data&&state.activePage==='orders')renderOrdersHourly()},150)});
