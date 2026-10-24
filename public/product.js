@@ -1,7 +1,7 @@
 // --- Детализация товара (product.html): открывается из «Воронки» кнопкой со стрелкой у товара ---
 // Главный график — столбцы «органика + реклама» по дням с переключателем показателя; над ним флажки запуска (▶) и
-// остановки (■) рекламных кампаний с этим товаром, как в примере «Много кампаний одновременно», и ваши отметки
-// (смена цены, СПП, ставки — WB их историю не отдаёт). Ниже — мини-графики показателей, у каждого своя шкала,
+// остановки (■) рекламных кампаний с этим товаром, как в примере «Много кампаний одновременно», флажки изменения
+// цены (₽, из Google Таблицы) и ваши отметки (СПП, ставки и прочее — WB их историю не отдаёт). Ниже — мини-графики показателей, у каждого своя шкала,
 // и таблица кампаний. Данные — /api/product-detail, отметки — /api/product-notes. Пока вкладка видна,
 // страница тихо обновляется раз в 2 минуты.
 (() => {
@@ -39,6 +39,8 @@
   ];
   // Цвета кампаний не совпадают с синим «органики» и оранжевым «рекламы».
   const CAMPAIGN_COLORS = ['#7651e5', '#18875c', '#c2412d', '#0e8ea8', '#b5367f', '#8a6a1f', '#5d6b12', '#555b66', '#c79a12', '#2f9e9e'];
+  // Флажки изменения цены — тёмные, со скруглёнными краями, чтобы не путать с кампаниями.
+  const PRICE_COLOR = '#17211d';
   // setNotices / addNotice — из notifications.js (колокольчик); если файл не загрузился, страница работает без него.
   const setNotices = (...args) => window.setNotices?.(...args), addNotice = (...args) => window.addNotice?.(...args);
   const view = { data: null, notes: [], metric: 'cartCount', colors: new Map(), hoverCampaign: null, editing: null, confirmDelete: null, request: 0, pollTimer: 0, autoAt: Date.now(), loading: false };
@@ -137,19 +139,48 @@
     renderSwitch(); renderMain();
   });
 
-  // Периоды работы кампаний: дни, когда у товара были показы, клики или расход. WB не отдаёт, когда кампания была
-  // включена, а у товара с небольшим трафиком показы бывают не каждый день — поэтому перерыв до 2 дней остановкой
-  // не считается, иначе флажки «запуск / остановка» стояли бы почти на каждом дне.
-  const GAP_DAYS = 2;
+  // Периоды работы кампаний — подряд идущие дни, когда кампания включена (days[].campaigns с сервера: до начала
+  // отслеживания в Google Таблице — у товара 50 показов и больше, с него — статус «Активна» и товар в составе).
+  // Любой день без неё — перерыв.
   function campaignPeriods(days) {
     const periods = new Map();
     days.forEach((day, index) => day.campaigns.forEach(id => {
       const list = periods.get(id) || []; const last = list.at(-1);
-      if (last && index - last.to - 1 <= GAP_DAYS) last.to = index; else list.push({ from: index, to: index });
+      if (last && last.to === index - 1) last.to = index; else list.push({ from: index, to: index });
       periods.set(id, list);
     }));
     return periods;
   }
+  // Время событий из таблицы — местное (Душанбе), как на основном сайте.
+  const localTime = iso => new Date(iso).toLocaleString('ru-RU', { timeZone: 'Asia/Dushanbe', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }).replace(',', '');
+  // События кампаний для флажков — по дням, когда кампания включена (days[].campaigns): ▶ первый день, ■ первый день
+  // без неё, ◆ всего один день, у левого края ▶ (создана или включена в этот день) или ↤ (работала раньше).
+  // С начала отслеживания (data.tracking.fromDate) день считается включённым, если кампания была «Активна» хоть
+  // какое-то время: пауза и запуск внутри дня флажков не дают. Точное время из таблицы — в подсказке: у ▶ — первое
+  // включение в этот день, у ■ — последнее выключение в последний день работы. Без записи в таблице (стык с днями
+  // «по показам») — пометка «по статусу на начало отслеживания». Из причин в подсказку идёт только смена состава
+  // кампании (товар добавили или убрали), смена статуса — нет.
+  function campaignEvents(data) {
+    const days = data.days, count = days.length, tracking = data.tracking, events = [];
+    const found = tracking ? days.findIndex(day => day.date >= tracking.fromDate) : -1, split = found < 0 ? count : found;
+    const edgeKind = id => { const campaign = data.campaigns.find(item => item.id === id), created = String(campaign?.startedAt || campaign?.createdAt || '').slice(0, 10); return created && created >= days[0].date ? 'start' : 'ongoing'; };
+    const step = (id, on, date) => { const list = (tracking?.events || []).filter(event => event.id === id && event.on === on && event.date === date); return on ? list[0] : list.at(-1); };
+    const reason = event => String(event?.reason || '').split('; ').filter(part => part.startsWith('товар')).join('; ');
+    for (const [id, list] of campaignPeriods(days)) for (const period of list) {
+      const start = period.from >= split ? step(id, true, days[period.from].date) : null;
+      const stop = period.to < count - 1 && period.to + 1 >= split ? step(id, false, days[period.to].date) : null;
+      const tracked = { startTracked: period.from >= split, stopTracked: period.to + 1 >= split, startAt: start?.at, stopAt: stop?.at, startReason: reason(start), stopReason: reason(stop) };
+      if (period.from === period.to && period.from > 0 && period.to < count - 1) { events.push({ id, kind: 'blip', day: period.from, ...tracked }); continue; }
+      events.push({ id, kind: period.from === 0 && !start ? edgeKind(id) : 'start', day: period.from, ...tracked });
+      if (period.to < count - 1) events.push({ id, kind: 'stop', day: period.to + 1, ...tracked });
+    }
+    return events;
+  }
+  // Время перехода для подсказки: местное, а если день по Москве другой (дни графика — московские, как у WB) — и МСК.
+  const stepTime = iso => { const msk = new Date(Date.parse(iso) + 3 * 3_600_000).toISOString(), local = localTime(iso); return local.slice(0, 5) === `${msk.slice(8, 10)}.${msk.slice(5, 7)}` ? local : `${local} (МСК ${ddmm(msk.slice(0, 10))} ${msk.slice(11, 16)})`; };
+  // Изменение цены из Google Таблицы: на флажке — цена со скидкой (или первое изменённое поле), в подсказке — всё.
+  const priceMain = change => change.items.find(item => /^Цена со скидкой/.test(item.what)) || change.items[0];
+  const priceValue = (what, value) => value === '' || value == null || value === '—' ? '—' : /₽/.test(what) && finite(value) ? fmtRub(value) : /%/.test(what) && finite(value) ? `${value}%` : String(value);
   const campaignName = id => view.data.campaigns.find(item => item.id === id)?.name || `Кампания #${id}`;
   const notesNumbered = () => view.notes.map((note, index) => ({ ...note, number: index + 1 }));
 
@@ -166,33 +197,28 @@
       return { total, ad, organic: Math.max(0, total - ad) };
     });
     const mL = 46, mR = 10, mB = 26, sw = (W - mL - mR) / count, x = index => mL + sw * (index + .5);
-    // Флажки: ▶ — первый день кампании, ■ — первый день без неё; края периода событием не считаются.
-    // Три и больше одинаковых события в один день — один общий серый флажок.
-    // Показы всего один день внутри периода — один флажок ◆ вместо пары ▶ и ■ рядом. Кампания, у которой показы
-    // есть уже в первый день, получает флажок у левого края: ▶, если её создали в этот день, иначе ↤ — работала
-    // и раньше (иначе кампания, включённая до начала периода, на графике была бы не видна).
-    const events = [], periods = campaignPeriods(days);
-    for (const [id, list] of periods) for (const period of list) {
-      if (period.from === period.to && period.from > 0 && period.to < count - 1) { events.push({ id, kind: 'blip', day: period.from }); continue; }
-      if (period.from === 0) {
-        const campaign = data.campaigns.find(item => item.id === id), created = String(campaign?.startedAt || campaign?.createdAt || '').slice(0, 10);
-        events.push({ id, kind: created && created >= days[0].date ? 'start' : 'ongoing', day: 0 });
-      }
-      if (period.from > 0) events.push({ id, kind: 'start', day: period.from });
-      if (period.to < count - 1) events.push({ id, kind: 'stop', day: period.to + 1 });
-    }
+    // Флажки кампаний — campaignEvents. Три и больше одинаковых события в один день — один общий серый флажок.
+    // Флажки цены (₽) — изменения цены из Google Таблицы, не объединяются.
+    const periods = campaignPeriods(days), events = campaignEvents(data);
     const groups = new Map(); events.forEach(event => { const key = `${event.kind}:${event.day}`; groups.set(key, [...(groups.get(key) || []), event]); });
     const flags = [];
     for (const group of groups.values()) {
       if (group.length >= 3) flags.push({ kind: group[0].kind, day: group[0].day, merged: group.map(event => event.id) });
       else flags.push(...group);
     }
-    const order = { ongoing: 0, stop: 1, start: 2, blip: 3 };
-    flags.sort((a, b) => a.day - b.day || order[a.kind] - order[b.kind]);
+    const dayIndex = new Map(days.map((day, index) => [day.date, index]));
+    for (const change of data.priceChanges || []) if (dayIndex.has(change.date)) flags.push({ kind: 'price', day: dayIndex.get(change.date), change });
+    const order = { ongoing: 0, stop: 1, start: 2, blip: 3, price: 4 };
+    flags.sort((a, b) => a.day - b.day || order[a.kind] - order[b.kind] || String(a.at || '').localeCompare(String(b.at || '')));
     const maxLength = W < 560 ? 9 : 18, ends = [];
     for (const flag of flags) {
-      const name = flag.merged ? `${flag.merged.length} ${flag.merged.length < 5 ? 'кампании' : 'кампаний'}` : campaignName(flag.id);
-      flag.text = `${{ start: '▶', stop: '■', blip: '◆', ongoing: '↤' }[flag.kind]} ${name.length > maxLength ? `${name.slice(0, maxLength - 1)}…` : name}`;
+      if (flag.kind === 'price') {
+        const main = priceMain(flag.change), short = value => finite(value) ? Math.round(value).toLocaleString('ru-RU') : String(value ?? '—');
+        flag.text = /₽/.test(main.what) ? `₽ ${short(main.before)} → ${short(main.after)}` : `₽ ${main.what.replace(/,.*$/, '')}`;
+      } else {
+        const name = flag.merged ? `${flag.merged.length} ${flag.merged.length < 5 ? 'кампании' : 'кампаний'}` : campaignName(flag.id);
+        flag.text = `${{ start: '▶', stop: '■', blip: '◆', ongoing: '↤' }[flag.kind]} ${name.length > maxLength ? `${name.slice(0, maxLength - 1)}…` : name}`;
+      }
       flag.width = flag.text.length * 6.4 + 14; flag.x = mL + flag.day * sw;
       flag.fx = Math.max(mL, Math.min(flag.x, W - mR - flag.width));
       let level = ends.findIndex(end => end < flag.fx - 4); if (level < 0) { level = ends.length; ends.push(0); }
@@ -222,11 +248,26 @@
     // Флажки кампаний: пунктир от флажка до низа графика цветом кампании. Клик — детализация кампании в новой вкладке;
     // у общего флажка — список его кампаний.
     for (const flag of flags) {
-      const top = 10 + flag.level * 20, color = flag.merged ? '#555b66' : view.colors.get(flag.id) || '#555b66';
-      const when = ddmm(days[flag.day].date), ids = flag.merged || [flag.id];
-      const what = { start: flag.merged ? 'Запущены' : 'первый день с показами', stop: flag.merged ? 'Остановлены' : 'первый день без показов', blip: flag.merged ? 'Показы только в этот день' : 'показы только в этот день', ongoing: flag.merged ? 'Работали уже на начало периода' : 'работала уже на начало периода' }[flag.kind];
+      const top = 10 + flag.level * 20, when = ddmm(days[flag.day].date);
+      if (flag.kind === 'price') {
+        const title = `Цена ${stepTime(flag.change.at)} (из Google Таблицы):\n${flag.change.items.map(item => `${item.what.replace(/, (₽|%)$/, '')}: ${priceValue(item.what, item.before)} → ${priceValue(item.what, item.after)}`).join('\n')}`;
+        svg += `<g class="price-flag"><title>${esc(title)}</title><line x1="${flag.x}" x2="${flag.x}" y1="${top + 16}" y2="${mT + ph}" stroke="${PRICE_COLOR}" stroke-width="1.5" stroke-dasharray="2 3"/>` +
+          `<rect x="${flag.fx}" y="${top}" width="${flag.width}" height="16" rx="8" fill="${PRICE_COLOR}"/><text class="flag-text" x="${flag.fx + 7}" y="${top + 12}">${esc(flag.text)}</text></g>`;
+        continue;
+      }
+      const color = flag.merged ? '#555b66' : view.colors.get(flag.id) || '#555b66', ids = flag.merged || [flag.id];
+      // Подписи: по показам — «первый день с 50 показами…»; по таблице — «включена / выключена» с точным временем и причиной.
+      // Подписи: по показам — «первый день с 50 показами…»; с начала отслеживания — «включена / выключена» и время.
+      const boundary = 'по статусу на начало отслеживания в Google Таблице';
+      const switched = (on, at, why) => `${on ? 'включена' : 'выключена'} ${at ? stepTime(at) : `${when} (${boundary})`}${why ? ` — ${why}` : ''}`;
+      const lastOnDay = flag.kind === 'stop' ? ddmm(days[flag.day - 1].date) : when;
+      const what = flag.merged ? { start: 'Запущены', stop: 'Остановлены', blip: 'Работали один день', ongoing: 'Работали уже на начало периода' }[flag.kind]
+        : flag.kind === 'start' && flag.startTracked ? switched(true, flag.startAt, flag.startReason)
+        : flag.kind === 'stop' && flag.stopTracked ? (flag.stopAt ? switched(false, flag.stopAt, flag.stopReason) : `выключена, последний день работы ${lastOnDay} (${boundary})`)
+        : flag.kind === 'blip' && flag.startTracked ? `работала только ${when}: ${switched(true, flag.startAt, flag.startReason)}, ${flag.stopAt ? switched(false, flag.stopAt, flag.stopReason) : 'выключена в тот же день'}`
+        : { start: `первый день с 50 показами и больше ${when}`, stop: `первый день, когда показов меньше 50, ${when}`, blip: `50 показов и больше только ${when}`, ongoing: 'работала уже на начало периода' }[flag.kind];
       const removed = data.campaigns.find(item => item.id === flag.id)?.removed ? ' (сейчас товар из кампании убран)' : '';
-      const title = flag.merged ? `${what} ${when}: ${flag.merged.map(campaignName).join(', ')} — нажмите, чтобы выбрать кампанию` : `${campaignName(flag.id)}${removed}: ${what}${flag.kind === 'ongoing' ? '' : ` ${when}`} — нажмите, чтобы открыть детализацию кампании`;
+      const title = flag.merged ? `${what} ${when}: ${flag.merged.map(campaignName).join(', ')} — нажмите, чтобы выбрать кампанию` : `${campaignName(flag.id)}${removed}: ${what} — нажмите, чтобы открыть детализацию кампании`;
       const body = `<title>${esc(title)}</title><line x1="${flag.x}" x2="${flag.x}" y1="${top + 16}" y2="${mT + ph}" stroke="${color}" stroke-width="1.5" stroke-dasharray="4 3"/>` +
         `<rect x="${flag.fx}" y="${top}" width="${flag.width}" height="16" rx="4" fill="${color}"/><text class="flag-text" x="${flag.fx + 7}" y="${top + 12}">${esc(flag.text)}</text>`;
       svg += flag.merged ? `<g class="camp flag-merged" data-campaigns="${ids.join(',')}" data-day="${flag.day}" data-kind="${flag.kind}" data-x="${flag.fx}" data-y="${top + 18}" tabindex="0" role="button">${body}</g>`
@@ -290,7 +331,7 @@
   function openFlagMenu(flag) {
     const menu = chartBox.querySelector('.flag-menu'), svg = chartBox.querySelector('svg'); if (!menu || !svg) return;
     const scale = svg.getBoundingClientRect().width / Number(svg.viewBox.baseVal.width), ids = flag.dataset.campaigns.split(',').map(Number);
-    const what = { start: 'Запущены', stop: 'Остановлены', blip: 'Показы только в этот день', ongoing: 'Работали уже на начало периода' }[flag.dataset.kind];
+    const what = { start: 'Запущены', stop: 'Остановлены', blip: 'Работали один день', ongoing: 'Работали уже на начало периода' }[flag.dataset.kind];
     menu.innerHTML = `<p>${esc(what)}${flag.dataset.kind === 'ongoing' ? '' : ` ${ddmm(view.data.days[Number(flag.dataset.day)].date)}`} — открыть детализацию:</p>` +
       ids.map(id => `<a role="menuitem" href="${esc(campaignLink(id))}" target="_blank" rel="noopener noreferrer"><i style="background:${view.colors.get(id) || '#555b66'}"></i>${esc(campaignName(id))}</a>`).join('');
     menu.hidden = false;

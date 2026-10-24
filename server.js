@@ -1107,6 +1107,9 @@ function productDetailPeriod(from, to, today = moscowDate(0)) {
   return { from: safeFrom, to: safeTo };
 }
 // Реклама одного товара по дням из ответа fullstats: сумма по кампаниям и список кампаний, включённых в этот день.
+// Кампания считается включённой в день, когда у товара в ней 50 показов и больше: при меньшем числе (несколько
+// случайных показов, расход «хвостом» после паузы) она по сути не работала.
+const PRODUCT_AD_MIN_VIEWS = 50;
 function productAdDays(stats = [], nmId, dates = []) {
   const days = new Map(dates.map(date => [date, { ...emptyAdMetrics(), campaigns: [] }])), campaigns = new Map();
   for (const stat of stats) for (const day of stat.days || []) {
@@ -1118,7 +1121,7 @@ function productAdDays(stats = [], nmId, dates = []) {
     const key = String(stat.advertId);
     if (!campaigns.has(key)) campaigns.set(key, { ...emptyAdMetrics(), activeDays: 0 });
     addAdMetrics(campaigns.get(key), metrics);
-    if (metrics.views || metrics.clicks || metrics.spend) { row.campaigns.push(Number(stat.advertId)); campaigns.get(key).activeDays += 1; }
+    if (metrics.views >= PRODUCT_AD_MIN_VIEWS) { row.campaigns.push(Number(stat.advertId)); campaigns.get(key).activeDays += 1; }
   }
   return { days, campaigns };
 }
@@ -1134,7 +1137,94 @@ function demoProductDetail(nmId, period, dates) {
   });
   return { demo: true, period, product: { nmId: Number(nmId), name: 'Демо-товар: худи оверсайз', vendorCode: 'HOODIE-01', brand: 'Демо', subject: 'Худи', photo: '' },
     days, campaigns: campaigns.map(item => ({ ...item, status: 9, activeDays: days.filter(day => day.campaigns.includes(item.id)).length, ...finalizeAdMetrics(emptyAdMetrics()) })),
+    tracking: null, priceChanges: [[3, 2100, 1890], [Math.max(4, dates.length - 5), 1890, 1990]].filter(([index]) => index < dates.length).map(([index, before, after]) => ({
+      at: `${dates[index]}T09:45:00.000Z`, date: dates[index], items: [{ what: 'Цена со скидкой, ₽', before, after }, { what: 'Скидка продавца, %', before: 30, after: Math.round((1 - after / 3000) * 100) }] })),
     sync: { pending: 0 }, warnings: [], fetchedAt: new Date().toISOString() };
+}
+// --- Включена ли кампания для товара — по истории Google Таблицы (статус и состав кампании) ---
+// С начала отслеживания (sync.json → since) таблица записывает смену статуса («Статус», «Появилось в списке»,
+// «Пропало из списка») и состава кампании («Артикулы WB»: новый формат — полные списки до и после, старый —
+// «убраны: …» / «добавлены: …»). Кампания включена для товара, когда статус «Активна» и товар в ней есть.
+// Значение поля после его последней записи — из таблицы (без записей — текущее из WB), раньше — восстанавливается
+// назад по записям. Результат: Map id → { initial — состояние до первой записи, changes — [{ at, on, reason }] }.
+const SHEET_ACTIVE_STATUS = 'Активна';
+const sheetIds = value => String(value ?? '').match(/\d{5,}/g) || [];
+const moscowDateOf = iso => new Date(Date.parse(iso) + 3 * 3_600_000).toISOString().slice(0, 10);
+const moscowDayStart = date => new Date(Date.parse(`${date}T00:00:00+03:00`)).toISOString();
+function campaignSheetChange(row, nmId) {
+  const what = String(row.what || '');
+  if (what === 'Статус') return { field: 'status', before: row.before === SHEET_ACTIVE_STATUS, after: row.after === SHEET_ACTIVE_STATUS, reason: `статус: ${row.before} → ${row.after}` };
+  if (what === 'Появилось в списке') return { field: 'status', before: false, after: row.after === SHEET_ACTIVE_STATUS, reason: `кампания появилась (${row.after})` };
+  if (what === 'Пропало из списка') return { field: 'status', before: row.before === SHEET_ACTIVE_STATUS, after: false, reason: 'кампания пропала из списка' };
+  if (!what.startsWith('Артикулы WB')) return null;
+  let before, after;
+  if (what.startsWith('Артикулы WB:')) { before = sheetIds(row.before).includes(nmId); after = sheetIds(row.after).includes(nmId); }
+  else {
+    const listed = prefix => [row.before, row.after].filter(value => new RegExp(`^${prefix}`, 'i').test(String(value ?? ''))).flatMap(sheetIds).includes(nmId);
+    if (listed('убран')) { before = true; after = false; } else if (listed('добавлен')) { before = false; after = true; } else return null;
+  }
+  return before === after ? null : { field: 'member', before, after, reason: after ? 'товар добавлен в кампанию' : 'товар убран из кампании' };
+}
+function productCampaignTimeline(nmId, rows = [], current = new Map()) {
+  const byCampaign = new Map();
+  for (const row of rows) {
+    if (row?.section !== 'Реклама') continue;
+    const change = campaignSheetChange(row, String(nmId)); if (!change) continue;
+    const id = String(row.id); if (!byCampaign.has(id)) byCampaign.set(id, []);
+    byCampaign.get(id).push({ ...change, at: String(row.at) });
+  }
+  const on = state => state.status && state.member, result = new Map();
+  for (const id of new Set([...byCampaign.keys(), ...current.keys()])) {
+    const list = (byCampaign.get(id) || []).sort((a, b) => a.at.localeCompare(b.at));
+    const state = { status: false, member: false, ...current.get(id) };
+    for (const field of ['status', 'member']) { const last = list.filter(change => change.field === field).at(-1); if (last) state[field] = last.after; }
+    // Назад по записям: перед каждой записью поле было равно её «до». Записи одного обновления таблицы (одно время) —
+    // один переход: сравниваем состояние до первой и после последней из них.
+    const states = [{ ...state }];
+    for (let index = list.length - 1; index >= 0; index--) states.unshift({ ...states[0], [list[index].field]: list[index].before });
+    const changes = [];
+    for (let index = 0; index < list.length;) {
+      let end = index; while (end + 1 < list.length && list[end + 1].at === list[index].at) end++;
+      const was = on(states[index]), now = on(states[end + 1]);
+      if (was !== now) changes.push({ at: list[index].at, on: now, reason: list.slice(index, end + 1).map(change => change.reason).join('; ') });
+      index = end + 1;
+    }
+    result.set(id, { initial: on(states[0]), changes });
+  }
+  return result;
+}
+const timelineOnAt = (timeline, time) => { let on = timeline.initial; for (const change of timeline.changes) { if (change.at <= time) on = change.on; else break; } return on; };
+// Данные таблицы для детализации товара (только копия на компьютере — без запросов к таблице):
+// tracking — с какого дня статусы известны, какие кампании включены на начало и точные переходы за период;
+// onByDate — включённые кампании по дням с начала отслеживания (включена хоть на какое-то время дня);
+// priceChanges — изменения цены за период, сгруппированные по времени записи.
+function productSheetData(nmId, period, dates, allCampaigns = [], inSettings = new Set(), statIds = []) {
+  const empty = { tracking: null, onByDate: new Map(), priceChanges: [] };
+  if (!sheetConfigured()) return empty;
+  const groups = new Map();
+  for (const row of readSheetHistory({ ids: [String(nmId)], sections: ['Цены'], limit: 100_000 }).items) {
+    const date = moscowDateOf(row.at); if (date < period.from || date > period.to) continue;
+    if (!groups.has(row.at)) groups.set(row.at, { at: row.at, date, items: [] });
+    groups.get(row.at).items.push({ what: row.what, before: row.before, after: row.after });
+  }
+  const priceChanges = [...groups.values()].sort((a, b) => a.at.localeCompare(b.at));
+  const since = readSheetJson(path.join(SHEET_DIR, 'sync.json'), {}).since;
+  if (!since || moscowDateOf(since) > period.to) return { ...empty, priceChanges };
+  const fromDate = moscowDateOf(since) < period.from ? period.from : moscowDateOf(since);
+  const startTime = [since, moscowDayStart(period.from)].sort().at(-1), endTime = moscowDayStart(addDays(period.to, 1));
+  const current = new Map([...new Set([...statIds.map(String), ...inSettings])].map(id => [id, { status: allCampaigns.find(item => String(item.id) === id)?.status === 9, member: inSettings.has(id) }]));
+  const timelines = productCampaignTimeline(nmId, readSheetHistory({ sections: ['Реклама'], limit: 1_000_000 }).items, current);
+  const onAtStart = [], events = [], onByDate = new Map(dates.filter(date => date >= fromDate).map(date => [date, []]));
+  for (const [id, timeline] of timelines) {
+    if (!timeline.initial && !timeline.changes.length) continue;
+    if (timelineOnAt(timeline, startTime)) onAtStart.push(Number(id));
+    for (const change of timeline.changes) if (change.at > startTime && change.at < endTime) events.push({ id: Number(id), at: change.at, date: moscowDateOf(change.at), on: change.on, reason: change.reason });
+    for (const [date, list] of onByDate) {
+      const dayStart = [startTime, moscowDayStart(date)].sort().at(-1), dayEnd = moscowDayStart(addDays(date, 1));
+      if (timelineOnAt(timeline, dayStart) || timeline.changes.some(change => change.on && change.at > dayStart && change.at < dayEnd)) list.push(Number(id));
+    }
+  }
+  return { tracking: { since, fromDate, onAtStart, events: events.sort((a, b) => a.at.localeCompare(b.at)) }, onByDate, priceChanges };
 }
 async function productDetail(id, nmIdInput, from, to, live = false) {
   const nmId = String(nmIdInput || '');
@@ -1177,22 +1267,27 @@ async function productDetail(id, nmIdInput, from, to, live = false) {
   }).catch(error => (warnings.push(`Позиция в поиске: ${error.message}`), new Map()));
   const [funnel, stats, positions, cards] = await Promise.all([funnelJob, adsJob, positionsJob, cardsJob]);
   const ads = productAdDays(stats, nmId, dates), funnelByDate = new Map((funnel.current || []).map(day => [day.date, day]));
+  // До начала отслеживания в Google Таблице кампания включена по показам (50 и больше), после — по статусу и составу.
+  const sheet = productSheetData(nmId, period, dates, allCampaigns, inSettings, [...ads.campaigns.keys()]);
   const days = dates.map(date => {
     const { campaigns, ...metrics } = ads.days.get(date), day = funnelByDate.get(date);
-    return { date, funnel: day ? pickFunnelCounts(day) : null, ads: finalizeAdMetrics(metrics), campaigns, avgPosition: positions.get(date) ?? null };
+    return { date, funnel: day ? pickFunnelCounts(day) : null, ads: finalizeAdMetrics(metrics), campaigns: sheet.onByDate.get(date) || campaigns, avgPosition: positions.get(date) ?? null };
   });
   const card = cards.find(item => String(item.nmID) === nmId);
   // createdAt / startedAt — чтобы на графике отличить кампанию, запущенную в первый день периода, от работавшей раньше.
   // removed — у товара была статистика в кампании, но сейчас его в настройках кампании нет (убрали).
-  const campaigns = [...ads.campaigns].map(([campaignId, metrics]) => {
-    const item = allCampaigns.find(campaign => String(campaign.id) === campaignId) || { id: Number(campaignId) };
+  // activeDays — дни, когда кампания была включена (по показам или по статусу из таблицы). В список попадают и
+  // кампании без статистики, которые по таблице были включены (товар был в активной кампании, но показов не набрал).
+  const campaignIds = new Set([...ads.campaigns.keys(), ...days.flatMap(day => day.campaigns.map(String))]);
+  const campaigns = [...campaignIds].map(campaignId => {
+    const item = allCampaigns.find(campaign => String(campaign.id) === campaignId) || { id: Number(campaignId) }, metrics = ads.campaigns.get(campaignId) || emptyAdMetrics();
     return { id: Number(campaignId), name: item.settings?.name || `Кампания #${campaignId}`, status: item.status ?? null, type: item.type ?? null,
       paymentType: item.settings?.payment_type || '', createdAt: item.timestamps?.created || '', startedAt: item.timestamps?.started || '',
-      removed: !inSettings.has(campaignId), ...finalizeAdMetrics(metrics) };
+      removed: !inSettings.has(campaignId), ...finalizeAdMetrics(metrics), activeDays: days.filter(day => day.campaigns.includes(Number(campaignId))).length };
   }).filter(item => item.activeDays || item.spend || item.views || item.orders).sort((a, b) => b.spend - a.spend);
   return { demo: false, period, fetchedAt: new Date().toISOString(),
     product: { nmId: Number(nmId), name: card?.title || `Товар ${nmId}`, vendorCode: card?.vendorCode || '', brand: card?.brand || '', subject: card?.subjectName || '', photo: card ? cardPhoto(card) : '' },
-    days, campaigns, sync: funnel.sync || { pending: 0 }, warnings: [...warnings, ...(funnel.warnings || [])] };
+    days, campaigns, tracking: sheet.tracking, priceChanges: sheet.priceChanges, sync: funnel.sync || { pending: 0 }, warnings: [...warnings, ...(funnel.warnings || [])] };
 }
 // Отметки на графике товара: data/product-notes.json, { "кабинет:артикул": [{ id, date, text, at }] } — свои заметки
 // продавца: смена цены или СПП, ставки, акция. WB историю этого не отдаёт, поэтому их вносят вручную.
@@ -3491,7 +3586,7 @@ if (require.main === module) server.listen(PORT, '127.0.0.1', () => {
   if (sheetConfigured()) { setTimeout(syncSheet, 20_000); setInterval(syncSheet, SHEET_SYNC_EVERY); }
 });
 
-module.exports = { server, campaignActivePeriod, mergeSheetRows, saveSheetRows, readSheetHistory, mergeMinusList, minusPlan, archivedPresetsFromError, todoNmId, todoFields, productAdDays, productDetailPeriod, funnelOrdersByNmId, summarizeHourlyOrders, orderFeedPeriod, itemRatingPeriods, normalizeItemRatings, itemReturnsPeriod, normalizeItemReturns, returnStatusGroup, summarizeKeywordDaily, summarizePositionDaily, normalizeOrders, normalizeOrderFeed, enrichOrders, extractFunnel, summarizeAdStats, campaignProductDaily, withAdBudgets, summarizeKeywords, normalizeStockPreset, normalizePricePreset, adCampaignMayHaveStats, validAdPeriod, historyPeriod, historyChunks, planAdFetch, datesBetween, safeFolderName, funnelDaysToFetch, pairFunnelDays, funnelPeriods, funnelRangeBuckets, funnelRecordCounts, funnelRangeValues, funnelSalesMatrix, summaryTopProducts, summaryDrops, summaryProducts, normalizeFbsStocks, normalizeFbwStocks, normalizePrices, summarizeStockTotals, normalizeNewOrders, summarizeSupplies, normalizeTrbxes, chunkOrders, stickerType, localPhoto, WB_HOSTS };
+module.exports = { server, campaignActivePeriod, productCampaignTimeline, mergeSheetRows, saveSheetRows, readSheetHistory, mergeMinusList, minusPlan, archivedPresetsFromError, todoNmId, todoFields, productAdDays, productDetailPeriod, funnelOrdersByNmId, summarizeHourlyOrders, orderFeedPeriod, itemRatingPeriods, normalizeItemRatings, itemReturnsPeriod, normalizeItemReturns, returnStatusGroup, summarizeKeywordDaily, summarizePositionDaily, normalizeOrders, normalizeOrderFeed, enrichOrders, extractFunnel, summarizeAdStats, campaignProductDaily, withAdBudgets, summarizeKeywords, normalizeStockPreset, normalizePricePreset, adCampaignMayHaveStats, validAdPeriod, historyPeriod, historyChunks, planAdFetch, datesBetween, safeFolderName, funnelDaysToFetch, pairFunnelDays, funnelPeriods, funnelRangeBuckets, funnelRecordCounts, funnelRangeValues, funnelSalesMatrix, summaryTopProducts, summaryDrops, summaryProducts, normalizeFbsStocks, normalizeFbwStocks, normalizePrices, summarizeStockTotals, normalizeNewOrders, summarizeSupplies, normalizeTrbxes, chunkOrders, stickerType, localPhoto, WB_HOSTS };
 
 
 

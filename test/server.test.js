@@ -1,7 +1,7 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { mergeSheetRows, saveSheetRows, readSheetHistory, minusPlan, archivedPresetsFromError, productAdDays, productDetailPeriod, todoNmId, todoFields, funnelOrdersByNmId, summarizeHourlyOrders, orderFeedPeriod, itemRatingPeriods, normalizeItemRatings, itemReturnsPeriod, normalizeItemReturns, returnStatusGroup, campaignActivePeriod, mergeMinusList, summarizeKeywordDaily, summarizePositionDaily, normalizeOrders, normalizeOrderFeed, enrichOrders, extractFunnel, summarizeAdStats, campaignProductDaily, withAdBudgets, summarizeKeywords, normalizeStockPreset, normalizePricePreset, adCampaignMayHaveStats, validAdPeriod, historyPeriod, historyChunks, planAdFetch, datesBetween, safeFolderName, funnelDaysToFetch, pairFunnelDays, funnelPeriods, funnelRangeBuckets, funnelRecordCounts, funnelRangeValues, funnelSalesMatrix, summaryTopProducts, summaryDrops, summaryProducts, normalizeFbsStocks, normalizeFbwStocks, normalizePrices, summarizeStockTotals, normalizeNewOrders, summarizeSupplies, normalizeTrbxes, chunkOrders, stickerType, localPhoto, WB_HOSTS } = require('../server');
+const { productCampaignTimeline, mergeSheetRows, saveSheetRows, readSheetHistory, minusPlan, archivedPresetsFromError, productAdDays, productDetailPeriod, todoNmId, todoFields, funnelOrdersByNmId, summarizeHourlyOrders, orderFeedPeriod, itemRatingPeriods, normalizeItemRatings, itemReturnsPeriod, normalizeItemReturns, returnStatusGroup, campaignActivePeriod, mergeMinusList, summarizeKeywordDaily, summarizePositionDaily, normalizeOrders, normalizeOrderFeed, enrichOrders, extractFunnel, summarizeAdStats, campaignProductDaily, withAdBudgets, summarizeKeywords, normalizeStockPreset, normalizePricePreset, adCampaignMayHaveStats, validAdPeriod, historyPeriod, historyChunks, planAdFetch, datesBetween, safeFolderName, funnelDaysToFetch, pairFunnelDays, funnelPeriods, funnelRangeBuckets, funnelRecordCounts, funnelRangeValues, funnelSalesMatrix, summaryTopProducts, summaryDrops, summaryProducts, normalizeFbsStocks, normalizeFbwStocks, normalizePrices, summarizeStockTotals, normalizeNewOrders, summarizeSupplies, normalizeTrbxes, chunkOrders, stickerType, localPhoto, WB_HOSTS } = require('../server');
 
 test('возвраты: группы статусов, даты WB с пробелом, карточка товара, нулевой orderId', () => {
   assert.equal(returnStatusGroup('Готов к выдаче', true), 'ready');
@@ -467,24 +467,54 @@ test('автообновление воронки: сегодняшний ден
   assert.deepEqual(funnelDaysToFetch(['2026-09-13', '2026-09-14'], records, now, '2026-09-14', 2 * 60_000), []);
 });
 
-test('детализация товара: реклама только этого товара по дням, кампания включена в дни с показами или расходом', () => {
+test('детализация товара: реклама только этого товара по дням, кампания включена в дни с 50 показами и больше', () => {
   const stats = [
     { advertId: 1, days: [
       { date: '2026-10-01T00:00:00Z', apps: [{ nms: [{ nmId: 7, views: 100, clicks: 5, sum: 50, atbs: 2, orders: 1, sum_price: 990 }, { nmId: 8, views: 900, clicks: 40, sum: 400 }] }] },
       { date: '2026-10-02T00:00:00Z', apps: [{ nms: [{ nmId: 7, views: 0, clicks: 0, sum: 0, orders: 1 }] }] }
     ] },
-    { advertId: 2, days: [{ date: '2026-10-01T00:00:00Z', apps: [{ nms: [{ nmId: 7, views: 50, clicks: 1, sum: 10 }] }, { nms: [{ nmId: 7, views: 10 }] }] }] }
+    { advertId: 2, days: [{ date: '2026-10-01T00:00:00Z', apps: [{ nms: [{ nmId: 7, views: 40, clicks: 1, sum: 10 }] }, { nms: [{ nmId: 7, views: 10 }] }] }] },
+    // 49 показов с кликами и расходом — меньше порога, кампания в этот день не «включена».
+    { advertId: 3, days: [{ date: '2026-10-01T00:00:00Z', apps: [{ nms: [{ nmId: 7, views: 49, clicks: 3, sum: 30 }] }] }] }
   ];
   const { days, campaigns } = productAdDays(stats, '7', ['2026-10-01', '2026-10-02', '2026-10-03']);
   const first = days.get('2026-10-01');
-  assert.deepEqual([first.views, first.clicks, first.spend, first.carts, first.orders, first.revenue], [160, 6, 60, 2, 1, 990]);
+  assert.deepEqual([first.views, first.clicks, first.spend, first.carts, first.orders, first.revenue], [199, 9, 90, 2, 1, 990]);
   assert.deepEqual(first.campaigns, [1, 2]);
+  assert.equal(campaigns.get('3').activeDays, 0);
   // Заказ без показов (WB засчитал его позже) — в сумме есть, но кампания в этот день не «включена».
   assert.equal(days.get('2026-10-02').orders, 1);
   assert.deepEqual(days.get('2026-10-02').campaigns, []);
   assert.deepEqual(days.get('2026-10-03').campaigns, []);
   assert.equal(campaigns.get('1').activeDays, 1);
-  assert.equal(campaigns.get('2').views, 60);
+  assert.equal(campaigns.get('2').views, 50);
+});
+
+test('детализация товара: включена ли кампания по истории таблицы — статус «Активна» и товар в составе', () => {
+  const row = (at, id, what, before, after) => ({ at, section: 'Реклама', id, what, before, after });
+  const rows = [
+    // Кампания 1: пауза и запуск; товар 7 в ней сейчас и всё время.
+    row('2026-10-18T08:45:00.000Z', '1', 'Статус', 'Активна', 'На паузе'),
+    row('2026-10-18T11:45:00.000Z', '1', 'Статус', 'На паузе', 'Активна'),
+    // Кампания 2: активна, товар добавили (новый формат — полные списки), потом убрали.
+    row('2026-10-19T08:45:00.000Z', '2', 'Артикулы WB: добавлен 7000007', 1111111, '1111111, 7000007'),
+    row('2026-10-21T11:45:00.000Z', '2', 'Артикулы WB: убран 7000007', '1111111, 7000007', 1111111),
+    // Кампания 3: старый формат «убраны: …» и чужой артикул — не влияет.
+    row('2026-10-18T11:45:00.000Z', '3', 'Артикулы WB', 'убраны: 5555555', '—'),
+    // Кампания 4: появилась на паузе, без товара в составе — никогда не включена для товара.
+    row('2026-10-22T05:45:00.000Z', '4', 'Появилось в списке', '—', 'На паузе')
+  ];
+  const current = new Map([['1', { status: true, member: true }], ['2', { status: true, member: false }], ['3', { status: true, member: true }]]);
+  const timeline = productCampaignTimeline('7000007', rows, current);
+  assert.deepEqual(timeline.get('1'), { initial: true, changes: [
+    { at: '2026-10-18T08:45:00.000Z', on: false, reason: 'статус: Активна → На паузе' }, { at: '2026-10-18T11:45:00.000Z', on: true, reason: 'статус: На паузе → Активна' }] });
+  assert.deepEqual(timeline.get('2'), { initial: false, changes: [
+    { at: '2026-10-19T08:45:00.000Z', on: true, reason: 'товар добавлен в кампанию' }, { at: '2026-10-21T11:45:00.000Z', on: false, reason: 'товар убран из кампании' }] });
+  assert.deepEqual(timeline.get('3'), { initial: true, changes: [] });
+  assert.deepEqual(timeline.get('4'), { initial: false, changes: [] });
+  // Старый формат с этим артикулом: был в кампании, убран.
+  const old = productCampaignTimeline('5555555', rows, new Map([['3', { status: true, member: false }]]));
+  assert.deepEqual(old.get('3'), { initial: true, changes: [{ at: '2026-10-18T11:45:00.000Z', on: false, reason: 'товар убран из кампании' }] });
 });
 
 test('детализация товара: период не позже сегодняшнего дня и не длиннее 93 дней', () => {
