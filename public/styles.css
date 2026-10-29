@@ -249,31 +249,60 @@ tr.rating-row-attention td:first-child{box-shadow:inset 3px 0 0 var(--red)}
 /* Окна истории из Google Таблицы: откуда данные — копия с компьютера или дозагрузка (public/sheet-sync.js) */
 .sheet-hint{margin:0 0 10px;padding:7px 10px;border-radius:8px;background:#f5f6f3;color:var(--muted);font-size:11.5px;line-height:1.45}
 .sheet-hint:empty{display:none}
-/* «История остатков» (public/stock-history.js): фильтры, график, список изменений */
+/* «История остатков» FBS (public/stock-history.js): обнуления, товары с раскрытием, по дням, порог «мало осталось» */
 .stock-history h2{margin:2px 0 4px}
 .stock-history-note{margin:0 0 10px;color:var(--muted);font-size:12px;line-height:1.5}
-.stock-history-filters{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-bottom:6px}
-.stock-history-filters select{height:35px;padding:0 10px;border:1px solid var(--line);border-radius:8px;background:#fafbfa;font:600 11px Manrope;color:var(--ink)}
-.stock-history-filters .multi-filter>div{left:0;right:auto;min-width:280px;max-height:320px}
-.stock-history-filters .multi-filter label span{display:grid;gap:1px;white-space:normal}
-.stock-history-filters .multi-filter label small{color:var(--muted);font-size:10px}
+.stock-history-filters{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-bottom:8px}
+.stock-history-filters select{height:35px;padding:0 10px;border:1px solid var(--line);border-radius:8px;background:#fafbfa;font:600 12px Manrope;color:var(--ink)}
 .sh-periods{display:inline-flex;height:35px;padding:3px;gap:2px;border:1px solid var(--line);border-radius:8px;background:#fafbfa}
-.sh-periods button{padding:0 10px;border:0;border-radius:6px;background:transparent;color:var(--muted);font:700 11px Manrope;cursor:pointer}
+.sh-periods button{padding:0 10px;border:0;border-radius:6px;background:transparent;color:var(--muted);font:700 12px Manrope;cursor:pointer}
 .sh-periods button[aria-pressed=true]{background:white;color:#5b36c8;box-shadow:0 1px 3px #17211d1f}
-.sh-search{width:100%;height:32px;margin:0 0 6px;padding:0 9px;border:1px solid var(--line);border-radius:7px;font:600 11px Manrope;outline:0}
-.sh-search:focus{border-color:var(--purple)}
-.sh-clear{width:100%;margin-top:6px;padding:7px;border:0;border-radius:6px;background:#f1efff;color:#5b36c8;font:700 11px Manrope;cursor:pointer}
-.stock-history-chart{padding:6px 0 4px}
-.stock-history-legend{display:flex;flex-wrap:wrap;gap:6px 16px;margin:2px 0 12px;font-size:11px;color:var(--ink)}
-.stock-history-legend span{display:inline-flex;align-items:center;gap:7px}
-.stock-history-legend i{width:16px;border-radius:2px}
-.stock-history-table{max-height:300px;overflow:auto;border:1px solid var(--line);border-radius:10px}
-.stock-history-table table{width:100%;min-width:0!important}
-.stock-history-table th,.stock-history-table td{padding:7px 10px;font-size:12px;white-space:nowrap}
-.stock-history-table td small{display:block;color:var(--muted);font-size:10.5px}
-.sh-product{display:inline-block;max-width:320px;overflow:hidden;text-overflow:ellipsis;vertical-align:bottom}
-.sh-down{color:#b84949;font-weight:800}
-.sh-up{color:var(--green);font-weight:800}
+.sh-find{display:inline-flex;align-items:center;gap:6px;height:35px;padding:0 10px;border:1px solid var(--line);border-radius:8px;background:#fafbfa;color:var(--muted);flex:1 1 200px}
+.sh-find input{flex:1;min-width:0;border:0;background:transparent;font:600 12px Manrope;color:var(--ink);outline:0}
+.sh-block{margin:16px 0 0}
+.sh-block h3{margin:0 0 6px;font-size:14px}
+.sh-summary{margin:0 0 8px;font-size:13px;line-height:1.5}
+.sh-zero-list{display:grid;border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.sh-zero{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr) 80px;gap:12px;align-items:center;padding:8px 12px;border-top:1px solid #edf0ee;font-size:12.5px}
+.sh-zero:first-child{border-top:0}
+.sh-zero.now{background:#fff5f4}
+.sh-zero span{min-width:0}
+.sh-zero small,.sh-name small{display:block;color:var(--muted);font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sh-zero b:first-child{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sh-zero-hours{text-align:right;color:#b84949}
+.sh-more{margin-top:8px;padding:7px 12px;border:1px solid var(--line);border-radius:8px;background:white;font:700 12px Manrope;color:#5b36c8;cursor:pointer}
+.sh-table{max-height:440px;overflow:auto;border:1px solid var(--line);border-radius:10px}
+.sh-table table{width:100%;min-width:640px!important;table-layout:auto}
+.sh-table th{position:sticky;top:0;z-index:1;background:#f7f8f6;padding:8px 10px;font-size:11px;white-space:nowrap;cursor:pointer;user-select:none}
+.sh-table th span{color:#5b36c8}
+.sh-table td{padding:8px 10px;font-size:13px;white-space:nowrap;vertical-align:top}
+.sh-table td:first-child{white-space:normal;min-width:220px}
+.sh-row{cursor:pointer}
+.sh-row:hover td,.sh-row.open td{background:#faf9ff}
+.sh-caret{display:inline-block;width:14px;color:var(--muted)}
+.sh-name{display:inline-block;max-width:calc(100% - 16px);vertical-align:top}
+.sh-table td small{font-size:11px}
+.sh-detail td{padding:4px 12px 14px 26px;background:#faf9ff;white-space:normal}
+.sh-full-name{margin:4px 0 8px;color:var(--muted);font-size:12px}
+.sh-sub{display:block;max-width:100%;overflow-x:auto;width:auto!important;min-width:0!important;margin-bottom:10px;border-collapse:collapse}
+.sh-sub th,.sh-sub td{padding:4px 12px 4px 0!important;background:none!important;font-size:12px!important;text-align:left;position:static!important;white-space:nowrap}
+.sh-detail td{max-width:0}
+.sh-product-days{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:8px 18px}
+.sh-product-days>div>b{font-size:12px}
+.sh-days{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:10px}
+.sh-day{padding:10px 12px;border:1px solid var(--line);border-radius:10px}
+.sh-day-head{display:flex;justify-content:space-between;gap:10px;margin:0 0 6px;font-size:13px}
+.sh-day-head span{color:var(--muted);font-size:12px}
+.sh-day-line{display:flex;gap:8px;margin:3px 0 0;font-size:12px;line-height:1.45;color:var(--muted)}
+.sh-day-line>span:first-child{flex:0 0 38%;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--ink)}
+.sh-day-line .sh-day-vals{flex:1;min-width:0}
+.sh-quiet{margin:0 0 10px;color:var(--muted);font-size:12px;line-height:1.5}
+.sh-day-line b{color:var(--ink)}
+.sh-low{display:block;margin-top:16px;padding:10px 12px;border-radius:8px;background:#f5f6f3;color:var(--muted);font-size:12px;line-height:1.6}
+.sh-low input{width:56px;height:28px;margin:0 4px;padding:0 6px;border:1px solid var(--line);border-radius:6px;font:700 12px Manrope;color:var(--ink)}
+.sh-down{color:#b84949!important;font-weight:800}
+.sh-up{color:var(--green)!important;font-weight:800}
+@media(max-width:680px){.sh-zero{grid-template-columns:minmax(0,1fr) 64px}.sh-zero>span:nth-child(2){grid-column:1/-1;grid-row:2}.sh-day-line>span{flex-basis:50%}}
 /* «Реклама», столбец «Артикулы»: число товаров в кампании и сколько с показами за период */
 .ad-articles{display:grid;gap:2px;cursor:help}
 .ad-articles strong{font-size:13px}
