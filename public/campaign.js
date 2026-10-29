@@ -256,8 +256,7 @@
     renderExportProgress();
     return event.type==='result'?event:null;
   }
-  const KEYWORD_PAGE_SIZE=100;
-  const keywords={data:null,loading:false,error:'',product:'',search:'',statusFilter:'all',sort:{key:'views',direction:'desc'},page:1,selected:new Set(),busy:false,shown:[],ranges:{}};
+  const keywords={data:null,loading:false,error:'',product:'',search:'',statusFilter:'all',sort:{key:'views',direction:'desc'},page:1,pageSize:pageSizeFor('campaign-keywords'),selected:new Set(),busy:false,shown:[],ranges:{}};
   // Первые три столбца (галочка, запрос, статус) постоянные; показатели — из меню «Столбцы» (visibleColumns('keywords')).
   const plural=(count,forms)=>{const n=Math.abs(Number(count)||0)%100,d=n%10;return forms[n>10&&n<20?2:d===1?0:d>1&&d<5?1:2]};
   // Исключать запросы (минус-фразы) WB позволяет только в кампаниях с оплатой за показы.
@@ -330,8 +329,8 @@
     if(keywords.error&&!data){note.textContent=`Ошибка: ${keywords.error}`;body.innerHTML='';renderKeywordPagination(0);return}
     if(!data){note.textContent='';body.innerHTML='';renderKeywordPagination(0);return}
     const view=keywordView(),rows=keywordRows(view),totals=keywordTotals(rows);
-    const pageCount=Math.ceil(rows.length/KEYWORD_PAGE_SIZE);keywords.page=Math.min(Math.max(1,keywords.page),Math.max(1,pageCount));
-    const shown=rows.slice((keywords.page-1)*KEYWORD_PAGE_SIZE,keywords.page*KEYWORD_PAGE_SIZE);
+    const pageCount=Math.ceil(rows.length/keywords.pageSize);keywords.page=Math.min(Math.max(1,keywords.page),Math.max(1,pageCount));
+    const shown=rows.slice((keywords.page-1)*keywords.pageSize,keywords.page*keywords.pageSize);
     // В CPC-кампаниях галочек и панели «Исключить/Включить» нет.
     const cpc=keywordsCpc();if(cpc)keywords.selected.clear();
     document.querySelector('.keywords-table').classList.toggle('no-select',cpc);
@@ -356,23 +355,13 @@
     body.innerHTML=rows.length?`<tr class="total-row"><td></td><td>Итого · ${number(rows.length)} ${plural(rows.length,['запрос','запроса','запросов'])}</td><td></td>${cells(totals)}</tr>`+
       shown.map(row=>`<tr class="${rowClass(row)}"><td><input type="checkbox" data-keyword-select="${esc(row.query)}" ${keywords.selected.has(row.query)?'checked':''} aria-label="Выбрать запрос «${esc(row.query)}»"></td><td><span class="keyword-query"><button type="button" class="keyword-chart-button" data-keyword-daily="${esc(row.query)}" title="Статистика по дням" aria-label="Статистика запроса «${esc(row.query)}» по дням"><svg viewBox="0 0 16 16" aria-hidden="true"><rect x="1.75" y="1.75" width="12.5" height="12.5" rx="3"/><path d="M4.5 10.5l2.5-3 2 2 2.5-4"/></svg></button>${keywordTagButton(row.query)}<span>${esc(row.query)}</span>${keywordNoteButton(row.query)}</span></td><td>${keywordStatusCell(row)}</td>${cells(row)}</tr>`).join(''):
       `<tr><td colspan="${columns.length+3}" class="empty">${empty}</td></tr>`;
-    renderKeywordPagination(pageCount);
+    renderKeywordPagination(pageCount,rows.length);
     renderKeywordActions();
   }
-  // Страницы по 100 запросов — как пагинация на остальных страницах сайта.
-  function renderKeywordPagination(pageCount){
-    const el=$('#keywordPagination');
-    if(pageCount<=1){el.innerHTML='';el.hidden=true;return}
-    el.hidden=false;
-    el.innerHTML=`<button type="button" class="page-button" data-keyword-page="prev" ${keywords.page===1?'disabled':''}>Назад</button><div class="page-numbers">${Array.from({length:pageCount},(_,index)=>index+1).map(page=>`<button type="button" class="page-button ${page===keywords.page?'active':''}" data-keyword-page="${page}" aria-current="${page===keywords.page?'page':'false'}">${page}</button>`).join('')}</div><button type="button" class="page-button" data-keyword-page="next" ${keywords.page===pageCount?'disabled':''}>Вперёд</button>`;
+  // Пагинация — общая с основным сайтом (pager.js): число запросов на странице выбирается и запоминается.
+  function renderKeywordPagination(pageCount,total){
+    renderPager($('#keywordPagination'),{page:keywords.page,pageCount,total,sizeKey:'campaign-keywords',onPage:page=>{keywords.page=page;renderKeywords();$('#keywordsNote').closest('.panel').scrollIntoView({behavior:'smooth',block:'start'})},onSize:size=>{keywords.pageSize=size;keywords.page=1;renderKeywords()}});
   }
-  $('#keywordPagination').addEventListener('click',event=>{
-    const button=event.target.closest('[data-keyword-page]');if(!button||button.disabled)return;
-    const target=button.dataset.keywordPage,page=target==='prev'?keywords.page-1:target==='next'?keywords.page+1:Number(target);
-    if(!Number.isInteger(page)||page===keywords.page)return;
-    keywords.page=page;renderKeywords();
-    $('#keywordsNote').closest('.panel').scrollIntoView({behavior:'smooth',block:'start'});
-  });
   // Сортировка по клику на заголовок; клики по полям «от — до», поиску и ручке ширины не сортируют.
   $('#keywordHead').addEventListener('click',event=>{
     if(event.target.closest('input,.keyword-range,.keyword-search,.column-resizer'))return;

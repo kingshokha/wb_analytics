@@ -2,7 +2,7 @@
 // Данные — /api/returns (метод WB item-returns). Активные возвраты (ещё не выданы) — за последние 3 месяца
 // независимо от периода сайта: их нужно забрать. Полученные и не забранные — за выбранный период.
 // Статус показывается текстом WB как есть, цвет — по группе: в пути, готов к выдаче, получен, не забран.
-const returnsView={data:null,key:'',error:'',search:'',status:'',type:'',sort:{key:'orderDt',dir:'desc'},page:1,pageSize:100,request:0};
+const returnsView={data:null,key:'',error:'',search:'',status:'',type:'',sort:{key:'orderDt',dir:'desc'},page:1,pageSize:pageSizeFor('returns'),request:0};
 const RETURN_STATUS_CLASS={transit:'status-confirm',ready:'status-new',done:'status-complete',expired:'status-cancel',cancel:'status-cancel',other:''};
 const RETURN_STATUS_ORDER={ready:0,transit:1,expired:2,cancel:3,done:4,other:5};
 const RETURN_COLUMNS=[
@@ -134,10 +134,7 @@ function renderReturnTable(){
   $('#returnBody').innerHTML=pageRows.map(item=>`<tr>${RETURN_COLUMNS.map(c=>returnCell(item,c.key)).join('')}</tr>`).join('');
   $('#emptyReturns').classList.toggle('hidden',rows.length>0);
   $$('#returnBody .stock-product-photo,#returnTop .stock-product-photo').forEach(image=>{if(image.dataset.previewBound)return;image.dataset.previewBound='1';bindPhotoPreview(image)});
-  const el=$('#returnPagination');
-  if(pageCount<=1){el.innerHTML='';el.classList.add('hidden');return}
-  el.classList.remove('hidden');
-  el.innerHTML=`<button type="button" class="stock-page-button" data-return-page="prev" ${returnsView.page===1?'disabled':''}>Назад</button><div class="stock-page-numbers">${Array.from({length:pageCount},(_,i)=>i+1).map(page=>`<button type="button" class="stock-page-button ${page===returnsView.page?'active':''}" data-return-page="${page}" aria-current="${page===returnsView.page?'page':'false'}">${page}</button>`).join('')}</div><button type="button" class="stock-page-button" data-return-page="next" ${returnsView.page===pageCount?'disabled':''}>Вперёд</button>`;
+  renderPager($('#returnPagination'),{page:returnsView.page,pageCount,total:rows.length,sizeKey:'returns',onPage:page=>{returnsView.page=page;renderReturnTable();$('#page-returns .stock-panel').scrollIntoView({behavior:'smooth',block:'start'})},onSize:size=>{returnsView.pageSize=size;returnsView.page=1;renderReturnTable()}});
 }
 // Клик по ПВЗ, типу или товару в верхних блоках — показывает эти возвраты в таблице.
 function focusReturns({search='',status='',type=''}){
@@ -147,8 +144,6 @@ function focusReturns({search='',status='',type=''}){
 document.addEventListener('click',event=>{
   const sort=event.target.closest('[data-return-sort]');
   if(sort&&!event.target.closest('.column-resizer')){const key=sort.dataset.returnSort;returnsView.sort=returnsView.sort.key===key?{key,dir:returnsView.sort.dir==='asc'?'desc':'asc'}:{key,dir:['title','returnType','returnStatus','officeAddress'].includes(key)?'asc':'desc'};returnsView.page=1;renderReturnTable();return}
-  const page=event.target.closest('[data-return-page]');
-  if(page&&!page.disabled){const target=page.dataset.returnPage;returnsView.page=target==='prev'?returnsView.page-1:target==='next'?returnsView.page+1:Number(target);renderReturnTable();$('#page-returns .stock-panel').scrollIntoView({behavior:'smooth',block:'start'});return}
   const office=event.target.closest('[data-return-office]');
   if(office){focusReturns({search:office.dataset.returnOffice,status:'active'});return}
   const type=event.target.closest('[data-return-type]');

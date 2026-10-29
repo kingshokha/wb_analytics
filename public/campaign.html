@@ -342,14 +342,7 @@
     .keyword-search{display:block;margin-bottom:6px}
     .keyword-search input{width:100%;max-width:260px;height:28px;padding:0 10px;border:1px solid var(--line);border-radius:7px;background:white;color:var(--ink);font:600 12px Manrope,Arial,sans-serif;text-transform:none;letter-spacing:0}
     .keyword-search input:focus{border-color:var(--purple);outline:0}
-    /* Пагинация — как на основном сайте */
-    .pagination{display:flex;align-items:center;justify-content:center;gap:10px;padding:18px 20px;border-top:1px solid var(--line);background:#fff}
-    .pagination[hidden]{display:none}
-    .page-numbers{display:flex;align-items:center;gap:6px;flex-wrap:wrap;justify-content:center}
-    .page-button{min-width:35px;height:35px;padding:0 10px;border:1px solid var(--line);border-radius:8px;background:#fff;color:var(--ink);font:700 11px Manrope,Arial,sans-serif;cursor:pointer}
-    .page-button:hover:not(:disabled){border-color:var(--purple);color:var(--purple);background:#f4f1ff}
-    .page-button.active{border-color:var(--purple);background:var(--purple);color:#fff}
-    .page-button:disabled{opacity:.45;cursor:not-allowed}
+    /* Пагинация — общая с основным сайтом: pager.css и pager.js */
     /* Нижняя панель действий с выбранными запросами — как на основном сайте */
     .keyword-actions{position:fixed;z-index:20;left:calc(39px + 50%);bottom:24px;transform:translateX(-50%);display:flex;align-items:center;gap:10px;padding:11px 12px;border-radius:12px;background:#17211d;color:white;box-shadow:0 15px 45px #17211d55}
     .keyword-actions[hidden]{display:none}
@@ -385,6 +378,7 @@
   <link rel="stylesheet" href="/date-range.css">
   <link rel="stylesheet" href="/mini-charts.css">
   <link rel="stylesheet" href="/sidebar.css">
+  <link rel="stylesheet" href="/pager.css">
 </head>
 <body>
 <div class="shell">
@@ -435,7 +429,7 @@
       <p id="keywordsNote" class="keywords-note">Загрузка ключевых запросов…</p>
       <div id="keywordMessage" class="keyword-message" role="status" aria-live="polite"></div>
       <div class="table-wrap"><table class="keywords-table metrics-table"><thead><tr id="keywordHead"><th><input type="checkbox" id="keywordSelectAll" aria-label="Выбрать все запросы на странице"></th><th data-keyword-key="query"><span class="keyword-search"><input id="keywordSearch" type="search" placeholder="Поиск по запросу" autocomplete="off" aria-label="Поиск по запросу"></span>Запрос ↕</th><th data-keyword-key="status">Статус ↕</th></tr></thead><tbody id="keywordsBody"></tbody></table></div>
-      <div id="keywordPagination" class="pagination" aria-label="Страницы ключевых запросов" hidden></div>
+      <div id="keywordPagination" class="stock-pagination hidden" aria-label="Страницы ключевых запросов"></div>
     </section>
   </main>
 </div>
@@ -450,6 +444,7 @@
 <div id="setupHistoryModal" class="modal" hidden><div class="modal-backdrop" data-setup-history-close></div><div class="modal-dialog small history-dialog" role="dialog" aria-modal="true" aria-labelledby="setupHistoryTitle"><div class="modal-head"><div><h2 id="setupHistoryTitle">История кампании</h2><p id="setupHistoryNote" class="kwday-note"></p></div><button type="button" class="modal-close" data-setup-history-close aria-label="Закрыть">×</button></div><p class="sheet-hint" id="setupHistoryHint"></p><div class="setup-history-body" id="setupHistoryBody"></div></div></div>
 <div id="productModal" class="modal" hidden><div class="modal-backdrop" data-modal-close></div><div class="modal-dialog" role="dialog" aria-modal="true" aria-labelledby="productModalTitle"><div class="modal-head"><h2 id="productModalTitle">Статистика артикула</h2><button type="button" class="modal-close" data-modal-close aria-label="Закрыть">×</button></div><div class="modal-table-wrap"><table><thead><tr><th>Дата</th><th>Показы</th><th>Клики</th><th>CTR</th><th>CPC</th><th>Корзины</th><th>Заказы</th><th>Отмены</th><th>Сумма заказов</th><th>Затраты</th><th>ДРР, %</th></tr></thead><tbody id="productModalBody"></tbody></table></div></div></div>
 <script src="/sidebar.js"></script>
+<script src="/pager.js"></script>
 <script src="/date-range.js"></script>
 <script src="/mini-charts.js"></script>
 <script src="/sheet-sync.js"></script>

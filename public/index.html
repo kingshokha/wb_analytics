@@ -9,6 +9,7 @@
   <link rel="stylesheet" href="/styles.css">
   <link rel="stylesheet" href="/date-range.css">
   <link rel="stylesheet" href="/sidebar.css">
+  <link rel="stylesheet" href="/pager.css">
 </head>
 <body>
   <div class="shell">
@@ -269,12 +270,24 @@
         </div>
       </section>
 
+      <section class="page" id="page-cards">
+        <div class="metrics" id="cardMetrics"></div>
+        <div class="funnel-tabs" role="tablist"><button type="button" class="funnel-tab active" data-cards-tab="cards">Карточки <b id="cardsTabCount"></b></button><button type="button" class="funnel-tab" data-cards-tab="trash">Корзина <b id="trashTabCount"></b></button><button type="button" class="funnel-tab" data-cards-tab="errors">Ошибки сохранения <b id="errorsTabCount"></b></button></div>
+        <div class="panel stock-panel">
+          <div class="panel-head"><div><h2 id="cardsTitle">Карточки товаров</h2><p id="cardsCount">Загрузка карточек…</p></div><div class="filters stock-filters" id="cardsFilters"><label class="search">⌕ <input id="cardSearch" placeholder="Название, артикул, баркод"></label><select id="cardSubjectFilter" aria-label="Предмет"></select><select id="cardBrandFilter" aria-label="Бренд"></select><select id="cardTagFilter" aria-label="Ярлык"></select><select id="cardProblemFilter" aria-label="Что проверить"></select><button type="button" class="card-tags-button" id="cardTagsButton">Ярлыки</button></div></div>
+          <div class="table-wrap" id="cardsMain"><table class="stock-table cards-table"><thead><tr id="cardsHead"></tr></thead><tbody id="cardsBody"></tbody></table></div>
+          <div class="table-wrap hidden" id="cardsAlt"></div>
+          <div class="empty hidden" id="emptyCards"><span>▤</span><h3 id="emptyCardsTitle">Карточек не найдено</h3><p>Измените фильтры.</p></div>
+          <div class="stock-pagination hidden" id="cardsPagination" aria-label="Пагинация карточек"></div>
+        </div>
+      </section>
+
       <section class="page" id="page-history">
         <div class="change-sections" id="changeSections" role="group" aria-label="Разделы истории"></div>
         <div class="panel stock-panel change-panel">
-          <div class="panel-head"><div><h2>Все изменения</h2><p id="changeCount">Загрузка истории…</p></div><div class="filters stock-filters"><label class="search">⌕ <input id="changeSearch" placeholder="Кампания, артикул, товар, запрос"></label><select id="changeKind" aria-label="Что изменилось"></select><select id="changeCabinet" class="hidden" aria-label="Кабинет"></select></div></div>
+          <div class="panel-head"><div><h2>Все изменения</h2><p id="changeCount">Загрузка истории…</p></div><div class="filters stock-filters"><label class="search">⌕ <input id="changeSearch" placeholder="Кампания, артикул, товар, запрос"></label><select id="changeKind" aria-label="Что изменилось"></select></div></div>
           <p class="sheet-hint change-hint" id="changeHint"></p>
-          <div class="table-wrap"><table class="stock-table change-table"><thead><tr><th data-col-key="at" data-col-width="90">Время</th><th data-col-key="cabinet" data-col-width="110">Кабинет</th><th data-col-key="section" data-col-width="130">Раздел</th><th data-col-key="object" data-col-width="330">Кампания или товар</th><th data-col-key="what" data-col-width="300">Что изменилось</th><th data-col-key="before" data-col-width="120">Было</th><th data-col-key="after" data-col-width="140">Стало</th></tr></thead><tbody id="changeBody"></tbody></table></div>
+          <div class="table-wrap"><table class="stock-table change-table"><thead><tr><th data-col-key="at" data-col-width="90">Время</th><th data-col-key="section" data-col-width="130">Раздел</th><th data-col-key="object" data-col-width="330">Кампания или товар</th><th data-col-key="what" data-col-width="300">Что изменилось</th><th data-col-key="before" data-col-width="120">Было</th><th data-col-key="after" data-col-width="140">Стало</th></tr></thead><tbody id="changeBody"></tbody></table></div>
           <div class="empty hidden" id="emptyChanges"><span>⟲</span><h3>Изменений не найдено</h3><p id="emptyChangesText">Измените фильтры или период.</p></div>
           <div class="stock-pagination hidden" id="changePagination" aria-label="Пагинация истории"></div>
         </div>
@@ -287,6 +300,7 @@
   <div class="toast" id="toast"></div>
   <div class="loading-overlay" id="loadingOverlay"><div class="loading-spinner" aria-label="Загрузка"></div></div>
   <script src="/sidebar.js"></script>
+  <script src="/pager.js"></script>
   <script src="/date-range.js"></script>
   <script src="/table-ui.js"></script>
   <script src="/summary.js"></script>
@@ -299,6 +313,7 @@
   <script src="/stock-history.js"></script>
   <script src="/todo.js"></script>
   <script src="/change-history.js"></script>
+  <script src="/cards.js"></script>
   <script src="/app.js"></script>
   <script src="/auto-refresh.js"></script>
 </body>

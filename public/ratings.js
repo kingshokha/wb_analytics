@@ -1,7 +1,7 @@
 // --- Оценки товаров: рейтинг продавца, новые оценки по звёздам, товары, которым нужно внимание, таблица товаров ---
 // Данные — /api/ratings (метод WB item-rating, обновляется раз в час). Период заканчивается не позже вчерашнего дня.
 // Динамика везде — разница с прошлым периодом той же длины (+18 отзывов, −0,49 рейтинга), а не проценты.
-const ratings={data:null,key:'',error:'',search:'',filter:'',sort:{key:'newFeedbacks',dir:'desc'},page:1,pageSize:100,request:0};
+const ratings={data:null,key:'',error:'',search:'',filter:'',sort:{key:'newFeedbacks',dir:'desc'},page:1,pageSize:pageSizeFor('ratings'),request:0};
 const RATING_COLUMNS=[
   {key:'title',label:'Товар',width:300},
   {key:'feedbackRating',label:'Рейтинг',hint:'Рейтинг товара по отзывам и изменение к прошлому периоду',width:110},
@@ -116,19 +116,11 @@ function renderRatingTable(){
   $('#ratingBody').innerHTML=pageRows.map(item=>`<tr class="${item.attention?'rating-row-attention':''}">${RATING_COLUMNS.map(c=>ratingCell(item,c.key)).join('')}</tr>`).join('');
   $('#emptyRatings').classList.toggle('hidden',rows.length>0);
   $$('#ratingBody .stock-product-photo,#ratingAttention .stock-product-photo').forEach(image=>{if(image.dataset.previewBound)return;image.dataset.previewBound='1';bindPhotoPreview(image)});
-  renderRatingPagination(pageCount);
-}
-function renderRatingPagination(pageCount){
-  const el=$('#ratingPagination');
-  if(pageCount<=1){el.innerHTML='';el.classList.add('hidden');return}
-  el.classList.remove('hidden');
-  el.innerHTML=`<button type="button" class="stock-page-button" data-rating-page="prev" ${ratings.page===1?'disabled':''}>Назад</button><div class="stock-page-numbers">${Array.from({length:pageCount},(_,i)=>i+1).map(page=>`<button type="button" class="stock-page-button ${page===ratings.page?'active':''}" data-rating-page="${page}" aria-current="${page===ratings.page?'page':'false'}">${page}</button>`).join('')}</div><button type="button" class="stock-page-button" data-rating-page="next" ${ratings.page===pageCount?'disabled':''}>Вперёд</button>`;
+  renderPager($('#ratingPagination'),{page:ratings.page,pageCount,total:rows.length,sizeKey:'ratings',onPage:page=>{ratings.page=page;renderRatingTable();$('#page-ratings .stock-panel').scrollIntoView({behavior:'smooth',block:'start'})},onSize:size=>{ratings.pageSize=size;ratings.page=1;renderRatingTable()}});
 }
 document.addEventListener('click',event=>{
   const sort=event.target.closest('[data-rating-sort]');
   if(sort&&!event.target.closest('.column-resizer')){const key=sort.dataset.ratingSort;ratings.sort=ratings.sort.key===key?{key,dir:ratings.sort.dir==='asc'?'desc':'asc'}:{key,dir:key==='title'?'asc':'desc'};ratings.page=1;renderRatingTable();return}
-  const page=event.target.closest('[data-rating-page]');
-  if(page&&!page.disabled){const target=page.dataset.ratingPage;ratings.page=target==='prev'?ratings.page-1:target==='next'?ratings.page+1:Number(target);renderRatingTable();$('#page-ratings .stock-panel').scrollIntoView({behavior:'smooth',block:'start'});return}
   // «Требуют внимания»: клик по товару находит его в таблице, «Все …» включает фильтр.
   const focus=event.target.closest('[data-rating-focus]');
   if(focus){ratings.search=focus.dataset.ratingFocus;$('#ratingSearch').value=ratings.search;ratings.filter='';$('#ratingFilter').value='';ratings.page=1;renderRatingTable();$('#page-ratings .stock-panel').scrollIntoView({behavior:'smooth',block:'start'});return}

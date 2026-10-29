@@ -16,6 +16,8 @@
     { page: 'stocks', label: 'Остатки FBS', icon: SVG(BOXES) },
     { page: 'returns', label: 'Возвраты', icon: SVG('<path d="M9 13.5L4.5 9 9 4.5"/><path d="M4.5 9H14a5.5 5.5 0 0 1 0 11h-4"/>') },
     { page: 'prices', label: 'Цены и скидки', icon: '₽' },
+    // Ярлык-ценник — карточки товаров.
+    { page: 'cards', label: 'Карточки товаров', icon: SVG('<path d="M3.5 11.6V4.6a1.1 1.1 0 0 1 1.1-1.1h7l8.6 8.6a1.1 1.1 0 0 1 0 1.5l-7.1 7.1a1.1 1.1 0 0 1-1.5 0z"/><circle cx="8.2" cy="8.2" r="1.5"/>') },
     { page: 'funnel', label: 'Воронка', icon: SVG('<path d="M3.5 3.5v17h17"/><path d="M7 15.5l4-4.5 3 3 5.5-6.5"/><path d="M16 7.5h3.5V11"/>') },
     { page: 'ratings', label: 'Оценки товаров', icon: SVG('<path d="M12 3.6l2.6 5.3 5.8.8-4.2 4.1 1 5.8-5.2-2.7-5.2 2.7 1-5.8-4.2-4.1 5.8-.8z"/>') },
     { page: 'ads', label: 'Реклама', icon: 'ADS', iconClass: 'nav-icon-ads' },

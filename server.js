@@ -3319,8 +3319,12 @@ async function orderStickers(body) {
   return { type, stickers };
 }
 
+// Раздел «Карточки товаров» — отдельный модуль (content-cards.js), маршруты /api/card и /api/cards/*.
+const contentCards = require('./content-cards')({ wbRequest, tokenFor, cabinets, cachedAnalytics, analyticsCache, apiError, readJson, send, localPhoto, loadProductCards });
+
 async function handleApi(req, res, url) {
   if (req.method === 'GET' && url.pathname.startsWith('/api/photo/')) return servePhoto(res, url);
+  if (url.pathname.startsWith('/api/card') && await contentCards.handle(req, res, url)) return;
   if (req.method === 'GET' && url.pathname === '/api/cabinets') return send(res, 200, { cabinets: publicCabinets(), demo: !cabinets().length });
   if (req.method === 'PATCH' && /^\/api\/cabinets\/[^/]+$/.test(url.pathname)) {
     const id = decodeURIComponent(url.pathname.split('/').pop());

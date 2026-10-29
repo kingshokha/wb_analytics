@@ -3,7 +3,7 @@
 // и ошибки загрузки. setNotices(раздел, источник, тексты) заменяет уведомления этого источника целиком — при новой
 // загрузке исправившиеся пропадают сами; addNotice добавляет ошибку. Раздел '*' — видно во всех разделах (демо-режим).
 const notices={byPage:new Map(),seen:new Set(),open:false};
-const NOTICE_PAGES={summary:'Сводка',orders:'Лента заказов','fbs-orders':'Новые заказы','fbw-stocks':'Остатки FBW',stocks:'Остатки FBS',prices:'Цены и скидки',funnel:'Воронка',ratings:'Оценки товаров',returns:'Возвраты',ads:'Реклама',product:'Детализация товара'};
+const NOTICE_PAGES={summary:'Сводка',orders:'Лента заказов','fbs-orders':'Новые заказы','fbw-stocks':'Остатки FBW',stocks:'Остатки FBS',prices:'Цены и скидки',funnel:'Воронка',ratings:'Оценки товаров',returns:'Возвраты',ads:'Реклама',product:'Детализация товара',cards:'Карточки товаров',card:'Карточка товара',history:'История изменений',todo:'Дела'};
 const noticeList=page=>[...(notices.byPage.get('*')||[]),...(notices.byPage.get(page)||[])];
 function setNotices(page,source,items=[],level='warning'){
   const now=new Date().toISOString(),old=notices.byPage.get(page)||[],kept=old.filter(item=>item.source!==source);

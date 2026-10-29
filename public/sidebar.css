@@ -44,10 +44,12 @@ body.sidebar-open .sidebar-backdrop{opacity:1;pointer-events:auto}
 /* Телефон: меню — панель внизу экрана с иконками, у активного пункта видна подпись. */
 @media(max-width:680px){
   .shell{display:block}
-  .sidebar,.sidebar.expanded{inset:auto 0 0;width:100%;height:64px;flex-direction:row;align-items:center;padding:7px 11px;box-shadow:none}
+  .sidebar,.sidebar.expanded{position:fixed;inset:auto 0 0;width:100%;max-width:100vw;height:64px;flex-direction:row;align-items:center;padding:7px 11px;box-shadow:none;overflow:hidden}
   .sidebar-head,.sidebar-backdrop,.sidebar .brand{display:none}
-  .sidebar nav{display:flex;flex:1}
-  .sidebar .nav-item{justify-content:center;flex:1;padding:11px;white-space:normal;overflow:visible}
+  /* Пунктов больше, чем помещается на экране телефона: полоса меню прокручивается пальцем вбок. */
+  .sidebar nav{display:flex;flex:1;min-width:0;overflow-x:auto;overflow-y:hidden;scrollbar-width:none;-webkit-overflow-scrolling:touch}
+  .sidebar nav::-webkit-scrollbar{display:none}
+  .sidebar .nav-item{justify-content:center;flex:1 0 auto;min-width:46px;padding:11px;white-space:nowrap;overflow:visible}
   .sidebar .nav-label{opacity:1;font-size:11px}
   .sidebar .nav-item:not(.active) .nav-label{display:none}
   .sidebar .nav-item b{display:none}

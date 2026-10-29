@@ -1,14 +1,13 @@
 // --- «История изменений»: всё, что Google Таблица записала в историю, — одной лентой с фильтрами ---
 // Данные — /api/sheet-history?all=1: цены, кампании (статус, название, места показа, состав), ставки, минус-фразы
 // и остатки FBW / FBS. Сначала копия с компьютера (data/Sheet), потом дозагрузка из таблицы (SheetSync).
-// Период — общий период сайта (даты сверху), время и дни — местные (Душанбе), дни отделены строкой с датой. Фильтры: поиск, разделы (кнопки со счётчиками), кабинет, вид изменения.
-// Кампании (реклама, ставки, минус-фразы) — ссылками на детализацию кампании, товары — на детализацию товара.
-// В таблице кабинет записан названием: ссылка ведёт в кабинет сайта с тем же названием, иначе — в выбранный на сайте.
+// Период — общий период сайта (даты сверху), время и дни — местные (Душанбе), дни отделены строкой с датой. Фильтры: поиск, разделы (кнопки со счётчиками), вид изменения.
+// Показываются только изменения кабинета, выбранного на сайте. Кампании (реклама, ставки, минус-фразы) — ссылками на детализацию кампании, товары — на детализацию товара.
+// Цена в WB Клубе, изменившаяся так же, как цена со скидкой (клубной скидки нет), отдельной строкой не показывается.
 // Файл подключается до app.js: $, state, escapeHtml и прочее из app.js используются только внутри функций.
 const CHANGE_SECTIONS=['Реклама','Ставки','Ключевые слова','Цены','Остатки FBW','Остатки FBS'];
 const CHANGE_CAMPAIGN_SECTIONS=['Реклама','Ставки','Ключевые слова'];
-const CHANGE_PAGE_SIZE=100;
-const changeView={data:null,error:'',loading:false,request:0,key:'',sections:new Set(),cabinet:'',kind:'',search:'',page:1};
+const changeView={data:null,error:'',loading:false,request:0,key:'',cabinet:'',sections:new Set(),kind:'',search:'',page:1,pageSize:pageSizeFor('history')};
 
 // Время — местное, Душанбе (как в «Заказах по часам»); по нему же дни периода и разделители дней в таблице.
 const CHANGE_TIMEZONE='Asia/Dushanbe';
@@ -36,21 +35,32 @@ function loadChangeHistory(force=false){
   });
 }
 
-// Строки периода (без фильтров) — для счётчиков на кнопках разделов.
+// Кабинет сайта по названию из таблицы. Названия заданы отдельно на сайте и в таблице («2 ИП Шамсиддинов» и «ИП Шамсиддинов»),
+// поэтому сравниваются без номера в начале и без регистра: сначала точно, потом — одно содержит другое, если такой кабинет один.
+const changeCabinetKey=name=>String(name||'').toLowerCase().replace(/ё/g,'е').replace(/^[\s\d.,)№#-]+/,'').replace(/\s+/g,' ').trim();
+function changeSiteCabinet(name){
+  const key=changeCabinetKey(name),list=(state.cabinets||[]).map(item=>({id:item.id,key:changeCabinetKey(item.name)}));
+  if(!key)return '';
+  const exact=list.filter(item=>item.key===key);
+  if(exact.length===1)return exact[0].id;
+  const near=list.filter(item=>item.key&&(item.key.includes(key)||key.includes(item.key)));
+  return near.length===1?near[0].id:'';
+}
+
+// Строки периода выбранного кабинета (без фильтров) — для счётчиков на кнопках разделов.
+// Строка «Цена в WB Клубе» с теми же «было» и «стало», что у «Цены со скидкой» того же товара в то же время, — повтор, её нет.
 function changePeriodItems(){
-  const from=$('#dateFrom').value,to=$('#dateTo').value;
-  return (changeView.data?.items||[]).filter(item=>{const day=changeDay(item.at);return day>=from&&day<=to});
+  const from=$('#dateFrom').value,to=$('#dateTo').value,cabinets=new Map();
+  const ofCabinet=name=>{if(!cabinets.has(name))cabinets.set(name,changeSiteCabinet(name)===state.cabinet);return cabinets.get(name)};
+  const priceKey=item=>[item.at,item.cabinet,item.id,item.before,item.after].map(value=>String(value??'')).join('|');
+  const items=(changeView.data?.items||[]).filter(item=>{const day=changeDay(item.at);return day>=from&&day<=to&&ofCabinet(item.cabinet)});
+  const discounted=new Set(items.filter(item=>item.section==='Цены'&&item.what==='Цена со скидкой, ₽').map(priceKey));
+  return items.filter(item=>!(item.section==='Цены'&&item.what==='Цена в WB Клубе, ₽'&&discounted.has(priceKey(item))));
 }
 function changeRows(period){
   const v=changeView,term=v.search.trim().toLowerCase();
-  return period.filter(item=>(!v.sections.size||v.sections.has(item.section))&&(!v.cabinet||item.cabinet===v.cabinet)&&(!v.kind||changeKind(item)===v.kind)
-    &&(!term||[item.cabinet,item.section,item.id,item.title,item.what,item.before,item.after].join(' ').toLowerCase().includes(term)));
-}
-
-// Кабинет сайта для ссылки: с тем же названием, что в таблице; иначе — выбранный на сайте.
-function changeSiteCabinet(name){
-  const found=(state.cabinets||[]).find(item=>String(item.name||'').trim().toLowerCase()===String(name||'').trim().toLowerCase());
-  return found?.id||state.cabinet||'demo';
+  return period.filter(item=>(!v.sections.size||v.sections.has(item.section))&&(!v.kind||changeKind(item)===v.kind)
+    &&(!term||[item.section,item.id,item.title,item.what,item.before,item.after].join(' ').toLowerCase().includes(term)));
 }
 function changeLink(page,params,label,title){
   const query=new URLSearchParams({...params,from:$('#dateFrom').value,to:$('#dateTo').value});
@@ -59,7 +69,7 @@ function changeLink(page,params,label,title){
 // Объект изменения. У ставок и минус-фраз подпись таблицы — «Кампания · артикул (артикул продавца)», ID — кампания.
 // У цен и остатков подпись — «артикул продавца · название», ID — артикул WB.
 function changeObject(item){
-  const cabinet=changeSiteCabinet(item.cabinet),title=String(item.title||'');
+  const cabinet=state.cabinet,title=String(item.title||'');
   if(CHANGE_CAMPAIGN_SECTIONS.includes(item.section)){
     const parts=title.split(' · '),product=item.section==='Реклама'?'':parts.slice(1).join(' · '),name=(item.section==='Реклама'?title:parts[0])||`Кампания ${item.id}`;
     const nmId=product.match(/^\d+/)?.[0];
@@ -102,37 +112,33 @@ function renderChangeHistory(){
     $('#emptyChangesText').textContent='Впишите в .env сайта WB_SHEET_URL и WB_SHEET_KEY (ключ — в таблице «WB → Ключ для сайта») и перезапустите сервер. Инструкция — google-sheets/README.md.';
     $('#emptyChanges').classList.remove('hidden');$('#changePagination').classList.add('hidden');return;
   }
+  // Другой кабинет — с первой страницы и без вида изменения: у него свои виды.
+  if(v.cabinet!==state.cabinet){v.cabinet=state.cabinet;v.page=1;v.kind=''}
   const period=changePeriodItems();
-  // Кнопки разделов со счётчиками за период (с учётом кабинета, поиска и вида изменения не считаем — чтобы было видно, где что есть).
+  // Кнопки разделов со счётчиками за период (с учётом поиска и вида изменения не считаем — чтобы было видно, где что есть).
   const counts=new Map(CHANGE_SECTIONS.map(section=>[section,0]));period.forEach(item=>counts.set(item.section,(counts.get(item.section)||0)+1));
   $('#changeSections').innerHTML=`<button type="button" class="change-chip${v.sections.size?'':' active'}" data-change-section="">Все <b>${fmtNum(period.length)}</b></button>`+
     CHANGE_SECTIONS.map(section=>`<button type="button" class="change-chip${v.sections.has(section)?' active':''}" data-change-section="${escapeHtml(section)}" aria-pressed="${v.sections.has(section)}">${escapeHtml(section)} <b>${fmtNum(counts.get(section)||0)}</b></button>`).join('');
-  // Кабинеты и виды изменений — из данных периода; выбранное значение остаётся в списке, даже если строк с ним нет.
-  const cabinets=[...new Set([...period.map(item=>item.cabinet),v.cabinet].filter(Boolean))].sort((a,b)=>a.localeCompare(b,'ru'));
-  $('#changeCabinet').innerHTML=`<option value="">Все кабинеты</option>${cabinets.map(name=>`<option value="${escapeHtml(name)}"${name===v.cabinet?' selected':''}>${escapeHtml(name)}</option>`).join('')}`;
-  $('#changeCabinet').classList.toggle('hidden',cabinets.length<2&&!v.cabinet);
+  // Виды изменений — из данных периода; выбранное значение остаётся в списке, даже если строк с ним нет.
   const kinds=[...new Set([...period.filter(item=>!v.sections.size||v.sections.has(item.section)).map(changeKind),v.kind].filter(Boolean))].sort((a,b)=>a.localeCompare(b,'ru'));
   $('#changeKind').innerHTML=`<option value="">Все изменения</option>${kinds.map(kind=>`<option value="${escapeHtml(kind)}"${kind===v.kind?' selected':''}>${escapeHtml(kind)}</option>`).join('')}`;
 
-  const rows=changeRows(period),pageCount=Math.ceil(rows.length/CHANGE_PAGE_SIZE);
+  const rows=changeRows(period),pageCount=Math.ceil(rows.length/v.pageSize);
   v.page=Math.min(Math.max(1,v.page),Math.max(1,pageCount));
   const since=data.since?` · таблица следит с ${changeTime(data.since)}`:'';
   $('#changeCount').textContent=`${fmtNum(rows.length)} из ${fmtNum(period.length)} за период${since} · время местное (Душанбе)${data.truncated?' · показаны 50 000 самых новых — сократите период':''}`;
   // Перед первой строкой каждого дня — строка-разделитель с датой (и в начале страницы, чтобы день был виден сразу).
   let lastDay='';
-  body.innerHTML=rows.slice((v.page-1)*CHANGE_PAGE_SIZE,v.page*CHANGE_PAGE_SIZE).map(item=>{
-    const day=changeDay(item.at),head=day!==lastDay?`<tr class="change-day-row"><td colspan="7">${escapeHtml(changeDayTitle(item.at))}</td></tr>`:'';lastDay=day;
+  body.innerHTML=rows.slice((v.page-1)*v.pageSize,v.page*v.pageSize).map(item=>{
+    const day=changeDay(item.at),head=day!==lastDay?`<tr class="change-day-row"><td colspan="6">${escapeHtml(changeDayTitle(item.at))}</td></tr>`:'';lastDay=day;
     return `${head}<tr>
-    <td class="change-when">${escapeHtml(changeClock(item.at))}</td><td>${escapeHtml(item.cabinet||'—')}</td>
+    <td class="change-when">${escapeHtml(changeClock(item.at))}</td>
     <td><span class="change-section" data-section="${escapeHtml(item.section)}">${escapeHtml(item.section)}</span></td>
     <td class="change-object">${changeObject(item)}</td><td class="change-what">${changeWhat(item)}</td>
     <td class="change-value">${changeValue(item,item.before)}</td><td class="change-value">${changeValue(item,item.after)}${changeDelta(item)}</td></tr>`}).join('');
-  $('#emptyChangesText').textContent=period.length?'Измените фильтры.':'Таблица записывает изменения раз в час — за этот период их нет. Выберите другой период.';
+  $('#emptyChangesText').textContent=period.length?'Измените фильтры.':'Таблица записывает изменения раз в час — у этого кабинета за этот период их нет. Выберите другой период или кабинет.';
   $('#emptyChanges').classList.toggle('hidden',rows.length>0);
-  const el=$('#changePagination');
-  if(pageCount<=1){el.innerHTML='';el.classList.add('hidden');return}
-  el.classList.remove('hidden');
-  el.innerHTML=`<button type="button" class="stock-page-button" data-change-page="prev" ${v.page===1?'disabled':''}>Назад</button><div class="stock-page-numbers">${Array.from({length:pageCount},(_,i)=>i+1).map(page=>`<button type="button" class="stock-page-button ${page===v.page?'active':''}" data-change-page="${page}" aria-current="${page===v.page?'page':'false'}">${page}</button>`).join('')}</div><button type="button" class="stock-page-button" data-change-page="next" ${v.page===pageCount?'disabled':''}>Вперёд</button>`;
+  renderPager($('#changePagination'),{page:v.page,pageCount,total:rows.length,sizeKey:'history',onPage:page=>{v.page=page;renderChangeHistory();document.querySelector('#page-history .stock-panel')?.scrollIntoView({behavior:'smooth',block:'start'})},onSize:size=>{v.pageSize=size;v.page=1;renderChangeHistory()}});
 }
 
 // Через document: скрипт подключается раньше app.js, где объявлен $.
@@ -141,15 +147,12 @@ document.addEventListener('click',event=>{
   if(chip){
     const section=chip.dataset.changeSection;
     if(!section)changeView.sections.clear();else changeView.sections.has(section)?changeView.sections.delete(section):changeView.sections.add(section);
-    changeView.kind='';changeView.page=1;renderChangeHistory();return;
+    changeView.kind='';changeView.page=1;renderChangeHistory();
   }
-  const page=event.target.closest('[data-change-page]');
-  if(page&&!page.disabled){const target=page.dataset.changePage;changeView.page=target==='prev'?changeView.page-1:target==='next'?changeView.page+1:Number(target);renderChangeHistory();document.querySelector('#page-history .stock-panel')?.scrollIntoView({behavior:'smooth',block:'start'})}
 });
 document.addEventListener('input',event=>{if(event.target.id!=='changeSearch')return;changeView.search=event.target.value;changeView.page=1;if(changeView.data)renderChangeHistory()});
 document.addEventListener('change',event=>{
   // Период: история берётся с компьютера быстро, поэтому пересчитываем сразу, без кнопки «Обновить».
   if(['dateFrom','dateTo'].includes(event.target.id)&&state.activePage==='history'){changeView.page=1;loadChangeHistory()}
-  if(event.target.id==='changeCabinet'){changeView.cabinet=event.target.value;changeView.page=1;renderChangeHistory()}
   if(event.target.id==='changeKind'){changeView.kind=event.target.value;changeView.page=1;renderChangeHistory()}
 });

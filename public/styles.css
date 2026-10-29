@@ -27,7 +27,7 @@ small,th,.status,.live,.response button,.chart-legend,.platform-row span,.ad-det
 .table-cell>.ad-product-name,.table-cell>.product{overflow:hidden}
 .table-cell>.ad-product-name>span,.table-cell>.product>span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .stock-table td:nth-child(2)>.table-cell.truncate-content{display:inline-block;max-width:calc(100% - 52px);vertical-align:middle}
-.stock-pagination{display:flex;align-items:center;justify-content:center;gap:10px;padding:18px 20px;border-top:1px solid var(--line);background:#fff}.stock-page-numbers{display:flex;align-items:center;gap:6px;flex-wrap:wrap;justify-content:center}.stock-page-button{min-width:35px;height:35px;padding:0 10px;border:1px solid var(--line);border-radius:8px;background:#fff;color:var(--ink);font:700 11px Manrope;cursor:pointer}.stock-page-button:hover:not(:disabled){border-color:var(--purple);color:var(--purple);background:#f4f1ff}.stock-page-button.active{border-color:var(--purple);background:var(--purple);color:#fff}.stock-page-button:disabled{opacity:.45;cursor:not-allowed}@media(max-width:680px){.stock-pagination{padding:14px 10px;gap:6px}.stock-page-button{min-width:32px;height:32px;padding:0 8px}.stock-page-numbers{gap:4px}}
+/* Пагинация таблиц — pager.css (общая с детализацией кампании) */
 .product-photo-preview{position:fixed;z-index:100;width:180px;height:220px;padding:6px;border:1px solid var(--line);border-radius:10px;background:#fff;box-shadow:0 12px 35px #17211d38;object-fit:contain;pointer-events:none}
 .fbw-stock-table td:first-child{white-space:nowrap}.fbw-stock-table td:first-child strong{display:inline-block;vertical-align:middle;max-width:calc(100% - 52px);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.fbw-stock-table td:first-child .stock-product-photo{display:inline-block;vertical-align:middle}
 .fbw-product-cell{white-space:nowrap!important;min-width:250px}.fbw-product-cell .stock-product-photo{display:inline-block;vertical-align:middle}.fbw-product-cell strong{display:inline-block!important;vertical-align:middle;max-width:calc(100% - 52px);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -427,9 +427,39 @@ tr.rating-row-attention td:first-child{box-shadow:inset 3px 0 0 var(--red)}
 .change-section[data-section^="Остатки"]{background:#f4f1e6;color:#7a6420}
 .change-muted{color:var(--muted)}
 .change-table td.change-what,.change-table td.change-value{font-size:13px}
-.change-table .change-delta{display:inline;margin-left:6px;font-size:11.5px;font-weight:800}
+/* Сильнее общего .stock-table td:nth-child(6) small{display:none}: «Стало» — 6-я колонка. */
+.change-table td.change-value .change-delta{display:inline;margin-left:6px;font-size:11.5px;font-weight:800}
 /* Разделитель дней: строка с датой и линией сверху */
 .change-table tr.change-day-row td{padding:16px 20px 7px;border-top:2px solid #d9dfdb;background:#f7f8f6;color:var(--ink);font-size:12px;font-weight:800;white-space:nowrap}
 .change-table tbody tr.change-day-row:first-child td{border-top:0}
 .change-table .change-delta.up{color:var(--green)}
 .change-table .change-delta.down{color:var(--red)}
+
+/* «Карточки товаров» (public/cards.js): таблица карточек, корзина, ошибки, ярлыки */
+.cards-table{min-width:1200px}
+.cards-table td{vertical-align:middle}
+.cards-table td small{display:block;margin-top:2px;color:var(--muted);font-size:11px}
+.cards-table td,.cards-alt-table td{white-space:normal}
+.cards-alt-table{width:100%;min-width:760px}
+.cards-alt-table td small{display:block;margin-top:2px;color:var(--muted);font-size:11px}
+.card-cell{display:flex;align-items:center;gap:10px;min-width:0;white-space:normal}
+.card-cell>span{min-width:0}
+.card-title-link{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;color:var(--ink);font-weight:800;text-decoration:none;line-height:1.3}
+.card-title-link:hover{color:var(--purple);text-decoration:underline}
+.card-nophoto{display:grid;place-items:center;width:36px;height:48px;flex:0 0 36px;border-radius:7px;background:#fdecec;color:#b84949;font-size:9px;font-weight:800;text-align:center;line-height:1.1}
+.card-tag{display:inline-block;margin:1px 2px 1px 0;padding:2px 8px;border-radius:999px;background:var(--tag);color:var(--ink);font-size:11px;font-weight:700;white-space:nowrap}
+.card-warn{color:#b84949!important;font-weight:700}
+.card-errors div{margin:2px 0;white-space:normal;line-height:1.4}
+.card-tags-button,.card-recover{height:35px;padding:0 13px;border:1px solid var(--line);border-radius:8px;background:white;color:var(--ink);font:700 12px Manrope;cursor:pointer}
+.card-tags-button:hover,.card-recover:hover{border-color:var(--purple);color:var(--purple)}
+.funnel-tab b.alert{background:#fdecec;color:#b84949}
+.card-tag-list{display:grid;gap:8px;margin:14px 0}
+.card-tag-row{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+.card-tag-row input,.card-tag-row select{height:34px;padding:0 10px;border:1px solid var(--line);border-radius:8px;font:600 12px Manrope;color:var(--ink)}
+.card-tag-row input{width:170px}
+.card-tag-row button{height:34px;padding:0 12px;border:1px solid var(--line);border-radius:8px;background:white;font:700 12px Manrope;cursor:pointer}
+.card-tag-row button.primary{width:auto;margin:0;border-color:var(--purple);background:var(--purple);color:white}
+.card-tag-row.new{padding-top:10px;border-top:1px solid var(--line)}
+.card-tag-row .danger-link{border-color:transparent;color:#b84949;background:none}
+.card-tag-note{min-height:18px;margin:8px 0 0;font-size:12px;color:var(--muted)}
+.card-tag-note.error{color:#b84949}

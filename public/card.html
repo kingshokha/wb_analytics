@@ -1,0 +1,202 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <title>Карточка товара — WB Pulse</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Unbounded:wght@600;700&display=swap">
+  <link rel="stylesheet" href="/sidebar.css">
+  <style>
+    /* Оформление — как у детализации товара и кампании: те же цвета, шрифты, панели и боковое меню. */
+    :root{--ink:#17211d;--muted:#6f7974;--line:#e4e8e5;--bg:#f5f6f3;--purple:#7651e5;--red:#e76464;--green:#318f68;--shadow:0 15px 50px rgba(29,42,35,.07)}
+    *{box-sizing:border-box}
+    body{margin:0;min-width:320px;background:var(--bg);color:var(--ink);font:500 13px Manrope,Arial,sans-serif}
+    button,input,select,textarea{font-family:Manrope,Arial,sans-serif}
+    main{grid-column:2;min-width:0;padding:30px 42px 120px}
+    h1{margin:0 0 8px;font:700 21px Unbounded,sans-serif;letter-spacing:-.03em;line-height:1.3}
+    h2{margin:0;font-size:16px;font-weight:800}
+    p{margin:0;color:var(--muted)}
+    a{color:var(--purple)}
+    /* Шапка */
+    .page-head{display:flex;justify-content:space-between;align-items:flex-start;gap:20px;margin-bottom:16px}
+    .card-head{display:flex;gap:16px;min-width:0}
+    .card-photo{width:72px;height:96px;flex:0 0 72px;border-radius:12px;object-fit:cover;background:#eef0ee}
+    .card-photo:not([src]){visibility:hidden}
+    .card-meta{display:flex;flex-wrap:wrap;align-items:center;gap:6px 12px;font-size:12px;color:var(--muted)}
+    .card-meta b{color:var(--ink)}
+    .card-meta a{font-weight:700;text-decoration:none}
+    .card-meta a:hover{text-decoration:underline}
+    .copy{padding:0;border:0;background:none;color:var(--ink);font:800 12px Manrope;cursor:copy}
+    .head-actions{display:flex;flex-wrap:wrap;justify-content:flex-end;align-items:center;gap:8px;flex:0 0 auto}
+    .btn{height:38px;padding:0 14px;border:1px solid var(--line);border-radius:10px;background:white;color:var(--ink);font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap}
+    .btn:hover{border-color:var(--purple);color:var(--purple)}
+    .btn:disabled{opacity:.55;cursor:default}
+    .btn.primary{border-color:var(--purple);background:var(--purple);color:white}
+    .btn.primary:hover{color:white;filter:brightness(1.05)}
+    .btn.danger{border-color:#f3c4c4;color:#b84949}
+    .btn.small{height:30px;padding:0 10px;font-size:11.5px}
+    .status-line{flex-basis:100%;text-align:right;font-size:11px;color:var(--muted)}
+    .status-line.error{color:#b84949}
+    /* Колокольчик уведомлений — как на основном сайте (notifications.js) */
+    .notice-wrap{position:relative;display:flex}
+    .notice-bell{position:relative;width:38px;height:38px;padding:0;display:grid;place-items:center;border:1px solid var(--line);border-radius:10px;background:white;color:var(--ink);cursor:pointer}
+    .notice-bell:hover,.notice-bell[aria-expanded=true]{border-color:var(--purple);color:var(--purple)}
+    .notice-bell svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+    .notice-bell b{position:absolute;top:-6px;right:-6px;min-width:20px;height:20px;padding:0 5px;border:2px solid var(--bg);border-radius:10px;background:#b5bcb8;color:white;font-size:10px;font-weight:800;line-height:16px;text-align:center}
+    .notice-bell b.error{background:var(--red)}
+    .notice-bell b.warning{background:#f0a04b}
+    .notice-bell b[hidden]{display:none}
+    .notice-panel{position:absolute;right:0;top:46px;z-index:60;width:min(400px,calc(100vw - 32px));max-height:min(70vh,560px);overflow:auto;padding:14px 16px;border:1px solid var(--line);border-radius:14px;background:white;box-shadow:0 18px 50px #17211d29}
+    .notice-panel[hidden]{display:none}
+    .notice-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px}
+    .notice-head strong{font-size:13px}
+    .notice-clear{padding:0;border:0;background:none;color:var(--purple);font:700 11px Manrope;cursor:pointer}
+    .notice-list{display:grid;gap:6px}
+    .notice-item{display:grid;grid-template-columns:22px minmax(0,1fr) auto;align-items:start;gap:8px;padding:9px 10px;border-radius:10px;background:#fff7ec}
+    .notice-item.error{background:#fdecec}
+    .notice-item.info{background:#f0ebff}
+    .notice-item i{width:22px;height:22px;display:grid;place-items:center;border-radius:50%;background:#f0a04b;color:white;font-style:normal;font-size:12px;font-weight:800}
+    .notice-item.error i{background:var(--red)}
+    .notice-item.info i{background:var(--purple)}
+    .notice-item p{margin:2px 0 0;color:var(--ink);font-size:12px;line-height:1.45;overflow-wrap:anywhere}
+    .notice-item small{margin-top:3px;color:var(--muted);font-size:11px}
+    .notice-empty{margin:6px 0 2px;color:var(--muted);font-size:12px}
+    /* Плашки сверху: корзина, ошибки WB, предупреждения */
+    .banner{margin-bottom:12px;padding:12px 14px;border-radius:12px;background:#fff7ec;color:var(--ink);font-size:12.5px;line-height:1.5}
+    .banner.error{background:#fdecec}
+    .banner.info{background:#f0ebff}
+    .banner.ok{background:#e7f5ee}
+    .banner b{font-weight:800}
+    .banner ul{margin:4px 0 0;padding-left:18px}
+    .banner .btn{margin-top:8px}
+    /* Панели */
+    .layout{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(300px,1fr);gap:16px;align-items:start}
+    .col{display:grid;gap:16px;min-width:0}
+    .panel{border:1px solid var(--line);border-radius:14px;background:white;box-shadow:var(--shadow);min-width:0}
+    .panel-head{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px 14px;padding:16px 18px 10px}
+    .panel-body{padding:0 18px 16px}
+    .hint{font-size:11.5px;color:var(--muted);line-height:1.5}
+    .field{display:grid;gap:5px;margin-bottom:12px}
+    .field>span{display:flex;justify-content:space-between;gap:8px;font-size:11px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
+    .field>span small{font-size:11px;font-weight:700;text-transform:none;letter-spacing:0}
+    .field input,.field textarea,.field select,.inline-input{width:100%;min-width:0;height:38px;padding:0 11px;border:1px solid var(--line);border-radius:9px;background:white;color:var(--ink);font-size:13px;font-weight:600;outline:0}
+    .field textarea{height:auto;min-height:180px;padding:10px 11px;line-height:1.55;resize:vertical}
+    .field input:focus,.field textarea:focus,.field select:focus,.inline-input:focus{border-color:var(--purple)}
+    .field.changed input,.field.changed textarea,.field.changed .chips{border-color:#b9a6f3;background:#faf8ff}
+    .counter.over{color:#b84949}
+    .grid-2{display:grid;grid-template-columns:1fr 1fr;gap:0 12px}
+    .grid-4{display:grid;grid-template-columns:repeat(4,1fr);gap:0 10px}
+    .check{display:flex;align-items:flex-start;gap:8px;margin:4px 0 10px;font-size:12.5px;line-height:1.45;cursor:pointer}
+    .check input{margin-top:2px;accent-color:var(--purple)}
+    /* Характеристики: значения — «фишки», числа — поле ввода */
+    .charcs{display:grid;grid-template-columns:1fr 1fr;gap:0 14px}
+    .charc .req{color:#b84949}
+    .chips{display:flex;flex-wrap:wrap;align-items:center;gap:5px;min-height:38px;padding:4px 6px;border:1px solid var(--line);border-radius:9px;background:white}
+    .chips:focus-within{border-color:var(--purple)}
+    .chip{display:inline-flex;align-items:center;gap:4px;max-width:100%;padding:3px 4px 3px 9px;border-radius:7px;background:#f0f1ef;font-size:12px;font-weight:700}
+    .chip span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .chip button{width:18px;height:18px;padding:0;border:0;border-radius:5px;background:none;color:var(--muted);font-size:14px;line-height:1;cursor:pointer}
+    .chip button:hover{background:#e3e5e2;color:#b84949}
+    .chip.locked{padding-right:9px}
+    .chips input{flex:1 1 90px;min-width:70px;height:28px;padding:0 4px;border:0;background:transparent;font-size:12.5px;font-weight:600;outline:0}
+    .more-toggle{margin:4px 0 0;padding:0;border:0;background:none;color:var(--purple);font:700 12px Manrope;cursor:pointer}
+    .legacy{margin-top:8px;font-size:12px;color:var(--muted)}
+    .legacy b{color:var(--ink)}
+    /* Размеры */
+    .table-wrap{overflow:auto}
+    table{width:100%;border-collapse:collapse}
+    th,td{padding:7px 8px;border-bottom:1px solid #eef0ee;font-size:12px;text-align:left;vertical-align:top}
+    th{color:var(--muted);font-size:10.5px;font-weight:800;letter-spacing:.06em;text-transform:uppercase}
+    td .inline-input{height:32px;font-size:12px}
+    .sizes-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+    tr.new td{background:#faf8ff}
+    /* Документы */
+    .doc{padding:12px;margin-bottom:10px;border:1px solid var(--line);border-radius:11px}
+    .doc-head{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px}
+    .badge{display:inline-flex;padding:3px 9px;border-radius:999px;font-size:11px;font-weight:800}
+    .badge.ok{background:#e7f5ee;color:#277653}
+    .badge.fail{background:#fdecec;color:#b84949}
+    .badge.pending{background:#fff1dc;color:#9b5e16}
+    /* Медиа */
+    .media{display:grid;grid-template-columns:repeat(auto-fill,minmax(92px,1fr));gap:8px}
+    .media-item{position:relative;border-radius:10px;overflow:hidden;background:#eef0ee;aspect-ratio:3/4}
+    .media-item img{width:100%;height:100%;object-fit:cover;display:block}
+    .media-item .num{position:absolute;left:5px;top:5px;min-width:20px;height:20px;padding:0 5px;border-radius:6px;background:#17211dcc;color:white;font-size:11px;font-weight:800;line-height:20px;text-align:center}
+    .media-item .tools{position:absolute;inset:auto 4px 4px;display:flex;justify-content:space-between;gap:3px}
+    .media-item .tools button{width:24px;height:24px;padding:0;border:0;border-radius:6px;background:#ffffffe6;color:var(--ink);font-size:13px;font-weight:800;cursor:pointer}
+    .media-item .tools button:hover{color:var(--purple)}
+    .media-item .tools button.del:hover{color:#b84949}
+    .media-item.new{outline:2px solid #b9a6f3}
+    .media-add{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+    .media-add input[type=url]{flex:1 1 200px;height:34px;padding:0 10px;border:1px solid var(--line);border-radius:9px;font-size:12px}
+    /* Ярлыки */
+    .tags{display:flex;flex-wrap:wrap;gap:6px}
+    .tag-toggle{display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 11px;border:1px solid var(--line);border-radius:999px;background:white;font-size:12px;font-weight:700;cursor:pointer}
+    .tag-toggle i{width:10px;height:10px;border-radius:50%;background:var(--tag)}
+    .tag-toggle[aria-pressed=true]{border-color:var(--ink);background:var(--tag)}
+    .group-list{display:grid;gap:6px;margin-bottom:10px}
+    .group-item{display:flex;align-items:center;gap:8px;font-size:12px}
+    .group-item img{width:28px;height:37px;border-radius:6px;object-fit:cover;background:#eef0ee}
+    .group-item a{font-weight:700;text-decoration:none;color:var(--ink)}
+    .group-item a:hover{color:var(--purple)}
+    .row-actions{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+    .row-actions select{height:34px;max-width:100%;padding:0 10px;border:1px solid var(--line);border-radius:9px;font-size:12px;font-weight:600}
+    /* Нижняя панель сохранения */
+    .savebar{position:fixed;left:0;right:0;bottom:0;z-index:40;display:flex;justify-content:flex-end;align-items:center;gap:10px;padding:12px 42px;background:#ffffffee;border-top:1px solid var(--line);box-shadow:0 -10px 30px #17211d14;backdrop-filter:blur(6px)}
+    .savebar[hidden]{display:none}
+    .savebar p{margin-right:auto;color:var(--ink);font-size:13px;font-weight:700}
+    /* Окно подтверждения */
+    .overlay{position:fixed;inset:0;z-index:80;display:grid;place-items:center;padding:16px;background:#17211d66}
+    .overlay[hidden]{display:none}
+    .dialog{width:min(640px,100%);max-height:86vh;overflow:auto;padding:22px;border-radius:16px;background:white;box-shadow:0 30px 80px #17211d40}
+    .dialog h2{margin-bottom:8px}
+    .dialog ul{margin:10px 0;padding-left:18px;font-size:12.5px;line-height:1.6}
+    .dialog li span{color:var(--muted)}
+    .dialog .actions{display:flex;justify-content:flex-end;gap:8px;margin-top:14px}
+    .loading{padding:60px 0;text-align:center;color:var(--muted)}
+    @media(max-width:1180px){.layout{grid-template-columns:1fr}}
+    @media(max-width:980px){main{padding:24px 24px 120px}.savebar{padding:12px 24px}}
+    @media(max-width:680px){main{padding:18px 14px 140px}h1{font-size:17px}.page-head{flex-direction:column}.head-actions{justify-content:flex-start}.status-line{text-align:left}.charcs,.grid-2{grid-template-columns:1fr}.grid-4{grid-template-columns:1fr 1fr}.panel-head,.panel-body{padding-left:14px;padding-right:14px}.savebar{padding:10px 14px;flex-wrap:wrap}.savebar p{flex-basis:100%}}
+  </style>
+</head>
+<body>
+<div class="shell">
+  <aside class="sidebar" id="sidebar" data-active="cards">
+    <div class="sidebar-head">
+      <button type="button" class="sidebar-toggle" aria-controls="sidebar" aria-expanded="false" aria-label="Развернуть меню"><span></span><span></span><span></span></button>
+      <a class="brand" href="/"><span class="brand-mark">W</span><span>WB Pulse</span></a>
+    </div>
+    <!-- Пункты меню и кабинет внизу рисует sidebar.js — одно меню на все страницы сайта. -->
+    <nav aria-label="Разделы"></nav>
+  </aside>
+  <main>
+    <header class="page-head">
+      <div class="card-head">
+        <img class="card-photo" id="cardPhoto" alt="">
+        <div><h1 id="cardTitle">Карточка товара</h1><p class="card-meta" id="cardMeta"></p></div>
+      </div>
+      <div class="head-actions">
+        <button type="button" class="btn" id="reloadButton" title="Загрузить карточку из WB заново">↻ Обновить</button>
+        <div class="notice-wrap"><button class="notice-bell" id="noticeBell" type="button" aria-label="Уведомления" aria-expanded="false" aria-controls="noticePanel" title="Уведомлений нет"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5a5.2 5.2 0 0 0-5.2 5.2v3.1c0 1-.4 2-1.1 2.7l-.9.9h14.4l-.9-.9a3.8 3.8 0 0 1-1.1-2.7V8.7A5.2 5.2 0 0 0 12 3.5z"/><path d="M9.8 18.4a2.3 2.3 0 0 0 4.4 0"/></svg><b id="noticeCount" hidden>0</b></button><div class="notice-panel" id="noticePanel" role="dialog" aria-label="Уведомления" hidden></div></div>
+        <p class="status-line" id="statusLine" role="status" aria-live="polite">Загрузка…</p>
+      </div>
+    </header>
+    <div id="banners"></div>
+    <div id="content"><div class="loading">Загрузка карточки из WB…</div></div>
+  </main>
+</div>
+<div class="savebar" id="savebar" hidden><p id="saveSummary"></p><button type="button" class="btn" id="discardButton">Отменить изменения</button><button type="button" class="btn primary" id="saveButton">Сохранить в WB</button></div>
+<div class="overlay" id="overlay" hidden><div class="dialog" id="dialog" role="dialog" aria-modal="true"></div></div>
+<script src="/sidebar.js"></script>
+<script>
+  // Колокольчик берём с основного сайта (notifications.js): ему нужны раздел страницы и escapeHtml.
+  const state = { activePage: 'card' };
+  function escapeHtml(value) { return String(value ?? '').replace(/[&<>"]/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[char])); }
+</script>
+<script src="/notifications.js"></script>
+<script src="/card.js"></script>
+</body>
+</html>
