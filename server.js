@@ -1381,14 +1381,36 @@ function saveSheetRows(items = [], dir = SHEET_DIR) {
 function saveSheetCurrent(current = [], dir = SHEET_DIR) {
   for (const type of ['FBW', 'FBS']) writeSheetJson(path.join(dir, `Остатки ${type}`, 'current.json'), { items: current.filter(row => row.type === type) });
 }
-// Чтение копии: строки нужных разделов (по артикулам или кампаниям, за последние days дней), новые сверху;
+// Кабинет сайта по названию из таблицы. Названия заданы отдельно на сайте и в таблице («2 ИП Шамсиддинов» и «ИП Шамсиддинов»),
+// поэтому сравниваются без номера в начале и без регистра: сначала точно, потом — одно содержит другое, если такой кабинет один.
+const sheetCabinetKey = name => String(name || '').toLowerCase().replace(/ё/g, 'е').replace(/^[\s\d.,)№#-]+/, '').replace(/\s+/g, ' ').trim();
+function sheetSiteCabinet(name, list = publicCabinets()) {
+  const key = sheetCabinetKey(name), keys = list.map(item => ({ id: item.id, key: sheetCabinetKey(item.name) }));
+  if (!key) return '';
+  const exact = keys.filter(item => item.key === key);
+  if (exact.length === 1) return exact[0].id;
+  const near = keys.filter(item => item.key && (item.key.includes(key) || key.includes(item.key)));
+  return near.length === 1 ? near[0].id : '';
+}
+// Проверка «строка этого кабинета сайта» — с запоминанием по названию: названий в таблице несколько, строк — десятки тысяч.
+function sheetCabinetFilter(cabinetId, list = publicCabinets()) {
+  const known = new Map();
+  return name => { if (!known.has(name)) known.set(name, sheetSiteCabinet(name, list) === String(cabinetId)); return known.get(name); };
+}
+// «Цена в WB Клубе» с теми же «было» и «стало», что у «Цены со скидкой» того же товара в то же время, — повтор (клубной скидки нет).
+function withoutClubPriceRepeats(items) {
+  const key = item => [item.at, item.cabinet, item.id, item.before, item.after].map(value => String(value ?? '')).join('|');
+  const discounted = new Set(items.filter(item => item.section === 'Цены' && item.what === 'Цена со скидкой, ₽').map(key));
+  return items.filter(item => !(item.section === 'Цены' && item.what === 'Цена в WB Клубе, ₽' && discounted.has(key(item))));
+}
+// Чтение копии: строки нужных разделов (по артикулам или кампаниям, за последние days дней, одного кабинета), новые сверху;
 // для остатков — ещё текущие остатки. limit — сколько самых новых строк отдать.
-function readSheetHistory({ ids = [], sections = [], days = 0, limit = 0, current: withCurrent = true } = {}, dir = SHEET_DIR) {
+function readSheetHistory({ ids = [], sections = [], days = 0, limit = 0, current: withCurrent = true, cabinet = null } = {}, dir = SHEET_DIR) {
   const fromIso = days ? new Date(Date.now() - days * 86_400_000).toISOString() : '', fromMonth = fromIso.slice(0, 7), items = [];
   for (const section of sections) for (const month of sheetMonths(section, dir)) {
     if (fromMonth && month < fromMonth) continue;
     for (const item of readSheetJson(path.join(dir, section, `${month}.json`), { items: [] }).items || []) {
-      if ((!ids.length || ids.includes(String(item.id))) && (!fromIso || String(item.at) >= fromIso)) items.push(item);
+      if ((!ids.length || ids.includes(String(item.id))) && (!fromIso || String(item.at) >= fromIso) && (!cabinet || cabinet(item.cabinet))) items.push(item);
     }
   }
   const stockTypes = sections.filter(item => item.startsWith('Остатки ')).map(item => item.slice('Остатки '.length));
@@ -1442,9 +1464,9 @@ function syncSheet() {
 // /api/sheet-history: source=local — сразу с компьютера; source=sheet — сначала дозагрузка из таблицы.
 // added — сколько новых строк скачано за эту дозагрузку (по всей таблице), syncError — почему не получилось.
 // all — раздел «История изменений»: все строки всех разделов (или выбранных) без текущих остатков, до 50 000 новых;
-// truncated — за период изменений больше, отданы самые новые.
+// с cabinet — только кабинета сайта с этим id, без повторов клубной цены. truncated — за период изменений больше, отданы самые новые.
 const SHEET_ALL_LIMIT = 50_000;
-async function sheetHistory(idsInput, sectionsInput, daysInput, source = 'local', all = false) {
+async function sheetHistory(idsInput, sectionsInput, daysInput, source = 'local', all = false, cabinetInput = '') {
   if (!sheetConfigured()) return { configured: false, items: [], current: null, since: null };
   const ids = [...new Set(String(idsInput || '').split(',').map(id => id.trim()).filter(id => /^\d{1,15}$/.test(id)))].slice(0, 50);
   const sections = String(sectionsInput || '').split(',').map(item => item.trim()).filter(item => SHEET_SECTIONS.includes(item));
@@ -1453,11 +1475,13 @@ async function sheetHistory(idsInput, sectionsInput, daysInput, source = 'local'
   const days = Math.min(all ? 3660 : 365, Math.max(0, Math.round(Number(daysInput) || 0)));
   const sync = source === 'sheet' ? await syncSheet() : null;
   const saved = readSheetJson(path.join(SHEET_DIR, 'sync.json'), {});
+  const cabinet = all && /^[\w-]{1,40}$/.test(String(cabinetInput || '')) ? sheetCabinetFilter(cabinetInput) : null;
   const history = all
-    ? readSheetHistory({ ids, sections: sections.length ? sections : SHEET_SECTIONS, days, limit: SHEET_ALL_LIMIT + 1, current: false })
+    ? readSheetHistory({ ids, sections: sections.length ? sections : SHEET_SECTIONS, days, limit: SHEET_ALL_LIMIT + 1, current: false, cabinet })
     : readSheetHistory({ ids, sections: sections.length ? sections : SHEET_SECTIONS.filter(item => !item.startsWith('Остатки ')), days });
   const truncated = all && history.items.length > SHEET_ALL_LIMIT;
   if (truncated) history.items = history.items.slice(0, SHEET_ALL_LIMIT);
+  if (cabinet) history.items = withoutClubPriceRepeats(history.items);
   return { configured: true, source: source === 'sheet' ? 'sheet' : 'local', ...history, ...(all ? { truncated } : {}),
     since: saved.since || null, syncedAt: saved.syncedAt || null, added: sync?.added || 0, syncError: sync?.lastError || '' };
 }
@@ -3370,7 +3394,7 @@ async function handleApi(req, res, url) {
     return send(res, 200, await productDetail(url.searchParams.get('cabinet') || 'demo', url.searchParams.get('nmId'), url.searchParams.get('from'), url.searchParams.get('to'), url.searchParams.get('live') === '1'));
   }
   if (req.method === 'GET' && url.pathname === '/api/sheet-history') {
-    return send(res, 200, await sheetHistory(url.searchParams.get('id'), url.searchParams.get('sections'), url.searchParams.get('days'), url.searchParams.get('source'), url.searchParams.get('all') === '1'));
+    return send(res, 200, await sheetHistory(url.searchParams.get('id'), url.searchParams.get('sections'), url.searchParams.get('days'), url.searchParams.get('source'), url.searchParams.get('all') === '1', url.searchParams.get('cabinet')));
   }
   if (req.method === 'POST' && url.pathname === '/api/advertising/campaign/rename') {
     const body = await readJson(req);
@@ -3590,7 +3614,7 @@ if (require.main === module) server.listen(PORT, '127.0.0.1', () => {
   if (sheetConfigured()) { setTimeout(syncSheet, 20_000); setInterval(syncSheet, SHEET_SYNC_EVERY); }
 });
 
-module.exports = { server, campaignActivePeriod, productCampaignTimeline, mergeSheetRows, saveSheetRows, readSheetHistory, mergeMinusList, minusPlan, archivedPresetsFromError, todoNmId, todoFields, productAdDays, productDetailPeriod, funnelOrdersByNmId, summarizeHourlyOrders, orderFeedPeriod, itemRatingPeriods, normalizeItemRatings, itemReturnsPeriod, normalizeItemReturns, returnStatusGroup, summarizeKeywordDaily, summarizePositionDaily, normalizeOrders, normalizeOrderFeed, enrichOrders, extractFunnel, summarizeAdStats, campaignProductDaily, withAdBudgets, summarizeKeywords, normalizeStockPreset, normalizePricePreset, adCampaignMayHaveStats, validAdPeriod, historyPeriod, historyChunks, planAdFetch, datesBetween, safeFolderName, funnelDaysToFetch, pairFunnelDays, funnelPeriods, funnelRangeBuckets, funnelRecordCounts, funnelRangeValues, funnelSalesMatrix, summaryTopProducts, summaryDrops, summaryProducts, normalizeFbsStocks, normalizeFbwStocks, normalizePrices, summarizeStockTotals, normalizeNewOrders, summarizeSupplies, normalizeTrbxes, chunkOrders, stickerType, localPhoto, WB_HOSTS };
+module.exports = { server, campaignActivePeriod, productCampaignTimeline, mergeSheetRows, saveSheetRows, readSheetHistory, sheetSiteCabinet, sheetCabinetFilter, withoutClubPriceRepeats,mergeMinusList, minusPlan, archivedPresetsFromError, todoNmId, todoFields, productAdDays, productDetailPeriod, funnelOrdersByNmId, summarizeHourlyOrders, orderFeedPeriod, itemRatingPeriods, normalizeItemRatings, itemReturnsPeriod, normalizeItemReturns, returnStatusGroup, summarizeKeywordDaily, summarizePositionDaily, normalizeOrders, normalizeOrderFeed, enrichOrders, extractFunnel, summarizeAdStats, campaignProductDaily, withAdBudgets, summarizeKeywords, normalizeStockPreset, normalizePricePreset, adCampaignMayHaveStats, validAdPeriod, historyPeriod, historyChunks, planAdFetch, datesBetween, safeFolderName, funnelDaysToFetch, pairFunnelDays, funnelPeriods, funnelRangeBuckets, funnelRecordCounts, funnelRangeValues, funnelSalesMatrix, summaryTopProducts, summaryDrops, summaryProducts, normalizeFbsStocks, normalizeFbwStocks, normalizePrices, summarizeStockTotals, normalizeNewOrders, summarizeSupplies, normalizeTrbxes, chunkOrders, stickerType, localPhoto, WB_HOSTS };
 
 
 

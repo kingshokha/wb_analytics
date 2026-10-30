@@ -1,7 +1,7 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { productCampaignTimeline, mergeSheetRows, saveSheetRows, readSheetHistory, minusPlan, archivedPresetsFromError, productAdDays, productDetailPeriod, todoNmId, todoFields, funnelOrdersByNmId, summarizeHourlyOrders, orderFeedPeriod, itemRatingPeriods, normalizeItemRatings, itemReturnsPeriod, normalizeItemReturns, returnStatusGroup, campaignActivePeriod, mergeMinusList, summarizeKeywordDaily, summarizePositionDaily, normalizeOrders, normalizeOrderFeed, enrichOrders, extractFunnel, summarizeAdStats, campaignProductDaily, withAdBudgets, summarizeKeywords, normalizeStockPreset, normalizePricePreset, adCampaignMayHaveStats, validAdPeriod, historyPeriod, historyChunks, planAdFetch, datesBetween, safeFolderName, funnelDaysToFetch, pairFunnelDays, funnelPeriods, funnelRangeBuckets, funnelRecordCounts, funnelRangeValues, funnelSalesMatrix, summaryTopProducts, summaryDrops, summaryProducts, normalizeFbsStocks, normalizeFbwStocks, normalizePrices, summarizeStockTotals, normalizeNewOrders, summarizeSupplies, normalizeTrbxes, chunkOrders, stickerType, localPhoto, WB_HOSTS } = require('../server');
+const { productCampaignTimeline, mergeSheetRows, saveSheetRows, readSheetHistory, sheetSiteCabinet, sheetCabinetFilter, withoutClubPriceRepeats,minusPlan, archivedPresetsFromError, productAdDays, productDetailPeriod, todoNmId, todoFields, funnelOrdersByNmId, summarizeHourlyOrders, orderFeedPeriod, itemRatingPeriods, normalizeItemRatings, itemReturnsPeriod, normalizeItemReturns, returnStatusGroup, campaignActivePeriod, mergeMinusList, summarizeKeywordDaily, summarizePositionDaily, normalizeOrders, normalizeOrderFeed, enrichOrders, extractFunnel, summarizeAdStats, campaignProductDaily, withAdBudgets, summarizeKeywords, normalizeStockPreset, normalizePricePreset, adCampaignMayHaveStats, validAdPeriod, historyPeriod, historyChunks, planAdFetch, datesBetween, safeFolderName, funnelDaysToFetch, pairFunnelDays, funnelPeriods, funnelRangeBuckets, funnelRecordCounts, funnelRangeValues, funnelSalesMatrix, summaryTopProducts, summaryDrops, summaryProducts, normalizeFbsStocks, normalizeFbwStocks, normalizePrices, summarizeStockTotals, normalizeNewOrders, summarizeSupplies, normalizeTrbxes, chunkOrders, stickerType, localPhoto, WB_HOSTS } = require('../server');
 
 test('возвраты: группы статусов, даты WB с пробелом, карточка товара, нулевой orderId', () => {
   assert.equal(returnStatusGroup('Готов к выдаче', true), 'ready');
@@ -804,7 +804,23 @@ test('копия Google Таблицы: склейка без повторов, 
     const all = readSheetHistory({ sections: ['Цены', 'Ставки', 'Остатки FBW'], limit: 3, current: false }, dir);
     assert.equal(all.current, null);
     assert.deepEqual(all.items.map(item => item.at), ['2026-10-20T08:45:00.000Z', '2026-10-20T08:45:00.000Z', '2026-10-03T10:00:00.000Z']);
+    // Только строки одного кабинета сайта.
+    const site = [{ id: '1', name: 'Кабинет 1' }, { id: '2', name: 'Другой' }];
+    assert.equal(readSheetHistory({ sections: ['Цены', 'Ставки'], current: false, cabinet: sheetCabinetFilter('1', site) }, dir).items.length, 5);
+    assert.equal(readSheetHistory({ sections: ['Цены', 'Ставки'], current: false, cabinet: sheetCabinetFilter('2', site) }, dir).items.length, 0);
   } finally { require('node:fs').rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('история изменений: кабинет таблицы — по названию без номера в начале; повтор клубной цены убирается', () => {
+  const site = [{ id: '1', name: '2 ИП Шамсиддинов' }, { id: '2', name: 'ИП Зикри' }, { id: '3', name: 'Samiri' }];
+  assert.equal(sheetSiteCabinet('ИП Шамсиддинов', site), '1');
+  assert.equal(sheetSiteCabinet('samiri', site), '3');
+  assert.equal(sheetSiteCabinet('ИП', site), '');
+  assert.equal(sheetSiteCabinet('Неизвестный', site), '');
+  const price = (what, before, after) => ({ at: '2026-10-29T12:18:33.331Z', cabinet: 'Samiri', section: 'Цены', id: '1', what, before, after });
+  const kept = withoutClubPriceRepeats([price('Цена до скидки, ₽', 12748, 10500), price('Цена со скидкой, ₽', 6628.96, 5460), price('Цена в WB Клубе, ₽', 6628.96, 5460)]);
+  assert.deepEqual(kept.map(item => item.what), ['Цена до скидки, ₽', 'Цена со скидкой, ₽']);
+  assert.equal(withoutClubPriceRepeats([price('Цена со скидкой, ₽', 6628.96, 5460), price('Цена в WB Клубе, ₽', 6300, 5190)]).length, 2);
 });
 
 test('минус-фразы: кластеры в архиве WB не отправляются — иначе set-minus отклоняет весь список', () => {
