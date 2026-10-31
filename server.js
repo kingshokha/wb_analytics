@@ -299,14 +299,27 @@ async function cachedAnalytics(key, loader, ttl = 60_000) {
   }
 }
 
+// Все карточки кабинета: по 100 за запрос (cursor updatedAt + nmID), до 30 000 карточек. Лимит категории «Контент» —
+// 100 запросов в минуту, всплеск 5: после каждых 5 страниц пауза, а на 429 — повтор после паузы, которую назвал WB,
+// иначе у кабинетов с тысячами карточек список обрывался и фото в таблицах пропадали.
+const PRODUCT_CARDS_MAX_PAGES = 300;
 async function loadProductCards(token) {
   const cards = [];
   let cursor = { limit: 100 };
-  for (let page = 0; page < 50; page++) {
-    const response = await wbRequest(token, 'https://content-api.wildberries.ru/content/v2/get/cards/list', {
-      method: 'POST',
-      body: { settings: { sort: { ascending: false }, cursor, filter: { withPhoto: -1 } } }
-    });
+  for (let page = 0; page < PRODUCT_CARDS_MAX_PAGES; page++) {
+    let response;
+    for (let retry = 0; ; retry++) {
+      try {
+        response = await wbRequest(token, 'https://content-api.wildberries.ru/content/v2/get/cards/list', {
+          method: 'POST',
+          body: { settings: { sort: { ascending: false }, cursor, filter: { withPhoto: -1 } } }
+        });
+        break;
+      } catch (error) {
+        if (error.status !== 429 || retry >= 3) throw error;
+        await wait(Math.max(1000, (error.retryAfter || 0) * 1000));
+      }
+    }
     const batch = Array.isArray(response?.cards) ? response.cards : [];
     cards.push(...batch);
     if (batch.length < 100 || !response?.cursor?.updatedAt || !response?.cursor?.nmID) break;
@@ -2178,14 +2191,6 @@ async function advertBudgets(id, token, campaigns = [], warnings = []) {
   return budgets;
 }
 
-function enrichFunnelProducts(products = [], cards = []) {
-  const byNmId = new Map(cards.map(card => [String(card.nmID), cardPhoto(card)]));
-  return products.map(item => {
-    const photo = byNmId.get(String((item.product || item).nmId ?? (item.product || item).nmID)) || '';
-    return item.product ? { ...item, product: { ...item.product, photo } } : { ...item, photo };
-  });
-}
-
 // --- История воронки продаж ---
 // WB отдаёт историю воронки только за последние 7 дней, поэтому дни сохраняются
 // в data/Funnel/<кабинет>/<месяц>.json и прошлые периоды берутся оттуда.
@@ -2272,31 +2277,44 @@ function saveFunnelRanges(cabinetId, ranges = []) {
   fs.renameSync(`${target}.tmp`, target);
 }
 
-// Метод статистики карточек ограничен 3 запросами в минуту со всплеском до 3,
-// поэтому таблица воронки и догрузка графика идут через общую очередь кабинета.
-function funnelProductsRequest(id, token, body) {
-  const task = async () => {
-    let retries = 0;
-    for (;;) {
-      const now = Date.now();
-      const bucket = funnelBuckets.get(id) || { tokens: FUNNEL_BUCKET_SIZE, updatedAt: now };
-      bucket.tokens = Math.min(FUNNEL_BUCKET_SIZE, bucket.tokens + Math.max(0, now - bucket.updatedAt) / FUNNEL_BUCKET_INTERVAL);
-      bucket.updatedAt = now;
-      funnelBuckets.set(id, bucket);
-      if (bucket.tokens < 1) { await wait((1 - bucket.tokens) * FUNNEL_BUCKET_INTERVAL); continue; }
-      bucket.tokens -= 1;
-      try { return await wbRequest(token, FUNNEL_PRODUCTS_URL, { method: 'POST', body }); }
-      catch (error) {
-        if (error.status !== 429 || retries >= 3) throw error;
-        retries++;
-        funnelBuckets.set(id, { tokens: 0, updatedAt: Date.now() });
-        await wait(Math.max(FUNNEL_BUCKET_INTERVAL, (error.retryAfter || 0) * 1000));
-      }
+// Метод статистики карточек ограничен 3 запросами в минуту со всплеском до 3 (документация WB, sales-funnel/products),
+// поэтому таблица воронки и догрузка графика идут через общую очередь кабинета. Запросы таблицы (priority 'high') —
+// их ждёт пользователь — встают перед фоновой дозагрузкой дней и отрезков графика ('low').
+function funnelProductsRequest(id, token, body, priority = 'low') {
+  return new Promise((resolve, reject) => {
+    const queue = funnelQueues.get(id) || { high: [], low: [], running: false };
+    funnelQueues.set(id, queue);
+    queue[priority === 'high' ? 'high' : 'low'].push({ token, body, resolve, reject });
+    if (!queue.running) pumpFunnelQueue(id, queue);
+  });
+}
+async function pumpFunnelQueue(id, queue) {
+  queue.running = true;
+  try {
+    while (queue.high.length || queue.low.length) {
+      const item = (queue.high.length ? queue.high : queue.low).shift();
+      try { item.resolve(await funnelBucketRequest(id, item.token, item.body)); } catch (error) { item.reject(error); }
     }
-  };
-  const run = (funnelQueues.get(id) || Promise.resolve()).then(task);
-  funnelQueues.set(id, run.catch(() => {}));
-  return run;
+  } finally { queue.running = false; }
+}
+async function funnelBucketRequest(id, token, body) {
+  let retries = 0;
+  for (;;) {
+    const now = Date.now();
+    const bucket = funnelBuckets.get(id) || { tokens: FUNNEL_BUCKET_SIZE, updatedAt: now };
+    bucket.tokens = Math.min(FUNNEL_BUCKET_SIZE, bucket.tokens + Math.max(0, now - bucket.updatedAt) / FUNNEL_BUCKET_INTERVAL);
+    bucket.updatedAt = now;
+    funnelBuckets.set(id, bucket);
+    if (bucket.tokens < 1) { await wait((1 - bucket.tokens) * FUNNEL_BUCKET_INTERVAL); continue; }
+    bucket.tokens -= 1;
+    try { return await wbRequest(token, FUNNEL_PRODUCTS_URL, { method: 'POST', body }); }
+    catch (error) {
+      if (error.status !== 429 || retries >= 3) throw error;
+      retries++;
+      funnelBuckets.set(id, { tokens: 0, updatedAt: Date.now() });
+      await wait(Math.max(FUNNEL_BUCKET_INTERVAL, (error.retryAfter || 0) * 1000));
+    }
+  }
 }
 
 function funnelStatisticValues(statistic = {}) {
@@ -2592,23 +2610,124 @@ async function funnelSales(id, from, to, nmIdsInput = null, metric = 'orderCount
     ready: stored.filter(day => day.products).length, sync: funnelSyncStatus(id, dates), warnings: [] };
 }
 
-async function funnelDetails(id, from, to) {
-  if (id === 'demo' || !cabinets().length) return { products: [], history: [], groupedHistory: [] };
-  const token = tokenFor(id); const periods = funnelPeriods(from, to);
+// --- Таблица «Товары в воронке» ---
+// WB отдаёт до 1000 товаров за запрос (3 запроса в минуту), отсортированных по переходам в карточку: при 5–6 тыс.
+// артикулов таблица собирается из нескольких страниц за минуты. Поэтому:
+//   • таблица собирается в фоне по странице, а /api/funnel отдаёт то, что уже пришло (version + offset — только новые строки),
+//     и сайт показывает загруженные товары по ходу;
+//   • готовая таблица периода хранится в памяти и в data/Funnel/<кабинет>/tables/<с>_<по>.json: повторное открытие —
+//     сразу, а свежие данные подтягиваются в фоне (refreshing), пока на экране прежние;
+//   • в браузер уходят только показатели, которые выводит сайт (без сравнения периодов, WB Клуба и прочего).
+// Свежесть: отчёт WB обновляется раз в 2 часа — таблица периода, захватывающего последнюю неделю, перекачивается
+// не чаще раза в 30 минут; более старые периоды окончательны и берутся с диска до недели.
+const FUNNEL_TABLE_PAGE = 1000;
+const FUNNEL_TABLE_TTL = 30 * 60_000;
+const FUNNEL_TABLE_FINAL_TTL = 7 * 86_400_000;
+const FUNNEL_TABLE_KEEP = 20;
+const FUNNEL_TABLE_RETRY_MS = 60_000;
+const FUNNEL_TABLE_FIRST_WAIT_MS = 25_000;
+const funnelTables = new Map();
+
+function slimFunnelStat(stat) {
+  if (!stat) return null;
+  const n = key => Number(stat[key] || 0), c = stat.conversions || {};
+  return { openCount: n('openCount'), cartCount: n('cartCount'), orderCount: n('orderCount'), orderSum: n('orderSum'), buyoutCount: n('buyoutCount'),
+    buyoutSum: n('buyoutSum'), cancelCount: n('cancelCount'), addToWishlist: Number(stat.addToWishlist ?? stat.addToWishlistCount ?? 0),
+    conversions: { addToCartPercent: Number(c.addToCartPercent || 0), cartToOrderPercent: Number(c.cartToOrderPercent || 0), buyoutPercent: Number(c.buyoutPercent || 0) } };
+}
+function slimFunnelProduct(item, photos = null) {
+  const product = item.product || item, nmId = product.nmId ?? product.nmID;
+  return {
+    product: { nmId, title: product.title || '', vendorCode: product.vendorCode || '', subjectName: product.subjectName || '',
+      photo: photos?.get(String(nmId)) || '', stocks: { wb: Number(product.stocks?.wb || 0), mp: Number(product.stocks?.mp || 0) } },
+    statistic: { selected: slimFunnelStat(item.statistic?.selected), past: slimFunnelStat(item.statistic?.past) }
+  };
+}
+const funnelTableDir = id => path.join(funnelDir(id), 'tables');
+const funnelTableFile = (id, period) => path.join(funnelTableDir(id), `${period.from}_${period.to}.json`);
+function readFunnelTable(id, period) {
+  // photosPending из файла не берём: после перезапуска сервера фото уже никто не подставит.
+  try { const table = JSON.parse(fs.readFileSync(funnelTableFile(id, period), 'utf8')); return Array.isArray(table.products) ? { ...table, photosPending: false } : null; } catch { return null; }
+}
+function saveFunnelTable(id, period, table) {
+  const dir = funnelTableDir(id), target = funnelTableFile(id, period);
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(`${target}.tmp`, JSON.stringify(table));
+  fs.renameSync(`${target}.tmp`, target);
+  // Хранятся последние FUNNEL_TABLE_KEEP периодов.
+  const files = fs.readdirSync(dir).filter(name => name.endsWith('.json')).map(name => ({ name, time: fs.statSync(path.join(dir, name)).mtimeMs })).sort((a, b) => b.time - a.time);
+  for (const file of files.slice(FUNNEL_TABLE_KEEP)) fs.rmSync(path.join(dir, file.name), { force: true });
+}
+function funnelTableFresh(table, period, now = Date.now()) {
+  if (!table) return false;
+  const age = now - (Date.parse(table.fetchedAt || '') || 0), final = period.to < addDays(moscowDate(0), -FUNNEL_FINAL_AFTER_DAYS);
+  return age < (final ? FUNNEL_TABLE_FINAL_TTL : FUNNEL_TABLE_TTL);
+}
+function funnelTableEntry(id, periods) {
+  const key = `${id}|${periods.current.from}|${periods.current.to}`;
+  if (!funnelTables.has(key)) funnelTables.set(key, { cache: readFunnelTable(id, periods.current), job: null, failedAt: 0, error: '' });
+  return funnelTables.get(key);
+}
+function startFunnelTableJob(id, periods, entry) {
+  const token = tokenFor(id);
   // Прошлый период той же длины нужен для изменений в процентах; старше года WB его не отдаёт.
   const past = periods.previous.from >= addDays(moscowDate(0), -FUNNEL_MAX_DEPTH_DAYS) ? periods.previous : null;
-  const raw = [];
-  // WB отдаёт до 1000 товаров за запрос: остальные догружаются следующими страницами, иначе итог по товарам неполный.
-  for (let offset = 0; ; offset += 1000) {
-    const response = await funnelProductsRequest(id, token, { selectedPeriod: { start: periods.current.from, end: periods.current.to },
-      ...(past ? { pastPeriod: { start: past.from, end: past.to } } : {}), nmIds: [], skipDeletedNm: true,
-      orderBy: { field: 'openCard', mode: 'desc' }, limit: 1000, offset });
-    const page = response?.data?.products || response?.products || [];
-    raw.push(...page);
-    if (page.length < 1000) break;
-  }
-  const products = enrichFunnelProducts(raw, await cachedAnalytics(`product-cards:${id}`, () => loadProductCards(token), 10 * 60_000).catch(() => []));
-  return { periods: { current: periods.current, previous: past }, products, history: [], groupedHistory: [] };
+  let firstPage; const job = { version: Date.now().toString(36), products: [], periods: { current: periods.current, previous: past }, firstPage: new Promise(resolve => { firstPage = resolve; }) };
+  entry.job = job; entry.error = '';
+  // Фото — из карточек товаров (свой лимит у Контента): не ждём их ради первой страницы. Пришли позже — фото
+  // проставляются всем загруженным строкам, а новая version заставляет сайт взять список целиком.
+  let photos = null;
+  const cards = cachedAnalytics(`product-cards:${id}`, () => loadProductCards(token), 10 * 60_000).catch(() => []).then(list => {
+    photos = new Map(list.map(card => [String(card.nmID), cardPhoto(card)]));
+    if (job.products.length) { job.products.forEach(item => { item.product.photo = photos.get(String(item.product.nmId)) || ''; }); job.version = `${job.version}p`; }
+  });
+  job.promise = (async () => {
+    try {
+      for (let offset = 0; ; offset += FUNNEL_TABLE_PAGE) {
+        const response = await funnelProductsRequest(id, token, { selectedPeriod: { start: periods.current.from, end: periods.current.to },
+          ...(past ? { pastPeriod: { start: past.from, end: past.to } } : {}), nmIds: [], skipDeletedNm: true,
+          orderBy: { field: 'openCard', mode: 'desc' }, limit: FUNNEL_TABLE_PAGE, offset }, 'high');
+        const page = response?.data?.products || response?.products || [];
+        job.products.push(...page.map(item => slimFunnelProduct(item, photos)));
+        firstPage();
+        if (page.length < FUNNEL_TABLE_PAGE) break;
+      }
+      // Строки готовы — таблица готова; фото, если карточки ещё грузятся (тысячи карточек — минута-две), подставятся следом:
+      // photosPending держит сайт на опросе, новая version отдаст ему список с фото.
+      const table = { version: job.version, fetchedAt: new Date().toISOString(), periods: job.periods, products: job.products, photosPending: !photos };
+      const save = () => { try { saveFunnelTable(id, periods.current, table); } catch (error) { console.error('Воронка: таблица не сохранена', error.message); } };
+      entry.cache = table; save();
+      if (!photos) cards.then(() => { table.version = `${table.version}p`; table.photosPending = false; if (entry.cache === table) save(); });
+    } catch (error) { entry.error = error.message; entry.failedAt = Date.now(); }
+    finally { firstPage(); entry.job = null; }
+    return entry.cache;
+  })();
+  return job;
+}
+// /api/funnel: version и offset — что уже есть у сайта; при той же version отдаются только строки после offset.
+// done — таблица собрана целиком; refreshing — на экране прежняя таблица, новая собирается в фоне.
+async function funnelTable(id, from, to, { version = '', offset = 0, force = false } = {}) {
+  const periods = funnelPeriods(from, to);
+  if (id === 'demo' || !cabinets().length) return { demo: true, version: 'demo', offset: 0, loaded: 0, done: true, refreshing: false, products: [], periods, history: [], groupedHistory: [] };
+  tokenFor(id);
+  const entry = funnelTableEntry(id, periods), now = Date.now();
+  if (!entry.job && (force || !funnelTableFresh(entry.cache, periods.current, now)) && (force || now - entry.failedAt > FUNNEL_TABLE_RETRY_MS)) startFunnelTableJob(id, periods, entry);
+  // Показать ещё нечего — ждём первую страницу, чтобы не отвечать пустой таблицей.
+  if (!entry.cache && entry.job && !entry.job.products.length) await Promise.race([entry.job.firstPage, wait(FUNNEL_TABLE_FIRST_WAIT_MS)]);
+  const shown = entry.cache || entry.job;
+  if (!shown) throw apiError(502, entry.error || 'Не удалось загрузить воронку');
+  const start = version && version === shown.version ? Math.max(0, Math.min(Number(offset) || 0, shown.products.length)) : 0;
+  return { demo: false, version: shown.version, offset: start, loaded: shown.products.length, products: shown.products.slice(start),
+    done: shown === entry.cache, refreshing: Boolean(entry.cache && entry.job), photosPending: Boolean(shown.photosPending), fetchedAt: entry.cache?.fetchedAt || null, error: entry.error || '',
+    periods: shown.periods, history: [], groupedHistory: [] };
+}
+// Вся таблица периода (для заказов воронки во вкладке «Реклама»): готовая — сразу, иначе ждём сборку.
+async function funnelDetails(id, from, to) {
+  if (id === 'demo' || !cabinets().length) return { products: [], history: [], groupedHistory: [] };
+  const periods = funnelPeriods(from, to), entry = funnelTableEntry(id, periods);
+  if (!funnelTableFresh(entry.cache, periods.current)) { const job = entry.job || startFunnelTableJob(id, periods, entry); await job.promise; }
+  if (!entry.cache) throw apiError(502, entry.error || 'Не удалось загрузить воронку');
+  return { periods: entry.cache.periods, products: entry.cache.products, history: [], groupedHistory: [] };
 }
 
 // Заказы из воронки продаж по артикулам за период — для столбца «Заказы, воронка» во вкладке «Реклама»:
@@ -3345,10 +3464,15 @@ async function orderStickers(body) {
 
 // Раздел «Карточки товаров» — отдельный модуль (content-cards.js), маршруты /api/card и /api/cards/*.
 const contentCards = require('./content-cards')({ wbRequest, tokenFor, cabinets, cachedAnalytics, analyticsCache, apiError, readJson, send, localPhoto, loadProductCards });
+// Раздел «Сообщения» — отдельный модуль (communications.js), маршруты /api/messages/*. События чатов — в data/Chats
+// (для тестового сервера — WB_CHATS_DIR, чтобы не трогать копию на компьютере).
+const CHATS_DIR = process.env.WB_CHATS_DIR ? path.resolve(process.env.WB_CHATS_DIR) : path.join(ROOT, 'data', 'Chats');
+const communications = require('./communications')({ wbRequest, tokenFor, cabinets, cachedAnalytics, analyticsCache, apiError, readJson, send, chatsDir: CHATS_DIR });
 
 async function handleApi(req, res, url) {
   if (req.method === 'GET' && url.pathname.startsWith('/api/photo/')) return servePhoto(res, url);
   if (url.pathname.startsWith('/api/card') && await contentCards.handle(req, res, url)) return;
+  if (url.pathname.startsWith('/api/messages/') && await communications.handle(req, res, url)) return;
   if (req.method === 'GET' && url.pathname === '/api/cabinets') return send(res, 200, { cabinets: publicCabinets(), demo: !cabinets().length });
   if (req.method === 'PATCH' && /^\/api\/cabinets\/[^/]+$/.test(url.pathname)) {
     const id = decodeURIComponent(url.pathname.split('/').pop());
@@ -3484,7 +3608,8 @@ async function handleApi(req, res, url) {
     return send(res, 200, await funnelOrders(url.searchParams.get('cabinet') || 'demo', url.searchParams.get('from'), url.searchParams.get('to')));
   }
   if (req.method === 'GET' && url.pathname === '/api/funnel') {
-    return send(res, 200, await funnelDetails(url.searchParams.get('cabinet') || 'demo', url.searchParams.get('from'), url.searchParams.get('to')));
+    return send(res, 200, await funnelTable(url.searchParams.get('cabinet') || 'demo', url.searchParams.get('from'), url.searchParams.get('to'),
+      { version: url.searchParams.get('version') || '', offset: url.searchParams.get('offset'), force: url.searchParams.get('force') === '1' }));
   }
   if (req.method === 'GET' && url.pathname === '/api/fbs-stocks') {
     return send(res, 200, await fbsStocks(url.searchParams.get('cabinet') || 'demo'));
@@ -3614,7 +3739,7 @@ if (require.main === module) server.listen(PORT, '127.0.0.1', () => {
   if (sheetConfigured()) { setTimeout(syncSheet, 20_000); setInterval(syncSheet, SHEET_SYNC_EVERY); }
 });
 
-module.exports = { server, campaignActivePeriod, productCampaignTimeline, mergeSheetRows, saveSheetRows, readSheetHistory, sheetSiteCabinet, sheetCabinetFilter, withoutClubPriceRepeats,mergeMinusList, minusPlan, archivedPresetsFromError, todoNmId, todoFields, productAdDays, productDetailPeriod, funnelOrdersByNmId, summarizeHourlyOrders, orderFeedPeriod, itemRatingPeriods, normalizeItemRatings, itemReturnsPeriod, normalizeItemReturns, returnStatusGroup, summarizeKeywordDaily, summarizePositionDaily, normalizeOrders, normalizeOrderFeed, enrichOrders, extractFunnel, summarizeAdStats, campaignProductDaily, withAdBudgets, summarizeKeywords, normalizeStockPreset, normalizePricePreset, adCampaignMayHaveStats, validAdPeriod, historyPeriod, historyChunks, planAdFetch, datesBetween, safeFolderName, funnelDaysToFetch, pairFunnelDays, funnelPeriods, funnelRangeBuckets, funnelRecordCounts, funnelRangeValues, funnelSalesMatrix, summaryTopProducts, summaryDrops, summaryProducts, normalizeFbsStocks, normalizeFbwStocks, normalizePrices, summarizeStockTotals, normalizeNewOrders, summarizeSupplies, normalizeTrbxes, chunkOrders, stickerType, localPhoto, WB_HOSTS };
+module.exports = { server, slimFunnelProduct, funnelTableFresh, campaignActivePeriod,productCampaignTimeline, mergeSheetRows, saveSheetRows, readSheetHistory, sheetSiteCabinet, sheetCabinetFilter, withoutClubPriceRepeats,mergeMinusList, minusPlan, archivedPresetsFromError, todoNmId, todoFields, productAdDays, productDetailPeriod, funnelOrdersByNmId, summarizeHourlyOrders, orderFeedPeriod, itemRatingPeriods, normalizeItemRatings, itemReturnsPeriod, normalizeItemReturns, returnStatusGroup, summarizeKeywordDaily, summarizePositionDaily, normalizeOrders, normalizeOrderFeed, enrichOrders, extractFunnel, summarizeAdStats, campaignProductDaily, withAdBudgets, summarizeKeywords, normalizeStockPreset, normalizePricePreset, adCampaignMayHaveStats, validAdPeriod, historyPeriod, historyChunks, planAdFetch, datesBetween, safeFolderName, funnelDaysToFetch, pairFunnelDays, funnelPeriods, funnelRangeBuckets, funnelRecordCounts, funnelRangeValues, funnelSalesMatrix, summaryTopProducts, summaryDrops, summaryProducts, normalizeFbsStocks, normalizeFbwStocks, normalizePrices, summarizeStockTotals, normalizeNewOrders, summarizeSupplies, normalizeTrbxes, chunkOrders, stickerType, localPhoto, WB_HOSTS };
 
 
 

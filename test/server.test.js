@@ -1,7 +1,7 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { productCampaignTimeline, mergeSheetRows, saveSheetRows, readSheetHistory, sheetSiteCabinet, sheetCabinetFilter, withoutClubPriceRepeats,minusPlan, archivedPresetsFromError, productAdDays, productDetailPeriod, todoNmId, todoFields, funnelOrdersByNmId, summarizeHourlyOrders, orderFeedPeriod, itemRatingPeriods, normalizeItemRatings, itemReturnsPeriod, normalizeItemReturns, returnStatusGroup, campaignActivePeriod, mergeMinusList, summarizeKeywordDaily, summarizePositionDaily, normalizeOrders, normalizeOrderFeed, enrichOrders, extractFunnel, summarizeAdStats, campaignProductDaily, withAdBudgets, summarizeKeywords, normalizeStockPreset, normalizePricePreset, adCampaignMayHaveStats, validAdPeriod, historyPeriod, historyChunks, planAdFetch, datesBetween, safeFolderName, funnelDaysToFetch, pairFunnelDays, funnelPeriods, funnelRangeBuckets, funnelRecordCounts, funnelRangeValues, funnelSalesMatrix, summaryTopProducts, summaryDrops, summaryProducts, normalizeFbsStocks, normalizeFbwStocks, normalizePrices, summarizeStockTotals, normalizeNewOrders, summarizeSupplies, normalizeTrbxes, chunkOrders, stickerType, localPhoto, WB_HOSTS } = require('../server');
+const { slimFunnelProduct, funnelTableFresh, productCampaignTimeline,mergeSheetRows, saveSheetRows, readSheetHistory, sheetSiteCabinet, sheetCabinetFilter, withoutClubPriceRepeats,minusPlan, archivedPresetsFromError, productAdDays, productDetailPeriod, todoNmId, todoFields, funnelOrdersByNmId, summarizeHourlyOrders, orderFeedPeriod, itemRatingPeriods, normalizeItemRatings, itemReturnsPeriod, normalizeItemReturns, returnStatusGroup, campaignActivePeriod, mergeMinusList, summarizeKeywordDaily, summarizePositionDaily, normalizeOrders, normalizeOrderFeed, enrichOrders, extractFunnel, summarizeAdStats, campaignProductDaily, withAdBudgets, summarizeKeywords, normalizeStockPreset, normalizePricePreset, adCampaignMayHaveStats, validAdPeriod, historyPeriod, historyChunks, planAdFetch, datesBetween, safeFolderName, funnelDaysToFetch, pairFunnelDays, funnelPeriods, funnelRangeBuckets, funnelRecordCounts, funnelRangeValues, funnelSalesMatrix, summaryTopProducts, summaryDrops, summaryProducts, normalizeFbsStocks, normalizeFbwStocks, normalizePrices, summarizeStockTotals, normalizeNewOrders, summarizeSupplies, normalizeTrbxes, chunkOrders, stickerType, localPhoto, WB_HOSTS } = require('../server');
 
 test('возвраты: группы статусов, даты WB с пробелом, карточка товара, нулевой orderId', () => {
   assert.equal(returnStatusGroup('Готов к выдаче', true), 'ready');
@@ -864,4 +864,21 @@ test('средняя позиция кампании по дням взвеши�
   assert.deepEqual(summarizePositionDaily(items, ['2026-10-01', '2026-10-02']), [{ date: '2026-10-01', avgPosition: 6 }, { date: '2026-10-02', avgPosition: null }]);
   const cpc = [{ dailyStats: [{ date: '2026-10-01', stat: { normQuery: 'фен', avgPos: 3 } }, { date: '2026-10-01', stat: { normQuery: 'утюжок', avgPos: 9 } }] }];
   assert.equal(summarizePositionDaily(cpc, ['2026-10-01'])[0].avgPosition, 6);
+});
+
+test('воронка: в таблицу уходят только нужные показатели; сохранённая таблица свежая 30 минут, окончательный период — неделю', () => {
+  const item = { product: { nmId: 5, title: 'Чехол', vendorCode: 'A-1', brandName: 'B', subjectName: 'Чехлы', tags: [], productRating: 10, stocks: { wb: 2, mp: 7, balanceSum: 900 } },
+    statistic: { selected: { openCount: 30, cartCount: 6, orderCount: 2, orderSum: 1300, buyoutCount: 1, buyoutSum: 650, cancelCount: 0, addToWishlist: 3, wbClub: { orderCount: 1 }, timeToReady: { days: 2 }, conversions: { addToCartPercent: 20, cartToOrderPercent: 33, buyoutPercent: 100 } },
+      past: { openCount: 10, orderCount: 1, conversions: {} }, comparison: { openCountDynamic: 200 } } };
+  const slim = slimFunnelProduct(item, new Map([['5', '/api/photo/x.webp']]));
+  assert.deepEqual(slim.product, { nmId: 5, title: 'Чехол', vendorCode: 'A-1', subjectName: 'Чехлы', photo: '/api/photo/x.webp', stocks: { wb: 2, mp: 7 } });
+  assert.deepEqual(Object.keys(slim.statistic), ['selected', 'past']);
+  assert.equal(slim.statistic.selected.wbClub, undefined);
+  assert.equal(slim.statistic.selected.conversions.cartToOrderPercent, 33);
+  assert.equal(slim.statistic.past.openCount, 10);
+  const now = Date.parse('2026-10-30T12:00:00Z'), ago = minutes => new Date(now - minutes * 60_000).toISOString();
+  assert.equal(funnelTableFresh({ fetchedAt: ago(20) }, { to: '2026-10-29' }, now), true);
+  assert.equal(funnelTableFresh({ fetchedAt: ago(40) }, { to: '2026-10-29' }, now), false);
+  assert.equal(funnelTableFresh({ fetchedAt: ago(3 * 24 * 60) }, { to: '2026-09-30' }, now), true);
+  assert.equal(funnelTableFresh(null, { to: '2026-09-30' }, now), false);
 });

@@ -18,3 +18,5 @@ google-sheets/.clasp.json
 data/Ads/
 data/Funnel/
 data/Photos/
+# Переписка с покупателями (раздел «Сообщения»)
+data/Chats/

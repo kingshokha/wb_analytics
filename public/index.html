@@ -10,6 +10,7 @@
   <link rel="stylesheet" href="/date-range.css">
   <link rel="stylesheet" href="/sidebar.css">
   <link rel="stylesheet" href="/pager.css">
+  <link rel="stylesheet" href="/messages.css">
 </head>
 <body>
   <div class="shell">
@@ -43,6 +44,7 @@
           <button class="refresh refetch hidden" id="funnelRefetch" type="button" title="Заново загрузить данные воронки за выбранный период через API WB и перезаписать сохранённые">⇣ <span>Перекачать</span></button>
           <button class="refresh refetch hidden" id="stockHistoryButton" type="button" title="Как менялись остатки — по данным Google Таблицы">◷ <span>История остатков</span></button>
           <button class="refresh" id="refresh">↻ <span>Обновить</span></button>
+          <a class="notice-bell messages-button" id="messagesButton" href="/?page=messages" data-page="messages" data-nav-page aria-label="Сообщения покупателей" title="Сообщения покупателей"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 5.5h15a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H10l-4.5 3.5v-3.5h-1a1 1 0 0 1-1-1v-9a1 1 0 0 1 1-1z"/><path d="M8 10h8M8 13h5"/></svg><b id="messagesCount" hidden>0</b></a>
           <div class="notice-wrap">
             <button class="notice-bell" id="noticeBell" type="button" aria-label="Уведомления раздела" aria-expanded="false" aria-controls="noticePanel" title="Уведомлений нет"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5a5.2 5.2 0 0 0-5.2 5.2v3.1c0 1-.4 2-1.1 2.7l-.9.9h14.4l-.9-.9a3.8 3.8 0 0 1-1.1-2.7V8.7A5.2 5.2 0 0 0 12 3.5z"/><path d="M9.8 18.4a2.3 2.3 0 0 0 4.4 0"/></svg><b id="noticeCount" hidden>0</b></button>
             <div class="notice-panel" id="noticePanel" role="dialog" aria-label="Уведомления раздела" hidden></div>
@@ -282,6 +284,15 @@
         </div>
       </section>
 
+      <section class="page" id="page-messages">
+        <div class="funnel-tabs" role="tablist"><button type="button" class="funnel-tab active" role="tab" data-msg-tab="chats">Чаты <b></b></button><button type="button" class="funnel-tab" role="tab" data-msg-tab="questions">Вопросы <b></b></button><button type="button" class="funnel-tab" role="tab" data-msg-tab="feedbacks">Отзывы <b></b></button><button type="button" class="funnel-tab" role="tab" data-msg-tab="claims">Заявки на возврат <b></b></button></div>
+        <div class="panel stock-panel msg-panel">
+          <div class="panel-head"><div><h2 id="msgTitle">Чаты</h2><p id="msgInfo">Загрузка…</p></div><div class="filters stock-filters" id="msgFilters"></div></div>
+          <div class="msg-body" id="msgBody"></div>
+          <div class="stock-pagination hidden" id="msgPagination" aria-label="Пагинация"></div>
+        </div>
+      </section>
+
       <section class="page" id="page-history">
         <div class="change-sections" id="changeSections" role="group" aria-label="Разделы истории"></div>
         <div class="panel stock-panel change-panel">
@@ -314,6 +325,7 @@
   <script src="/todo.js"></script>
   <script src="/change-history.js"></script>
   <script src="/cards.js"></script>
+  <script src="/messages.js"></script>
   <script src="/app.js"></script>
   <script src="/auto-refresh.js"></script>
 </body>

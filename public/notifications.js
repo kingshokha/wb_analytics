@@ -2,20 +2,23 @@
 // У каждого раздела свой список: предупреждения из ответов WB (например «Баланс: scope is not allowed for this resource»)
 // и ошибки загрузки. setNotices(раздел, источник, тексты) заменяет уведомления этого источника целиком — при новой
 // загрузке исправившиеся пропадают сами; addNotice добавляет ошибку. Раздел '*' — видно во всех разделах (демо-режим).
+// Уведомление помнит кабинет, выбранный на сайте в момент записи: колокольчик показывает только уведомления текущего кабинета.
 const notices={byPage:new Map(),seen:new Set(),open:false};
-const NOTICE_PAGES={summary:'Сводка',orders:'Лента заказов','fbs-orders':'Новые заказы','fbw-stocks':'Остатки FBW',stocks:'Остатки FBS',prices:'Цены и скидки',funnel:'Воронка',ratings:'Оценки товаров',returns:'Возвраты',ads:'Реклама',product:'Детализация товара',cards:'Карточки товаров',card:'Карточка товара',history:'История изменений',todo:'Дела'};
-const noticeList=page=>[...(notices.byPage.get('*')||[]),...(notices.byPage.get(page)||[])];
+const NOTICE_PAGES={summary:'Сводка',orders:'Лента заказов','fbs-orders':'Новые заказы','fbw-stocks':'Остатки FBW',stocks:'Остатки FBS',prices:'Цены и скидки',funnel:'Воронка',ratings:'Оценки товаров',returns:'Возвраты',ads:'Реклама',product:'Детализация товара',cards:'Карточки товаров',card:'Карточка товара',history:'История изменений',todo:'Дела',messages:'Сообщения'};
+// На страницах детализации state нет — там кабинет из ссылки.
+const noticeCabinet=()=>typeof state!=='undefined'&&state.cabinet?state.cabinet:new URLSearchParams(location.search).get('cabinet')||'';
+const noticeList=page=>{const cabinet=noticeCabinet();return [...(notices.byPage.get('*')||[]),...(notices.byPage.get(page)||[])].filter(item=>item.cabinet===cabinet)};
 function setNotices(page,source,items=[],level='warning'){
-  const now=new Date().toISOString(),old=notices.byPage.get(page)||[],kept=old.filter(item=>item.source!==source);
+  const now=new Date().toISOString(),cabinet=noticeCabinet(),old=notices.byPage.get(page)||[],kept=old.filter(item=>!(item.source===source&&item.cabinet===cabinet));
   // Уведомление, которое уже было, сохраняет время и отметку «прочитано».
-  const fresh=[...new Set((items||[]).filter(Boolean).map(String))].map(text=>old.find(item=>item.source===source&&item.text===text)||{id:`${page}|${source}|${text}`,text,level,source,at:now});
+  const fresh=[...new Set((items||[]).filter(Boolean).map(String))].map(text=>old.find(item=>item.source===source&&item.cabinet===cabinet&&item.text===text)||{id:`${cabinet}|${page}|${source}|${text}`,text,level,source,cabinet,at:now});
   notices.byPage.set(page,[...kept,...fresh]);
   renderNoticeBell();
 }
 function addNotice(page,text,level='error',source='error'){
-  const list=(notices.byPage.get(page)||[]).filter(item=>!(item.source===source&&item.text===text));
-  list.push({id:`${page}|${source}|${text}|${Date.now()}`,text,level,source,at:new Date().toISOString()});
-  notices.byPage.set(page,list.slice(-30));
+  const cabinet=noticeCabinet(),list=(notices.byPage.get(page)||[]).filter(item=>!(item.source===source&&item.cabinet===cabinet&&item.text===text));
+  list.push({id:`${cabinet}|${page}|${source}|${text}|${Date.now()}`,text,level,source,cabinet,at:new Date().toISOString()});
+  notices.byPage.set(page,list.slice(-60));
   renderNoticeBell();
 }
 function renderNoticeBell(){
@@ -46,7 +49,7 @@ function toggleNotices(open=!notices.open){
 }
 document.addEventListener('click',event=>{
   if(event.target.closest('#noticeBell'))return toggleNotices();
-  if(event.target.closest('[data-notice-clear]')){notices.byPage.set(state.activePage,[]);return renderNoticeBell()}
+  if(event.target.closest('[data-notice-clear]')){const cabinet=noticeCabinet();notices.byPage.set(state.activePage,(notices.byPage.get(state.activePage)||[]).filter(item=>item.cabinet!==cabinet));return renderNoticeBell()}
   if(notices.open&&!event.target.closest('#noticePanel'))toggleNotices(false);
 });
 document.addEventListener('keydown',event=>{if(event.key==='Escape'&&notices.open)toggleNotices(false)});
