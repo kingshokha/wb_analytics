@@ -1428,7 +1428,7 @@ function readSheetHistory({ ids = [], sections = [], days = 0, limit = 0, curren
   }
   const stockTypes = sections.filter(item => item.startsWith('Остатки ')).map(item => item.slice('Остатки '.length));
   const current = stockTypes.length && withCurrent ? stockTypes.flatMap(type => (readSheetJson(path.join(dir, `Остатки ${type}`, 'current.json'), { items: [] }).items || [])
-    .filter(row => !ids.length || ids.includes(String(row.nmId)))) : null;
+    .filter(row => (!ids.length || ids.includes(String(row.nmId))) && (!cabinet || cabinet(row.cabinet)))) : null;
   items.sort((a, b) => String(b.at).localeCompare(String(a.at)));
   return { items: items.slice(0, limit || (stockTypes.length ? 60_000 : 5_000)), current };
 }
@@ -1477,7 +1477,8 @@ function syncSheet() {
 // /api/sheet-history: source=local — сразу с компьютера; source=sheet — сначала дозагрузка из таблицы.
 // added — сколько новых строк скачано за эту дозагрузку (по всей таблице), syncError — почему не получилось.
 // all — раздел «История изменений»: все строки всех разделов (или выбранных) без текущих остатков, до 50 000 новых;
-// с cabinet — только кабинета сайта с этим id, без повторов клубной цены. truncated — за период изменений больше, отданы самые новые.
+// с cabinet — только кабинета сайта с этим id (и в «Истории изменений» — без повторов клубной цены; у остатков — и текущие
+// остатки только этого кабинета). truncated — за период изменений больше, отданы самые новые.
 const SHEET_ALL_LIMIT = 50_000;
 async function sheetHistory(idsInput, sectionsInput, daysInput, source = 'local', all = false, cabinetInput = '') {
   if (!sheetConfigured()) return { configured: false, items: [], current: null, since: null };
@@ -1488,13 +1489,13 @@ async function sheetHistory(idsInput, sectionsInput, daysInput, source = 'local'
   const days = Math.min(all ? 3660 : 365, Math.max(0, Math.round(Number(daysInput) || 0)));
   const sync = source === 'sheet' ? await syncSheet() : null;
   const saved = readSheetJson(path.join(SHEET_DIR, 'sync.json'), {});
-  const cabinet = all && /^[\w-]{1,40}$/.test(String(cabinetInput || '')) ? sheetCabinetFilter(cabinetInput) : null;
+  const cabinet = /^[\w-]{1,40}$/.test(String(cabinetInput || '')) ? sheetCabinetFilter(cabinetInput) : null;
   const history = all
     ? readSheetHistory({ ids, sections: sections.length ? sections : SHEET_SECTIONS, days, limit: SHEET_ALL_LIMIT + 1, current: false, cabinet })
-    : readSheetHistory({ ids, sections: sections.length ? sections : SHEET_SECTIONS.filter(item => !item.startsWith('Остатки ')), days });
+    : readSheetHistory({ ids, sections: sections.length ? sections : SHEET_SECTIONS.filter(item => !item.startsWith('Остатки ')), days, cabinet });
   const truncated = all && history.items.length > SHEET_ALL_LIMIT;
   if (truncated) history.items = history.items.slice(0, SHEET_ALL_LIMIT);
-  if (cabinet) history.items = withoutClubPriceRepeats(history.items);
+  if (all && cabinet) history.items = withoutClubPriceRepeats(history.items);
   return { configured: true, source: source === 'sheet' ? 'sheet' : 'local', ...history, ...(all ? { truncated } : {}),
     since: saved.since || null, syncedAt: saved.syncedAt || null, added: sync?.added || 0, syncError: sync?.lastError || '' };
 }
@@ -3518,7 +3519,7 @@ async function handleApi(req, res, url) {
     return send(res, 200, await productDetail(url.searchParams.get('cabinet') || 'demo', url.searchParams.get('nmId'), url.searchParams.get('from'), url.searchParams.get('to'), url.searchParams.get('live') === '1'));
   }
   if (req.method === 'GET' && url.pathname === '/api/sheet-history') {
-    return send(res, 200, await sheetHistory(url.searchParams.get('id'), url.searchParams.get('sections'), url.searchParams.get('days'), url.searchParams.get('source'), url.searchParams.get('all') === '1', url.searchParams.get('cabinet')));
+    return send(res, 200, await sheetHistory(url.searchParams.get('id'), url.searchParams.get('sections'), url.searchParams.get('days'), url.searchParams.get('source'), url.searchParams.get('all') === '1', url.searchParams.get('cabinet') || ''));
   }
   if (req.method === 'POST' && url.pathname === '/api/advertising/campaign/rename') {
     const body = await readJson(req);

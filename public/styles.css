@@ -298,8 +298,6 @@ tr.rating-row-attention td:first-child{box-shadow:inset 3px 0 0 var(--red)}
 .sh-day-line .sh-day-vals{flex:1;min-width:0}
 .sh-quiet{margin:0 0 10px;color:var(--muted);font-size:12px;line-height:1.5}
 .sh-day-line b{color:var(--ink)}
-.sh-low{display:block;margin-top:16px;padding:10px 12px;border-radius:8px;background:#f5f6f3;color:var(--muted);font-size:12px;line-height:1.6}
-.sh-low input{width:56px;height:28px;margin:0 4px;padding:0 6px;border:1px solid var(--line);border-radius:6px;font:700 12px Manrope;color:var(--ink)}
 .sh-down{color:#b84949!important;font-weight:800}
 .sh-up{color:var(--green)!important;font-weight:800}
 @media(max-width:680px){.sh-zero{grid-template-columns:minmax(0,1fr) 64px}.sh-zero>span:nth-child(2){grid-column:1/-1;grid-row:2}.sh-day-line>span{flex-basis:50%}}

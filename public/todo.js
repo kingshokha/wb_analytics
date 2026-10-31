@@ -1,6 +1,7 @@
 // --- «Дела»: список дел по WB — обжаловать отзыв, ответить клиенту, изменить рекламу, проверить что-то ---
 // Задачи хранятся на сервере в data/todos.json (/api/todos). У задачи тип, приоритет, кабинет и артикул; ссылки в тексте
-// и комментариях открываются по клику. Выполненные уходят во вкладку «Выполненные» (можно вернуть), у каждой задачи —
+// и комментариях открываются по клику. Показываются только дела кабинета, выбранного на сайте: новое дело получает этот
+// кабинет, при изменении кабинет дела не меняется (в демо-режиме кабинетов нет — дела без кабинета). Выполненные уходят во вкладку «Выполненные» (можно вернуть), у каждой задачи —
 // журнал: создана, что изменилось, комментарии, выполнена, возвращена.
 // Файл подключается до app.js: $, api, state и прочее из app.js используются только внутри функций.
 const TODO_TYPES=[['review','Отзыв'],['client','Клиент'],['ads','Реклама'],['prices','Цены'],['stock','Остатки и поставки'],['card','Карточка'],['check','Проверить'],['other','Прочее']];
@@ -12,6 +13,9 @@ const todoView={tasks:null,error:'',tab:'open',editing:null,draft:null,openLog:n
 const todoTypeLabel=key=>(TODO_TYPES.find(([k])=>k===key)||TODO_TYPES.at(-1))[1];
 const todoPriorityLabel=key=>(TODO_PRIORITIES.find(([k])=>k===key)||TODO_PRIORITIES.at(-1))[1];
 const todoCabinetName=id=>id?((state.cabinets||[]).find(item=>item.id===id)?.name||`Кабинет ${id}`):'';
+// Кабинет дел — выбранный на сайте (демо-кабинет сервер хранит как «без кабинета»).
+const todoCabinet=()=>(state.cabinets||[]).find(item=>item.id===state.cabinet&&item.configured)?.id||'';
+const todoOfCabinet=task=>(task.cabinet||'')===todoCabinet();
 const todoTime=iso=>new Date(iso).toLocaleString('ru-RU',{day:'2-digit',month:'2-digit',year:'2-digit',hour:'2-digit',minute:'2-digit'}).replace(',','');
 const todoComments=task=>(task.log||[]).filter(entry=>entry.action==='comment');
 
@@ -28,28 +32,23 @@ function todoLinkify(text){
 
 // Поля задачи — одни и те же для новой задачи (форма сверху) и для изменения в списке.
 function todoFormFields(task={}){
-  const type=task.type||'other',priority=task.priority||'normal',cabinet=task.cabinet??'';
-  const cabinets=(state.cabinets||[]).filter(item=>item.configured);
+  const type=task.type||'other',priority=task.priority||'normal';
   return `<textarea data-todo-field="text" rows="2" maxlength="4000" placeholder="Что сделать? Например: обжаловать отзыв на худи — ссылки можно вставлять прямо в текст">${escapeHtml(task.text||'')}</textarea>`+
     `<div class="todo-type-picker" role="radiogroup" aria-label="Тип дела">${TODO_TYPES.map(([key,label])=>`<button type="button" class="todo-type-chip t-${key}${key===type?' active':''}" data-todo-type="${key}" role="radio" aria-checked="${key===type}">${label}</button>`).join('')}</div>`+
     `<div class="todo-form-row"><select data-todo-field="priority" aria-label="Приоритет">${TODO_PRIORITIES.map(([key,label])=>`<option value="${key}"${key===priority?' selected':''}>${label}</option>`).join('')}</select>`+
-    `<select data-todo-field="cabinet" aria-label="Кабинет"><option value="">Без кабинета</option>${cabinets.map(item=>`<option value="${escapeHtml(item.id)}"${item.id===cabinet?' selected':''}>${escapeHtml(item.name)}</option>`).join('')}</select>`+
     `<input data-todo-field="nmId" placeholder="Артикул WB или ссылка на товар" value="${escapeHtml(task.nmId||'')}"></div>`;
 }
 function todoFormValues(root){
   const field=name=>root.querySelector(`[data-todo-field="${name}"]`)?.value??'';
-  return {text:field('text'),type:root.querySelector('.todo-type-chip.active')?.dataset.todoType||'other',priority:field('priority'),cabinet:field('cabinet'),nmId:field('nmId').trim()};
+  return {text:field('text'),type:root.querySelector('.todo-type-chip.active')?.dataset.todoType||'other',priority:field('priority'),nmId:field('nmId').trim()};
 }
 function ensureTodoUi(){
   if(todoView.ready)return;todoView.ready=true;
-  const current=(state.cabinets||[]).find(item=>item.id===state.cabinet&&item.configured);
-  $('#todoForm').innerHTML=todoFormFields({cabinet:current?.id||''})+
+  $('#todoForm').innerHTML=todoFormFields()+
     '<div class="todo-form-foot"><span class="todo-hint">Enter — добавить, Shift+Enter — новая строка. Ссылки в тексте открываются по клику.</span><button class="primary" type="submit">Добавить дело</button></div>';
   $('#todoTypeFilter').innerHTML='<option value="">Все типы</option>'+TODO_TYPES.map(([key,label])=>`<option value="${key}">${label}</option>`).join('');
   $('#todoPriorityFilter').innerHTML='<option value="">Любой приоритет</option>'+TODO_PRIORITIES.map(([key,label])=>`<option value="${key}">${label}</option>`).join('');
-  const cabinets=(state.cabinets||[]).filter(item=>item.configured);
-  $('#todoCabinetFilter').innerHTML='<option value="">Все кабинеты</option><option value="none">Без кабинета</option>'+cabinets.map(item=>`<option value="${escapeHtml(item.id)}">${escapeHtml(item.name)}</option>`).join('');
-  ['#todoSearch','#todoTypeFilter','#todoPriorityFilter','#todoCabinetFilter'].forEach(id=>$(id).addEventListener('input',()=>{todoView.limit=TODO_PAGE;renderTodos()}));
+  ['#todoSearch','#todoTypeFilter','#todoPriorityFilter'].forEach(id=>$(id).addEventListener('input',()=>{todoView.limit=TODO_PAGE;renderTodos()}));
 }
 
 async function loadTodos(quiet=false){
@@ -65,11 +64,11 @@ async function loadTodos(quiet=false){
 }
 
 function todoRows(){
-  const search=$('#todoSearch').value.trim().toLowerCase(),type=$('#todoTypeFilter').value,priority=$('#todoPriorityFilter').value,cabinet=$('#todoCabinetFilter').value;
+  const search=$('#todoSearch').value.trim().toLowerCase(),type=$('#todoTypeFilter').value,priority=$('#todoPriorityFilter').value;
   const rank={urgent:0,high:1,normal:2},done=todoView.tab==='done';
-  return (todoView.tasks||[]).filter(task=>Boolean(task.doneAt)===done)
-    .filter(task=>(!type||task.type===type)&&(!priority||task.priority===priority)&&(!cabinet||(cabinet==='none'?!task.cabinet:task.cabinet===cabinet)))
-    .filter(task=>!search||[task.text,task.nmId,task.product?.name,task.product?.vendorCode,todoCabinetName(task.cabinet),todoTypeLabel(task.type),...todoComments(task).map(entry=>entry.text)].join(' ').toLowerCase().includes(search))
+  return (todoView.tasks||[]).filter(task=>todoOfCabinet(task)&&Boolean(task.doneAt)===done)
+    .filter(task=>(!type||task.type===type)&&(!priority||task.priority===priority))
+    .filter(task=>!search||[task.text,task.nmId,task.product?.name,task.product?.vendorCode,todoTypeLabel(task.type),...todoComments(task).map(entry=>entry.text)].join(' ').toLowerCase().includes(search))
     // В работе: сначала срочные, потом важные, внутри — новые сверху. Выполненные — по дате выполнения, свежие сверху.
     .sort((a,b)=>done?String(b.doneAt).localeCompare(String(a.doneAt)):(rank[a.priority]??2)-(rank[b.priority]??2)||String(b.createdAt).localeCompare(String(a.createdAt)));
 }
@@ -81,7 +80,7 @@ function renderTodos(){
   const list=$('#todoList');if(!list)return;
   // Несохранённые правки задачи в режиме изменения переживают перерисовку (фильтры, «Показать ещё»).
   const editRoot=list.querySelector('.todo-item.editing');if(editRoot)todoView.draft={id:editRoot.dataset.todoId,values:todoFormValues(editRoot)};
-  const tasks=todoView.tasks,open=(tasks||[]).filter(task=>!task.doneAt).length;
+  const tasks=todoView.tasks?todoView.tasks.filter(todoOfCabinet):null,open=(tasks||[]).filter(task=>!task.doneAt).length;
   $('#todoOpenCount').textContent=tasks?fmtNum(open):'';$('#todoDoneCount').textContent=tasks?fmtNum(tasks.length-open):'';
   $$('[data-todo-tab]').forEach(button=>button.classList.toggle('active',button.dataset.todoTab===todoView.tab));
   $('#todoListTitle').textContent=todoView.tab==='done'?'Выполненные':'В работе';
@@ -104,11 +103,10 @@ function todoItem(task){
   }
   const done=Boolean(task.doneAt),comments=todoComments(task),logOpen=todoView.openLog.has(task.id),lastComment=comments.at(-1);
   const product=task.nmId?`<a class="todo-product" href="https://www.wildberries.ru/catalog/${encodeURIComponent(task.nmId)}/detail.aspx" target="_blank" rel="noopener noreferrer" title="Открыть товар на WB">${task.product?.photo?`<img src="${escapeHtml(task.product.photo)}" alt="" loading="lazy">`:''}<span>${escapeHtml(task.product?.name||'Товар на WB')}</span><small>${task.product?.vendorCode?`${escapeHtml(task.product.vendorCode)} · `:''}${escapeHtml(task.nmId)}</small></a>`:'';
-  const cabinet=todoCabinetName(task.cabinet);
   return `<article class="todo-item p-${escapeHtml(task.priority)}${done?' done':''}" data-todo-id="${escapeHtml(task.id)}">
     <button type="button" class="todo-check" data-todo-toggle title="${done?'Вернуть в работу':'Отметить выполненным'}" aria-label="${done?'Вернуть в работу':'Отметить выполненным'}">${done?'✓':''}</button>
     <div class="todo-main"><div class="todo-text">${todoLinkify(task.text)}</div>
-      <div class="todo-meta"><span class="todo-type t-${escapeHtml(task.type)}">${todoTypeLabel(task.type)}</span>${task.priority!=='normal'?`<span class="todo-prio p-${escapeHtml(task.priority)}">${todoPriorityLabel(task.priority)}</span>`:''}${cabinet?`<span>${escapeHtml(cabinet)}</span>`:''}${product}<span>${done?`выполнено ${todoTime(task.doneAt)}`:`создано ${todoTime(task.createdAt)}`}</span></div>
+      <div class="todo-meta"><span class="todo-type t-${escapeHtml(task.type)}">${todoTypeLabel(task.type)}</span>${task.priority!=='normal'?`<span class="todo-prio p-${escapeHtml(task.priority)}">${todoPriorityLabel(task.priority)}</span>`:''}${product}<span>${done?`выполнено ${todoTime(task.doneAt)}`:`создано ${todoTime(task.createdAt)}`}</span></div>
       ${lastComment&&!logOpen?`<div class="todo-last-comment" title="Последний комментарий, ${todoTime(lastComment.at)}">${todoLinkify(lastComment.text)}</div>`:''}
       ${logOpen?todoLog(task):''}
     </div>
@@ -149,9 +147,9 @@ async function todoAdd(){
   if(!values.text.trim())return toast('Напишите, что нужно сделать');
   button.disabled=true;
   try{
-    const {task}=await todoSend(values);
+    const {task}=await todoSend({...values,cabinet:todoCabinet()});
     todoView.tasks=todoView.tasks||[];todoApply(task);
-    // Тип, приоритет и кабинет остаются — удобно добавлять несколько похожих дел подряд.
+    // Тип и приоритет остаются — удобно добавлять несколько похожих дел подряд.
     const text=form.querySelector('[data-todo-field="text"]');text.value='';text.style.height='';form.querySelector('[data-todo-field="nmId"]').value='';
     todoView.tab='open';renderTodos();toast('Дело добавлено');text.focus();
   }catch(e){toast(e.message)}finally{button.disabled=false}
