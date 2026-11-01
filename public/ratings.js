@@ -108,8 +108,8 @@ function renderRatingTable(){
   ratings.page=Math.min(Math.max(1,ratings.page),Math.max(1,pageCount));
   const pageRows=rows.slice((ratings.page-1)*ratings.pageSize,ratings.page*ratings.pageSize);
   $('#ratingCount').textContent=`${fmtNum(rows.length)} из ${fmtNum(all.length)} товаров · отзывы за ${trendFullDate(ratings.data.periods.current.start)} – ${trendFullDate(ratings.data.periods.current.end)}`;
-  // Заголовки создаются один раз: ширину столбцов задаёт и хранит общий механизм изменения ширины (initResizableTables),
-  // и если пересоздавать заголовки, ширины теряются и столбцы налезают друг на друга. При сортировке меняется только стрелка.
+  // Заголовки создаются один раз, при сортировке меняется только стрелка: ширину столбцов задаёт и хранит общий модуль
+  // column-widths.js, лишняя перерисовка заголовков заставляла бы его применять ширины заново.
   const head=$('#ratingHead');
   if(!head.children.length)head.innerHTML=RATING_COLUMNS.map(c=>`<th data-rating-sort="${c.key}" data-col-key="${c.key}" data-col-width="${c.width}"${c.hint?` title="${escapeHtml(c.hint)}"`:''}>${escapeHtml(c.label)} <span class="rating-sort-arrow"></span></th>`).join('');
   head.querySelectorAll('[data-rating-sort]').forEach(th=>{th.querySelector('.rating-sort-arrow').textContent=ratings.sort.key===th.dataset.ratingSort?(ratings.sort.dir==='asc'?'↑':'↓'):'↕'});

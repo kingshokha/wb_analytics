@@ -231,12 +231,6 @@
     .product-open{flex:0 0 26px;width:26px;height:26px;padding:0;display:grid;place-items:center;border:1px solid var(--line);border-radius:7px;background:white;color:var(--muted)}
     .product-open:hover,.product-open:focus-visible{border-color:var(--purple);color:var(--purple);background:#f6f4fd;outline:0}
     .product-open svg{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
-    .resizable-table th{position:relative}
-    .column-resizer{position:absolute;z-index:3;top:0;right:-4px;width:9px;height:100%;cursor:col-resize;touch-action:none}
-    .column-resizer:after{content:"";position:absolute;top:20%;bottom:20%;left:4px;width:2px;border-radius:2px;background:transparent;transition:background .15s}
-    .column-resizer:hover:after,.resizing-column .column-resizer:after{background:var(--purple)}
-    .resizing-column{cursor:col-resize!important;user-select:none!important}
-    .resizing-column *{cursor:col-resize!important}
     .product-table th:nth-child(1),.product-table td:nth-child(1){width:330px;text-align:left}
     .product-table th:nth-child(2),.product-table td:nth-child(2){width:120px;text-align:left}
     .product-cell{display:flex;align-items:center;gap:9px;min-width:0;text-align:left}
@@ -379,6 +373,7 @@
   <link rel="stylesheet" href="/mini-charts.css">
   <link rel="stylesheet" href="/sidebar.css">
   <link rel="stylesheet" href="/pager.css">
+  <link rel="stylesheet" href="/tables.css">
 </head>
 <body>
 <div class="shell">
@@ -448,6 +443,7 @@
 <script src="/date-range.js"></script>
 <script src="/mini-charts.js"></script>
 <script src="/sheet-sync.js"></script>
+<script src="/column-widths.js"></script>
 <script src="/campaign.js"></script>
 </body>
 </html>

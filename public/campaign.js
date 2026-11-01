@@ -59,13 +59,8 @@
       '<button type="button" class="columns-reset" data-columns-reset>Вернуть все столбцы и порядок по умолчанию</button>';
   }
   function rerenderMetricTable(table){if(table==='daily'){renderDailyHead();renderTable()}else if(table==='product'){renderProductHead();renderProductTable()}else{renderKeywordHead();renderKeywords()}}
-  // Ширины, подобранные мышью для прежнего набора столбцов, к новому не подходят: сбрасываем и включаем изменение ширины заново.
-  function resetResizable(table,signature){
-    table.dataset.widthsVersion=signature;delete table.dataset.resizable;table.classList.remove('resizable-table');
-    table.querySelectorAll('.column-resizer').forEach(handle=>handle.remove());
-    table.style.width='';table.style.minWidth='';table.style.tableLayout='';table.querySelectorAll('thead th').forEach(header=>{header.style.width=''});
-    initResizableTables();
-  }
+  // Заголовки перерисованы (другой набор столбцов): ширины применяются заново по каждому столбцу — общий модуль column-widths.js.
+  function resetResizable(table){initColumnWidths(table)}
   document.addEventListener('change',event=>{
     const toggle=event.target.closest('[data-column-toggle]');if(!toggle)return;
     const table=toggle.closest('[data-columns-table]').dataset.columnsTable,key=toggle.dataset.columnToggle;
@@ -993,52 +988,6 @@
   }
   setInterval(()=>{if(Date.now()-autoRefreshAt<AUTO_REFRESH_MS||autoRefreshBusy())return;autoRefreshAt=Date.now();exportHistory(true)},10_000);
   $('#exportHistory').addEventListener('click',()=>{autoRefreshAt=Date.now()});
-  // Ширину колонок можно тянуть мышью, как в «Ценах и скидках»; значения хранятся в браузере.
-  function initResizableTables(scope=document){
-    scope.querySelectorAll('table').forEach((table,tableIndex)=>{
-      if(table.dataset.resizable==='1')return;
-      const headers=[...table.querySelectorAll('thead th')];
-      if(!headers.length)return;
-      table.dataset.resizable='1';table.classList.add('resizable-table');
-      const bodyId=table.querySelector('tbody[id]')?.id||`campaign-table-${tableIndex}`,storageKey=`wb-campaign-column-widths:${bodyId}${table.dataset.widthsVersion?`:v${table.dataset.widthsVersion}`:''}`;
-      let saved=[];try{saved=JSON.parse(localStorage.getItem(storageKey)||'[]')}catch{}
-      if(saved.length===headers.length&&saved.every(Number.isFinite)){
-        headers.forEach((header,index)=>header.style.width=`${saved[index]}px`);
-        const total=saved.reduce((sum,width)=>sum+width,0);
-        table.style.width=`${total}px`;table.style.minWidth=`${total}px`;table.style.tableLayout='fixed';
-      }
-      headers.forEach((header,index)=>{
-        const handle=document.createElement('span');
-        handle.className='column-resizer';handle.title='Потяните, чтобы изменить ширину';handle.setAttribute('aria-hidden','true');
-        handle.onclick=event=>{event.preventDefault();event.stopPropagation()};
-        handle.onpointerdown=event=>{
-          if(event.button!==0)return;
-          event.preventDefault();event.stopPropagation();
-          const widths=headers.map(item=>Math.round(item.getBoundingClientRect().width));
-          if(!widths[index])return;
-          headers.forEach((item,column)=>item.style.width=`${widths[column]}px`);
-          const startX=event.clientX,startWidth=widths[index],startTotal=widths.reduce((sum,width)=>sum+width,0);
-          table.style.width=`${startTotal}px`;table.style.minWidth=`${startTotal}px`;table.style.tableLayout='fixed';
-          document.body.classList.add('resizing-column');
-          const move=moveEvent=>{
-            const width=Math.max(48,Math.round(startWidth+moveEvent.clientX-startX)),delta=width-startWidth;
-            header.style.width=`${width}px`;table.style.width=`${startTotal+delta}px`;table.style.minWidth=`${startTotal+delta}px`;
-          };
-          const stop=()=>{
-            document.removeEventListener('pointermove',move);
-            document.body.classList.remove('resizing-column');
-            localStorage.setItem(storageKey,JSON.stringify(headers.map(item=>Math.round(item.getBoundingClientRect().width))));
-          };
-          document.addEventListener('pointermove',move);
-          document.addEventListener('pointerup',stop,{once:true});
-          document.addEventListener('pointercancel',stop,{once:true});
-        };
-        header.append(handle);
-      });
-    });
-  }
-  new MutationObserver(()=>initResizableTables()).observe(document.body,{childList:true,subtree:true});
-  initResizableTables();
   function load(){const from=params.get('from')||'',to=params.get('to')||'',fromInput=$('#exportFrom'),toInput=$('#exportTo');if(/^\d{4}-\d{2}-\d{2}$/.test(from)&&/^\d{4}-\d{2}-\d{2}$/.test(to)&&from<=to&&from>=fromInput.min&&to<=toInput.max){fromInput.value=from;toInput.value=to;fromInput.onchange()}exportHistory()}
   $('#dailyHead').addEventListener('click',event=>{if(event.target.closest('.column-resizer'))return;const h=event.target.closest('th[data-key]');if(!h)return;const k=h.dataset.key;state.sort=state.sort.key===k?{key:k,direction:state.sort.direction==='asc'?'desc':'asc'}:{key:k,direction:'desc'};renderTable()});$('#productHead').addEventListener('click',event=>{if(event.target.closest('.column-resizer'))return;const h=event.target.closest('th[data-product-key]');if(!h)return;const k=h.dataset.productKey;state.productSort=state.productSort.key===k?{key:k,direction:state.productSort.direction==='asc'?'desc':'asc'}:{key:k,direction:'desc'};renderProductTable()});['daily','product','keywords'].forEach(renderColumnsMenu);renderDailyHead();renderProductHead();renderKeywordHead();buildExportPresets();$('#exportHistory').onclick=()=>exportHistory();document.querySelectorAll('[data-modal-close]').forEach(el=>el.onclick=closeProductModal);document.addEventListener('keydown',event=>{if(event.key==='Escape')closeProductModal()});load();
 })();

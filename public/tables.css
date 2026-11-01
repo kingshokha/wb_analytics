@@ -1,0 +1,20 @@
+/* Общие правила таблиц всех страниц. Подключается последним, после стилей страницы. */
+
+/* Заголовки и значения — по центру. Слева — первый столбец и столбцы с названиями: товар, кампания, запрос, адрес,
+   текст истории. Заголовок над такими значениями тоже слева (класс col-left ставит column-widths.js). */
+table th,table td{text-align:center}
+table th:first-child,table td:first-child,table th.col-left{text-align:left}
+table td.price-product-cell,table td.funnel-product-cell,table td.fbw-product-cell,table td.returns-wrap,table td.card-errors,
+table td.change-object,table td.change-what,table td.change-value,
+table td:has(> .product,> .product-cell,> .product-name-cell,> .card-cell,> .camp-name,> .ad-product-name,> .ad-product-campaign-name,> .keyword-query,> .stock-product-photo){text-align:left}
+
+/* Боковые отступы меньше: при сужении столбца текст не упирается в пустой отступ. У первого столбца отступ прежний —
+   он выравнивает таблицу с заголовком панели. */
+table th:not(:first-child),table td:not(:first-child){padding-left:10px;padding-right:10px}
+
+/* Ручка изменения ширины у правого края заголовка (public/column-widths.js). */
+.resizable-table th{position:relative}
+.column-resizer{position:absolute;z-index:3;top:0;right:-4px;width:9px;height:100%;cursor:col-resize;touch-action:none}
+.column-resizer:after{content:"";position:absolute;top:20%;bottom:20%;left:4px;width:2px;border-radius:2px;background:transparent;transition:background .15s}
+.column-resizer:hover:after,.resizing-column .column-resizer:after{background:var(--purple,#7651e5)}
+.resizing-column,.resizing-column *{cursor:col-resize!important;user-select:none!important}

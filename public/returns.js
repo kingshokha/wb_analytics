@@ -127,7 +127,7 @@ function renderReturnTable(){
   returnsView.page=Math.min(Math.max(1,returnsView.page),Math.max(1,pageCount));
   const pageRows=rows.slice((returnsView.page-1)*returnsView.pageSize,returnsView.page*returnsView.pageSize);
   $('#returnCount').textContent=`${fmtNum(rows.length)} из ${fmtNum(all.length)} · активные за 3 месяца и завершённые за ${returnPeriodText(returnsView.data)}`;
-  // Заголовки создаются один раз — так сохраняются ширины столбцов (initResizableTables); при сортировке меняется только стрелка.
+  // Заголовки создаются один раз — так сохраняются ширины столбцов (column-widths.js); при сортировке меняется только стрелка.
   const head=$('#returnHead');
   if(!head.children.length)head.innerHTML=RETURN_COLUMNS.map(c=>`<th data-return-sort="${c.key}" data-col-key="${c.key}" data-col-width="${c.width}"${c.hint?` title="${escapeHtml(c.hint)}"`:''}>${escapeHtml(c.label)} <span class="rating-sort-arrow"></span></th>`).join('');
   head.querySelectorAll('[data-return-sort]').forEach(th=>{th.querySelector('.rating-sort-arrow').textContent=returnsView.sort.key===th.dataset.returnSort?(returnsView.sort.dir==='asc'?'↑':'↓'):'↕'});

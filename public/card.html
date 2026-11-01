@@ -9,6 +9,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Unbounded:wght@600;700&display=swap">
   <link rel="stylesheet" href="/sidebar.css">
+  <link rel="stylesheet" href="/tables.css">
   <style>
     /* Оформление — как у детализации товара и кампании: те же цвета, шрифты, панели и боковое меню. */
     :root{--ink:#17211d;--muted:#6f7974;--line:#e4e8e5;--bg:#f5f6f3;--purple:#7651e5;--red:#e76464;--green:#318f68;--shadow:0 15px 50px rgba(29,42,35,.07)}
@@ -197,6 +198,7 @@
   function escapeHtml(value) { return String(value ?? '').replace(/[&<>"]/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[char])); }
 </script>
 <script src="/notifications.js"></script>
+<script src="/column-widths.js"></script>
 <script src="/card.js"></script>
 </body>
 </html>

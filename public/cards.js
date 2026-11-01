@@ -92,7 +92,7 @@ function renderCards(){
   v.page=Math.min(Math.max(1,v.page),Math.max(1,pageCount));
   $('#cardsCount').textContent=`${fmtNum(rows.length)} из ${fmtNum(cards.length)}${data.demo?' · демо-данные':''} · обновлено ${cardDate(data.fetchedAt)}`;
   const columns=[['title','Товар',360],['subjectName','Предмет',150],['brand','Бренд',120],['sizes','Размеры',140],['photos','Медиа',110],['tags','Ярлыки',150],['verdict','Проверка',170],['updatedAt','Изменена',120]];
-  // Заголовки создаются один раз — так сохраняются ширины столбцов (initResizableTables); при сортировке меняется только стрелка.
+  // Заголовки создаются один раз — так сохраняются ширины столбцов (column-widths.js); при сортировке меняется только стрелка.
   const head=$('#cardsHead');
   if(!head.children.length){head.innerHTML=columns.map(([key,label,width])=>`<th data-card-sort="${key}" data-col-key="${key}" data-col-width="${width}">${label} <span class="rating-sort-arrow"></span></th>`).join('')}
   head.querySelectorAll('[data-card-sort]').forEach(th=>{th.querySelector('.rating-sort-arrow').textContent=v.sort.key===th.dataset.cardSort?(v.sort.dir==='asc'?'↑':'↓'):'↕'});
@@ -119,7 +119,7 @@ function renderCardTrash(){
   $('#cardsPagination').classList.add('hidden');
   if(!trash){$('#cardsCount').textContent='Загрузка корзины…';$('#cardsAlt').innerHTML='';$('#emptyCards').classList.add('hidden');return}
   $('#cardsCount').textContent=trash.error?`Не удалось загрузить: ${trash.error}`:`${fmtNum(trash.cards.length)} карточек · без остатков WB удаляет их через 30 дней в корзине`;
-  $('#cardsAlt').innerHTML='<table class="stock-table cards-alt-table" data-resizable="1"><thead><tr><th>Товар</th><th>Предмет</th><th>В корзине с</th><th>Удалится</th><th></th></tr></thead><tbody>'+trash.cards.map(card=>{const removeAt=card.trashedAt?new Date(Date.parse(card.trashedAt)+30*86_400_000).toISOString():'';
+  $('#cardsAlt').innerHTML='<table class="stock-table cards-alt-table" data-no-resize><thead><tr><th>Товар</th><th>Предмет</th><th>В корзине с</th><th>Удалится</th><th></th></tr></thead><tbody>'+trash.cards.map(card=>{const removeAt=card.trashedAt?new Date(Date.parse(card.trashedAt)+30*86_400_000).toISOString():'';
     return `<tr><td><div class="card-cell"><span><a class="card-title-link" href="${escapeHtml(cardLink(card.nmID))}" target="_blank" rel="noopener noreferrer">${escapeHtml(card.title||card.vendorCode||'Без названия')}</a><small>${escapeHtml(card.vendorCode||'—')} · ${escapeHtml(card.nmID)}</small></span></div></td><td>${escapeHtml(card.subjectName||'—')}</td><td>${cardDate(card.trashedAt)}</td><td>${removeAt?`${cardDate(removeAt).slice(0,8)}<small>если нет остатков</small>`:'—'}</td>`+
       `<td><button type="button" class="ghost card-recover" data-card-recover="${escapeHtml(card.nmID)}" data-card-name="${escapeHtml(card.vendorCode||card.nmID)}">Восстановить</button></td></tr>`}).join('')+'</tbody></table>';
   $('#emptyCards').classList.toggle('hidden',trash.cards.length>0||Boolean(trash.error));
@@ -133,7 +133,7 @@ function renderCardErrors(){
   if(!errors){$('#cardsCount').textContent='Загрузка…';$('#cardsAlt').innerHTML='';loadCardErrors();return}
   $('#cardsCount').textContent=errors.error?`Не удалось загрузить: ${errors.error}`:'Изменения, которые WB не принял после проверки. Чтобы ошибка ушла, сохраните карточку ещё раз с исправлениями.';
   const byVendor=new Map((cardsView.data?.cards||[]).map(card=>[card.vendorCode,card]));
-  $('#cardsAlt').innerHTML=(errors.items||[]).length?'<table class="stock-table cards-alt-table" data-resizable="1"><thead><tr><th>Артикул продавца</th><th>Предмет</th><th>Что не так</th><th>Когда</th></tr></thead><tbody>'+errors.items.map(item=>{const card=byVendor.get(item.vendorCode);
+  $('#cardsAlt').innerHTML=(errors.items||[]).length?'<table class="stock-table cards-alt-table" data-no-resize><thead><tr><th>Артикул продавца</th><th>Предмет</th><th>Что не так</th><th>Когда</th></tr></thead><tbody>'+errors.items.map(item=>{const card=byVendor.get(item.vendorCode);
     return `<tr><td>${card?`<a class="card-title-link" href="${escapeHtml(cardLink(card.nmID))}" target="_blank" rel="noopener noreferrer">${escapeHtml(item.vendorCode)}</a>`:escapeHtml(item.vendorCode)}</td><td>${escapeHtml(item.subject||'—')}</td><td class="card-errors">${item.errors.map(text=>`<div>${escapeHtml(text)}</div>`).join('')}</td><td>${cardDate(item.updatedAt)}</td></tr>`}).join('')+'</tbody></table>':'';
   $('#emptyCards').classList.toggle('hidden',(errors.items||[]).length>0||Boolean(errors.error));
   $('#emptyCardsTitle').textContent='Ошибок нет';
