@@ -153,7 +153,33 @@
   }
   function openProductModal(nmId){const rows=state.productDaily.filter(row=>String(row.nmId)===String(nmId)).sort((a,b)=>String(a.date).localeCompare(String(b.date)));const first=rows.find(row=>row.name)||rows[0]||{};$('#productModalTitle').textContent=`Артикул ${nmId} · ${first.name||'Статистика по дням'}`;$('#productModalBody').innerHTML=rows.length?`<tr class="total-row"><td>Итого · ${number(rows.length)} дн.</td>${['views','clicks','ctr','cpc','carts','orders','canceled','revenue','spend','drr'].map(k=>`<td>${esc(fmt(k,totals(rows)[k]))}</td>`).join('')}</tr>`+rows.map(r=>`<tr>${['date','views','clicks','ctr','cpc','carts','orders','canceled','revenue','spend','drr'].map(k=>`<td>${esc(fmt(k,r[k]))}</td>`).join('')}</tr>`).join(''):'<tr><td colspan="11" class="empty">Нет дневных данных по этому артикулу</td></tr>';$('#productModal').hidden=false}
   function closeProductModal(){$('#productModal').hidden=true}
-  function renderOptions(){const cards=[...new Map(state.productDaily.map(r=>[String(r.nmId),r])).values()];$('#chartOptions').innerHTML=chartMetrics.map(m=>`<label><input type="checkbox" data-chart-key="${m.key}" ${state.visibleMetrics.has(m.key)?'checked':''}> ${m.label}</label>`).join('')+cards.map((c,i)=>`<label><input type="checkbox" data-card-key="${esc(c.nmId)}" ${state.visibleCards.has(String(c.nmId))?'checked':''}> Артикул ${esc(c.nmId)}</label>`).join('');$('#chartOptions').querySelectorAll('[data-chart-key]').forEach(i=>i.onchange=()=>{i.checked?state.visibleMetrics.add(i.dataset.chartKey):state.visibleMetrics.delete(i.dataset.chartKey);renderChart()});$('#chartOptions').querySelectorAll('[data-card-key]').forEach(i=>i.onchange=()=>{i.checked?state.visibleCards.add(i.dataset.cardKey):state.visibleCards.delete(i.dataset.cardKey);renderChart()})}
+  // --- «График по датам» — как вариант 2 «Фокус при наведении» (public/charts-lab.html) ---
+  // Легенда — кнопки: наведение выделяет линию (остальные гаснут), клик скрывает или показывает её. На графике выделяется
+  // линия, ближайшая к курсору; в подсказке — все линии дня, выделенная ярче. Справа у линий — подпись с последним значением.
+  // Над графиком — флажки изменений кампании из Google Таблицы (chartEvents ниже).
+  const CARD_COLORS=['#b35b45','#5a7d9a','#8b6b3f','#277a70','#d77b28'];
+  function chartSeries(){
+    const cards=[...new Map(state.productDaily.map(r=>[String(r.nmId),r])).values()];
+    return [...chartMetrics.map(m=>({...m,hidden:!state.visibleMetrics.has(m.key)})),
+      ...cards.map((c,i)=>({key:`card:${c.nmId}`,label:`Артикул ${c.nmId}`,color:CARD_COLORS[i%CARD_COLORS.length],card:c.nmId,hidden:!state.visibleCards.has(String(c.nmId))}))];
+  }
+  function renderOptions(){
+    $('#chartOptions').innerHTML=chartSeries().map(s=>`<button type="button" class="chart-legend-item" data-series="${esc(s.key)}" aria-pressed="${!s.hidden}" title="${s.card?'Затраты по артикулу. ':''}Наведите — линия выделится, нажмите — скрыть или показать"><i style="background:${s.color}"></i>${esc(s.label)}</button>`).join('');
+  }
+  $('#chartOptions').addEventListener('click',event=>{
+    const item=event.target.closest('[data-series]');if(!item)return;
+    const key=item.dataset.series,set=key.startsWith('card:')?state.visibleCards:state.visibleMetrics,id=key.startsWith('card:')?key.slice(5):key;
+    set.has(id)?set.delete(id):set.add(id);item.setAttribute('aria-pressed',String(set.has(id)));renderChart();setChartFocus(set.has(id)?key:null);
+  });
+  $('#chartOptions').addEventListener('pointerover',event=>{const item=event.target.closest('[data-series]');setChartFocus(item&&item.getAttribute('aria-pressed')==='true'?item.dataset.series:null)});
+  $('#chartOptions').addEventListener('pointerleave',()=>setChartFocus(null));
+  $('#chartOptions').addEventListener('focusin',event=>{const item=event.target.closest('[data-series]');if(item)setChartFocus(item.dataset.series)});
+  $('#chartOptions').addEventListener('focusout',()=>setChartFocus(null));
+  function setChartFocus(key){
+    const wrap=$('.chart-wrap');wrap.classList.toggle('has-focus',Boolean(key));
+    wrap.querySelectorAll('[data-series]').forEach(node=>node.classList.toggle('is-focus',node.dataset.series===key));
+    $('#chartOptions').querySelectorAll('[data-series]').forEach(node=>node.classList.toggle('is-focus',node.dataset.series===key));
+  }
   // Линии разных порядков (показы — тысячи, заказы — единицы) делятся на группы по величине: внутри группы максимумы
   // отличаются меньше чем в 10 раз, и у группы общая шкала. Первая группа — левая ось, вторая — правая; остальные
   // рисуются каждая со своей шкалой без оси, их значения видны в подсказке и в пометке под графиком.
@@ -165,29 +191,163 @@
     for(const s of [...series].sort((a,b)=>maxOf(b)-maxOf(a))){const group=groups[groups.length-1];if(group&&maxOf(s)*CHART_GROUP_RATIO>=group.top)group.series.push(s);else groups.push({top:maxOf(s),series:[s]})}
     return groups.map(group=>({...group,max:chartNiceMax(group.top)}));
   }
+  // --- Флажки: изменения кампании из Google Таблицы ---
+  // «Реклама» — статус, название, места показа, состав товаров; «Ставки» — ставки товаров; «Ключевые слова» — минус-фразы;
+  // «Цены» — цены товаров кампании (цена до скидки, скидка, цена со скидкой; клубная — если отличается от цены со скидкой).
+  // Изменения одного вида за день — один флажок; день — по Москве, как дни статистики WB. Наведение — подробности.
+  const sheetEvents={campaign:[],prices:[],since:null,loaded:false,key:''};
+  const EVENT_KINDS={status:{color:'#318f68',label:'Статус'},settings:{color:'#58716e',label:'Настройки кампании'},bids:{color:'#d77b28',label:'Ставки'},minus:{color:'#7651e5',label:'Минус-фразы'},prices:{color:'#17211d',label:'Цены товаров'}};
+  const EVENT_ORDER=Object.keys(EVENT_KINDS);
+  const PRICE_WHATS=['Цена до скидки, ₽','Скидка продавца, %','Цена со скидкой, ₽','Цена в WB Клубе, ₽'];
+  const SETTING_LABELS={'Название':'✎ Название','Где показывается':'◎ Зоны показа','Артикулы WB':'▤ Товары'};
+  const mskDay=iso=>{const time=Date.parse(iso);return Number.isFinite(time)?new Date(time+3*3_600_000).toISOString().slice(0,10):''};
+  const dayOf=row=>String(row.date||'').slice(0,10);
+  // Товары кампании — из статистики по артикулам и из настроек (ставки); WB отдаёт историю цен до 50 артикулов за запрос.
+  function loadChartEvents(){
+    if(!window.SheetSync)return;
+    const id=params.get('id')||'',nmIds=[...new Set([...state.productDaily.map(row=>String(row.nmId)),...(state.setupProducts?.keys()||[])])].filter(value=>/^\d+$/.test(value)).slice(0,50),key=`${id}|${nmIds.join(',')}`;
+    if(sheetEvents.key===key)return;
+    Object.assign(sheetEvents,{key,campaign:[],prices:[],loaded:false});
+    SheetSync.load(`/api/sheet-history?${new URLSearchParams({id,sections:'Реклама,Ставки,Ключевые слова'})}`,data=>{if(sheetEvents.key!==key||!data?.configured)return;Object.assign(sheetEvents,{campaign:data.items||[],since:data.since||null,loaded:true});renderChart()});
+    if(nmIds.length)SheetSync.load(`/api/sheet-history?${new URLSearchParams({id:nmIds.join(','),sections:'Цены'})}`,data=>{if(sheetEvents.key!==key||!data?.configured)return;sheetEvents.prices=data.items||[];renderChart()});
+  }
+  const sheetValue=(item,value)=>{
+    if(value===''||value==null||value==='—')return item.section==='Ставки'?'выкл.':'—';
+    const n=Number(value);if(!Number.isFinite(n))return String(value).length>60?`${String(value).slice(0,57)}…`:String(value);
+    return `${n.toLocaleString('ru-RU',{maximumFractionDigits:2})}${/₽/.test(item.what||'')?' ₽':/%/.test(item.what||'')?'%':''}`;
+  };
+  const shortValue=value=>{const n=Number(value);return value===''||value==null||value==='—'?'выкл.':Number.isFinite(n)?Math.round(n).toLocaleString('ru-RU'):String(value)};
+  function productLabel(nmId){const product=state.setupProducts?.get(String(nmId))||state.productDaily.find(row=>String(row.nmId)===String(nmId));return product?.vendorCode||product?.name||`арт. ${nmId}`}
+  function eventLine(item){
+    const what=String(item.what||'').replace(/, (₽|%)$/,''),change=`${sheetValue(item,item.before)} → ${sheetValue(item,item.after)}`;
+    const product=String(item.title||'').split(' · ').slice(1).join(' · ');
+    if(item.section==='Ставки')return `${what}${product?` · ${product}`:''}: ${change}`;
+    if(item.section==='Ключевые слова'){const text=what.length>140?`${what.slice(0,137)}…`:what;return `${text}${product?` · ${product}`:''} (${item.before} → ${item.after})`}
+    if(item.section==='Цены')return `${productLabel(item.id)} · ${what}: ${change}`;
+    if(/^Артикулы WB/.test(item.what||''))return `Товары: ${[item.before,item.after].filter(value=>value&&value!=='—').join('; ')}`;
+    return `${what}: ${change}`;
+  }
+  function eventLabel(group){
+    const items=group.items,last=items[items.length-1];
+    if(group.kind==='status'){
+      // Пауза и запуск в один день (например, на ночь) — «❚❚ Пауза 03:45–09:45»: к концу дня статус тот же, что был.
+      const after=String(last.after||''),first=items[0],time=item=>new Date(item.at).toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit'});
+      if(items.length===2&&String(first.before)===after)return `${after==='Активна'?'❚❚ Пауза':'▶ Работала'} ${time(first)}–${time(last)}`;
+      if(items.length>2&&String(first.before)===after)return `↺ Статус ×${items.length}`;
+      return `${after==='Активна'?'▶ Запущена':after==='На паузе'?'❚❚ Пауза':after==='Завершена'?'■ Завершена':`● ${after||'Статус'}`}${items.length>1?` ×${items.length}`:''}`;
+    }
+    if(group.kind==='settings'){const kinds=[...new Set(items.map(item=>String(item.what).split(':')[0]))];return kinds.length>1?`⚙ Настройки · ${kinds.length}`:SETTING_LABELS[kinds[0]]||`⚙ ${kinds[0]}`}
+    if(group.kind==='bids')return items.length===1?`↕ Ставка ${shortValue(last.before)} → ${shortValue(last.after)}`:`↕ Ставки · ${items.length}`;
+    if(group.kind==='minus'){const diff=items.reduce((sum,item)=>sum+(Number(item.after)||0)-(Number(item.before)||0),0);return `⊘ Минус-фразы${diff?` ${diff>0?'+':'−'}${Math.abs(diff)}`:''}`}
+    const main=items.filter(item=>item.what==='Цена со скидкой, ₽'),articles=new Set(items.map(item=>String(item.id))).size;
+    return articles===1&&main.length===1?`₽ ${shortValue(main[0].before)} → ${shortValue(main[0].after)}`:`₽ Цены · ${articles} арт.`;
+  }
+  function chartEvents(days){
+    const index=new Map(days.map((day,i)=>[day,i])),groups=new Map();
+    const add=(kind,item)=>{const day=mskDay(item.at);if(!index.has(day))return;const key=`${day}|${kind}`;if(!groups.has(key))groups.set(key,{kind,day:index.get(day),date:day,items:[]});groups.get(key).items.push(item)};
+    for(const item of sheetEvents.campaign){
+      if(item.section==='Реклама')add(['Статус','Появилось в списке'].includes(item.what)?'status':'settings',item);
+      else if(item.section==='Ставки')add('bids',item);
+      else if(item.section==='Ключевые слова')add('minus',item);
+    }
+    const priceKey=item=>[item.at,item.id,item.before,item.after].join('|'),discounted=new Set(sheetEvents.prices.filter(item=>item.what==='Цена со скидкой, ₽').map(priceKey));
+    for(const item of sheetEvents.prices)if(PRICE_WHATS.includes(item.what)&&!(item.what==='Цена в WB Клубе, ₽'&&discounted.has(priceKey(item))))add('prices',item);
+    return [...groups.values()].map(group=>{group.items.sort((a,b)=>String(a.at).localeCompare(String(b.at)));return {...group,text:eventLabel(group),color:EVENT_KINDS[group.kind].color}})
+      .sort((a,b)=>a.day-b.day||EVENT_ORDER.indexOf(a.kind)-EVENT_ORDER.indexOf(b.kind));
+  }
+
+  // Шкалы — группы по величине (см. chartGroups): первая — левая ось, вторая — правая, остальные со своей шкалой без оси.
+  // График рисуется в настоящую ширину блока (не меньше 640 px — на телефоне прокручивается вбок).
+  const chartView={rows:[],idx:null};
+  const endValue=(s,v)=>s.card||['spend','revenue'].includes(s.key)?`${chartAxisNumber(v)} ₽`:s.key==='drr'?percent(v):s.key==='avgPosition'?Number(v).toLocaleString('ru-RU',{maximumFractionDigits:1}):chartAxisNumber(v);
   function renderChart(){
-    const svg=$('#dailyChart'),note=$('#chartScaleNote'),rows=[...state.rows].sort((a,b)=>String(a.date).localeCompare(String(b.date))),left=64,right=64,top=20,bottom=42,w=1200,h=290,pw=w-left-right,ph=h-top-bottom;
-    const cards=[...new Map(state.productDaily.map(r=>[String(r.nmId),r])).values()];const selected=chartMetrics.filter(m=>state.visibleMetrics.has(m.key));
-    const series=[...selected,...cards.filter(c=>state.visibleCards.has(String(c.nmId))).map((c,i)=>({key:`card:${c.nmId}`,label:`Артикул ${c.nmId}`,color:['#b35b45','#5a7d9a','#8b6b3f','#277a70','#d77b28'][i%5],card:c.nmId}))];
-    if(!rows.length||!series.length){svg.innerHTML='<text x="600" y="145" text-anchor="middle" class="chart-axis">Выберите данные для отображения</text>';note.innerHTML='';return}
+    const svg=$('#dailyChart'),wrap=$('.chart-wrap'),note=$('#chartScaleNote'),tip=$('#chartTooltip');
+    const rows=[...state.rows].sort((a,b)=>dayOf(a).localeCompare(dayOf(b))),series=chartSeries().filter(s=>!s.hidden);
+    const W=Math.max(640,Math.floor(wrap.clientWidth-40)),wide=W>=820,n=rows.length;
+    tip.hidden=true;chartView.rows=[];svg.style.width=`${W}px`;
+    if(!n||!series.length){svg.setAttribute('viewBox',`0 0 ${W} 200`);svg.setAttribute('height','200');svg.innerHTML=`<text x="${W/2}" y="100" text-anchor="middle" class="chart-axis">${n?'Включите линии в легенде над графиком':'Нет данных за период'}</text>`;note.innerHTML='';return}
     const byDay=new Map(state.productDaily.map(r=>[`${r.nmId}:${r.date}`,r]));
     const value=(s,r)=>chartValue(s,r,byDay),maxOf=s=>Math.max(0,...rows.map(r=>value(s,r)).filter(v=>v!=null));
     const groups=chartGroups(series,maxOf),scale=new Map(groups.flatMap(group=>group.series.map(s=>[s.key,group.max]))),[leftAxis,rightAxis]=groups;
-    const x=i=>left+(rows.length===1?pw/2:i*pw/(rows.length-1)),y=(s,v)=>top+ph-Number(v||0)/scale.get(s.key)*ph;
+    const left=60,axisR=rightAxis?56:12,labelsW=wide?156:0,right=axisR+labelsW,pw=W-left-right,x=i=>left+(n===1?pw/2:i*pw/(n-1));
+    // Флажки — ряды над графиком: наезжающий флажок поднимается в следующий ряд.
+    const events=chartEvents(rows.map(dayOf)),ends=[];
+    for(const event of events){
+      event.width=event.text.length*6.6+14;event.x=x(event.day);event.fx=Math.max(left,Math.min(event.x-8,left+pw-event.width));
+      let level=ends.findIndex(end=>end<event.fx-4);if(level<0){level=ends.length;ends.push(0)}ends[level]=event.fx+event.width;event.level=level;
+    }
+    const flagBand=ends.length?ends.length*20+4:0,top=flagBand+(rightAxis?26:12),ph=250,bottom=top+ph,H=bottom+34;
+    const y=(s,v)=>bottom-Number(v||0)/scale.get(s.key)*ph;
+    svg.setAttribute('viewBox',`0 0 ${W} ${H}`);svg.setAttribute('height',String(H));
     // Подписи оси — цветом её линии; если на оси несколько линий, цвет нейтральный, а линии перечислены над осью своими цветами.
     const axisColor=group=>group.series.length===1?group.series[0].color:'#58716e';
-    const caption=(group,side)=>`<text class="chart-axis-caption" x="${side==='left'?left:w-right}" y="${top-8}" text-anchor="${side==='left'?'start':'end'}">${group.series.map(s=>`<tspan style="fill:${s.color}">${esc(s.label)}</tspan>`).join('<tspan style="fill:#9aaba8"> · </tspan>')}</text>`;
-    const grid=[0,.25,.5,.75,1].map(r=>{const gy=top+ph-r*ph;return `<line class="chart-grid" x1="${left}" x2="${w-right}" y1="${gy}" y2="${gy}"/><text class="chart-axis" x="${left-8}" y="${gy+4}" text-anchor="end" style="fill:${axisColor(leftAxis)}">${esc(chartAxisNumber(leftAxis.max*r))}</text>`+(rightAxis?`<text class="chart-axis" x="${w-right+8}" y="${gy+4}" style="fill:${axisColor(rightAxis)}">${esc(chartAxisNumber(rightAxis.max*r))}</text>`:'')}).join('');
-    const labels=rows.map((r,i)=>i%Math.max(1,Math.ceil(rows.length/8))===0?`<text class="chart-axis" x="${x(i)}" y="${h-14}" text-anchor="middle">${esc(date(r.date))}</text>`:'').join('');
+    const caption=(group,side)=>`<text class="chart-axis-caption" x="${side==='left'?left:left+pw}" y="${top-8}" text-anchor="${side==='left'?'start':'end'}">${group.series.map(s=>`<tspan style="fill:${s.color}">${esc(s.label)}</tspan>`).join('<tspan style="fill:#9aaba8"> · </tspan>')}</text>`;
+    const grid=[0,.25,.5,.75,1].map(r=>{const gy=bottom-r*ph;return `<line class="${r?'chart-grid':'chart-baseline'}" x1="${left}" x2="${left+pw}" y1="${gy}" y2="${gy}"/><text class="chart-axis" x="${left-8}" y="${gy+4}" text-anchor="end" style="fill:${axisColor(leftAxis)}">${esc(chartAxisNumber(leftAxis.max*r))}</text>`+(rightAxis?`<text class="chart-axis" x="${left+pw+8}" y="${gy+4}" style="fill:${axisColor(rightAxis)}">${esc(chartAxisNumber(rightAxis.max*r))}</text>`:'')}).join('');
+    const every=Math.max(1,Math.ceil(n/(W<760?5:8)));
+    const labels=rows.map((r,i)=>(n-1-i)%every===0?`<text class="chart-axis" x="${x(i)}" y="${bottom+20}" text-anchor="middle">${esc(date(dayOf(r)).slice(0,5))}</text>`:'').join('');
+    const flags=events.map((event,i)=>{const fy=4+event.level*20;return `<g class="chart-flag" data-flag="${i}" tabindex="0" role="button" aria-label="${esc(`${date(event.date)}: ${event.text}`)}"><line x1="${event.x}" x2="${event.x}" y1="${fy+16}" y2="${bottom}" stroke="${event.color}" stroke-width="1.25" stroke-dasharray="3 3"/><rect x="${event.fx}" y="${fy}" width="${event.width}" height="16" rx="4" fill="${event.color}"/><text class="chart-flag-text" x="${event.fx+7}" y="${fy+12}">${esc(event.text)}</text></g>`}).join('');
     // Дни без значения (null) рвут линию: отрезки рисуются отдельно, одиночная точка — кружком.
     const lines=series.map(s=>{const parts=[];let part=[];rows.forEach((r,i)=>{const v=value(s,r);if(v==null){if(part.length)parts.push(part);part=[];return}part.push([x(i),y(s,v)])});if(part.length)parts.push(part);
-      return parts.map(points=>points.length===1?`<circle class="chart-dot" cx="${points[0][0]}" cy="${points[0][1]}" r="3.5" fill="${s.color}"/>`:`<polyline class="chart-line" points="${points.map(p=>p.join(',')).join(' ')}" stroke="${s.color}"/>`).join('')}).join('');
-    svg.innerHTML=`${grid}${rightAxis?caption(leftAxis,'left')+caption(rightAxis,'right'):''}${labels}${lines}<rect class="chart-hit-area" x="${left}" y="${top}" width="${pw}" height="${ph}" fill="transparent"/>`;
+      return `<g class="chart-series" data-series="${esc(s.key)}">${parts.map(points=>points.length===1?`<circle class="chart-dot" cx="${points[0][0]}" cy="${points[0][1]}" r="3.5" fill="${s.color}"/>`:`<polyline class="chart-line" points="${points.map(p=>p.join(',')).join(' ')}" stroke="${s.color}"/>`).join('')}</g>`}).join('');
+    // Подписи на концах линий: название и последнее значение; наезжающие раздвигаются с выносной линией.
+    let endLabels='';
+    if(wide){
+      const lx=left+pw+axisR+10,items=series.map(s=>{const li=rows.findLastIndex(r=>value(s,r)!=null);return li<0?null:{s,li,y0:y(s,value(s,rows[li])),ly:y(s,value(s,rows[li]))}}).filter(Boolean).sort((a,b)=>a.y0-b.y0);
+      for(let i=1;i<items.length;i++)items[i].ly=Math.max(items[i].ly,items[i-1].ly+16);
+      if(items.length&&items.at(-1).ly>bottom){items.at(-1).ly=bottom;for(let i=items.length-2;i>=0;i--)items[i].ly=Math.min(items[i].ly,items[i+1].ly-16)}
+      endLabels=items.map(item=>{const ex=x(item.li),name=item.s.label.length>16?`${item.s.label.slice(0,15)}…`:item.s.label;
+        return `<g class="chart-end" data-series="${esc(item.s.key)}">${Math.abs(item.ly-item.y0)>2||item.li<n-1?`<path class="chart-leader" d="M${ex+6},${item.y0}L${lx-4},${item.ly}"/>`:''}<circle class="chart-end-dot" cx="${ex}" cy="${item.y0}" r="4" fill="${item.s.color}"/><text x="${lx}" y="${item.ly+4}">${esc(name)}<tspan class="v" dx="6">${esc(endValue(item.s,value(item.s,rows[item.li])))}</tspan></text></g>`}).join('');
+    }
+    const dots=series.map(s=>`<circle r="4.5" fill="${s.color}" visibility="hidden"/>`).join('');
+    svg.innerHTML=`${grid}${rightAxis?caption(leftAxis,'left')+caption(rightAxis,'right'):''}${labels}<g class="chart-flags">${flags}</g><g class="chart-lines">${lines}</g>${endLabels}`+
+      `<g class="chart-hover" visibility="hidden"><line class="chart-hover-line" y1="${top}" y2="${bottom}"/>${dots}</g><rect class="chart-hit-area" x="${left}" y="${top}" width="${pw}" height="${ph+24}" tabindex="0" aria-label="График по датам: стрелки влево и вправо — по дням"/>`;
     const own=groups.slice(2).flatMap(group=>group.series.map(s=>`<span><i style="background:${s.color}"></i>${esc(s.label)} — до ${esc(chartAxisNumber(group.max))}${s.key==='drr'?'%':''}</span>`));
-    note.innerHTML=own.length?`Со своей шкалой, без оси: ${own.join(' ')}`:'';
-    bindHover(rows,x,series,byDay,w,top,top+ph);
+    const since=sheetEvents.since?` (таблица следит с ${new Date(sheetEvents.since).toLocaleDateString('ru-RU')})`:'';
+    note.innerHTML=[own.length?`Со своей шкалой, без оси: ${own.join(' ')}`:'',sheetEvents.loaded?`Флажки — изменения из Google Таблицы${since}: ${EVENT_ORDER.map(kind=>`<span><i style="background:${EVENT_KINDS[kind].color}"></i>${EVENT_KINDS[kind].label.toLowerCase()}</span>`).join(' ')}`:''].filter(Boolean).join('<br>');
+    Object.assign(chartView,{rows,series,events,value,byDay,x,y,n,W,top,bottom,left,pw,idx:null});
+    // Перерисовка (догрузились изменения из таблицы, автообновление) сбрасывает выделение — иначе все линии остались бы бледными.
+    setChartFocus(null);
   }
-  function bindHover(rows,x,series,byDay,w,top,bottom){const svg=$('#dailyChart'),tip=$('#chartTooltip'),wrap=$('.chart-wrap');svg.onpointermove=e=>{const point=svg.createSVGPoint();point.x=e.clientX;point.y=e.clientY;const matrix=svg.getScreenCTM();if(!matrix)return;const local=point.matrixTransform(matrix.inverse()),vx=Math.max(0,Math.min(w,local.x));let idx=0,best=Infinity;rows.forEach((_,i)=>{const d=Math.abs(x(i)-vx);if(d<best){best=d;idx=i}});const row=rows[idx];tip.innerHTML=`<strong>${esc(date(row.date))}</strong>`+series.map(s=>{const v=chartValue(s,row,byDay);return `<span><i style="background:${s.color}"></i>${s.label}: <b>${v==null?'— (нет рекламной выручки)':esc(fmt(s.card?'spend':s.key,v))}</b></span>`}).join('');tip.hidden=false;const wrapRect=wrap.getBoundingClientRect(),svgRect=svg.getBoundingClientRect(),px=svgRect.left-wrapRect.left+(x(idx)/w)*svgRect.width;tip.style.left=`${Math.max(12,Math.min(wrap.clientWidth-tip.offsetWidth-12,px))}px`;let line=svg.querySelector('.chart-hover-line');if(!line){svg.insertAdjacentHTML('beforeend','<line class="chart-hover-line" y1="20" y2="248"/>');line=svg.querySelector('.chart-hover-line')}line.setAttribute('x1',x(idx));line.setAttribute('x2',x(idx))};svg.onpointerleave=()=>tip.hidden=true}
+  // Подсказка: дата, значения всех линий (выделенная — ярко, остальные приглушены) и изменения этого дня.
+  function showChartDay(i,py){
+    const v=chartView,svg=$('#dailyChart'),tip=$('#chartTooltip');if(!v.rows.length)return;
+    const idx=Math.max(0,Math.min(v.n-1,i)),cx=v.x(idx),row=v.rows[idx],hover=svg.querySelector('.chart-hover'),dots=[...hover.querySelectorAll('circle')];v.idx=idx;
+    hover.setAttribute('visibility','visible');const line=hover.querySelector('line');line.setAttribute('x1',cx);line.setAttribute('x2',cx);
+    let focus=null,best=22;
+    v.series.forEach((s,k)=>{const value=v.value(s,row),dot=dots[k];if(value==null){dot.setAttribute('visibility','hidden');return}const cy=v.y(s,value);dot.setAttribute('visibility','visible');dot.setAttribute('cx',cx);dot.setAttribute('cy',cy);if(py!=null&&Math.abs(cy-py)<best){best=Math.abs(cy-py);focus=s.key}});
+    if(py!=null)setChartFocus(focus);
+    const day=new Date(`${dayOf(row)}T00:00:00Z`).toLocaleDateString('ru-RU',{weekday:'short',day:'numeric',month:'long',timeZone:'UTC'});
+    const dayEvents=v.events.filter(event=>event.day===idx);
+    tip.innerHTML=`<div class="t-date">${esc(day)}</div>`+v.series.map(s=>{const value=v.value(s,row);return `<div class="t-row${focus&&s.key!==focus?' dim':''}"><i style="background:${s.color}"></i><b>${value==null?'—':esc(fmt(s.card?'spend':s.key,value))}</b><span>${esc(s.label)}${value==null&&s.key==='drr'?' — нет выручки':''}</span></div>`}).join('')+
+      (dayEvents.length?`<div class="t-foot">${dayEvents.map(event=>`<span><i style="background:${event.color}"></i>${esc(event.text)}</span>`).join('')}</div>`:'');
+    placeChartTip(cx,v.top);
+  }
+  // Подсказка — в панели графика (вне прокрутки): координаты точки графика переводятся в координаты панели.
+  function placeChartTip(cx,top){
+    // offsetParent у скрытой подсказки — null: сначала показать, потом мерить.
+    const svg=$('#dailyChart'),tip=$('#chartTooltip');tip.hidden=false;const panel=tip.offsetParent;
+    const svgRect=svg.getBoundingClientRect(),panelRect=(panel||document.body).getBoundingClientRect(),width=tip.offsetWidth||220;
+    const at=svgRect.left-panelRect.left+cx,visibleRight=Math.min(svgRect.right,panelRect.right)-panelRect.left;
+    tip.style.left=`${Math.max(8,at+16+width>visibleRight?at-16-width:at+16)}px`;tip.style.top=`${svgRect.top-panelRect.top+top}px`;
+  }
+  function hideChartDay(){const hover=$('#dailyChart').querySelector('.chart-hover');hover?.setAttribute('visibility','hidden');$('#chartTooltip').hidden=true;chartView.idx=null;setChartFocus(null)}
+  // Флажок: что изменилось в этот день — по времени (местное), до 14 строк.
+  function showChartFlag(flag){
+    const event=chartView.events?.[Number(flag.dataset.flag)];if(!event)return;
+    const tip=$('#chartTooltip'),lines=event.items.slice(0,14).map(item=>`<div class="t-event"><time>${esc(new Date(item.at).toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit'}))}</time><span>${esc(eventLine(item))}</span></div>`).join('');
+    tip.innerHTML=`<div class="t-date"><i style="background:${event.color}"></i>${esc(EVENT_KINDS[event.kind].label)} · ${esc(date(event.date))}</div>${lines}${event.items.length>14?`<div class="t-more">и ещё ${event.items.length-14}</div>`:''}<div class="t-hint">Из Google Таблицы, время местное</div>`;
+    placeChartTip(event.x,4+event.level*20+20);
+  }
+  {
+    const svg=$('#dailyChart'),pick=event=>{const rect=svg.getBoundingClientRect(),v=chartView;return [Math.round((event.clientX-rect.left-v.left)/v.pw*(v.n-1)),event.clientY-rect.top]};
+    svg.addEventListener('pointermove',event=>{if(!event.target.closest('.chart-hit-area')||!chartView.rows.length)return;const [i,py]=pick(event);showChartDay(i,py)});
+    svg.addEventListener('pointerout',event=>{if(event.target.closest('.chart-hit-area')&&!event.relatedTarget?.closest?.('.chart-hit-area'))hideChartDay();if(event.target.closest('.chart-flag'))$('#chartTooltip').hidden=true});
+    svg.addEventListener('pointerover',event=>{const flag=event.target.closest('.chart-flag');if(flag)showChartFlag(flag)});
+    svg.addEventListener('focusin',event=>{const flag=event.target.closest('.chart-flag');if(flag)showChartFlag(flag)});
+    svg.addEventListener('focusout',()=>hideChartDay());
+    svg.addEventListener('keydown',event=>{if(!event.target.closest('.chart-hit-area')||!['ArrowLeft','ArrowRight'].includes(event.key))return;event.preventDefault();const step=event.key==='ArrowLeft'?-1:1;showChartDay((chartView.idx??(step<0?chartView.n:-1))+step)});
+    let chartWidth=0;new ResizeObserver(()=>{const width=$('.chart-wrap').clientWidth;if(width&&width!==chartWidth){chartWidth=width;renderChart()}}).observe($('.chart-wrap'));
+  }
   const MONTH_NAMES=['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
   const isoDate=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
   const exportState={presets:[],started:0,timer:0,chunks:0,index:0,phase:'',reason:'',waitUntil:0,failed:0};
@@ -971,7 +1131,8 @@
     if(!result)throw new Error('Выгрузка прервалась без результата');
     exportState.loaded={from,to};
     state.rows=result.campaign.daily||[];state.productDaily=result.productDaily||[];
-    renderMeta(result.campaign);renderSummary(result.campaign);renderSetup(result.setup);renderOptions();renderChart();renderTable();renderProductTable();renderCampaignMinis();loadPositions(result.activePeriod||result.period,silent);
+    state.setupProducts=new Map((result.setup?.bids||[]).map(item=>[String(item.nmId),{name:item.name,vendorCode:item.vendorCode}]));
+    renderMeta(result.campaign);renderSummary(result.campaign);renderSetup(result.setup);renderOptions();renderChart();renderTable();renderProductTable();renderCampaignMinis();loadPositions(result.activePeriod||result.period,silent);loadChartEvents();
     $('#campaignTitle').textContent=result.campaign.name||`Кампания #${result.campaign.id}`;document.title=`${$('#campaignTitle').textContent} — WB Pulse`;renderCampaignHeader(result);
     state.period=result.activePeriod||result.period;
     if(silent){if(!keywords.loading)loadKeywords(state.period,true,true)}else{loadKeywords(state.period);loadPrevious(result.period,result.campaign)}

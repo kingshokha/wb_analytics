@@ -194,22 +194,50 @@
     .panel{margin-bottom:16px;overflow:hidden;border:1px solid var(--line);border-radius:14px;background:white;box-shadow:var(--shadow)}
     .panel-head{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:19px 20px 15px;border-bottom:1px solid var(--line)}
     /* График */
-    .chart-controls{display:flex;flex-wrap:wrap;gap:8px;padding:14px 20px;border-bottom:1px solid var(--line)}
-    .chart-controls label{display:flex;align-items:center;gap:7px;padding:7px 11px;border:1px solid var(--line);border-radius:20px;background:#fafbfa;color:var(--ink);font-size:11px;font-weight:700;cursor:pointer}
-    .chart-controls label:has(input:checked){border-color:#d9cffb;background:#f0ebff;color:#5b36c8}
-    .chart-controls input{accent-color:var(--purple)}
+    /* «График по датам» — как вариант 2 «Фокус при наведении» (charts-lab.html): легенда-кнопки, выделение линии, флажки изменений */
+    .chart-controls{display:flex;flex-wrap:wrap;gap:4px 8px;padding:12px 20px;border-bottom:1px solid var(--line)}
+    .chart-legend-item{display:inline-flex;align-items:center;gap:8px;padding:5px 9px;border:0;border-radius:7px;background:none;color:var(--ink);font:700 12px Manrope,Arial,sans-serif;cursor:pointer}
+    .chart-legend-item i{width:16px;height:3px;border-radius:2px;flex:0 0 16px}
+    .chart-legend-item:hover,.chart-legend-item:focus-visible,.chart-legend-item.is-focus{background:#f4f2fc;outline:0}
+    .chart-legend-item[aria-pressed="false"]{color:var(--muted);font-weight:600}
+    .chart-legend-item[aria-pressed="false"] i{background:#cfd5d1!important}
+    /* Подсказка — вне прокручиваемого .chart-wrap: иначе она добавляла бы ему полосу прокрутки, менялась ширина и график перерисовывался. */
+    .chart-panel{position:relative;overflow:visible}
     .chart-wrap{position:relative;padding:14px 20px;overflow:auto}
-    .chart-wrap svg{display:block;width:100%;min-width:720px;height:290px}
-    .chart-grid{stroke:#eceeed;stroke-width:1}
-    .chart-line{fill:none;stroke-width:2.5;stroke-linejoin:round;stroke-linecap:round}
-    .chart-dot{stroke:#fff;stroke-width:1.5}
-    .chart-hover-line{stroke:#7c8580;stroke-width:1;stroke-dasharray:4 4;pointer-events:none}
-    .chart-hit-area{cursor:crosshair}
-    .chart-tooltip{position:absolute;z-index:4;top:18px;min-width:190px;max-width:280px;padding:11px 12px;border-radius:11px;background:#17211df2;color:white;box-shadow:0 12px 35px #17211d38;pointer-events:none;font-size:11px}
-    .chart-tooltip strong{display:block;margin-bottom:7px;font-size:11px}
-    .chart-tooltip span{display:flex;align-items:center;gap:6px;padding:3px 0;color:#cbd3cf;font-size:11px}
-    .chart-tooltip span i{width:7px;height:7px;border-radius:50%;flex:0 0 auto}
-    .chart-tooltip span b{margin-left:auto;color:white;font-size:11px}
+    .chart-wrap svg{display:block;min-width:640px;overflow:visible}
+    .chart-grid{stroke:#eef1ee;stroke-width:1}
+    .chart-baseline{stroke:#d3d9d5;stroke-width:1}
+    .chart-series{transition:opacity .18s}
+    .chart-line{fill:none;stroke-width:2;stroke-linejoin:round;stroke-linecap:round;transition:stroke-width .18s}
+    .chart-dot,.chart-end-dot,.chart-hover circle{stroke:#fff;stroke-width:2}
+    .chart-wrap.has-focus .chart-series:not(.is-focus){opacity:.13}
+    .chart-wrap.has-focus .chart-series.is-focus .chart-line{stroke-width:2.75}
+    .chart-wrap.has-focus .chart-end:not(.is-focus){opacity:.3}
+    .chart-end text{font-size:12px;font-weight:700;fill:var(--ink)}
+    .chart-end tspan.v{fill:var(--muted);font-weight:600}
+    .chart-leader{fill:none;stroke:#d3d9d5;stroke-width:1}
+    .chart-hover-line{stroke:#a7afaa;stroke-width:1;pointer-events:none}
+    .chart-hover{pointer-events:none}
+    .chart-hit-area{fill:transparent;cursor:crosshair;outline:none}
+    .chart-hit-area:focus-visible{stroke:var(--purple);stroke-width:1}
+    .chart-flag{cursor:help;outline:none}
+    .chart-flag:hover rect,.chart-flag:focus-visible rect{filter:brightness(1.25)}
+    .chart-flag-text{fill:#fff;font-size:11px;font-weight:700;pointer-events:none}
+    .chart-wrap.has-focus .chart-flags{opacity:.35}
+    .chart-tooltip{position:absolute;z-index:4;min-width:200px;max-width:320px;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:#fff;box-shadow:0 10px 30px #17211d21;pointer-events:none;font-size:12.5px;color:var(--ink)}
+    .chart-tooltip .t-date{display:flex;align-items:center;gap:7px;margin-bottom:6px;color:var(--muted);font-size:11.5px;font-weight:700}
+    .chart-tooltip .t-date i{width:9px;height:9px;border-radius:3px}
+    .chart-tooltip .t-row{display:grid;grid-template-columns:14px auto minmax(0,1fr);align-items:center;gap:8px;padding:2px 0;transition:opacity .12s}
+    .chart-tooltip .t-row i{width:14px;height:3px;border-radius:2px}
+    .chart-tooltip .t-row b{font-weight:800;white-space:nowrap;font-variant-numeric:tabular-nums}
+    .chart-tooltip .t-row span{color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .chart-tooltip .t-row.dim{opacity:.45}
+    .chart-tooltip .t-foot{display:grid;gap:3px;margin-top:6px;padding-top:6px;border-top:1px solid var(--line);font-size:11.5px;font-weight:700}
+    .chart-tooltip .t-foot span{display:flex;align-items:center;gap:6px}
+    .chart-tooltip .t-foot i{width:8px;height:8px;border-radius:2px;flex:0 0 8px}
+    .chart-tooltip .t-event{display:grid;grid-template-columns:38px minmax(0,1fr);gap:6px;padding:2px 0;font-size:12px;line-height:1.4}
+    .chart-tooltip .t-event time{color:var(--muted);font-variant-numeric:tabular-nums}
+    .chart-tooltip .t-more,.chart-tooltip .t-hint{margin-top:5px;color:var(--muted);font-size:11px}
     .chart-axis{fill:#8a938f;font-size:11px}
     .chart-axis-caption{font-size:11px;font-weight:800}
     .chart-scale-note{padding:0 20px 14px;font-size:11px}
@@ -367,7 +395,7 @@
     @media(max-width:1200px){.summary{grid-template-columns:repeat(3,minmax(0,1fr))}.page-head{flex-wrap:wrap}.export-controls{justify-content:flex-start}}
     @media(max-width:800px){.setup-panel .panel-head{flex-wrap:wrap}.setup-head{justify-content:flex-start}}
     @media(max-width:980px){main{padding:28px 24px 90px}}
-    @media(max-width:680px){main{padding:20px 14px 100px}h1{font-size:21px}.summary{grid-template-columns:1fr 1fr}.metric strong{font-size:15px}.chart-wrap{padding:10px}.chart-wrap svg{min-width:680px}.keyword-actions{left:50%;width:calc(100% - 20px);flex-wrap:wrap;justify-content:center}}
+    @media(max-width:680px){main{padding:20px 14px 100px}h1{font-size:21px}.summary{grid-template-columns:1fr 1fr}.metric strong{font-size:15px}.chart-wrap{padding:10px}.chart-controls{padding:10px}.keyword-actions{left:50%;width:calc(100% - 20px);flex-wrap:wrap;justify-content:center}}
   </style>
   <link rel="stylesheet" href="/date-range.css">
   <link rel="stylesheet" href="/mini-charts.css">
@@ -404,7 +432,8 @@
     <section class="panel chart-panel">
       <div class="panel-head"><h2>График по датам</h2></div>
       <div class="chart-controls" id="chartOptions" aria-label="Данные графика"></div>
-      <div class="chart-wrap"><svg id="dailyChart" viewBox="0 0 1200 290" role="img" aria-label="Линейный график рекламной кампании"></svg><div id="chartTooltip" class="chart-tooltip" hidden></div></div>
+      <div class="chart-wrap"><svg id="dailyChart" viewBox="0 0 1200 300" role="img" aria-label="Линейный график рекламной кампании"></svg></div>
+      <div id="chartTooltip" class="chart-tooltip" hidden></div>
       <p class="chart-scale-note" id="chartScaleNote"></p>
     </section>
     <section class="panel minis-panel">
