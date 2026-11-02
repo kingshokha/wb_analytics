@@ -79,9 +79,11 @@ const FULLSTATS_INTERVAL = 20_500;
 const HISTORY_MAX_MONTHS = 12;
 const fullstatsQueues = new Map();
 const fullstatsLastCall = new Map();
-const AD_BUDGET_STATUSES = new Set([9, 11]);
-const AD_BUDGET_CHUNK = 4;
-const AD_BUDGET_LIMIT = 100;
+const AD_BUDGET_URL = 'https://advert-api.wildberries.ru/api/advert/v2/budget';
+const AD_BUDGET_STATUSES = new Set([4, 9, 11]);
+const AD_BUDGET_CHUNK = 50;
+const AD_BUDGET_INTERVAL = 3_100;
+const adBudgetLastCall = new Map();
 const analyticsCache = new Map();
 
 function loadEnv(file) {
@@ -1425,7 +1427,7 @@ function setProductNote(cabinet, nmId, body = {}) {
     if (index < 0) throw apiError(404, 'Отметка не найдена — обновите страницу');
     if (body.remove) notes.splice(index, 1); else notes[index] = { ...notes[index], date, text, editedAt: new Date().toISOString() };
   }
-  if (notes.length) data[key] = notes.slice(-500); else delete data[key];
+  if (notes.length) data[key] = notes; else delete data[key];
   fs.mkdirSync(path.dirname(PRODUCT_NOTES_FILE), { recursive: true });
   fs.writeFileSync(`${PRODUCT_NOTES_FILE}.tmp`, JSON.stringify(data, null, 2));
   fs.renameSync(`${PRODUCT_NOTES_FILE}.tmp`, PRODUCT_NOTES_FILE);
@@ -1436,7 +1438,7 @@ function setProductNote(cabinet, nmId, body = {}) {
 // Таблица (google-sheets/wb-sheets.gs) раз в час записывает изменения цен, статусов, ставок, минус-фраз и остатков.
 // Сервер держит копию в data/Sheet/<раздел>/<ГГГГ-ММ>.json (в «Остатки FBW / FBS» ещё current.json — текущие
 // остатки), в sync.json — до какого момента скачано. Дозагружается только новое (?sync=1&after=…), повторы
-// отбрасываются. Копия хранит всю историю — в самой таблице старые строки со временем удаляются.
+// отбрасываются. Копия хранит всю историю (до 02.11.2026 таблица обрезала «Историю» до 20 000 строк).
 // Окна истории на сайте сначала берут данные с компьютера (source=local), потом просят дозагрузку (source=sheet).
 // Адрес веб-приложения и ключ — WB_SHEET_URL и WB_SHEET_KEY в .env; без них — configured: false.
 // WB_SHEET_DIR — другая папка для копии (для тестов, чтобы не трогать data/).
@@ -1613,8 +1615,7 @@ function keywordTags(cabinet, campaignId) {
   return { tags: data.campaigns[keywordTagsKey(cabinet, campaignId)] || {}, colors: data.colors };
 }
 // У запроса — текущие отметки (tag, important) и история: смена отметок (с пояснением note), комментарии и смена статуса
-// фразы через сайт. Новые события — в конце списка; хранится не больше KEYWORD_HISTORY_LIMIT последних.
-const KEYWORD_HISTORY_LIMIT = 200;
+// фразы через сайт. Новые события — в конце списка; хранятся все.
 const keywordEventId = () => `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`;
 function keywordQuery(value) {
   const query = String(value || '').trim();
@@ -1622,7 +1623,7 @@ function keywordQuery(value) {
   return query;
 }
 function pushKeywordEvent(entry, event) {
-  entry.history = [...(entry.history || []), { id: keywordEventId(), at: new Date().toISOString(), ...event }].slice(-KEYWORD_HISTORY_LIMIT);
+  entry.history = [...(entry.history || []), { id: keywordEventId(), at: new Date().toISOString(), ...event }];
 }
 // Запись без отметок и истории удаляется, чтобы файл не копил пустые записи.
 function storeKeywordEntry(data, key, query, entry) {
@@ -1646,7 +1647,6 @@ function setKeywordTag(cabinet, campaignId, body = {}) {
 }
 // Пояснение к смене отметки (eventId события отметки) или комментарий (без eventId — новый); remove — удалить.
 // --- Заметки по кампании (кнопка с заметками в детализации): data/campaign-notes.json, { "кабинет:кампания": [заметки] } ---
-const CAMPAIGN_NOTES_LIMIT = 500;
 function readCampaignNotes() {
   try { const data = JSON.parse(fs.readFileSync(CAMPAIGN_NOTES_FILE, 'utf8')); return data && typeof data === 'object' && !Array.isArray(data) ? data : {}; } catch { return {}; }
 }
@@ -1665,7 +1665,7 @@ function setCampaignNote(cabinet, campaignId, body = {}) {
     if (index < 0) throw apiError(404, 'Заметка не найдена — обновите страницу');
     if (body.remove) notes.splice(index, 1); else notes[index] = { ...notes[index], text, editedAt: new Date().toISOString() };
   }
-  if (notes.length) data[key] = notes.slice(-CAMPAIGN_NOTES_LIMIT); else delete data[key];
+  if (notes.length) data[key] = notes; else delete data[key];
   fs.mkdirSync(path.dirname(CAMPAIGN_NOTES_FILE), { recursive: true });
   fs.writeFileSync(`${CAMPAIGN_NOTES_FILE}.tmp`, JSON.stringify(data, null, 2));
   fs.renameSync(`${CAMPAIGN_NOTES_FILE}.tmp`, CAMPAIGN_NOTES_FILE);
@@ -1679,7 +1679,6 @@ const TODOS_FILE = path.join(ROOT, 'data', 'todos.json');
 const TODO_TYPES = ['review', 'client', 'ads', 'prices', 'stock', 'card', 'check', 'other'];
 const TODO_PRIORITIES = ['normal', 'high', 'urgent'];
 const TODO_LIMIT = 5000;
-const TODO_LOG_LIMIT = 200;
 function readTodos() {
   try { const data = JSON.parse(fs.readFileSync(TODOS_FILE, 'utf8')); return Array.isArray(data?.tasks) ? data.tasks : []; } catch { return []; }
 }
@@ -1754,7 +1753,7 @@ function saveTodo(body = {}) {
     log.push({ at: now, action: body.done ? 'done' : 'reopened' });
   }
   if (log.length === (task.log || []).length) return { task };
-  task.log = log.slice(-TODO_LOG_LIMIT); task.updatedAt = now; tasks[index] = task; writeTodos(tasks);
+  task.log = log; task.updatedAt = now; tasks[index] = task; writeTodos(tasks);
   return { task };
 }
 function setKeywordNote(cabinet, campaignId, body = {}) {
@@ -1933,6 +1932,79 @@ async function renameCampaign(id, campaignId, nameInput) {
   }
   analyticsCache.delete(`ad-campaigns:${id}`);
   return { ok: true, id: Number(campaignId), name };
+}
+
+// Текст ошибки WB у изменяющих методов кампании: 400 — JSON { error } или { detail }, 422 — простой текст.
+function wbErrorText(error) {
+  const details = error?.details;
+  return String(typeof details === 'string' ? details : details?.error || details?.detail || details?.message || '').trim();
+}
+// Одна кампания с текущими статусом и настройками: /api/advert/v2/adverts?ids= — любой статус, без кэша списка.
+async function fetchCampaign(token, campaignId) {
+  const data = await wbRequest(token, `https://advert-api.wildberries.ru/api/advert/v2/adverts?ids=${encodeURIComponent(campaignId)}`);
+  return (Array.isArray(data?.adverts) ? data.adverts : []).find(item => String(item.id) === String(campaignId)) || null;
+}
+const CAMPAIGN_STATUS_NAMES = { '-1': 'удаляется', 4: 'готова к запуску', 7: 'завершена', 8: 'отменена', 9: 'активна', 11: 'на паузе' };
+
+// --- Запуск и пауза кампании: GET /adv/v0/start и GET /adv/v0/pause с ?id=, успех — 200 без тела ---
+// start — для статусов 4 (готова к запуску) и 11 (пауза); при нехватке бюджета WB отвечает 400
+// { error: 'AdvertChangeStatus: Low Budget: not enough budget' }. pause — для статуса 9 (активна).
+// 422 — «Статус кампании не изменен» простым текстом. Лимит — 5 запросов в секунду.
+// Статус проверяется до запроса и перечитывается после: WB может применить его не мгновенно.
+const CAMPAIGN_STATUS_ACTIONS = {
+  start: { url: 'https://advert-api.wildberries.ru/adv/v0/start', from: [4, 11], verb: 'запустить', expected: 9 },
+  pause: { url: 'https://advert-api.wildberries.ru/adv/v0/pause', from: [9], verb: 'поставить на паузу', expected: 11 }
+};
+async function setCampaignStatus(id, campaignId, action) {
+  if (id === 'demo' || !cabinets().length) throw apiError(400, 'В демо-режиме запускать и останавливать кампании нельзя');
+  if (!/^\d{1,15}$/.test(String(campaignId || ''))) throw apiError(400, 'Некорректный номер кампании');
+  const spec = CAMPAIGN_STATUS_ACTIONS[action];
+  if (!spec) throw apiError(400, 'Неизвестное действие с кампанией');
+  const token = tokenFor(id), before = await fetchCampaign(token, campaignId);
+  if (!before) throw apiError(404, 'WB не нашёл кампанию');
+  if (!spec.from.includes(Number(before.status))) throw apiError(400, `Кампанию в статусе «${CAMPAIGN_STATUS_NAMES[before.status] || before.status}» нельзя ${spec.verb}`);
+  try { await wbRequest(token, `${spec.url}?id=${encodeURIComponent(campaignId)}`); }
+  catch (error) {
+    const text = wbErrorText(error);
+    if (/low budget|not enough budget/i.test(text)) throw apiError(400, 'Недостаточно бюджета кампании — пополните его в кабинете WB и запустите снова');
+    if (/not found/i.test(text)) throw apiError(404, 'WB не нашёл кампанию');
+    if (error.status === 422) throw apiError(422, `WB не изменил статус кампании${text ? `: ${text.slice(0, 200)}` : ''}`);
+    throw apiError(error.status || 502, text ? `WB: ${text.slice(0, 200)}` : error.message);
+  }
+  analyticsCache.delete(`ad-campaigns:${id}`);
+  await wait(800);
+  const after = await fetchCampaign(token, campaignId).catch(() => null);
+  return { ok: true, id: Number(campaignId), status: Number(after?.status ?? spec.expected) };
+}
+
+// --- Места показа: PUT /adv/v0/auction/placements — только ручная ставка и оплата за показы (cpm), статусы 4, 9, 11 ---
+// Тело: { placements: [{ advert_id, placements: { search, recommendations } }] }, оба флага обязательны; успех — 204 без тела.
+// Для CPC WB отвечает 400 «advert … has payment type cpc, placements cannot be changed». Лимит — 1 запрос в секунду,
+// поэтому запросы одного кабинета идут не чаще раза в 1,1 с. Хотя бы одно место показа должно остаться включённым.
+const PLACEMENTS_URL = 'https://advert-api.wildberries.ru/adv/v0/auction/placements';
+const placementLastCall = new Map();
+async function setCampaignPlacements(id, campaignId, body = {}) {
+  if (id === 'demo' || !cabinets().length) throw apiError(400, 'В демо-режиме места показа менять нельзя');
+  if (!/^\d{1,15}$/.test(String(campaignId || ''))) throw apiError(400, 'Некорректный номер кампании');
+  const { search, recommendations } = body;
+  if (typeof search !== 'boolean' || typeof recommendations !== 'boolean') throw apiError(400, 'Укажите, включены ли поиск и рекомендации');
+  if (!search && !recommendations) throw apiError(400, 'Хотя бы одно место показа должно остаться включённым');
+  const token = tokenFor(id), campaign = await fetchCampaign(token, campaignId);
+  if (!campaign) throw apiError(404, 'WB не нашёл кампанию');
+  if (campaign.bid_type !== 'manual' || String(campaign.settings?.payment_type || '').toLowerCase() !== 'cpm') throw apiError(400, 'Места показа меняются только у кампаний с ручной ставкой и оплатой за показы (CPM)');
+  if (![4, 9, 11].includes(Number(campaign.status))) throw apiError(400, `У кампании в статусе «${CAMPAIGN_STATUS_NAMES[campaign.status] || campaign.status}» места показа менять нельзя`);
+  const pause = 1_100 - (Date.now() - (placementLastCall.get(id) || 0));
+  if (pause > 0) await wait(pause);
+  placementLastCall.set(id, Date.now());
+  try { await wbRequest(token, PLACEMENTS_URL, { method: 'PUT', body: { placements: [{ advert_id: Number(campaignId), placements: { search, recommendations } }] } }); }
+  catch (error) {
+    const text = wbErrorText(error);
+    if (/payment type cpc/i.test(text)) throw apiError(400, 'WB: у кампаний с оплатой за клики места показа менять нельзя');
+    throw apiError(error.status || 502, text ? `WB: ${text.slice(0, 200)}` : error.message);
+  }
+  analyticsCache.delete(`ad-campaigns:${id}`);
+  const after = await fetchCampaign(token, campaignId).catch(() => null);
+  return { ok: true, id: Number(campaignId), placements: after?.settings?.placements || { search, recommendations } };
 }
 
 async function fetchNormqueryStatuses(id, token, campaignId, nmIds = []) {
@@ -2270,20 +2342,26 @@ function withAdBudgets(campaigns = [], budgets = new Map()) {
   return campaigns.map(campaign => ({ ...campaign, budget: budgets.has(String(campaign.id)) ? budgets.get(String(campaign.id)) : null }));
 }
 
+// Остатки бюджетов кампаний: POST /api/advert/v2/budget, до 50 кампаний за запрос, статусы 4, 9, 11; лимит — 20 запросов
+// в минуту (интервал 3 с). Старый GET /adv/v1/budget?id= WB отключает 16 ноября 2026. Проверено на данных: кампании в других
+// статусах WB просто не возвращает (без ошибки), total совпадает со старым методом.
 async function advertBudgets(id, token, campaigns = [], warnings = []) {
-  const targets = campaigns.filter(item => AD_BUDGET_STATUSES.has(Number(item.status))).map(item => item.id).filter(Boolean);
+  const targets = campaigns.filter(item => AD_BUDGET_STATUSES.has(Number(item.status))).map(item => Number(item.id)).filter(Boolean);
   const budgets = new Map();
   let failed = 0;
-  for (let offset = 0; offset < targets.length && offset < AD_BUDGET_LIMIT; offset += AD_BUDGET_CHUNK) {
-    if (offset) await wait(1_100);
+  for (let offset = 0; offset < targets.length; offset += AD_BUDGET_CHUNK) {
     const chunk = targets.slice(offset, offset + AD_BUDGET_CHUNK);
-    const loaded = await Promise.all(chunk.map(advertId => cachedAnalytics(`ad-budget:${id}:${advertId}`, () => wbRequest(token,
-      `https://advert-api.wildberries.ru/adv/v1/budget?id=${encodeURIComponent(advertId)}`), 60_000)
-      .then(data => ({ advertId, total: data?.currency ? Number(data.total || 0) : null })).catch(() => { failed += 1; return null; })));
-    for (const item of loaded) if (item && item.total !== null) budgets.set(String(item.advertId), item.total);
+    try {
+      const data = await cachedAnalytics(`ad-budgets:${id}:${chunk.join(',')}`, async () => {
+        const pause = AD_BUDGET_INTERVAL - (Date.now() - (adBudgetLastCall.get(id) || 0));
+        if (pause > 0) await wait(pause);
+        adBudgetLastCall.set(id, Date.now());
+        return wbRequest(token, AD_BUDGET_URL, { method: 'POST', body: { advertIds: chunk } });
+      }, 60_000);
+      for (const item of Array.isArray(data?.adverts) ? data.adverts : []) if (item?.advertId != null && item.total != null) budgets.set(String(item.advertId), Number(item.total));
+    } catch { failed += chunk.length; }
   }
   if (failed) warnings.push(`Остаток бюджета: WB не ответил по ${failed} кампаниям`);
-  if (targets.length > AD_BUDGET_LIMIT) warnings.push(`Остаток бюджета показан для первых ${AD_BUDGET_LIMIT} кампаний из ${targets.length}`);
   return budgets;
 }
 
@@ -2719,7 +2797,6 @@ async function funnelSales(id, from, to, nmIdsInput = null, metric = 'orderCount
 const FUNNEL_TABLE_PAGE = 1000;
 const FUNNEL_TABLE_TTL = 30 * 60_000;
 const FUNNEL_TABLE_FINAL_TTL = 7 * 86_400_000;
-const FUNNEL_TABLE_KEEP = 20;
 const FUNNEL_TABLE_RETRY_MS = 60_000;
 const FUNNEL_TABLE_FIRST_WAIT_MS = 25_000;
 const funnelTables = new Map();
@@ -2750,9 +2827,6 @@ function saveFunnelTable(id, period, table) {
   fs.mkdirSync(dir, { recursive: true });
   fs.writeFileSync(`${target}.tmp`, JSON.stringify(table));
   fs.renameSync(`${target}.tmp`, target);
-  // Хранятся последние FUNNEL_TABLE_KEEP периодов.
-  const files = fs.readdirSync(dir).filter(name => name.endsWith('.json')).map(name => ({ name, time: fs.statSync(path.join(dir, name)).mtimeMs })).sort((a, b) => b.time - a.time);
-  for (const file of files.slice(FUNNEL_TABLE_KEEP)) fs.rmSync(path.join(dir, file.name), { force: true });
 }
 function funnelTableFresh(table, period, now = Date.now()) {
   if (!table) return false;
@@ -3620,6 +3694,16 @@ async function handleApi(req, res, url) {
     const body = await readJson(req);
     return send(res, 200, await renameCampaign(body.cabinet || 'demo', body.id, body.name));
   }
+  if (req.method === 'POST' && url.pathname === '/api/advertising/campaign/status') {
+    const body = await readJson(req);
+    if (!body.confirm) throw apiError(400, 'Подтвердите запуск или паузу кампании');
+    return send(res, 200, await setCampaignStatus(body.cabinet || 'demo', body.id, body.action));
+  }
+  if (req.method === 'POST' && url.pathname === '/api/advertising/campaign/placements') {
+    const body = await readJson(req);
+    if (!body.confirm) throw apiError(400, 'Подтвердите изменение мест показа');
+    return send(res, 200, await setCampaignPlacements(body.cabinet || 'demo', body.id, body));
+  }
   if (req.method === 'GET' && url.pathname === '/api/product-notes') {
     return send(res, 200, productNotes(url.searchParams.get('cabinet') || 'demo', url.searchParams.get('nmId')));
   }
@@ -3838,7 +3922,7 @@ if (require.main === module) server.listen(PORT, '127.0.0.1', () => {
   if (sheetConfigured()) { setTimeout(syncSheet, 20_000); setInterval(syncSheet, SHEET_SYNC_EVERY); }
 });
 
-module.exports = { server, slimFunnelProduct, funnelTableFresh, campaignActivePeriod,productCampaignTimeline, mergeSheetRows, saveSheetRows, readSheetHistory, sheetSiteCabinet, sheetCabinetFilter, withoutClubPriceRepeats,mergeMinusList, minusPlan, archivedPresetsFromError, todoNmId, todoFields, productAdDays, productDetailPeriod, funnelOrdersByNmId, summarizeHourlyOrders, orderFeedPeriod, itemRatingPeriods, normalizeItemRatings, itemReturnsPeriod, normalizeItemReturns, returnStatusGroup, summarizeKeywordDaily, summarizePositionDaily, normalizeOrders, normalizeOrderFeed, enrichOrders, extractFunnel, summarizeAdStats, campaignProductDaily, withAdBudgets, summarizeKeywords, normalizeStockPreset, normalizePricePreset, adCampaignMayHaveStats, validAdPeriod, historyPeriod, historyChunks, planAdFetch, datesBetween, safeFolderName, funnelDaysToFetch, pairFunnelDays, funnelPeriods, funnelRangeBuckets, funnelRecordCounts, funnelRangeValues, funnelSalesMatrix, summaryTopProducts, summaryDrops, summaryProducts, normalizeFbsStocks, normalizeFbwStocks, normalizePrices, summarizeStockTotals, normalizeNewOrders, summarizeSupplies, normalizeTrbxes, chunkOrders, stickerType, localPhoto, WB_HOSTS };
+module.exports = { server, wbErrorText, setCampaignStatus, setCampaignPlacements, slimFunnelProduct, funnelTableFresh, campaignActivePeriod,productCampaignTimeline, mergeSheetRows, saveSheetRows, readSheetHistory, sheetSiteCabinet, sheetCabinetFilter, withoutClubPriceRepeats,mergeMinusList, minusPlan, archivedPresetsFromError, todoNmId, todoFields, productAdDays, productDetailPeriod, funnelOrdersByNmId, summarizeHourlyOrders, orderFeedPeriod, itemRatingPeriods, normalizeItemRatings, itemReturnsPeriod, normalizeItemReturns, returnStatusGroup, summarizeKeywordDaily, summarizePositionDaily, normalizeOrders, normalizeOrderFeed, enrichOrders, extractFunnel, summarizeAdStats, campaignProductDaily, withAdBudgets, summarizeKeywords, normalizeStockPreset, normalizePricePreset, adCampaignMayHaveStats, validAdPeriod, historyPeriod, historyChunks, planAdFetch, datesBetween, safeFolderName, funnelDaysToFetch, pairFunnelDays, funnelPeriods, funnelRangeBuckets, funnelRecordCounts, funnelRangeValues, funnelSalesMatrix, summaryTopProducts, summaryDrops, summaryProducts, normalizeFbsStocks, normalizeFbwStocks, normalizePrices, summarizeStockTotals, normalizeNewOrders, summarizeSupplies, normalizeTrbxes, chunkOrders, stickerType, localPhoto, WB_HOSTS };
 
 
 

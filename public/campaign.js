@@ -84,7 +84,15 @@
   const createdDate=value=>{const match=String(value||'').match(/^(\d{4})-(\d{2})-(\d{2})/);return match?`${match[3]}.${match[2]}.${match[1]}`:''};
   // Идут показы — зеленоватая плашка, на паузе — красноватая.
   const AD_STATUS_CLASSES={9:'status-running',11:'status-paused'};
-  function renderMeta(c){state.paymentType=String(c.paymentType||'').toLowerCase();const status=AD_STATUSES[Number(c.status)]||'',tags=[c.paymentType?String(c.paymentType).toUpperCase():'',AD_BIDS[String(c.bidType)]||c.bidType||''],created=createdDate(c.createdAt);$('#campaignMeta').innerHTML=tags.filter(Boolean).map(x=>`<b>${esc(x)}</b>`).join('')+(status?`<b class="${AD_STATUS_CLASSES[Number(c.status)]||''}">${esc(status)}</b>`:'')+(created?`<span class="campaign-created">Создана ${created}</span>`:'')}
+  // Рядом со статусом — кнопка «Пауза» у активной кампании и «Запустить» у приостановленной или готовой к запуску.
+  const isDemoCabinet=()=>(params.get('cabinet')||'demo')==='demo';
+  function statusActionButton(status){
+    if(isDemoCabinet())return '';
+    if(status===9)return '<button type="button" class="status-action" data-campaign-status="pause" title="Поставить кампанию на паузу в WB">❚❚ Пауза</button>';
+    if(status===4||status===11)return '<button type="button" class="status-action" data-campaign-status="start" title="Запустить кампанию в WB">▶ Запустить</button>';
+    return '';
+  }
+  function renderMeta(c){state.campaignMeta=c;state.campaignStatus=Number(c.status);state.paymentType=String(c.paymentType||'').toLowerCase();const status=AD_STATUSES[Number(c.status)]||'',tags=[c.paymentType?String(c.paymentType).toUpperCase():'',AD_BIDS[String(c.bidType)]||c.bidType||''],created=createdDate(c.createdAt);$('#campaignMeta').innerHTML=tags.filter(Boolean).map(x=>`<b>${esc(x)}</b>`).join('')+(status?`<b class="${AD_STATUS_CLASSES[Number(c.status)]||''}">${esc(status)}</b>`:'')+statusActionButton(Number(c.status))+(created?`<span class="campaign-created">Создана ${created}</span>`:'')}
   // Карточки с изменением к прошлому периоду той же длины (state.previous — /api/advertising/campaign/previous).
   // CTR и CPC — за весь период (клики ÷ показы, затраты ÷ клики), а не среднее по дням: так они сравнимы с прошлым периодом.
   // up — рост хорош (зелёный), down — рост плох (красный), neutral — затраты: рост сам по себе ни хорош, ни плох.
@@ -711,15 +719,25 @@
   $('#campaignInfoButton').onclick=event=>{event.stopPropagation();event.currentTarget.closest('.info-wrap').classList.toggle('open')};
   document.addEventListener('click',event=>{if(!event.target.closest('.info-wrap'))document.querySelector('.info-wrap')?.classList.remove('open')});
   // --- Блок «Размещение и ставки»: места размещения кампании и ставки товаров из настроек WB ---
+  // Переключатель у плашки места показа. WB меняет места показа (PUT /adv/v0/auction/placements) только у кампаний
+  // с ручной ставкой и оплатой за показы (CPM) в статусах 4, 9, 11 — у остальных переключатель неактивен с пояснением.
+  const PLACEMENT_LABELS={search:'поиске',recommendations:'рекомендациях'};
+  function placementLock(setup){
+    if(isDemoCabinet())return 'В демо-режиме места показа менять нельзя';
+    if(setup.bidType!=='manual'||String(setup.paymentType||'').toLowerCase()!=='cpm')return 'WB позволяет менять места показа только у кампаний с ручной ставкой и оплатой за показы (CPM)';
+    if(![4,9,11].includes(state.campaignStatus))return 'У завершённой кампании места показа менять нельзя';
+    return '';
+  }
   function renderSetup(setup){
     const panel=$('#setupPanel');if(!setup){panel.hidden=true;return}
-    panel.hidden=false;
-    const p=setup.placements||{};
+    panel.hidden=false;state.setup=setup;
+    const p=setup.placements||{},lock=placementLock(setup);
     // Единая ставка одинакова в поиске и рекомендациях — показываем её одним столбцом.
     const unified=setup.bidType==='unified';
     $('#setupHead').innerHTML=`<th>Товар</th><th>Предмет</th>${unified?'<th>Ставка</th>':'<th>Ставка в поиске</th><th>Ставка в рекомендациях</th>'}`;
     $('#setupPlacements').innerHTML=[['search','Поиск'],['recommendations','Рекомендации']].map(([key,label])=>
-      `<span class="placement ${p[key]?'on':'off'}" title="Размещение ${p[key]?'включено':'отключено'}"><i></i>${label}${p[key]?'':' · выкл.'}</span>`).join('');
+      `<span class="placement ${p[key]?'on':'off'}" title="Размещение ${p[key]?'включено':'отключено'}"><i></i>${label}${p[key]?'':' · выкл.'}`+
+      `<button type="button" class="placement-switch" role="switch" aria-checked="${p[key]?'true':'false'}" data-placement="${key}" aria-label="Показы в ${PLACEMENT_LABELS[key]}" title="${esc(lock||(p[key]?`Выключить показы в ${PLACEMENT_LABELS[key]}`:`Включить показы в ${PLACEMENT_LABELS[key]}`))}"${lock?' disabled':''}><span></span></button></span>`).join('');
     // Ставка за отключённое место размещения приглушена и подписана: она есть в настройках, но не работает.
     const bid=(value,enabled)=>value==null?'—':`<span class="bid-cell ${enabled?'':'bid-off'}">${money(value)}${enabled?'':'<small>выкл.</small>'}</span>`;
     $('#setupBids').innerHTML=(setup.bids||[]).map(item=>`<tr><td><div class="product-cell">${item.photo?`<img class="product-photo" src="${esc(item.photo)}" alt="" loading="lazy">`:'<i class="product-photo-stub"></i>'}<span><b>${esc(item.name)}</b><small>${esc(item.vendorCode||'')}${item.vendorCode?' · ':''}${esc(item.nmId)}</small></span></div></td><td>${esc(item.subject||'—')}</td>${unified?`<td>${bid(item.search??item.recommendations,p.search||p.recommendations)}</td>`:`<td>${bid(item.search,p.search)}</td><td>${bid(item.recommendations,p.recommendations)}</td>`}</tr>`).join('')||
@@ -1122,6 +1140,46 @@
   $('#keywordClearSelection').onclick=()=>{keywords.selected.clear();renderKeywords()};
   document.addEventListener('click',event=>{if(event.target.closest('[data-confirm-close]'))closeConfirm()});
   document.addEventListener('keydown',event=>{if(event.key==='Escape'&&!$('#confirmModal').hidden)closeConfirm()});
+  // --- Запуск и пауза кампании, места показа: подтверждение в общем окне, ошибка WB показывается там же ---
+  // Без run окно только сообщает (одна кнопка «Понятно»).
+  function openActionConfirm({title,text,note,button,kind,run}){
+    $('#confirmTitle').textContent=title;
+    $('#confirmBody').innerHTML=`<p>${esc(text)}</p>${note?`<small>${esc(note)}</small>`:''}<p class="confirm-error" id="confirmError" hidden></p>`+
+      `<div class="confirm-buttons">${run?`<button type="button" class="secondary" data-confirm-close>Отмена</button><button type="button" class="${kind}" id="confirmRun">${esc(button)}</button>`:'<button type="button" class="secondary" data-confirm-close>Понятно</button>'}</div>`;
+    $('#confirmModal').hidden=false;
+    if(!run)return;
+    $('#confirmRun').onclick=async()=>{
+      const runButton=$('#confirmRun'),error=$('#confirmError');runButton.disabled=true;runButton.textContent='Отправляем в WB…';error.hidden=true;
+      try{await run();closeConfirm()}
+      catch(e){error.textContent=`Не удалось: ${e.message}`;error.hidden=false;runButton.disabled=false;runButton.textContent=button}
+    };
+  }
+  async function postCampaignAction(path,body){
+    const response=await fetch(`/api/advertising/campaign/${path}`,{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({cabinet:params.get('cabinet')||'demo',id:params.get('id')||'',confirm:true,...body})});
+    const result=await response.json().catch(()=>({}));
+    if(!response.ok)throw new Error(result.error||`Ошибка ${response.status}`);
+    return result;
+  }
+  document.addEventListener('click',event=>{
+    const statusButton=event.target.closest('[data-campaign-status]');
+    if(statusButton){
+      const pause=statusButton.dataset.campaignStatus==='pause';
+      const run=async()=>{const result=await postCampaignAction('status',{action:pause?'pause':'start'});renderMeta({...state.campaignMeta,status:result.status});if(state.setup)renderSetup(state.setup)};
+      openActionConfirm(pause?{title:'Поставить кампанию на паузу?',text:'Кампания сразу перестанет показываться в WB. Запустить её снова можно здесь же кнопкой «Запустить».',button:'Поставить на паузу',kind:'danger',run}:
+        {title:'Запустить кампанию?',text:'Кампания начнёт показываться в WB по текущим ставкам и местам показа.',note:'WB проверит бюджет кампании: если его не хватает, запуск не пройдёт — пополните бюджет в кабинете WB.',button:'Запустить',kind:'include',run});
+      return;
+    }
+    const placementSwitch=event.target.closest('[data-placement]');
+    if(!placementSwitch||placementSwitch.disabled||!state.setup)return;
+    const key=placementSwitch.dataset.placement,current=state.setup.placements||{},on=!current[key],where=PLACEMENT_LABELS[key];
+    const next={search:Boolean(current.search),recommendations:Boolean(current.recommendations),[key]:on};
+    if(!next.search&&!next.recommendations){openActionConfirm({title:'Нельзя выключить оба места показа',text:'Хотя бы одно место показа должно остаться включённым. Чтобы остановить показы совсем, поставьте кампанию на паузу.'});return}
+    openActionConfirm({title:on?`Включить показы в ${where}?`:`Выключить показы в ${where}?`,
+      text:on?`Кампания начнёт показываться в ${where} по текущим ставкам товаров.`:`Кампания перестанет показываться в ${where}. Ставки товаров сохранятся, включить показы можно здесь же.`,
+      note:'Изменение сразу применяется в кабинете WB.',button:on?'Включить':'Выключить',kind:on?'include':'danger',
+      run:async()=>{const result=await postCampaignAction('placements',next);state.setup={...state.setup,placements:result.placements};renderSetup(state.setup)}});
+  });
   $('#keywordSearch').oninput=event=>{keywords.search=event.target.value;keywords.page=1;renderKeywords()};
   $('#keywordStatusFilter').addEventListener('click',event=>{const button=event.target.closest('[data-keyword-filter]');if(!button)return;keywords.statusFilter=button.dataset.keywordFilter;keywords.page=1;
     document.querySelectorAll('#keywordStatusFilter [data-keyword-filter]').forEach(item=>item.setAttribute('aria-pressed',String(item===button)));renderKeywords()});

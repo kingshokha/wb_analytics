@@ -30,7 +30,6 @@ const MINUS_SEPARATOR = ' | ';
 const STOCK_HEADERS = ['Кабинет', 'Тип', 'Склад', 'Артикул WB', 'Артикул продавца', 'Название', 'Остаток, шт', 'Обновлено'];
 const STOCK_HISTORY_HEADERS = ['Когда', 'Кабинет', 'Тип', 'Артикул WB', 'Товар', 'Склад', 'Было, шт', 'Стало, шт'];
 const STOCK_REPORTS = [['wb-warehouses', 'FBW'], ['seller-warehouses', 'FBS']];
-const STOCK_HISTORY_LIMIT = 100000;
 // «Ставки»: строка на пару «кампания + артикул» — ставки в поиске и рекомендациях из nm_settings.bids_kopecks.
 // Только кампании, которые могут показываться (активна, на паузе, готова к запуску): у завершённых ставки не меняются.
 const BID_HEADERS = ['Кабинет', 'ID кампании', 'Кампания', 'Статус', 'Ставка', 'Артикул WB', 'Артикул продавца', 'Предмет', 'Ставка в поиске, ₽', 'Ставка в рекомендациях, ₽', 'Обновлено'];
@@ -49,7 +48,6 @@ const AD_STATUSES = { '-1': 'Удаляется', 4: 'Готова к запус
 const AD_STATUS_ORDER = { 'Активна': 0, 'На паузе': 1, 'Готова к запуску': 2, 'Завершена': 3, 'Отменена': 4, 'Удаляется': 5 };
 const BID_TYPES = { unified: 'Единая', manual: 'Ручная' };
 const PAYMENT_TYPES = { cpm: 'За показы (CPM)', cpc: 'За клики (CPC)' };
-const HISTORY_LIMIT = 20000, LOG_LIMIT = 1000;
 const DATE_FORMAT = 'dd.MM.yyyy HH:mm';
 
 // ---------- Меню ----------
@@ -389,9 +387,9 @@ function refreshAll() {
       section: function (row) { return row[1]; }, id: function (row) { return row[3]; }, label: function (row) { return row[2]; },
       title: function (row) { return [row[4], row[5]].filter(String).join(' · '); },
       formats: { 7: '#,##0', 8: DATE_FORMAT } });
-    prependRows(sheet(book, SHEET_NAMES.history), HISTORY_HEADERS, history, HISTORY_LIMIT, { 1: DATE_FORMAT });
-    prependRows(sheet(book, SHEET_NAMES.stockHistory), STOCK_HISTORY_HEADERS, stockHistory, STOCK_HISTORY_LIMIT, { 1: DATE_FORMAT });
-    prependRows(sheet(book, SHEET_NAMES.log), LOG_HEADERS, logRows, LOG_LIMIT, { 1: DATE_FORMAT });
+    prependRows(sheet(book, SHEET_NAMES.history), HISTORY_HEADERS, history, { 1: DATE_FORMAT });
+    prependRows(sheet(book, SHEET_NAMES.stockHistory), STOCK_HISTORY_HEADERS, stockHistory, { 1: DATE_FORMAT });
+    prependRows(sheet(book, SHEET_NAMES.log), LOG_HEADERS, logRows, { 1: DATE_FORMAT });
     notify('Готово: товаров ' + priceRows.length + ', кампаний ' + adRows.length + ', ставок ' + bidRowsAll.length + ', остатков ' + stockRowsAll.length +
       ', изменений ' + history.length + ', изменений остатков ' + stockHistory.length);
   } finally { lock.releaseLock(); }
@@ -467,15 +465,13 @@ function writeSheet(target, headers, rows, formats) {
   if (rows.length) { target.getRange(2, 1, rows.length, headers.length).setValues(rows); applyFormats(target, 2, rows.length, formats); }
   if (target.getLastRow() < 200) target.autoResizeColumns(1, headers.length);
 }
-// Новые строки — сверху, сразу под заголовком; лист обрезается до limit строк.
-function prependRows(target, headers, rows, limit, formats) {
+// Новые строки — сверху, сразу под заголовком. Старые строки не удаляются: история хранится вся.
+function prependRows(target, headers, rows, formats) {
   if (target.getLastRow() === 0) header(target, headers);
   if (!rows.length) return;
   target.insertRowsAfter(1, rows.length);
   target.getRange(2, 1, rows.length, headers.length).setValues(rows).setFontWeight('normal').setBackground(null);
   applyFormats(target, 2, rows.length, formats);
-  const extra = target.getLastRow() - 1 - limit;
-  if (extra > 0) target.deleteRows(limit + 2, extra);
 }
 // Всплывающая подсказка справа внизу; при запуске по расписанию её никто не видит — тогда просто пропускаем.
 function notify(text) { try { SpreadsheetApp.getActive().toast(text, 'WB', 6); } catch (error) { /* запуск по расписанию */ } }

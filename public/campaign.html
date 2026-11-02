@@ -56,9 +56,21 @@
     .setup-head p{font-size:12px}
     .setup-chips{display:flex;flex-wrap:wrap;gap:6px}
     .placement{display:inline-flex;align-items:center;gap:7px;padding:5px 11px;border-radius:20px;font-size:11px;font-weight:800;white-space:nowrap}
-    .placement i{width:7px;height:7px;border-radius:50%;background:currentColor}
+    .placement>i{width:7px;height:7px;border-radius:50%;background:currentColor}
     .placement.on{background:#e7f5ee;color:#277653}
     .placement.off{background:#f0f1ef;color:var(--muted)}
+    .setup-chips{align-items:center}
+    /* Переключатель места показа — внутри плашки, справа от названия; справа у плашки отступ меньше. */
+    .placement:has(.placement-switch){gap:7px;padding:3px 4px 3px 11px}
+    .placement-switch{position:relative;flex:0 0 30px;width:30px;height:18px;margin-left:2px;padding:0;border:0;border-radius:10px;background:#d5dad6;cursor:pointer;transition:background .15s}
+    .placement-switch span{position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;background:white;box-shadow:0 1px 2px rgba(0,0,0,.2);transition:transform .15s}
+    .placement-switch[aria-checked="true"]{background:#2f9a6a}
+    .placement-switch[aria-checked="true"] span{transform:translateX(12px)}
+    .placement-switch:focus-visible{outline:2px solid var(--purple);outline-offset:2px}
+    .placement-switch:disabled{opacity:.45;cursor:not-allowed}
+    .campaign-meta .status-action{display:inline-flex;align-items:center;gap:5px;height:24px;padding:0 10px;border:1px solid var(--line);border-radius:20px;background:white;color:var(--ink);font:inherit;font-size:11px;font-weight:800;cursor:pointer}
+    .campaign-meta .status-action:hover,.campaign-meta .status-action:focus-visible{border-color:var(--purple);color:var(--purple);outline:0}
+    .confirm-body .confirm-error{color:var(--red);font-weight:700}
     .setup-table{min-width:0}
     .bid-cell small{margin-left:6px;color:var(--muted);font-size:11px;font-weight:600}
     .setup-table th,.setup-table td{height:40px}

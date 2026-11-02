@@ -1,7 +1,19 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { slimFunnelProduct, funnelTableFresh, productCampaignTimeline,mergeSheetRows, saveSheetRows, readSheetHistory, sheetSiteCabinet, sheetCabinetFilter, withoutClubPriceRepeats,minusPlan, archivedPresetsFromError, productAdDays, productDetailPeriod, todoNmId, todoFields, funnelOrdersByNmId, summarizeHourlyOrders, orderFeedPeriod, itemRatingPeriods, normalizeItemRatings, itemReturnsPeriod, normalizeItemReturns, returnStatusGroup, campaignActivePeriod, mergeMinusList, summarizeKeywordDaily, summarizePositionDaily, normalizeOrders, normalizeOrderFeed, enrichOrders, extractFunnel, summarizeAdStats, campaignProductDaily, withAdBudgets, summarizeKeywords, normalizeStockPreset, normalizePricePreset, adCampaignMayHaveStats, validAdPeriod, historyPeriod, historyChunks, planAdFetch, datesBetween, safeFolderName, funnelDaysToFetch, pairFunnelDays, funnelPeriods, funnelRangeBuckets, funnelRecordCounts, funnelRangeValues, funnelSalesMatrix, summaryTopProducts, summaryDrops, summaryProducts, normalizeFbsStocks, normalizeFbwStocks, normalizePrices, summarizeStockTotals, normalizeNewOrders, summarizeSupplies, normalizeTrbxes, chunkOrders, stickerType, localPhoto, WB_HOSTS } = require('../server');
+const { wbErrorText, setCampaignStatus, setCampaignPlacements, slimFunnelProduct, funnelTableFresh, productCampaignTimeline,mergeSheetRows, saveSheetRows, readSheetHistory, sheetSiteCabinet, sheetCabinetFilter, withoutClubPriceRepeats,minusPlan, archivedPresetsFromError, productAdDays, productDetailPeriod, todoNmId, todoFields, funnelOrdersByNmId, summarizeHourlyOrders, orderFeedPeriod, itemRatingPeriods, normalizeItemRatings, itemReturnsPeriod, normalizeItemReturns, returnStatusGroup, campaignActivePeriod, mergeMinusList, summarizeKeywordDaily, summarizePositionDaily, normalizeOrders, normalizeOrderFeed, enrichOrders, extractFunnel, summarizeAdStats, campaignProductDaily, withAdBudgets, summarizeKeywords, normalizeStockPreset, normalizePricePreset, adCampaignMayHaveStats, validAdPeriod, historyPeriod, historyChunks, planAdFetch, datesBetween, safeFolderName, funnelDaysToFetch, pairFunnelDays, funnelPeriods, funnelRangeBuckets, funnelRecordCounts, funnelRangeValues, funnelSalesMatrix, summaryTopProducts, summaryDrops, summaryProducts, normalizeFbsStocks, normalizeFbwStocks, normalizePrices, summarizeStockTotals, normalizeNewOrders, summarizeSupplies, normalizeTrbxes, chunkOrders, stickerType, localPhoto, WB_HOSTS } = require('../server');
+
+test('текст ошибки WB у запуска, паузы и мест показа: JSON { error }, { detail } и простой текст 422', () => {
+  assert.equal(wbErrorText({ details: { error: 'AdvertChangeStatus: Low Budget: not enough budget' } }), 'AdvertChangeStatus: Low Budget: not enough budget');
+  assert.equal(wbErrorText({ details: { detail: 'advert 12345 has payment type cpc, placements cannot be changed', status: 400 } }), 'advert 12345 has payment type cpc, placements cannot be changed');
+  assert.equal(wbErrorText({ details: ' Статус кампании не изменен ' }), 'Статус кампании не изменен');
+  assert.equal(wbErrorText({}), '');
+});
+
+test('запуск, пауза и места показа: в демо-режиме и с неверными данными запрос в WB не уходит', async () => {
+  await assert.rejects(setCampaignStatus('demo', '123', 'start'), /демо-режиме/);
+  await assert.rejects(setCampaignPlacements('demo', '123', { search: true, recommendations: false }), /демо-режиме/);
+});
 
 test('возвраты: группы статусов, даты WB с пробелом, карточка товара, нулевой orderId', () => {
   assert.equal(returnStatusGroup('Готов к выдаче', true), 'ready');
