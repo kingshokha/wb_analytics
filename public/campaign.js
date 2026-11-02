@@ -196,7 +196,9 @@
   // «Цены» — цены товаров кампании (цена до скидки, скидка, цена со скидкой; клубная — если отличается от цены со скидкой).
   // Изменения одного вида за день — один флажок; день — по Москве, как дни статистики WB. Наведение — подробности.
   const sheetEvents={campaign:[],prices:[],since:null,loaded:false,key:''};
-  const EVENT_KINDS={status:{color:'#318f68',label:'Статус'},settings:{color:'#58716e',label:'Настройки кампании'},bids:{color:'#d77b28',label:'Ставки'},minus:{color:'#7651e5',label:'Минус-фразы'},prices:{color:'#17211d',label:'Цены товаров'}};
+  // «Запуск и остановка» — цветом кампании, как флажки кампаний в детализации товара (первый цвет CAMPAIGN_COLORS в product.js).
+  const EVENT_KINDS={activity:{color:'#7651e5',label:'Запуск и остановка'},settings:{color:'#58716e',label:'Настройки кампании'},bids:{color:'#d77b28',label:'Ставки'},minus:{color:'#b5367f',label:'Минус-фразы'},prices:{color:'#17211d',label:'Цены товаров'}};
+  const STATUS_WHATS=['Статус','Появилось в списке','Пропало из списка'];
   const EVENT_ORDER=Object.keys(EVENT_KINDS);
   const PRICE_WHATS=['Цена до скидки, ₽','Скидка продавца, %','Цена со скидкой, ₽','Цена в WB Клубе, ₽'];
   const SETTING_LABELS={'Название':'✎ Название','Где показывается':'◎ Зоны показа','Артикулы WB':'▤ Товары'};
@@ -229,13 +231,6 @@
   }
   function eventLabel(group){
     const items=group.items,last=items[items.length-1];
-    if(group.kind==='status'){
-      // Пауза и запуск в один день (например, на ночь) — «❚❚ Пауза 03:45–09:45»: к концу дня статус тот же, что был.
-      const after=String(last.after||''),first=items[0],time=item=>new Date(item.at).toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit'});
-      if(items.length===2&&String(first.before)===after)return `${after==='Активна'?'❚❚ Пауза':'▶ Работала'} ${time(first)}–${time(last)}`;
-      if(items.length>2&&String(first.before)===after)return `↺ Статус ×${items.length}`;
-      return `${after==='Активна'?'▶ Запущена':after==='На паузе'?'❚❚ Пауза':after==='Завершена'?'■ Завершена':`● ${after||'Статус'}`}${items.length>1?` ×${items.length}`:''}`;
-    }
     if(group.kind==='settings'){const kinds=[...new Set(items.map(item=>String(item.what).split(':')[0]))];return kinds.length>1?`⚙ Настройки · ${kinds.length}`:SETTING_LABELS[kinds[0]]||`⚙ ${kinds[0]}`}
     if(group.kind==='bids')return items.length===1?`↕ Ставка ${shortValue(last.before)} → ${shortValue(last.after)}`:`↕ Ставки · ${items.length}`;
     if(group.kind==='minus'){const diff=items.reduce((sum,item)=>sum+(Number(item.after)||0)-(Number(item.before)||0),0);return `⊘ Минус-фразы${diff?` ${diff>0?'+':'−'}${Math.abs(diff)}`:''}`}
@@ -245,15 +240,52 @@
   function chartEvents(days){
     const index=new Map(days.map((day,i)=>[day,i])),groups=new Map();
     const add=(kind,item)=>{const day=mskDay(item.at);if(!index.has(day))return;const key=`${day}|${kind}`;if(!groups.has(key))groups.set(key,{kind,day:index.get(day),date:day,items:[]});groups.get(key).items.push(item)};
+    // Смена статуса — не отдельные флажки: из неё (и из показов до начала отслеживания) сервер считает дни работы → activityEvents.
     for(const item of sheetEvents.campaign){
-      if(item.section==='Реклама')add(['Статус','Появилось в списке'].includes(item.what)?'status':'settings',item);
+      if(item.section==='Реклама'){if(!STATUS_WHATS.includes(item.what))add('settings',item)}
       else if(item.section==='Ставки')add('bids',item);
       else if(item.section==='Ключевые слова')add('minus',item);
     }
     const priceKey=item=>[item.at,item.id,item.before,item.after].join('|'),discounted=new Set(sheetEvents.prices.filter(item=>item.what==='Цена со скидкой, ₽').map(priceKey));
     for(const item of sheetEvents.prices)if(PRICE_WHATS.includes(item.what)&&!(item.what==='Цена в WB Клубе, ₽'&&discounted.has(priceKey(item))))add('prices',item);
-    return [...groups.values()].map(group=>{group.items.sort((a,b)=>String(a.at).localeCompare(String(b.at)));return {...group,text:eventLabel(group),color:EVENT_KINDS[group.kind].color}})
+    return [...activityEvents(days),...[...groups.values()].map(group=>{group.items.sort((a,b)=>String(a.at).localeCompare(String(b.at)));return {...group,text:eventLabel(group),color:EVENT_KINDS[group.kind].color}})]
       .sort((a,b)=>a.day-b.day||EVENT_ORDER.indexOf(a.kind)-EVENT_ORDER.indexOf(b.kind));
+  }
+  // --- Запуск и остановка — как флажки кампаний в детализации товара (product.js, campaignEvents) ---
+  // Дни работы считает сервер (campaignActivity в server.js): до начала отслеживания Google Таблицы — 50 показов в день
+  // и больше, с начала — статус «Активна» хоть какое-то время дня (пауза и запуск внутри дня флажков не дают).
+  // ▶ первый день работы, ■ первый день без работы, ◆ работала всего один день, у левого края ↤ — работала уже на начало
+  // периода (▶, если кампания создана в этот день). В подсказке — точное время из таблицы.
+  const ACTIVITY_TEXT={start:'▶ Запуск',stop:'■ Остановка',blip:'◆ Один день',ongoing:'↤ Работала'};
+  const ddmmOf=day=>`${day.slice(8,10)}.${day.slice(5,7)}`;
+  // Время перехода: местное (Душанбе), а если день по Москве другой (дни графика — московские, как у WB) — и МСК.
+  const stepTime=iso=>{
+    const local=new Date(iso).toLocaleString('ru-RU',{timeZone:'Asia/Dushanbe',day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}).replace(',',''),msk=new Date(Date.parse(iso)+3*3_600_000).toISOString();
+    return local.slice(0,5)===`${msk.slice(8,10)}.${msk.slice(5,7)}`?local:`${local} (МСК ${ddmmOf(msk.slice(0,10))} ${msk.slice(11,16)})`;
+  };
+  function activityEvents(days){
+    const activity=state.activity;if(!activity?.days?.length||!days.length)return [];
+    const on=new Map(activity.days.map(day=>[day.date,day.on])),count=days.length,events=[],runs=[];
+    for(let i=0;i<count;i++){if(!on.get(days[i]))continue;if(runs.length&&runs.at(-1).to===i-1)runs.at(-1).to=i;else runs.push({from:i,to:i})}
+    const tracked=i=>Boolean(activity.tracking)&&days[i]>=activity.tracking.fromDate;
+    const step=(isOn,day)=>{const list=(activity.events||[]).filter(event=>event.on===isOn&&event.date===day);return isOn?list[0]:list.at(-1)};
+    const created=String(state.campaignCreatedAt||'').slice(0,10),boundary='по статусу на начало отслеживания в Google Таблице';
+    const switched=(isOn,at,when)=>`${isOn?'включена':'выключена'} ${at?stepTime(at):`${when} (${boundary})`}`;
+    const flag=(kind,day,line)=>({kind:'activity',sub:kind,day,date:days[day],text:ACTIVITY_TEXT[kind],color:EVENT_KINDS.activity.color,lines:[line]});
+    for(const run of runs){
+      const startTracked=tracked(run.from),stopTracked=run.to<count-1&&tracked(run.to+1);
+      const start=startTracked?step(true,days[run.from]):null,stop=stopTracked?step(false,days[run.to]):null,when=ddmmOf(days[run.from]);
+      if(run.from===run.to&&run.from>0&&run.to<count-1){
+        events.push(flag('blip',run.from,startTracked?`работала только ${when}: ${switched(true,start?.at,when)}, ${stop?switched(false,stop.at,when):'выключена в тот же день'}`:`50 показов и больше только ${when}`));continue;
+      }
+      const edge=run.from===0&&!start,kind=edge?(created&&created>=days[0]?'start':'ongoing'):'start';
+      events.push(flag(kind,run.from,kind==='ongoing'?'работала уже на начало периода':startTracked?switched(true,start?.at,when):`первый день с 50 показами и больше ${when}`));
+      if(run.to<count-1){
+        const stopDay=ddmmOf(days[run.to+1]),lastOn=ddmmOf(days[run.to]);
+        events.push(flag('stop',run.to+1,stopTracked?(stop?switched(false,stop.at,stopDay):`выключена, последний день работы ${lastOn} (${boundary})`):`первый день, когда показов меньше 50, ${stopDay}`));
+      }
+    }
+    return events;
   }
 
   // Шкалы — группы по величине (см. chartGroups): первая — левая ось, вторая — правая, остальные со своей шкалой без оси.
@@ -285,7 +317,7 @@
     const grid=[0,.25,.5,.75,1].map(r=>{const gy=bottom-r*ph;return `<line class="${r?'chart-grid':'chart-baseline'}" x1="${left}" x2="${left+pw}" y1="${gy}" y2="${gy}"/><text class="chart-axis" x="${left-8}" y="${gy+4}" text-anchor="end" style="fill:${axisColor(leftAxis)}">${esc(chartAxisNumber(leftAxis.max*r))}</text>`+(rightAxis?`<text class="chart-axis" x="${left+pw+8}" y="${gy+4}" style="fill:${axisColor(rightAxis)}">${esc(chartAxisNumber(rightAxis.max*r))}</text>`:'')}).join('');
     const every=Math.max(1,Math.ceil(n/(W<760?5:8)));
     const labels=rows.map((r,i)=>(n-1-i)%every===0?`<text class="chart-axis" x="${x(i)}" y="${bottom+20}" text-anchor="middle">${esc(date(dayOf(r)).slice(0,5))}</text>`:'').join('');
-    const flags=events.map((event,i)=>{const fy=4+event.level*20;return `<g class="chart-flag" data-flag="${i}" tabindex="0" role="button" aria-label="${esc(`${date(event.date)}: ${event.text}`)}"><line x1="${event.x}" x2="${event.x}" y1="${fy+16}" y2="${bottom}" stroke="${event.color}" stroke-width="1.25" stroke-dasharray="3 3"/><rect x="${event.fx}" y="${fy}" width="${event.width}" height="16" rx="4" fill="${event.color}"/><text class="chart-flag-text" x="${event.fx+7}" y="${fy+12}">${esc(event.text)}</text></g>`}).join('');
+    const flags=events.map((event,i)=>{const fy=4+event.level*20;return `<g class="chart-flag" data-flag="${i}" tabindex="0" role="button" aria-label="${esc(`${date(event.date)}: ${event.text}`)}"><line x1="${event.x}" x2="${event.x}" y1="${fy+16}" y2="${bottom}" stroke="${event.color}" stroke-width="${event.kind==='activity'?1.5:1.25}" stroke-dasharray="${event.kind==='activity'?'4 3':event.kind==='prices'?'2 3':'3 3'}"/><rect x="${event.fx}" y="${fy}" width="${event.width}" height="16" rx="${event.kind==='prices'?8:4}" fill="${event.color}"/><text class="chart-flag-text" x="${event.fx+7}" y="${fy+12}">${esc(event.text)}</text></g>`}).join('');
     // Дни без значения (null) рвут линию: отрезки рисуются отдельно, одиночная точка — кружком.
     const lines=series.map(s=>{const parts=[];let part=[];rows.forEach((r,i)=>{const v=value(s,r);if(v==null){if(part.length)parts.push(part);part=[];return}part.push([x(i),y(s,v)])});if(part.length)parts.push(part);
       return `<g class="chart-series" data-series="${esc(s.key)}">${parts.map(points=>points.length===1?`<circle class="chart-dot" cx="${points[0][0]}" cy="${points[0][1]}" r="3.5" fill="${s.color}"/>`:`<polyline class="chart-line" points="${points.map(p=>p.join(',')).join(' ')}" stroke="${s.color}"/>`).join('')}</g>`}).join('');
@@ -334,7 +366,10 @@
   // Флажок: что изменилось в этот день — по времени (местное), до 14 строк.
   function showChartFlag(flag){
     const event=chartView.events?.[Number(flag.dataset.flag)];if(!event)return;
-    const tip=$('#chartTooltip'),lines=event.items.slice(0,14).map(item=>`<div class="t-event"><time>${esc(new Date(item.at).toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit'}))}</time><span>${esc(eventLine(item))}</span></div>`).join('');
+    const tip=$('#chartTooltip');
+    // Запуск и остановка — одна строка-пояснение, как подсказка флажка кампании в детализации товара.
+    if(event.lines){tip.innerHTML=`<div class="t-date"><i style="background:${event.color}"></i>${esc(event.text)} · ${esc(date(event.date))}</div>${event.lines.map(line=>`<div class="t-line">Кампания: ${esc(line)}</div>`).join('')}`;placeChartTip(event.x,4+event.level*20+20);return}
+    const lines=event.items.slice(0,14).map(item=>`<div class="t-event"><time>${esc(new Date(item.at).toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit'}))}</time><span>${esc(eventLine(item))}</span></div>`).join('');
     tip.innerHTML=`<div class="t-date"><i style="background:${event.color}"></i>${esc(EVENT_KINDS[event.kind].label)} · ${esc(date(event.date))}</div>${lines}${event.items.length>14?`<div class="t-more">и ещё ${event.items.length-14}</div>`:''}<div class="t-hint">Из Google Таблицы, время местное</div>`;
     placeChartTip(event.x,4+event.level*20+20);
   }
@@ -1132,6 +1167,7 @@
     exportState.loaded={from,to};
     state.rows=result.campaign.daily||[];state.productDaily=result.productDaily||[];
     state.setupProducts=new Map((result.setup?.bids||[]).map(item=>[String(item.nmId),{name:item.name,vendorCode:item.vendorCode}]));
+    state.activity=result.activity||null;state.campaignCreatedAt=result.campaign?.createdAt||'';
     renderMeta(result.campaign);renderSummary(result.campaign);renderSetup(result.setup);renderOptions();renderChart();renderTable();renderProductTable();renderCampaignMinis();loadPositions(result.activePeriod||result.period,silent);loadChartEvents();
     $('#campaignTitle').textContent=result.campaign.name||`Кампания #${result.campaign.id}`;document.title=`${$('#campaignTitle').textContent} — WB Pulse`;renderCampaignHeader(result);
     state.period=result.activePeriod||result.period;

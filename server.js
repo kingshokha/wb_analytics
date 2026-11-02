@@ -303,8 +303,15 @@ async function cachedAnalytics(key, loader, ttl = 60_000) {
 // 100 запросов в минуту, всплеск 5: после каждых 5 страниц пауза, а на 429 — повтор после паузы, которую назвал WB,
 // иначе у кабинетов с тысячами карточек список обрывался и фото в таблицах пропадали.
 const PRODUCT_CARDS_MAX_PAGES = 300;
+// Карточки, которые ещё грузятся (по токену): списки, собираемые по частям (progressiveList), берут из них названия
+// и фото, не дожидаясь всех карточек.
+const productCardsLoading = new Map();
 async function loadProductCards(token) {
   const cards = [];
+  productCardsLoading.set(token, cards);
+  try { return await loadProductCardPages(token, cards); } finally { productCardsLoading.delete(token); }
+}
+async function loadProductCardPages(token, cards) {
   let cursor = { limit: 100 };
   for (let page = 0; page < PRODUCT_CARDS_MAX_PAGES; page++) {
     let response;
@@ -416,25 +423,72 @@ function demoFbsStocks() {
   return { demo: true, ...normalizeFbsStocks(warehouses, [{ warehouse: warehouses[0], stocks: [{ chrtId: 501, sku: '460000000001', amount: 42 }, { chrtId: 502, sku: '460000000002', amount: 8 }] }, { warehouse: warehouses[1], stocks: [{ chrtId: 501, sku: '460000000001', amount: 15 }, { chrtId: 503, sku: '460000000003', amount: 0 }] }], cards), warnings: [] };
 }
 
-async function fbsStocks(id) {
-  if (id === 'demo' || !cabinets().length) return demoFbsStocks();
-  const token = tokenFor(id); const warnings = [];
-  const warehousesResponse = await cachedAnalytics(`fbs-warehouses:${id}`, () => wbRequest(token, 'https://marketplace-api.wildberries.ru/api/v3/warehouses'), 2 * 60_000);
-  const warehouses = (Array.isArray(warehousesResponse) ? warehousesResponse : []).filter(item => Number(item.deliveryType) === 1 && !item.isDeleting);
-  const cards = await cachedAnalytics(`product-cards:${id}`, () => loadProductCards(token), 10 * 60_000);
-  const chrtIds = [...stockCardIndex(cards).keys()]; const responses = [];
-  for (const warehouse of warehouses) {
-    const stocks = [];
-    for (let offset = 0; offset < chrtIds.length; offset += 1000) {
-      if (offset) await wait(220);
-      try {
-        const result = await wbRequest(token, `https://marketplace-api.wildberries.ru/api/v3/stocks/${warehouse.id}`, { method: 'POST', body: { chrtIds: chrtIds.slice(offset, offset + 1000).map(Number) } });
-        stocks.push(...(Array.isArray(result?.stocks) ? result.stocks : []));
-      } catch (error) { warnings.push(`${warehouse.name || warehouse.id}: ${error.message}`); }
-    }
-    responses.push({ warehouse, stocks });
+// --- Списки, которые сервер собирает по частям: цены, остатки FBS и FBW ---
+// У кабинета с тысячами карточек одни карточки (по 100 за запрос) грузятся минуту. Чтобы не ждать, список собирается
+// в фоне, а ответ — снимок того, что уже есть (partial: true): строки с названиями и фото тех карточек, что уже пришли.
+// Сайт опрашивает, пока partial. Готовый список хранится ttl; force — собрать заново (кнопка «Обновить», после изменений).
+const listJobs = new Map();
+async function progressiveList(key, ttl, force, run) {
+  let job = listJobs.get(key);
+  const fresh = job?.done && Date.now() - job.doneAt < ttl;
+  if (!job || (!job.running && (force || !fresh))) {
+    let first;
+    job = { running: true, done: false, snapshot: null, final: null, error: null, first: new Promise(resolve => { first = resolve; }) };
+    listJobs.set(key, job);
+    const current = job;
+    current.promise = run(snapshot => { current.snapshot = snapshot; first(); })
+      .then(final => { Object.assign(current, { final, done: true, doneAt: Date.now() }); }, error => { current.error = error; })
+      .finally(() => { current.running = false; first(); });
   }
-  return { demo: false, ...normalizeFbsStocks(warehouses, responses, cards), warnings };
+  // Показать ещё нечего — ждём первую порцию (до 20 с) или конец.
+  if (!job.done && !job.snapshot) await Promise.race([job.first, wait(20_000)]);
+  if (job.done) return { ...job.final, partial: false };
+  if (job.error) {
+    if (!job.snapshot) { listJobs.delete(key); throw job.error; }
+    const data = job.snapshot();
+    return { ...data, partial: false, warnings: [...(data.warnings || []), `Загрузка прервалась: ${job.error.message}`] };
+  }
+  return job.snapshot ? { ...job.snapshot(), partial: true } : { demo: false, rows: [], warnings: [], partial: true };
+}
+const forgetList = key => listJobs.delete(key);
+// Карточки кабинета: готовые — сразу, а пока грузятся — те, что уже пришли. cards() — текущий список, done — промис конца.
+function cardsSoFar(id, token, warnings) {
+  let cards = null;
+  const done = cachedAnalytics(`product-cards:${id}`, () => loadProductCards(token), 10 * 60_000)
+    .then(list => { cards = list; }, error => { cards = []; warnings.push(`Карточки товаров: ${error.message}`); });
+  return { cards: () => cards || productCardsLoading.get(token) || [], loading: () => !cards, done };
+}
+
+// Остатки FBS: WB отдаёт их по списку размеров (chrtId, до 1000 за запрос, POST /api/v3/stocks/{warehouseId}; лимит —
+// 300 запросов в минуту, интервал 200 мс), а размеры — из карточек. Поэтому остатки запрашиваются по каждой новой
+// тысяче размеров из уже пришедших карточек, не дожидаясь всех.
+async function fbsStocks(id, force = false) {
+  if (id === 'demo' || !cabinets().length) return demoFbsStocks();
+  const token = tokenFor(id);
+  return progressiveList(`fbs-stocks:${id}`, 30_000, force, async publish => {
+    const warnings = [];
+    const warehousesResponse = await cachedAnalytics(`fbs-warehouses:${id}`, () => wbRequest(token, 'https://marketplace-api.wildberries.ru/api/v3/warehouses'), 2 * 60_000);
+    const warehouses = (Array.isArray(warehousesResponse) ? warehousesResponse : []).filter(item => Number(item.deliveryType) === 1 && !item.isDeleting);
+    const cards = cardsSoFar(id, token, warnings), responses = warehouses.map(warehouse => ({ warehouse, stocks: [] })), asked = new Set();
+    const snapshot = () => ({ demo: false, ...normalizeFbsStocks(warehouses, responses, cards.cards()), warnings: [...new Set(warnings)], progress: { sizes: asked.size, cardsLoading: cards.loading() } });
+    publish(snapshot);
+    for (;;) {
+      const loading = cards.loading(), pending = [...stockCardIndex(cards.cards()).keys()].filter(chrtId => !asked.has(chrtId));
+      if (!pending.length && !loading) break;
+      // Пока карточки грузятся, остатки запрашиваются полными тысячами размеров.
+      if (!pending.length || (loading && pending.length < 1000)) { await Promise.race([cards.done, wait(700)]); continue; }
+      const chunk = pending.slice(0, 1000); chunk.forEach(chrtId => asked.add(chrtId));
+      for (const item of responses) {
+        try {
+          const result = await wbRequest(token, `https://marketplace-api.wildberries.ru/api/v3/stocks/${item.warehouse.id}`, { method: 'POST', body: { chrtIds: chunk.map(Number) } });
+          item.stocks.push(...(Array.isArray(result?.stocks) ? result.stocks : []));
+        } catch (error) { warnings.push(`${item.warehouse.name || item.warehouse.id}: ${error.message}`); }
+        await wait(220);
+      }
+      publish(snapshot);
+    }
+    return snapshot();
+  });
 }
 
 function normalizeFbwStocks(items = [], cards = []) {
@@ -513,12 +567,18 @@ async function priceStocks(id) {
   return { demo: false, updatedAt: new Date().toISOString(), byNmId: summarizeStockTotals(wb || [], seller || []), warnings };
 }
 
-async function fbwStocks(id) {
+// Остатки FBW — один отчёт WB; названия и фото подставляются из карточек по мере их загрузки.
+async function fbwStocks(id, force = false) {
   if (id === 'demo' || !cabinets().length) return demoFbwStocks();
   const token = tokenFor(id);
-  const items = await inventoryReport(id, token, 'wb-warehouses');
-  const cards = await cachedAnalytics(`product-cards:${id}`, () => loadProductCards(token), 10 * 60_000);
-  return { demo: false, ...normalizeFbwStocks(items, cards), warnings: [] };
+  return progressiveList(`fbw-stocks:${id}`, 60_000, force, async publish => {
+    const warnings = [], cards = cardsSoFar(id, token, warnings);
+    const items = await inventoryReport(id, token, 'wb-warehouses');
+    const snapshot = () => ({ demo: false, ...normalizeFbwStocks(items, cards.cards()), warnings: [...warnings], progress: { cardsLoading: cards.loading() } });
+    publish(snapshot);
+    await cards.done;
+    return snapshot();
+  });
 }
 function normalizePrices(goods = [], cards = []) {
   const byNmId = new Map(cards.map(card => [String(card.nmID), card]));
@@ -544,21 +604,32 @@ function demoPrices() {
   return { demo: true, ...normalizePrices(goods, cards), warnings: [] };
 }
 
-// Цены и скидки всех товаров кабинета — для таблицы цен.
-async function loadPriceGoods(token) {
+// Цены и скидки всех товаров кабинета — для таблицы цен: GET /api/v2/list/goods/filter по 1000 (лимит категории
+// «Цены и скидки» — 10 запросов за 6 секунд). onBatch — каждая пришедшая порция (для показа по ходу).
+async function loadPriceGoods(token, onBatch = () => {}) {
   const goods = [];
   for (let offset = 0; offset < 100_000; offset += 1000) {
     const response = await wbRequest(token, `https://discounts-prices-api.wildberries.ru/api/v2/list/goods/filter?limit=1000&offset=${offset}`);
-    const batch = Array.isArray(response?.data?.listGoods) ? response.data.listGoods : []; goods.push(...batch);
+    const batch = Array.isArray(response?.data?.listGoods) ? response.data.listGoods : []; goods.push(...batch); onBatch(goods);
     if (batch.length < 1000) break; await wait(650);
   }
   return goods;
 }
 
-async function prices(id) {
+// Цены приходят быстро, карточки (названия, фото, предмет, бренд) — долго: строки показываются сразу, а названия
+// и фото подставляются по мере загрузки карточек.
+async function prices(id, force = false) {
   if (id === 'demo' || !cabinets().length) return demoPrices();
-  const token = tokenFor(id); const cards = await cachedAnalytics(`product-cards:${id}`, () => loadProductCards(token), 10 * 60_000);
-  return { demo: false, ...normalizePrices(await loadPriceGoods(token), cards), warnings: [] };
+  const token = tokenFor(id);
+  return progressiveList(`prices:${id}`, 30_000, force, async publish => {
+    const warnings = [], cards = cardsSoFar(id, token, warnings);
+    let goods = [];
+    const snapshot = () => ({ demo: false, ...normalizePrices(goods, cards.cards()), warnings: [...warnings], progress: { loaded: goods.length, cardsLoading: cards.loading() } });
+    goods = await loadPriceGoods(token, list => { goods = list; publish(snapshot); });
+    publish(snapshot);
+    await cards.done;
+    return snapshot();
+  });
 }
 
 async function updatePrices(body) {
@@ -577,6 +648,7 @@ async function updatePrices(body) {
     await wait(650);
     uploads.push(await wbRequest(token, 'https://discounts-prices-api.wildberries.ru/api/v2/upload/task/size', { method: 'POST', body: { data: sizeData.slice(offset, offset + 1000) } }));
   }
+  forgetList(`prices:${body.cabinet}`);
   return { ok: true, updated: items.length, updatedSizes: sizeData.length, uploads };
 }
 
@@ -599,6 +671,7 @@ async function updateFbsStocks(body) {
     const response = await wbRequest(token, `https://marketplace-api.wildberries.ru/api/v3/stocks/${encodeURIComponent(warehouseId)}`, { method: 'PUT', body: { stocks } });
     results.push({ warehouseId, count: stocks.length, response: response || null });
   }
+  forgetList(`fbs-stocks:${body.cabinet}`);
   return { ok: true, updated: results.reduce((sum, item) => sum + item.count, 0), warehouses: results };
 }
 
@@ -613,6 +686,7 @@ async function copyFbsStocks(body) {
     const response = await wbRequest(token, `https://marketplace-api.wildberries.ru/api/v3/stocks/${encodeURIComponent(targetWarehouseId)}`, { method: 'PUT', body: { stocks } });
     results.push({ targetWarehouseId, count: stocks.length, response: response || null });
   }
+  forgetList(`fbs-stocks:${body.cabinet}`);
   return { ok: true, updated: stocks.length * results.length, warehouses: results, targetWarehouseIds };
 }
 
@@ -1207,6 +1281,27 @@ function productCampaignTimeline(nmId, rows = [], current = new Map()) {
   return result;
 }
 const timelineOnAt = (timeline, time) => { let on = timeline.initial; for (const change of timeline.changes) { if (change.at <= time) on = change.on; else break; } return on; };
+// Работала ли кампания по дням — для флажков ▶ / ■ в детализации кампании, по тем же правилам, что у товара:
+// до начала отслеживания Google Таблицы — 50 показов в день и больше, с начала — статус «Активна» хоть какое-то время
+// дня (пауза и запуск внутри дня флажков не дают). Состав кампании здесь не важен: timeline строится только по статусу.
+// events — точные переходы из таблицы за период (для подсказки флажка). Только копия таблицы на компьютере.
+function campaignActivity(campaignId, period, daily = [], currentStatus) {
+  const dates = datesBetween(period.from, period.to), views = new Map(daily.map(day => [String(day.date).slice(0, 10), Number(day.views || 0)]));
+  const byViews = date => (views.get(date) || 0) >= PRODUCT_AD_MIN_VIEWS;
+  const since = sheetConfigured() ? readSheetJson(path.join(SHEET_DIR, 'sync.json'), {}).since : null;
+  if (!since || moscowDateOf(since) > period.to) return { tracking: null, days: dates.map(date => ({ date, on: byViews(date) })), events: [] };
+  const fromDate = moscowDateOf(since) < period.from ? period.from : moscowDateOf(since);
+  const startTime = [since, moscowDayStart(period.from)].sort().at(-1), endTime = moscowDayStart(addDays(period.to, 1));
+  const rows = readSheetHistory({ ids: [String(campaignId)], sections: ['Реклама'], limit: 1_000_000 }).items;
+  const timeline = productCampaignTimeline('', rows, new Map([[String(campaignId), { status: Number(currentStatus) === 9, member: true }]])).get(String(campaignId));
+  const days = dates.map(date => {
+    if (date < fromDate) return { date, on: byViews(date) };
+    const dayStart = [startTime, moscowDayStart(date)].sort().at(-1), dayEnd = moscowDayStart(addDays(date, 1));
+    return { date, on: timelineOnAt(timeline, dayStart) || timeline.changes.some(change => change.on && change.at > dayStart && change.at < dayEnd) };
+  });
+  const events = timeline.changes.filter(change => change.at > startTime && change.at < endTime).map(change => ({ at: change.at, date: moscowDateOf(change.at), on: change.on }));
+  return { tracking: { since, fromDate }, days, events };
+}
 // Данные таблицы для детализации товара (только копия на компьютере — без запросов к таблице):
 // tracking — с какого дня статусы известны, какие кампании включены на начало и точные переходы за период;
 // onByDate — включённые кампании по дням с начала отслеживания (включена хоть на какое-то время дня);
@@ -3578,7 +3673,10 @@ async function handleApi(req, res, url) {
     try {
       const result = await advertisingCampaignHistory(url.searchParams.get('cabinet') || 'demo', url.searchParams.get('id'),
         url.searchParams.get('from'), url.searchParams.get('to'), write);
-      write({ type: 'result', ...result });
+      let activity = null;
+      try { activity = campaignActivity(result.campaign?.id ?? url.searchParams.get('id'), result.period, result.campaign?.daily, result.campaign?.status); }
+      catch (error) { console.error('Детализация кампании: дни работы не посчитаны', error.message); }
+      write({ type: 'result', ...result, activity });
     } catch (error) {
       write({ type: 'error', error: error.message || 'Не удалось выгрузить статистику' });
     }
@@ -3613,13 +3711,13 @@ async function handleApi(req, res, url) {
       { version: url.searchParams.get('version') || '', offset: url.searchParams.get('offset'), force: url.searchParams.get('force') === '1' }));
   }
   if (req.method === 'GET' && url.pathname === '/api/fbs-stocks') {
-    return send(res, 200, await fbsStocks(url.searchParams.get('cabinet') || 'demo'));
+    return send(res, 200, await fbsStocks(url.searchParams.get('cabinet') || 'demo', url.searchParams.get('force') === '1'));
   }
   if (req.method === 'GET' && url.pathname === '/api/fbw-stocks') {
-    return send(res, 200, await fbwStocks(url.searchParams.get('cabinet') || 'demo'));
+    return send(res, 200, await fbwStocks(url.searchParams.get('cabinet') || 'demo', url.searchParams.get('force') === '1'));
   }
   if (req.method === 'GET' && url.pathname === '/api/prices') {
-    return send(res, 200, await prices(url.searchParams.get('cabinet') || 'demo'));
+    return send(res, 200, await prices(url.searchParams.get('cabinet') || 'demo', url.searchParams.get('force') === '1'));
   }
   if (req.method === 'GET' && url.pathname === '/api/prices/stocks') {
     return send(res, 200, await priceStocks(url.searchParams.get('cabinet') || 'demo'));
