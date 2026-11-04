@@ -338,8 +338,10 @@
     const step=(isOn,day)=>{const list=(activity.events||[]).filter(event=>event.on===isOn&&event.date===day);return isOn?list[0]:list.at(-1)};
     const created=String(state.campaignCreatedAt||'').slice(0,10),boundary='по статусу на начало отслеживания в Google Таблице';
     const switched=(isOn,at,when)=>`${isOn?'включена':'выключена'} ${at?stepTime(at):`${when} (${boundary})`}`;
-    const flag=(kind,day,line)=>({kind:'activity',sub:kind,day,date:days[day],text:ACTIVITY_TEXT[kind],color:EVENT_KINDS.activity.color,lines:[line]});
-    for(const run of runs){
+    // run — период работы, к которому относится флажок: при наведении он заливается, как в детализации товара.
+    let run;
+    const flag=(kind,day,line)=>({kind:'activity',sub:kind,day,date:days[day],text:ACTIVITY_TEXT[kind],color:EVENT_KINDS.activity.color,lines:[line],run});
+    for(run of runs){
       const startTracked=tracked(run.from),stopTracked=run.to<count-1&&tracked(run.to+1);
       const start=startTracked?step(true,days[run.from]):null,stop=stopTracked?step(false,days[run.to]):null,when=ddmmOf(days[run.from]);
       if(run.from===run.to&&run.from>0&&run.to<count-1){
@@ -384,7 +386,12 @@
     const grid=[0,.25,.5,.75,1].map(r=>{const gy=bottom-r*ph;return `<line class="${r?'chart-grid':'chart-baseline'}" x1="${left}" x2="${left+pw}" y1="${gy}" y2="${gy}"/><text class="chart-axis" x="${left-8}" y="${gy+4}" text-anchor="end" style="fill:${axisColor(leftAxis)}">${esc(chartAxisNumber(leftAxis.max*r))}</text>`+(rightAxis?`<text class="chart-axis" x="${left+pw+8}" y="${gy+4}" style="fill:${axisColor(rightAxis)}">${esc(chartAxisNumber(rightAxis.max*r))}</text>`:'')}).join('');
     const every=Math.max(1,Math.ceil(n/(W<760?5:8)));
     const labels=rows.map((r,i)=>(n-1-i)%every===0?`<text class="chart-axis" x="${x(i)}" y="${bottom+20}" text-anchor="middle">${esc(date(dayOf(r)).slice(0,5))}</text>`:'').join('');
-    const flags=events.map((event,i)=>{const fy=4+event.level*20;return `<g class="chart-flag" data-flag="${i}" tabindex="0" role="button" aria-label="${esc(`${date(event.date)}: ${event.text}`)}"><line x1="${event.x}" x2="${event.x}" y1="${fy+16}" y2="${bottom}" stroke="${event.color}" stroke-width="${event.kind==='activity'?1.5:1.25}" stroke-dasharray="${event.kind==='activity'?'4 3':event.kind==='prices'?'2 3':'3 3'}"/><rect x="${event.fx}" y="${fy}" width="${event.width}" height="16" rx="${event.kind==='prices'?8:4}" fill="${event.color}"/><text class="chart-flag-text" x="${event.fx+7}" y="${fy+12}">${esc(event.text)}</text></g>`}).join('');
+    // Заливка периода работы — видна, пока наведён его флажок ▶, ■, ◆ или ↤ (как в детализации товара): от линии запуска до линии
+    // остановки (■ стоит на первом дне без работы); если кампания работает до конца периода — до последнего дня. Один день — полоса
+    // шириной в день вокруг его точки.
+    const half=n>1?pw/(n-1)/2:pw/2,runs=[...new Map(events.filter(event=>event.run).map(event=>[`${event.run.from}-${event.run.to}`,event.run])).entries()];
+    const runFills=runs.map(([key,run])=>{const one=run.from===run.to,x0=Math.max(left,one?x(run.from)-half:x(run.from)),x1=Math.min(left+pw,one?x(run.to)+half:run.to<n-1?x(run.to+1):x(run.to));return `<rect class="chart-run" data-run="${key}" x="${x0}" y="${top}" width="${x1-x0}" height="${ph}" fill="${EVENT_KINDS.activity.color}"/>`}).join('');
+    const flags=events.map((event,i)=>{const fy=4+event.level*20;return `<g class="chart-flag" data-flag="${i}"${event.run?` data-run="${event.run.from}-${event.run.to}"`:''} tabindex="0" role="button" aria-label="${esc(`${date(event.date)}: ${event.text}`)}"><line x1="${event.x}" x2="${event.x}" y1="${fy+16}" y2="${bottom}" stroke="${event.color}" stroke-width="${event.kind==='activity'?1.5:1.25}" stroke-dasharray="${event.kind==='activity'?'4 3':event.kind==='prices'?'2 3':'3 3'}"/><rect x="${event.fx}" y="${fy}" width="${event.width}" height="16" rx="${event.kind==='prices'?8:4}" fill="${event.color}"/><text class="chart-flag-text" x="${event.fx+7}" y="${fy+12}">${esc(event.text)}</text></g>`}).join('');
     // Дни без значения (null) рвут линию: отрезки рисуются отдельно, одиночная точка — кружком.
     const lines=series.map(s=>{const parts=[];let part=[];rows.forEach((r,i)=>{const v=value(s,r);if(v==null){if(part.length)parts.push(part);part=[];return}part.push([x(i),y(s,v)])});if(part.length)parts.push(part);
       return `<g class="chart-series" data-series="${esc(s.key)}">${parts.map(points=>points.length===1?`<circle class="chart-dot" cx="${points[0][0]}" cy="${points[0][1]}" r="3.5" fill="${s.color}"/>`:`<polyline class="chart-line" points="${points.map(p=>p.join(',')).join(' ')}" stroke="${s.color}"/>`).join('')}</g>`}).join('');
@@ -398,7 +405,7 @@
         return `<g class="chart-end" data-series="${esc(item.s.key)}">${Math.abs(item.ly-item.y0)>2||item.li<n-1?`<path class="chart-leader" d="M${ex+6},${item.y0}L${lx-4},${item.ly}"/>`:''}<circle class="chart-end-dot" cx="${ex}" cy="${item.y0}" r="4" fill="${item.s.color}"/><text x="${lx}" y="${item.ly+4}">${esc(name)}<tspan class="v" dx="6">${esc(endValue(item.s,value(item.s,rows[item.li])))}</tspan></text></g>`}).join('');
     }
     const dots=series.map(s=>`<circle r="4.5" fill="${s.color}" visibility="hidden"/>`).join('');
-    svg.innerHTML=`${grid}${rightAxis?caption(leftAxis,'left')+caption(rightAxis,'right'):''}${labels}<g class="chart-flags">${flags}</g><g class="chart-lines">${lines}</g>${endLabels}`+
+    svg.innerHTML=`${runFills}${grid}${rightAxis?caption(leftAxis,'left')+caption(rightAxis,'right'):''}${labels}<g class="chart-flags">${flags}</g><g class="chart-lines">${lines}</g>${endLabels}`+
       `<g class="chart-hover" visibility="hidden"><line class="chart-hover-line" y1="${top}" y2="${bottom}"/>${dots}</g><rect class="chart-hit-area" x="${left}" y="${top}" width="${pw}" height="${ph+24}" tabindex="0" aria-label="График по датам: стрелки влево и вправо — по дням"/>`;
     const own=groups.slice(2).flatMap(group=>group.series.map(s=>`<span><i style="background:${s.color}"></i>${esc(s.label)} — до ${esc(chartAxisNumber(group.max))}${s.key==='drr'?'%':''}</span>`));
     const since=sheetEvents.since?` (таблица следит с ${new Date(sheetEvents.since).toLocaleDateString('ru-RU')})`:'';
@@ -443,10 +450,11 @@
   {
     const svg=$('#dailyChart'),pick=event=>{const rect=svg.getBoundingClientRect(),v=chartView;return [Math.round((event.clientX-rect.left-v.left)/v.pw*(v.n-1)),event.clientY-rect.top]};
     svg.addEventListener('pointermove',event=>{if(!event.target.closest('.chart-hit-area')||!chartView.rows.length)return;const [i,py]=pick(event);showChartDay(i,py)});
-    svg.addEventListener('pointerout',event=>{if(event.target.closest('.chart-hit-area')&&!event.relatedTarget?.closest?.('.chart-hit-area'))hideChartDay();if(event.target.closest('.chart-flag'))$('#chartTooltip').hidden=true});
-    svg.addEventListener('pointerover',event=>{const flag=event.target.closest('.chart-flag');if(flag)showChartFlag(flag)});
-    svg.addEventListener('focusin',event=>{const flag=event.target.closest('.chart-flag');if(flag)showChartFlag(flag)});
-    svg.addEventListener('focusout',()=>hideChartDay());
+    const showRun=key=>svg.querySelectorAll('.chart-run').forEach(rect=>rect.classList.toggle('on',rect.dataset.run===key));
+    svg.addEventListener('pointerout',event=>{if(event.target.closest('.chart-hit-area')&&!event.relatedTarget?.closest?.('.chart-hit-area'))hideChartDay();const flag=event.target.closest('.chart-flag');if(flag&&!flag.contains(event.relatedTarget)){$('#chartTooltip').hidden=true;showRun(null)}});
+    svg.addEventListener('pointerover',event=>{const flag=event.target.closest('.chart-flag');if(flag){showChartFlag(flag);showRun(flag.dataset.run||null)}});
+    svg.addEventListener('focusin',event=>{const flag=event.target.closest('.chart-flag');if(flag){showChartFlag(flag);showRun(flag.dataset.run||null)}});
+    svg.addEventListener('focusout',()=>{hideChartDay();showRun(null)});
     svg.addEventListener('keydown',event=>{if(!event.target.closest('.chart-hit-area')||!['ArrowLeft','ArrowRight'].includes(event.key))return;event.preventDefault();const step=event.key==='ArrowLeft'?-1:1;showChartDay((chartView.idx??(step<0?chartView.n:-1))+step)});
     let chartWidth=0;new ResizeObserver(()=>{const width=$('.chart-wrap').clientWidth;if(width&&width!==chartWidth){chartWidth=width;renderChart()}}).observe($('.chart-wrap'));
   }
