@@ -213,6 +213,10 @@
     button{height:40px;padding:0 16px;border:1px solid var(--ink);border-radius:11px;background:var(--ink);color:white;font-size:12px;font-weight:800;cursor:pointer}
     button:disabled{opacity:.6;cursor:wait}
     /* Карточки показателей */
+    .summary-zone-switch{height:40px;border-radius:11px;background:white}
+    .summary-zone-switch button{height:auto;border-radius:8px}
+    .summary-zone-note{margin:0 0 10px;font-size:12px}
+    .summary-zone-note a{color:var(--purple)}
     .summary{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:13px;margin:0 0 16px}
     .metric{position:relative;overflow:hidden;padding:18px 19px;border:1px solid var(--line);border-radius:13px;background:white}
     .metric:before{content:"";position:absolute;top:0;left:19px;width:56px;height:4px;border-radius:4px;background:var(--purple)}
@@ -481,8 +485,9 @@
             <span class="info-pop" id="campaignInfoPop" role="tooltip"><span id="periodLabel" class="period-label">Загрузка данных…</span><span id="exportProgress" class="export-progress" role="status" aria-live="polite"></span><span id="autoRefreshNote" class="export-progress"></span></span></span>
         </div>
       </div>
-      <div class="export-controls"><select id="exportPreset" aria-label="Выгрузить за"></select><div class="export-range" data-date-range><span>Период</span><input id="exportFrom" type="date" aria-label="Дата начала"><b>—</b><input id="exportTo" type="date" aria-label="Дата конца"></div><button id="exportHistory" type="button">Выгрузить</button></div>
+      <div class="export-controls"><div class="keyword-filter summary-zone-switch" id="summaryZoneSwitch" role="group" aria-label="Место показа для карточек" title="Меняет только карточки показателей"><button type="button" data-summary-zone="all" aria-pressed="true">Все</button><button type="button" data-summary-zone="search" aria-pressed="false" title="Поиск вместе с каталогом — по данным расширения">Поиск</button><button type="button" data-summary-zone="shelves" aria-pressed="false" title="Рекомендации (полки) — по данным расширения">Рекомендации</button></div><select id="exportPreset" aria-label="Выгрузить за"></select><div class="export-range" data-date-range><span>Период</span><input id="exportFrom" type="date" aria-label="Дата начала"><b>—</b><input id="exportTo" type="date" aria-label="Дата конца"></div><button id="exportHistory" type="button">Выгрузить</button></div>
     </header>
+    <p class="summary-zone-note" id="summaryZoneNote" hidden></p>
     <section class="summary" id="summary"></section>
     <section class="panel setup-panel" id="setupPanel" hidden>
       <div class="panel-head"><h2>Размещение и ставки</h2><div class="setup-head"><div class="setup-chips" id="setupPlacements"></div><button type="button" class="setup-history" id="setupHistoryButton" title="История статуса и ставок из Google Таблицы"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 8a5.5 5.5 0 1 0 1.6-3.9"/><path d="M2.3 2.6v2.6h2.6"/><path d="M8 5v3.2l2.1 1.3"/></svg>История</button></div></div>

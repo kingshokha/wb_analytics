@@ -156,10 +156,10 @@
   // CTR и CPC — за весь период (клики ÷ показы, затраты ÷ клики), а не среднее по дням: так они сравнимы с прошлым периодом.
   // up — рост хорош (зелёный), down — рост плох (красный), neutral — затраты: рост сам по себе ни хорош, ни плох.
   const SUMMARY_TONES={views:'up',clicks:'up',orders:'up',revenue:'up',spend:'neutral',drr:'down',ctr:'up',cpc:'down',carts:'up',canceled:'down'};
-  function summaryDelta(key,now){
-    const p=state.previous;if(!p)return '';
+  function summaryDelta(key,now,p=state.previous){
+    if(!p)return '';
     if(p.loading)return '<small class="metric-delta flat" title="Загружаем прошлый период">…</small>';
-    if(!p.available||!p.campaign)return '';
+    if(!p.available||!p.campaign||p.campaign[key]==null)return '';
     const before=Number(p.campaign[key]||0),value=Number(now||0),title=`к ${date(p.period.from)} – ${date(p.period.to)}: ${['spend','revenue','cpc'].includes(key)?money(before):['drr','ctr'].includes(key)?percent(before):number(before)}`;
     if(['drr','ctr','cpc'].includes(key)&&(!value||!before))return '';
     if(!before)return value?`<small class="metric-delta flat" title="${esc(title)}">новое</small>`:'';
@@ -167,10 +167,37 @@
     return `<small class="metric-delta ${tone}" title="${esc(title)}">${change?`${change>0?'▲':'▼'} ${number(Math.abs(change))}%`:'0%'}</small>`;
   }
   function renderSummary(c){
-    const ctr=c.ctr??average('ctr'),cpc=c.cpc??average('cpc'),drr=Number(c.revenue)?Number(c.spend||0)/Number(c.revenue)*100:0,carts=c.carts??total('carts'),canceled=c.canceled??total('canceled');
+    state.summaryCampaign=c;
+    const zone=SUMMARY_ZONES[state.summaryZone]?zoneSummary(state.summaryZone):null;
+    $('#summaryZoneNote').hidden=!zone;$('#summaryZoneNote').innerHTML=zone?.note||'';
+    if(zone)c=zone.campaign;
+    const ctr=c.ctr??average('ctr'),cpc=c.cpc??average('cpc'),drr=Number(c.revenue)?Number(c.spend||0)/Number(c.revenue)*100:0,carts=c.carts??total('carts'),canceled=zone?null:c.canceled??total('canceled');
     const cards=[['Показы',number(c.views),'views',c.views],['Клики',number(c.clicks),'clicks',c.clicks],['Рекламные заказы',number(c.orders),'orders',c.orders],['Сумма заказов',money(c.revenue),'revenue',c.revenue],['Затраты',money(c.spend),'spend',c.spend],
-      ['ДРР за период',percent(drr),'drr',drr],['Средний CTR',percent(ctr),'ctr',ctr],['Средний CPC',money(cpc),'cpc',cpc],['Добавления в корзину',number(carts),'carts',carts],['Отмены',number(canceled),'canceled',canceled]];
-    $('#summary').innerHTML=cards.map(x=>`<div class="metric"><span>${x[0]}</span><strong>${x[1]}</strong>${summaryDelta(x[2],x[3])}</div>`).join('');
+      ['ДРР за период',percent(drr),'drr',drr],['Средний CTR',percent(ctr),'ctr',ctr],['Средний CPC',money(cpc),'cpc',cpc],['Добавления в корзину',number(carts),'carts',carts],['Отмены',canceled==null?'—':number(canceled),'canceled',canceled]];
+    const previous=zone?zone.previous:state.previous;
+    $('#summary').innerHTML=cards.map(x=>`<div class="metric"${zone&&x[3]==null?' title="Отмен по местам показа WB не отдаёт"':''}><span>${x[0]}</span><strong>${x[1]}</strong>${x[3]==null?'':summaryDelta(x[2],x[3],previous)}</div>`).join('');
+  }
+  // Карточки по месту показа («Поиск» — поиск вместе с каталогом, «Рекомендации» — полки): из данных расширения по зонам,
+  // по всем артикулам кампании. Если расширение прислало не все дни, сумма — по имеющимся, и над карточками сказано, каких нет.
+  // Прошлый период для сравнения — тоже из зон и только если там есть все дни жизни кампании.
+  const SUMMARY_ZONES={search:{key:'searchCatalog',name:'Поиск (вместе с каталогом)'},shelves:{key:'shelves',name:'Рекомендации (полки)'}};
+  function zoneSummary(view){
+    const range=zoneRange(),zone=SUMMARY_ZONES[view],days=zones.data?.days||{};
+    const empty={views:0,clicks:0,orders:0,revenue:0,spend:0,carts:0,ctr:0,cpc:0};
+    if(!range)return {campaign:empty,previous:null,note:'Загрузка данных по зонам…'};
+    const sum=(from,to)=>{const m=zoneEmpty();let have=0;for(const d of zoneDates(from,to))if(days[d]){have++;zoneAdd(m,zoneSum(days[d][zone.key],null))}
+      return {have,campaign:{views:m.views,clicks:m.clicks,orders:m.orders,revenue:m.sum_price,spend:m.spend,carts:m.atbs,ctr:m.views?m.clicks/m.views*100:0,cpc:m.clicks?m.spend/m.clicks:0}}};
+    const now=sum(range.from,range.to);
+    const life=state.period&&state.period.from<=state.period.to?{from:state.period.from>range.from?state.period.from:range.from,to:state.period.to<range.to?state.period.to:range.to}:range;
+    const lifeDates=life.from<=life.to?zoneDates(life.from,life.to):[],lacking=lifeDates.filter(d=>!days[d]).length,missing=zoneMissing(lifeDates,new Set(Object.keys(days)));
+    const created=String(state.campaignCreatedAt||'').slice(0,10),p=state.previous;
+    let previous=null;
+    if(p?.available&&p.period){const from=created>p.period.from?created:p.period.from,before=from<=p.period.to?zoneDates(from,p.period.to):[];
+      if(before.length&&before.every(d=>days[d]))previous={available:true,period:p.period,campaign:sum(p.period.from,p.period.to).campaign}}
+    const cmp=$('#campaignWbLink')?.href,wb=cmp?`<a href="${esc(cmp)}" target="_blank" rel="noopener noreferrer">кабинета WB</a>`:'кабинета WB';
+    const note=!zones.data?'Загрузка данных по зонам…':!now.have?`${zone.name}: данных по зонам за этот период нет — их присылает расширение Chrome из ${wb}.`:
+      `${zone.name}, по данным расширения${missing?` · по зонам есть ${lifeDates.length-lacking} из ${lifeDates.length} дн., нет: ${missing}`:''}${previous?'':' · сравнения с прошлым периодом нет: по зонам он загружен не весь'}. Отмен по местам показа WB не отдаёт.`;
+    return {campaign:now.campaign,previous,note};
   }
   async function loadPrevious(period,campaign){
     const request=state.previousRequest=(state.previousRequest||0)+1;
@@ -768,8 +795,7 @@
       {label:'Корзины',num:sumOf('carts'),fmt:miniNumber},
       {label:'Заказы',num:sumOf('orders'),fmt:miniNumber},
       {label:'CR',num:sumOf('orders'),den:sumOf('clicks'),scale:100,fmt:miniPercent,axis:'%'},
-      {label:'Отмены',num:sumOf('canceled'),fmt:miniNumber}]},
-    {title:'Позиция в поиске',items:[
+      {label:'Отмены',num:sumOf('canceled'),fmt:miniNumber},
       {label:'Средняя позиция',num:day=>state.positions?.has(day.date)?Number(state.positions.get(day.date)):null,average:true,invert:true,fmt:value=>value==null||!Number.isFinite(Number(value))?'—':Number(value).toLocaleString('ru-RU',{maximumFractionDigits:1}),
         averageNote:'меньше — выше в поиске',emptyNote:'нет данных по поисковым кластерам'}]}];
   function renderCampaignMinis(){
@@ -1384,9 +1410,12 @@
       const response=await fetch(`/api/advertising/campaign/zones?${q}`),data=await response.json();
       if(request!==zones.request)return;
       if(!response.ok)throw new Error(data.error||'Не удалось загрузить');
-      zones.data=data;renderZones();
+      zones.data=data;renderZones();if(state.summaryCampaign)renderSummary(state.summaryCampaign);
     }catch(error){if(request===zones.request&&!zones.data)$('#zonesNote').textContent=`Статистика по зонам: ${error.message}`}
   }
+  // «Все / Поиск / Рекомендации» слева от периода меняет только карточки сверху.
+  $('#summaryZoneSwitch').addEventListener('click',event=>{const button=event.target.closest('[data-summary-zone]');if(!button)return;state.summaryZone=button.dataset.summaryZone;
+    document.querySelectorAll('#summaryZoneSwitch [data-summary-zone]').forEach(item=>item.setAttribute('aria-pressed',String(item===button)));if(state.summaryCampaign)renderSummary(state.summaryCampaign)});
   $('#zonesProduct').addEventListener('change',event=>{zones.product=event.target.value;renderZones()});
   $('#zonesCollapse').addEventListener('click',()=>{zones.collapsed=!zones.collapsed;zones.toggled.clear();renderZones()});
   $('#zonesBody').addEventListener('click',event=>{const row=event.target.closest('[data-zone-day]');if(!row)return;const key=row.dataset.zoneDay;if(zones.toggled.has(key))zones.toggled.delete(key);else zones.toggled.add(key);renderZones()});
