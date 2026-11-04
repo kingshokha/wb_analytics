@@ -16,11 +16,11 @@
 .msg-chat:hover{background:#fafbfa}
 .msg-chat.active{background:#f4f1ff}
 .msg-chat-top{display:flex;justify-content:space-between;gap:8px}
-.msg-chat-top small{color:var(--muted);font-size:10.5px;white-space:nowrap}
+.msg-chat-top small{color:var(--muted);font-size:11px;white-space:nowrap}
 .msg-chat-product{color:var(--muted);font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .msg-chat-last{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;font-size:12px;line-height:1.35}
 .msg-chat-last i{font-style:normal;color:var(--muted)}
-.msg-chat em{justify-self:start;padding:2px 7px;border-radius:10px;background:#fff1dc;color:#9b5e16;font:800 10px Manrope,Arial,sans-serif;font-style:normal}
+.msg-chat em{justify-self:start;padding:2px 7px;border-radius:10px;background:#fff1dc;color:#9b5e16;font:800 11px Manrope,Arial,sans-serif;font-style:normal}
 .msg-chat em.stale{background:#f1f3f0;color:var(--muted)}
 .msg-chat.awaiting b{color:var(--purple)}
 .msg-thread{display:flex;flex-direction:column;min-width:0;min-height:0}
@@ -34,7 +34,7 @@
 .msg-bubble p{margin:4px 0 0;color:var(--ink);white-space:normal;overflow-wrap:anywhere}
 .msg-bubble-head{display:flex;gap:10px;justify-content:space-between;font-size:11px}
 .msg-bubble-head small{color:var(--muted);white-space:nowrap}
-.msg-good{margin-top:4px;font-size:11.5px;color:var(--muted)}
+.msg-good{margin-top:4px;font-size:12px;color:var(--muted)}
 .msg-files{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
 .msg-file{padding:5px 9px;border:1px solid var(--line);border-radius:8px;background:white;font:600 11px Manrope,Arial,sans-serif;color:var(--ink);cursor:pointer}
 .msg-file:hover:not(:disabled){border-color:var(--purple);color:var(--purple)}
@@ -70,7 +70,7 @@
 .msg-video{display:inline-flex;align-items:center;gap:8px;margin-top:10px;padding:5px 10px 5px 5px;border:1px solid var(--line);border-radius:9px;color:var(--ink);font:700 11px Manrope,Arial,sans-serif;text-decoration:none}
 .msg-video img{width:44px;height:44px;object-fit:cover;border-radius:6px}
 .msg-tags{display:flex;flex-wrap:wrap;gap:5px;margin-top:8px}
-.msg-tags span{padding:3px 8px;border-radius:10px;background:#f1f3f0;font-size:10.5px;color:var(--muted)}
+.msg-tags span{padding:3px 8px;border-radius:10px;background:#f1f3f0;font-size:11px;color:var(--muted)}
 .msg-reply{margin-top:10px;padding:10px 12px;border-left:3px solid var(--purple);border-radius:0 9px 9px 0;background:#f7f5ff;font-size:12px}
 .msg-reply p{margin:4px 0 0;font-size:13px;line-height:1.5;color:var(--ink);overflow-wrap:anywhere}
 .msg-reply small{color:var(--muted)}

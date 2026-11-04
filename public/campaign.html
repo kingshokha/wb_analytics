@@ -236,15 +236,15 @@
     .chart-flag:hover rect,.chart-flag:focus-visible rect{filter:brightness(1.25)}
     .chart-flag-text{fill:#fff;font-size:11px;font-weight:700;pointer-events:none}
     .chart-wrap.has-focus .chart-flags{opacity:.35}
-    .chart-tooltip{position:absolute;z-index:4;min-width:200px;max-width:320px;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:#fff;box-shadow:0 10px 30px #17211d21;pointer-events:none;font-size:12.5px;color:var(--ink)}
-    .chart-tooltip .t-date{display:flex;align-items:center;gap:7px;margin-bottom:6px;color:var(--muted);font-size:11.5px;font-weight:700}
+    .chart-tooltip{position:absolute;z-index:4;min-width:200px;max-width:320px;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:#fff;box-shadow:0 10px 30px #17211d21;pointer-events:none;font-size:13px;color:var(--ink)}
+    .chart-tooltip .t-date{display:flex;align-items:center;gap:7px;margin-bottom:6px;color:var(--muted);font-size:12px;font-weight:700}
     .chart-tooltip .t-date i{width:9px;height:9px;border-radius:3px}
     .chart-tooltip .t-row{display:grid;grid-template-columns:14px auto minmax(0,1fr);align-items:center;gap:8px;padding:2px 0;transition:opacity .12s}
     .chart-tooltip .t-row i{width:14px;height:3px;border-radius:2px}
     .chart-tooltip .t-row b{font-weight:800;white-space:nowrap;font-variant-numeric:tabular-nums}
     .chart-tooltip .t-row span{color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
     .chart-tooltip .t-row.dim{opacity:.45}
-    .chart-tooltip .t-foot{display:grid;gap:3px;margin-top:6px;padding-top:6px;border-top:1px solid var(--line);font-size:11.5px;font-weight:700}
+    .chart-tooltip .t-foot{display:grid;gap:3px;margin-top:6px;padding-top:6px;border-top:1px solid var(--line);font-size:12px;font-weight:700}
     .chart-tooltip .t-foot span{display:flex;align-items:center;gap:6px}
     .chart-tooltip .t-foot i{width:8px;height:8px;border-radius:2px;flex:0 0 8px}
     .chart-tooltip .t-event{display:grid;grid-template-columns:38px minmax(0,1fr);gap:6px;padding:2px 0;font-size:12px;line-height:1.4}
@@ -328,14 +328,14 @@
     .history-dialog{width:min(760px,100%)}
     .setup-history-body{max-height:min(620px,72vh);overflow:auto;padding:6px 20px 20px}
     .history-day{margin:14px 0 6px;color:var(--muted);font-size:11px;font-weight:800;letter-spacing:.06em;text-transform:uppercase}
-    .history-item{display:grid;grid-template-columns:52px minmax(0,1fr);gap:10px;padding:8px 0;border-bottom:1px solid #eef0ee;font-size:12.5px;line-height:1.45}
-    .history-item time{color:var(--muted);font-size:11.5px;font-variant-numeric:tabular-nums}
+    .history-item{display:grid;grid-template-columns:52px minmax(0,1fr);gap:10px;padding:8px 0;border-bottom:1px solid #eef0ee;font-size:13px;line-height:1.45}
+    .history-item time{color:var(--muted);font-size:12px;font-variant-numeric:tabular-nums}
     .history-item b{font-weight:800}
     .history-item .was{color:var(--muted);text-decoration:line-through}
-    .history-item small{display:block;color:var(--muted);font-size:11.5px}
+    .history-item small{display:block;color:var(--muted);font-size:12px}
     .history-empty{margin:16px 0;color:var(--muted);font-size:13px;line-height:1.6}
     /* Откуда данные: копия с компьютера или дозагрузка из Google Таблицы (public/sheet-sync.js) */
-    .sheet-hint{margin:10px 20px 0;padding:7px 10px;border-radius:8px;background:#f5f6f3;color:var(--muted);font-size:11.5px;line-height:1.45}
+    .sheet-hint{margin:10px 20px 0;padding:7px 10px;border-radius:8px;background:#f5f6f3;color:var(--muted);font-size:12px;line-height:1.45}
     .sheet-hint:empty{display:none}
     /* Фильтр запросов по статусу: Все / Активные / Исключённые */
     .keyword-filter{display:inline-flex;height:38px;padding:3px;gap:2px;border:1px solid var(--line);border-radius:9px;background:#fafbfa}
@@ -367,7 +367,7 @@
     .column-row:hover{background:#f6f4fd}
     .column-row input{width:15px;height:15px;margin:0;accent-color:var(--purple)}
     .column-row span{flex:1;min-width:0}
-    .column-row small{display:block;color:var(--muted);font-size:10px}
+    .column-row small{display:block;color:var(--muted);font-size:11px}
     .column-row button{width:24px;height:24px;padding:0;border:1px solid var(--line);border-radius:6px;background:white;color:var(--ink);font-size:12px}
     .column-row button:hover:not(:disabled){border-color:var(--purple);color:var(--purple)}
     .column-row button:disabled{opacity:.3;cursor:default}

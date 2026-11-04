@@ -20,13 +20,13 @@
 .sidebar .nav-item.active .nav-icon,.sidebar .nav-item:hover .nav-icon{color:inherit;animation:nav-icon-pop .45s ease both}
 .sidebar .nav-icon svg{width:21px;height:21px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
 /* !important — в styles.css основного сайта у .nav-icon размер шрифта задан с !important */
-.sidebar .nav-icon.nav-icon-ads{width:30px;height:18px;flex:0 0 30px;margin:0 -3px;border:1.7px solid currentColor;border-radius:5px;font:800 9px/1 Manrope,Arial,sans-serif!important;letter-spacing:.04em}
+.sidebar .nav-icon.nav-icon-ads{width:34px;height:20px;flex:0 0 34px;margin:0 -5px;border:1.7px solid currentColor;border-radius:5px;font:800 11px/1 Manrope,Arial,sans-serif!important}
 .sidebar .nav-label{font-size:13px;opacity:0;transition:opacity .15s}
 .sidebar.expanded .nav-label{opacity:1}
 @keyframes nav-icon-pop{0%{transform:scale(.85) rotate(-8deg)}60%{transform:scale(1.15) rotate(4deg)}100%{transform:scale(1) rotate(0)}}
 /* Счётчик у пункта (новые заказы): в развёрнутом меню справа, в свёрнутом — над иконкой; «0» в свёрнутом не показывается. */
 .sidebar .nav-item b{margin-left:auto;padding:2px 7px;border-radius:20px;background:#c9f27c;color:#24351a;font-size:11px}
-.sidebar:not(.expanded) .nav-item b{position:absolute;top:4px;left:31px;min-width:17px;padding:1px 5px;font-size:10px;line-height:14px;text-align:center}
+.sidebar:not(.expanded) .nav-item b{position:absolute;top:4px;left:31px;min-width:17px;padding:1px 5px;font-size:11px;line-height:14px;text-align:center}
 .sidebar:not(.expanded) .nav-item b.zero{display:none}
 /* Кабинет внизу меню. На основном сайте — переключатель (стили в styles.css), на страницах детализации —
    название кабинета, из которого они открыты (.sidebar-cabinet). */

@@ -9,7 +9,7 @@
 .stock-page-button.active{border-color:var(--purple);background:var(--purple);color:#fff}
 .stock-page-button:disabled{opacity:.45;cursor:not-allowed}
 .pager-gap{min-width:18px;color:var(--muted);font-weight:800;text-align:center}
-.pager-goto,.pager-size{display:inline-flex;align-items:center;gap:6px;color:var(--muted);font:600 11.5px Manrope,Arial,sans-serif;white-space:nowrap}
+.pager-goto,.pager-size{display:inline-flex;align-items:center;gap:6px;color:var(--muted);font:600 12px Manrope,Arial,sans-serif;white-space:nowrap}
 .pager-goto input{width:58px;height:35px;padding:0 8px;border:1px solid var(--line);border-radius:8px;color:var(--ink);font:700 12px Manrope,Arial,sans-serif;text-align:center;outline:0}
 .pager-size select{height:35px;padding:0 8px;border:1px solid var(--line);border-radius:8px;background:#fff;color:var(--ink);font:700 12px Manrope,Arial,sans-serif;cursor:pointer}
 .pager-goto input:focus,.pager-size select:focus{border-color:var(--purple)}

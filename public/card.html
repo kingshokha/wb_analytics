@@ -38,7 +38,7 @@
     .btn.primary{border-color:var(--purple);background:var(--purple);color:white}
     .btn.primary:hover{color:white;filter:brightness(1.05)}
     .btn.danger{border-color:#f3c4c4;color:#b84949}
-    .btn.small{height:30px;padding:0 10px;font-size:11.5px}
+    .btn.small{height:30px;padding:0 10px;font-size:12px}
     .status-line{flex-basis:100%;text-align:right;font-size:11px;color:var(--muted)}
     .status-line.error{color:#b84949}
     /* Колокольчик уведомлений — как на основном сайте (notifications.js) */
@@ -46,7 +46,7 @@
     .notice-bell{position:relative;width:38px;height:38px;padding:0;display:grid;place-items:center;border:1px solid var(--line);border-radius:10px;background:white;color:var(--ink);cursor:pointer}
     .notice-bell:hover,.notice-bell[aria-expanded=true]{border-color:var(--purple);color:var(--purple)}
     .notice-bell svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
-    .notice-bell b{position:absolute;top:-6px;right:-6px;min-width:20px;height:20px;padding:0 5px;border:2px solid var(--bg);border-radius:10px;background:#b5bcb8;color:white;font-size:10px;font-weight:800;line-height:16px;text-align:center}
+    .notice-bell b{position:absolute;top:-6px;right:-6px;min-width:20px;height:20px;padding:0 5px;border:2px solid var(--bg);border-radius:10px;background:#b5bcb8;color:white;font-size:11px;font-weight:800;line-height:16px;text-align:center}
     .notice-bell b.error{background:var(--red)}
     .notice-bell b.warning{background:#f0a04b}
     .notice-bell b[hidden]{display:none}
@@ -66,7 +66,7 @@
     .notice-item small{margin-top:3px;color:var(--muted);font-size:11px}
     .notice-empty{margin:6px 0 2px;color:var(--muted);font-size:12px}
     /* Плашки сверху: корзина, ошибки WB, предупреждения */
-    .banner{margin-bottom:12px;padding:12px 14px;border-radius:12px;background:#fff7ec;color:var(--ink);font-size:12.5px;line-height:1.5}
+    .banner{margin-bottom:12px;padding:12px 14px;border-radius:12px;background:#fff7ec;color:var(--ink);font-size:13px;line-height:1.5}
     .banner.error{background:#fdecec}
     .banner.info{background:#f0ebff}
     .banner.ok{background:#e7f5ee}
@@ -79,7 +79,7 @@
     .panel{border:1px solid var(--line);border-radius:14px;background:white;box-shadow:var(--shadow);min-width:0}
     .panel-head{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px 14px;padding:16px 18px 10px}
     .panel-body{padding:0 18px 16px}
-    .hint{font-size:11.5px;color:var(--muted);line-height:1.5}
+    .hint{font-size:12px;color:var(--muted);line-height:1.5}
     .field{display:grid;gap:5px;margin-bottom:12px}
     .field>span{display:flex;justify-content:space-between;gap:8px;font-size:11px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
     .field>span small{font-size:11px;font-weight:700;text-transform:none;letter-spacing:0}
@@ -90,7 +90,7 @@
     .counter.over{color:#b84949}
     .grid-2{display:grid;grid-template-columns:1fr 1fr;gap:0 12px}
     .grid-4{display:grid;grid-template-columns:repeat(4,1fr);gap:0 10px}
-    .check{display:flex;align-items:flex-start;gap:8px;margin:4px 0 10px;font-size:12.5px;line-height:1.45;cursor:pointer}
+    .check{display:flex;align-items:flex-start;gap:8px;margin:4px 0 10px;font-size:13px;line-height:1.45;cursor:pointer}
     .check input{margin-top:2px;accent-color:var(--purple)}
     /* Характеристики: значения — «фишки», числа — поле ввода */
     .charcs{display:grid;grid-template-columns:1fr 1fr;gap:0 14px}
@@ -102,7 +102,7 @@
     .chip button{width:18px;height:18px;padding:0;border:0;border-radius:5px;background:none;color:var(--muted);font-size:14px;line-height:1;cursor:pointer}
     .chip button:hover{background:#e3e5e2;color:#b84949}
     .chip.locked{padding-right:9px}
-    .chips input{flex:1 1 90px;min-width:70px;height:28px;padding:0 4px;border:0;background:transparent;font-size:12.5px;font-weight:600;outline:0}
+    .chips input{flex:1 1 90px;min-width:70px;height:28px;padding:0 4px;border:0;background:transparent;font-size:13px;font-weight:600;outline:0}
     .more-toggle{margin:4px 0 0;padding:0;border:0;background:none;color:var(--purple);font:700 12px Manrope;cursor:pointer}
     .legacy{margin-top:8px;font-size:12px;color:var(--muted)}
     .legacy b{color:var(--ink)}
@@ -110,7 +110,7 @@
     .table-wrap{overflow:auto}
     table{width:100%;border-collapse:collapse}
     th,td{padding:7px 8px;border-bottom:1px solid #eef0ee;font-size:12px;text-align:left;vertical-align:top}
-    th{color:var(--muted);font-size:10.5px;font-weight:800;letter-spacing:.06em;text-transform:uppercase}
+    th{color:var(--muted);font-size:11px;font-weight:800;letter-spacing:.06em;text-transform:uppercase}
     td .inline-input{height:32px;font-size:12px}
     .sizes-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
     tr.new td{background:#faf8ff}
@@ -154,7 +154,7 @@
     .overlay[hidden]{display:none}
     .dialog{width:min(640px,100%);max-height:86vh;overflow:auto;padding:22px;border-radius:16px;background:white;box-shadow:0 30px 80px #17211d40}
     .dialog h2{margin-bottom:8px}
-    .dialog ul{margin:10px 0;padding-left:18px;font-size:12.5px;line-height:1.6}
+    .dialog ul{margin:10px 0;padding-left:18px;font-size:13px;line-height:1.6}
     .dialog li span{color:var(--muted)}
     .dialog .actions{display:flex;justify-content:flex-end;gap:8px;margin-top:14px}
     .loading{padding:60px 0;text-align:center;color:var(--muted)}
