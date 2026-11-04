@@ -1,13 +1,38 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { wbErrorText, readBackFbsStocks, depositCampaignBudget, setCampaignStatus, setCampaignPlacements, slimFunnelProduct, funnelTableFresh, productCampaignTimeline,mergeSheetRows, saveSheetRows, readSheetHistory, sheetSiteCabinet, sheetCabinetFilter, withoutClubPriceRepeats,minusPlan, archivedPresetsFromError, productAdDays, productDetailPeriod, todoNmId, todoFields, funnelOrdersByNmId, summarizeHourlyOrders, orderFeedPeriod, itemRatingPeriods, normalizeItemRatings, itemReturnsPeriod, normalizeItemReturns, returnStatusGroup, campaignActivePeriod, mergeMinusList, summarizeKeywordDaily, summarizePositionDaily, normalizeOrders, normalizeOrderFeed, enrichOrders, extractFunnel, summarizeAdStats, campaignProductDaily, withAdBudgets, summarizeKeywords, normalizeStockPreset, normalizePricePreset, adCampaignMayHaveStats, validAdPeriod, historyPeriod, historyChunks, planAdFetch, datesBetween, safeFolderName, funnelDaysToFetch, pairFunnelDays, funnelPeriods, funnelRangeBuckets, funnelRecordCounts, funnelRangeValues, funnelSalesMatrix, summaryTopProducts, summaryDrops, summaryProducts, normalizeFbsStocks, normalizeFbwStocks, normalizePrices, summarizeStockTotals, normalizeNewOrders, summarizeSupplies, normalizeTrbxes, chunkOrders, stickerType, localPhoto, WB_HOSTS } = require('../server');
+const { wbErrorText, readBackFbsStocks, depositCampaignBudget, mergeCampaignZones, campaignZones, setCampaignStatus, setCampaignPlacements, slimFunnelProduct, funnelTableFresh, productCampaignTimeline,mergeSheetRows, saveSheetRows, readSheetHistory, sheetSiteCabinet, sheetCabinetFilter, withoutClubPriceRepeats,minusPlan, archivedPresetsFromError, productAdDays, productDetailPeriod, todoNmId, todoFields, funnelOrdersByNmId, summarizeHourlyOrders, orderFeedPeriod, itemRatingPeriods, normalizeItemRatings, itemReturnsPeriod, normalizeItemReturns, returnStatusGroup, campaignActivePeriod, mergeMinusList, summarizeKeywordDaily, summarizePositionDaily, normalizeOrders, normalizeOrderFeed, enrichOrders, extractFunnel, summarizeAdStats, campaignProductDaily, withAdBudgets, summarizeKeywords, normalizeStockPreset, normalizePricePreset, adCampaignMayHaveStats, validAdPeriod, historyPeriod, historyChunks, planAdFetch, datesBetween, safeFolderName, funnelDaysToFetch, pairFunnelDays, funnelPeriods, funnelRangeBuckets, funnelRecordCounts, funnelRangeValues, funnelSalesMatrix, summaryTopProducts, summaryDrops, summaryProducts, normalizeFbsStocks, normalizeFbwStocks, normalizePrices, summarizeStockTotals, normalizeNewOrders, summarizeSupplies, normalizeTrbxes, chunkOrders, stickerType, localPhoto, WB_HOSTS } = require('../server');
 
 test('текст ошибки WB у запуска, паузы и мест показа: JSON { error }, { detail } и простой текст 422', () => {
   assert.equal(wbErrorText({ details: { error: 'AdvertChangeStatus: Low Budget: not enough budget' } }), 'AdvertChangeStatus: Low Budget: not enough budget');
   assert.equal(wbErrorText({ details: { detail: 'advert 12345 has payment type cpc, placements cannot be changed', status: 400 } }), 'advert 12345 has payment type cpc, placements cannot be changed');
   assert.equal(wbErrorText({ details: ' Статус кампании не изменен ' }), 'Статус кампании не изменен');
   assert.equal(wbErrorText({}), '');
+});
+
+test('зоны показов от расширения: присланные дни заменяются, остальные остаются, каталог без fullstat не теряется', () => {
+  const m = (views, spend) => ({ views, clicks: 1, atbs: 0, orders: 0, shks: 0, sum_price: 0, spend });
+  const first = mergeCampaignZones(null, {
+    from: '2026-11-01', to: '2026-11-02',
+    byNm: { all: { 11: { '2026-11-01': m(100, 10), '2026-11-02': m(50, 5) }, '': { '2026-11-01': m(1, 1) } }, searchCatalog: { 11: { '2026-11-01': m(40, 4) } }, shelves: { 11: { '2026-11-01': m(60, 6) } } },
+    catalogDaily: { '2026-11-01': m(5, 1) }, catalogNm: { 11: { metrics: m(5, 1), name: 'Товар' } }
+  }, 't1');
+  assert.deepEqual(Object.keys(first.days), ['2026-11-01', '2026-11-02']);
+  assert.deepEqual(Object.keys(first.days['2026-11-01'].all), ['11']);
+  assert.equal(first.days['2026-11-01'].catalog.views, 5);
+  assert.deepEqual(first.days['2026-11-02'].catalog, {});
+  assert.equal(first.catalogByNm['2026-11-01_2026-11-02'].items[11].views, 5);
+  assert.equal(first.names[11], 'Товар');
+  // Второй раз — только 02.11 и без fullstat: 01.11 не тронут, у 02.11 цифры новые, каталог прежний.
+  const second = mergeCampaignZones(first, { from: '2026-11-02', to: '2026-11-02', byNm: { all: { 11: { '2026-11-02': m(70, 7) } } }, catalogDaily: null }, 't2');
+  assert.equal(second.days['2026-11-01'].all[11].views, 100);
+  assert.equal(second.days['2026-11-01'].receivedAt, 't1');
+  assert.equal(second.days['2026-11-02'].all[11].views, 70);
+  assert.deepEqual(second.days['2026-11-02'].catalog, {});
+  assert.ok(second.catalogByNm['2026-11-01_2026-11-02']);
+  assert.throws(() => mergeCampaignZones(null, { from: '2026-11-02', to: '2026-11-01' }), /Неверный период/);
+  const demo = campaignZones('demo', '1', '2026-11-01', '2026-11-03');
+  assert.equal(Object.keys(demo.days).length, 3);
 });
 
 test('после изменения остатков перечитываются только изменённые позиции на своих складах', async () => {

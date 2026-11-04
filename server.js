@@ -227,11 +227,11 @@ function apiError(status, message, details) {
   const error = new Error(message); error.status = status; error.details = details; return error;
 }
 
-async function readJson(req) {
+async function readJson(req, limit = 2_000_000) {
   let raw = '';
   for await (const chunk of req) {
     raw += chunk;
-    if (raw.length > 2_000_000) throw apiError(413, 'Слишком большой запрос');
+    if (raw.length > limit) throw apiError(413, 'Слишком большой запрос');
   }
   if (!raw) return {};
   try { return JSON.parse(raw); } catch { throw apiError(400, 'Некорректный JSON'); }
@@ -2105,6 +2105,133 @@ async function setCampaignPlacements(id, campaignId, body = {}) {
   return { ok: true, id: Number(campaignId), placements: after?.settings?.placements || { search, recommendations } };
 }
 
+// --- Статистика кампании по зонам показов: поиск, полки, каталог ---
+// В открытом API WB (dev.wildberries.ru) статистики по зонам нет. Её присылает расширение Chrome «WB: статистика по зонам
+// показов» (Downloads/wb-zones-extension): оно берёт данные во внутреннем API кабинета cmp.wildberries.ru с сессией продавца
+// (get-stats по местам показа и fullstat для каталога) и отправляет сюда уже разобранными.
+// Хранятся в папке кампании, в zones.json. Присланный день заменяет тот же день целиком (свежие цифры WB),
+// остальные дни не трогаются и не удаляются.
+const ZONE_FIELDS = ['views', 'clicks', 'atbs', 'orders', 'shks', 'sum_price', 'spend'];
+const ZONE_KEYS = ['all', 'searchCatalog', 'shelves'];
+const ZONES_FILE = 'zones.json';
+
+function zoneMetrics(src) {
+  const out = {}; let any = false;
+  for (const field of ZONE_FIELDS) {
+    const value = Number(src?.[field]);
+    out[field] = Number.isFinite(value) && value > 0 ? Math.round(value * 100) / 100 : 0;
+    if (out[field]) any = true;
+  }
+  return any ? out : null;
+}
+
+// upload — то, что присылает расширение: { from, to, byNm: { all|searchCatalog|shelves: { nm: { дата: метрики } } },
+// catalogDaily: { дата: метрики } | null (fullstat не ответил), catalogNm: { nm: { metrics, name } } | null }.
+// Каталог по артикулам WB отдаёт только итогом за период, поэтому он хранится по периодам «from_to».
+function mergeCampaignZones(stored, upload = {}, receivedAt = new Date().toISOString()) {
+  const from = String(upload.from || ''), to = String(upload.to || '');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to) || from > to) throw apiError(400, 'Неверный период');
+  const dates = datesBetween(from, to);
+  if (dates.length > 400) throw apiError(400, 'Период больше 400 дней');
+  const result = { days: { ...(stored?.days || {}) }, catalogByNm: { ...(stored?.catalogByNm || {}) }, names: { ...(stored?.names || {}) } };
+  const byNm = upload.byNm || {}, catalogDaily = upload.catalogDaily && typeof upload.catalogDaily === 'object' ? upload.catalogDaily : null;
+  for (const date of dates) {
+    const day = { receivedAt };
+    for (const zone of ZONE_KEYS) {
+      day[zone] = {};
+      for (const [nm, byDate] of Object.entries(byNm[zone] || {})) {
+        const metrics = /^\d{1,15}$/.test(nm) ? zoneMetrics(byDate?.[date]) : null;
+        if (metrics) day[zone][nm] = metrics;
+      }
+    }
+    // Без fullstat каталог за день неизвестен: остаётся прежний, если был.
+    day.catalog = catalogDaily ? zoneMetrics(catalogDaily[date]) || {} : result.days[date]?.catalog || null;
+    result.days[date] = day;
+  }
+  if (upload.catalogNm && typeof upload.catalogNm === 'object') {
+    const items = {};
+    for (const [nm, item] of Object.entries(upload.catalogNm)) {
+      if (!/^\d{1,15}$/.test(nm)) continue;
+      const metrics = zoneMetrics(item?.metrics);
+      if (metrics) items[nm] = metrics;
+      if (item?.name) result.names[nm] = String(item.name).slice(0, 300);
+    }
+    result.catalogByNm[`${from}_${to}`] = { from, to, receivedAt, items };
+  }
+  result.days = Object.fromEntries(Object.entries(result.days).sort(([a], [b]) => a.localeCompare(b)));
+  return result;
+}
+
+// Кабинет кампании: сначала по папке с уже сохранённой статистикой, потом по списку кампаний каждого кабинета.
+async function campaignCabinet(campaignId) {
+  const list = cabinets();
+  if (!list.length) throw apiError(400, 'Сайт работает в демо-режиме: статистику по зонам сохранить некуда');
+  for (const cabinet of list) if (fs.existsSync(path.join(ADS_DIR, cabinetFolderName(cabinet.id), String(campaignId)))) return cabinet.id;
+  for (const cabinet of list) {
+    try {
+      const data = await cachedAnalytics(`ad-campaigns:${cabinet.id}`, () => wbRequest(cabinet.token, AD_CAMPAIGNS_URL), 3 * 60_000);
+      if ((Array.isArray(data?.adverts) ? data.adverts : []).some(item => String(item.id) === String(campaignId))) return cabinet.id;
+    } catch {}
+  }
+  throw apiError(404, `Кампания ${campaignId} не найдена ни в одном кабинете сайта`);
+}
+
+function readCampaignZones(cabinetId, campaignId) {
+  const file = path.join(campaignDir(cabinetId, campaignId), ZONES_FILE);
+  if (!fs.existsSync(file)) return { file, data: null };
+  try { return { file, data: JSON.parse(fs.readFileSync(file, 'utf8')) }; }
+  catch (error) { throw apiError(500, `Не удалось прочитать ${ZONES_FILE}: ${error.message}`); }
+}
+
+async function saveCampaignZones(body = {}) {
+  const campaignId = String(body.campaignId || '');
+  if (!/^\d{1,15}$/.test(campaignId)) throw apiError(400, 'Неверный номер кампании');
+  const cabinet = await campaignCabinet(campaignId);
+  // Испорченный файл не перезаписывается: readCampaignZones бросит ошибку, сохранённое останется как было.
+  const { file, data } = readCampaignZones(cabinet, campaignId);
+  const receivedAt = new Date().toISOString();
+  const merged = mergeCampaignZones(data, body, receivedAt);
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(`${file}.tmp`, JSON.stringify({ campaignId: Number(campaignId), cabinet, updatedAt: receivedAt, ...merged }));
+  fs.renameSync(`${file}.tmp`, file);
+  const name = cabinets().find(item => item.id === cabinet)?.name || '';
+  return { ok: true, campaignId: Number(campaignId), cabinet, cabinetName: name, from: body.from, to: body.to,
+    days: datesBetween(body.from, body.to).length, catalog: Boolean(body.catalogDaily), folder: `data/Ads/${cabinetFolderName(cabinet)}/${campaignId}` };
+}
+
+// Демо: два своих артикула и третий, у которого только заказы после клика по рекламе («другие товары»).
+function demoZones(from, to) {
+  const days = {};
+  for (const date of datesBetween(from, to)) {
+    const seed = Number(date.replace(/-/g, '')) % 97, vary = k => 0.7 + ((seed * k) % 13) / 20;
+    const zone = (views, ctr, cpm, cart, order, price) => {
+      const clicks = Math.round(views * ctr * vary(3)), atbs = Math.round(clicks * cart * vary(5)), orders = Math.round(atbs * order * vary(7));
+      return zoneMetrics({ views, clicks, atbs, orders, shks: orders, sum_price: orders * price, spend: views * cpm / 1000 });
+    };
+    const searchA = zone(Math.round(900 * vary(2)), 0.035, 188, 0.13, 0.3, 2490), shelvesA = zone(Math.round(2600 * vary(4)), 0.017, 185, 0.12, 0.2, 2490);
+    const searchB = zone(Math.round(400 * vary(6)), 0.03, 188, 0.1, 0.25, 1590), shelvesB = zone(Math.round(1400 * vary(8)), 0.014, 185, 0.1, 0.2, 1590);
+    const catalog = zone(Math.round(45 * vary(9)), 0.02, 188, 0, 0, 0);
+    const sum = (...list) => zoneMetrics(Object.fromEntries(ZONE_FIELDS.map(field => [field, list.reduce((s, m) => s + Number(m?.[field] || 0), 0)])));
+    const other = seed % 3 ? zoneMetrics({ orders: 1, shks: 1, sum_price: 990 }) : null;
+    const searchCatalogA = sum(searchA, catalog);
+    days[date] = { all: { 100001: sum(searchCatalogA, shelvesA), 100002: sum(searchB, shelvesB), ...(other ? { 100003: other } : {}) },
+      searchCatalog: { 100001: searchCatalogA, 100002: searchB, ...(other ? { 100003: other } : {}) }, shelves: { 100001: shelvesA, 100002: shelvesB }, catalog };
+  }
+  return { demo: true, updatedAt: new Date().toISOString(), days, catalogByNm: {}, names: { 100001: 'Демо-товар 1', 100002: 'Демо-товар 2', 100003: 'Демо-товар 3' } };
+}
+
+function campaignZones(cabinetId, campaignId, from, to) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(from)) || !/^\d{4}-\d{2}-\d{2}$/.test(String(to)) || from > to) throw apiError(400, 'Неверный период');
+  if (cabinetId === 'demo' || !cabinets().length) return demoZones(from, to);
+  if (!/^\d{1,15}$/.test(String(campaignId || ''))) throw apiError(400, 'Некорректный номер кампании');
+  tokenFor(cabinetId);
+  // Отдаются все дни, не только выбранного периода: по ним страница проверяет, подходит ли к таблице каталог артикула,
+  // присланный за другой период (например, 23.10–05.11 при периоде страницы 22.10–04.11, если 22.10 и 05.11 пустые).
+  const data = readCampaignZones(cabinetId, campaignId).data;
+  return { demo: false, updatedAt: data?.updatedAt || '', days: data?.days || {}, catalogByNm: data?.catalogByNm || {}, names: data?.names || {},
+    folder: `data/Ads/${cabinetFolderName(cabinetId)}/${campaignId}` };
+}
+
 async function fetchNormqueryStatuses(id, token, campaignId, nmIds = []) {
   const statuses = new Map();
   for (let offset = 0; offset < nmIds.length; offset += NORMQUERY_CHUNK) {
@@ -3808,6 +3935,16 @@ async function handleApi(req, res, url) {
     if (!body.confirm) throw apiError(400, 'Подтвердите пополнение бюджета');
     return send(res, 200, await depositCampaignBudget(body.cabinet || 'demo', body.id, body));
   }
+  if (req.method === 'GET' && url.pathname === '/api/advertising/campaign/zones') {
+    return send(res, 200, campaignZones(url.searchParams.get('cabinet') || 'demo', url.searchParams.get('id'), url.searchParams.get('from'), url.searchParams.get('to')));
+  }
+  // Присылает расширение Chrome. Принимается только от расширения или с самого сайта: обычная страница в браузере
+  // могла бы отправить сюда запрос без предварительной проверки CORS и подложить чужие цифры.
+  if (req.method === 'POST' && url.pathname === '/api/advertising/campaign/zones') {
+    const origin = String(req.headers.origin || '');
+    if (origin && !origin.startsWith('chrome-extension://') && origin !== `http://${req.headers.host}`) throw apiError(403, 'Запрос не от расширения');
+    return send(res, 200, await saveCampaignZones(await readJson(req, 30_000_000)));
+  }
   if (req.method === 'POST' && url.pathname === '/api/advertising/campaign/placements') {
     const body = await readJson(req);
     if (!body.confirm) throw apiError(400, 'Подтвердите изменение мест показа');
@@ -4031,7 +4168,7 @@ if (require.main === module) server.listen(PORT, '127.0.0.1', () => {
   if (sheetConfigured()) { setTimeout(syncSheet, 20_000); setInterval(syncSheet, SHEET_SYNC_EVERY); }
 });
 
-module.exports = { server, wbErrorText, readBackFbsStocks, depositCampaignBudget, setCampaignStatus, setCampaignPlacements, slimFunnelProduct, funnelTableFresh, campaignActivePeriod,productCampaignTimeline, mergeSheetRows, saveSheetRows, readSheetHistory, sheetSiteCabinet, sheetCabinetFilter, withoutClubPriceRepeats,mergeMinusList, minusPlan, archivedPresetsFromError, todoNmId, todoFields, productAdDays, productDetailPeriod, funnelOrdersByNmId, summarizeHourlyOrders, orderFeedPeriod, itemRatingPeriods, normalizeItemRatings, itemReturnsPeriod, normalizeItemReturns, returnStatusGroup, summarizeKeywordDaily, summarizePositionDaily, normalizeOrders, normalizeOrderFeed, enrichOrders, extractFunnel, summarizeAdStats, campaignProductDaily, withAdBudgets, summarizeKeywords, normalizeStockPreset, normalizePricePreset, adCampaignMayHaveStats, validAdPeriod, historyPeriod, historyChunks, planAdFetch, datesBetween, safeFolderName, funnelDaysToFetch, pairFunnelDays, funnelPeriods, funnelRangeBuckets, funnelRecordCounts, funnelRangeValues, funnelSalesMatrix, summaryTopProducts, summaryDrops, summaryProducts, normalizeFbsStocks, normalizeFbwStocks, normalizePrices, summarizeStockTotals, normalizeNewOrders, summarizeSupplies, normalizeTrbxes, chunkOrders, stickerType, localPhoto, WB_HOSTS };
+module.exports = { server, wbErrorText, readBackFbsStocks, depositCampaignBudget, mergeCampaignZones, campaignZones, setCampaignStatus, setCampaignPlacements, slimFunnelProduct, funnelTableFresh, campaignActivePeriod,productCampaignTimeline, mergeSheetRows, saveSheetRows, readSheetHistory, sheetSiteCabinet, sheetCabinetFilter, withoutClubPriceRepeats,mergeMinusList, minusPlan, archivedPresetsFromError, todoNmId, todoFields, productAdDays, productDetailPeriod, funnelOrdersByNmId, summarizeHourlyOrders, orderFeedPeriod, itemRatingPeriods, normalizeItemRatings, itemReturnsPeriod, normalizeItemReturns, returnStatusGroup, summarizeKeywordDaily, summarizePositionDaily, normalizeOrders, normalizeOrderFeed, enrichOrders, extractFunnel, summarizeAdStats, campaignProductDaily, withAdBudgets, summarizeKeywords, normalizeStockPreset, normalizePricePreset, adCampaignMayHaveStats, validAdPeriod, historyPeriod, historyChunks, planAdFetch, datesBetween, safeFolderName, funnelDaysToFetch, pairFunnelDays, funnelPeriods, funnelRangeBuckets, funnelRecordCounts, funnelRangeValues, funnelSalesMatrix, summaryTopProducts, summaryDrops, summaryProducts, normalizeFbsStocks, normalizeFbwStocks, normalizePrices, summarizeStockTotals, normalizeNewOrders, summarizeSupplies, normalizeTrbxes, chunkOrders, stickerType, localPhoto, WB_HOSTS };
 
 
 

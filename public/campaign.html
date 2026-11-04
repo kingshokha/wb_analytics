@@ -317,6 +317,33 @@
     .keyword-range input.filled{border-color:var(--purple);background:#f4f2ff}
     .keyword-range input.invalid{border-color:var(--red);background:#fdecec}
     .keywords-note{padding:12px 20px 0;font-size:12px}
+    /* Статистика по дням и зонам показов: день, под ним поиск / полки / каталог с долей показов. */
+    .zones-note{padding-bottom:12px}
+    .zones-note a{color:var(--purple)}
+    #zonesCollapse{height:38px;border-radius:9px}
+    .zones-table{min-width:1320px}
+    .zones-col-date{width:160px}
+    .zones-table th,.zones-table td{height:34px;padding:6px 10px}
+    .zones-table th{cursor:default}
+    .zones-table th:hover{background:#fafbfa;color:var(--muted)}
+    .zones-table .zones-group th{height:30px;text-align:left;color:var(--ink);letter-spacing:.02em;text-transform:none;font-size:12px}
+    .zones-table .zones-split{border-left:1px solid var(--line)}
+    .zones-table tbody tr:hover td{background:transparent}
+    .zones-charts td{height:46px;padding:5px 10px;color:var(--muted);font-size:11px}
+    .zones-charts svg{display:block;width:100%;height:32px}
+    .zones-charts rect{fill:var(--violet);opacity:.5}
+    .zones-charts rect:hover{opacity:1}
+    .zones-table tr.zones-total td{background:#f4f2ff;font-size:13px;font-weight:800;border-bottom:1px solid #e3dcfb}
+    .zones-table tr.zones-days-head td{background:#f4f2ff;color:#5b36c8;font-size:11px;font-weight:800;letter-spacing:.06em;text-transform:uppercase}
+    .zones-table tr.zones-day td{background:#fafbfa;font-weight:800;cursor:pointer}
+    .zones-table tr.zones-day:hover td{background:#f6f4fd}
+    .zones-table tr.zones-day td:first-child::before,.zones-table tr.zones-total td:first-child::before{content:'';display:inline-block;width:6px;height:6px;margin:0 8px 2px 0;border:solid currentColor;border-width:0 1.6px 1.6px 0;transform:rotate(45deg);transition:transform .15s}
+    .zones-table tr.zones-shut td:first-child::before{transform:rotate(-45deg)}
+    .zones-table tr.zones-total{cursor:pointer}
+    .zones-table tr.zones-zone td{height:28px;color:var(--muted);font-size:11px}
+    .zones-table tr.zones-zone td:first-child{text-align:right}
+    .zones-share{display:inline-block;min-width:38px;margin-left:6px;padding-left:8px;border-left:1px solid var(--line);color:var(--ink);font-weight:800}
+    .zones-table sup{margin-left:3px;color:var(--muted);font-size:11px;font-weight:600;vertical-align:4px}
     .keyword-message{margin:12px 20px 0;padding:10px 14px;border-radius:10px;font-size:12px;font-weight:600}
     .keyword-message:empty{display:none}
     .keyword-message.ok{background:#e7f5ee;color:#277653}
@@ -475,6 +502,11 @@
     <section class="panel">
       <div class="panel-head"><h2>Статистика по датам</h2><details class="columns-menu" data-columns-table="daily"><summary>Столбцы</summary><div class="columns-options"></div></details></div>
       <div class="table-wrap"><table class="metrics-table daily-table"><thead><tr id="dailyHead"></tr></thead><tbody id="dailyBody"></tbody></table></div>
+    </section>
+    <section class="panel zones-panel">
+      <div class="panel-head"><h2>Статистика по дням и зонам показов</h2><div class="keywords-controls"><select id="zonesProduct" aria-label="Артикул"><option value="">Все артикулы</option></select><button type="button" class="secondary-button" id="zonesCollapse" aria-pressed="false">Свернуть все</button></div></div>
+      <p id="zonesNote" class="keywords-note zones-note">Загрузка…</p>
+      <div class="table-wrap"><table class="zones-table"><colgroup><col class="zones-col-date"><col span="13"></colgroup><thead id="zonesHead"></thead><tbody id="zonesBody"></tbody></table></div>
     </section>
     <section class="panel">
       <div class="panel-head"><h2>Статистика по дням каждого артикула</h2><details class="columns-menu" data-columns-table="product"><summary>Столбцы</summary><div class="columns-options"></div></details></div>
