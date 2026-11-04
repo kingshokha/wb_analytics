@@ -92,7 +92,66 @@
     if(status===4||status===11)return '<button type="button" class="status-action" data-campaign-status="start" title="Запустить кампанию в WB">▶ Запустить</button>';
     return '';
   }
-  function renderMeta(c){state.campaignMeta=c;state.campaignStatus=Number(c.status);state.paymentType=String(c.paymentType||'').toLowerCase();const status=AD_STATUSES[Number(c.status)]||'',tags=[c.paymentType?String(c.paymentType).toUpperCase():'',AD_BIDS[String(c.bidType)]||c.bidType||''],created=createdDate(c.createdAt);$('#campaignMeta').innerHTML=tags.filter(Boolean).map(x=>`<b>${esc(x)}</b>`).join('')+(status?`<b class="${AD_STATUS_CLASSES[Number(c.status)]||''}">${esc(status)}</b>`:'')+statusActionButton(Number(c.status))+(created?`<span class="campaign-created">Создана ${created}</span>`:'')}
+  function renderMeta(c){state.campaignMeta=c;state.campaignStatus=Number(c.status);state.paymentType=String(c.paymentType||'').toLowerCase();const status=AD_STATUSES[Number(c.status)]||'',tags=[c.paymentType?String(c.paymentType).toUpperCase():'',AD_BIDS[String(c.bidType)]||c.bidType||''],created=createdDate(c.createdAt);$('#campaignMeta').innerHTML=tags.filter(Boolean).map(x=>`<b>${esc(x)}</b>`).join('')+(status?`<b class="${AD_STATUS_CLASSES[Number(c.status)]||''}">${esc(status)}</b>`:'')+budgetChip()+statusActionButton(Number(c.status))+(created?`<span class="campaign-created">Создана ${created}</span>`:'')}
+  // --- Остаток бюджета (/api/advertising/campaign/budget) — перед кнопкой паузы, с кнопкой «+» для пополнения ---
+  // WB даёт бюджет только кампаниям, которые готовы к запуску, идут или на паузе; у остальных плашки нет.
+  // «Хватит примерно на …» — по средним затратам за последние 7 полных дней (сегодняшний день ещё не закончился),
+  // если они входят в выгруженный период; меньше чем на день — сумма красная.
+  function avgDailySpend(){
+    const loaded=exportState.loaded;if(!loaded)return null;
+    const today=new Date().toLocaleDateString('sv-SE'),spend=new Map(state.rows.map(row=>[String(row.date||'').slice(0,10),Number(row.spend||0)]));
+    const days=[];for(let i=1;i<=7;i++){const day=new Date(Date.now()-i*86400000).toLocaleDateString('sv-SE');if(day<today&&day>=loaded.from&&day<=loaded.to)days.push(day)}
+    return days.length?{avg:days.reduce((sum,day)=>sum+(spend.get(day)||0),0)/days.length,days:days.length}:null;
+  }
+  function budgetChip(){
+    const budget=state.budget?.budget;if(budget==null||![4,9,11].includes(state.campaignStatus))return '';
+    const spend=avgDailySpend(),left=spend?.avg>0?budget/spend.avg:null,low=left!=null&&left<1;
+    const hint=left==null?(spend?'Затрат за последние дни не было — на сколько хватит бюджета, оценить нельзя':'Оценка на сколько хватит — когда выгружены последние дни'):
+      `${left<1?'Хватит меньше чем на день':`Хватит примерно на ${number(Math.floor(left))} ${plural(Math.floor(left),['день','дня','дней'])}`}: в среднем ${money(Math.round(spend.avg))} в день за последние ${number(spend.days)} ${plural(spend.days,['день','дня','дней'])}`;
+    return `<span class="campaign-budget${low?' low':''}" title="${esc(hint)}">Бюджет <strong>${money(budget)}</strong><button type="button" class="budget-add" data-budget-add aria-label="Пополнить бюджет кампании" title="Пополнить бюджет">+</button></span>`;
+  }
+  async function loadBudget(){
+    const cabinet=params.get('cabinet')||'demo',id=params.get('id')||'';
+    try{const response=await fetch(`/api/advertising/campaign/budget?cabinet=${encodeURIComponent(cabinet)}&id=${encodeURIComponent(id)}`),data=await response.json();if(!response.ok)throw new Error(data.error);state.budget=data}
+    catch{state.budget=null}
+    if(state.campaignMeta)renderMeta(state.campaignMeta);
+  }
+  // Окно пополнения: сумма (не меньше минимума WB) и источник списания с его остатком. Кнопка «Пополнить» — подтверждение.
+  // Кампания на паузе или готовая к запуску после пополнения сама не запускается — предлагаем запустить.
+  async function openBudgetDeposit(){
+    $('#confirmTitle').textContent='Пополнение бюджета кампании';
+    $('#confirmBody').innerHTML='<p>Загружаем баланс кабинета продвижения…</p>';
+    $('#confirmModal').hidden=false;
+    let finance;
+    try{const response=await fetch(`/api/advertising/finance?cabinet=${encodeURIComponent(params.get('cabinet')||'demo')}`);finance=await response.json();if(!response.ok)throw new Error(finance.error||`Ошибка ${response.status}`)}
+    catch(e){$('#confirmBody').innerHTML=`<p class="confirm-error">Не удалось получить баланс: ${esc(e.message)}</p><div class="confirm-buttons"><button type="button" class="secondary" data-confirm-close>Понятно</button></div>`;return}
+    if($('#confirmModal').hidden)return;
+    // Источники — только те, на которых есть деньги (как в окне пополнения WB).
+    const min=finance.minTopUp,sources=(finance.sources||[]).filter(source=>source.amount>0),first=sources.find(source=>source.amount>=min)||sources[0];
+    $('#confirmBody').innerHTML=`<form class="budget-form" id="budgetForm" novalidate>`+
+      `<label class="budget-sum">Сумма пополнения, ₽<input id="budgetSum" type="number" min="${min}" step="1" value="${min}" inputmode="numeric"></label><small>Минимальная сумма — ${money(min)}</small>`+
+      `<fieldset class="budget-sources"><legend>Источник списания</legend>${sources.map(source=>`<label><input type="radio" name="budgetSource" value="${source.type}" ${source===first?'checked':''}><span>${esc(source.name)}</span><b>${money(source.amount)}</b></label>`).join('')||'<p class="confirm-error">На счетах продвижения нет денег — пополните счёт в кабинете WB.</p>'}</fieldset>`+
+      `<p class="confirm-error" id="confirmError" hidden></p>`+
+      `<div class="confirm-buttons"><button type="button" class="secondary" data-confirm-close>Отменить</button><button type="submit" class="include" id="confirmRun" ${sources.length?'':'disabled'}>Пополнить</button></div></form>`;
+    $('#budgetSum').focus();$('#budgetSum').select();
+    $('#budgetForm').onsubmit=async event=>{
+      event.preventDefault();
+      const sum=Number($('#budgetSum').value),type=Number(document.querySelector('input[name="budgetSource"]:checked')?.value),source=sources.find(item=>item.type===type),error=$('#confirmError'),button=$('#confirmRun');
+      const fail=text=>{error.textContent=text;error.hidden=false};
+      if(!Number.isInteger(sum)||sum<min)return fail(`Введите целое число рублей не меньше ${money(min)}`);
+      if(!source)return fail('Выберите источник списания');
+      if(source.amount<sum)return fail(`На источнике «${source.name}» только ${money(source.amount)}`);
+      error.hidden=true;button.disabled=true;button.textContent='Отправляем в WB…';
+      try{
+        const result=await postCampaignAction('budget/deposit',{sum,type});
+        state.budget={...(state.budget||{}),budget:result.budget};if(state.campaignMeta)renderMeta(state.campaignMeta);
+        const text=`Пополнено на ${money(sum)} из источника «${source.name}». Бюджет кампании — ${result.budget==null?'обновится чуть позже':money(result.budget)}.`;
+        if([4,11].includes(state.campaignStatus))openActionConfirm({title:'Бюджет пополнен',text,note:`Кампания ${state.campaignStatus===11?'на паузе':'готова к запуску'} и сама не запустится.`,button:'Запустить кампанию',kind:'include',
+          run:async()=>{const started=await postCampaignAction('status',{action:'start'});renderMeta({...state.campaignMeta,status:started.status});if(state.setup)renderSetup(state.setup)}});
+        else openActionConfirm({title:'Бюджет пополнен',text});
+      }catch(e){fail(`Не удалось: ${e.message}`);button.disabled=false;button.textContent='Пополнить'}
+    };
+  }
   // Карточки с изменением к прошлому периоду той же длины (state.previous — /api/advertising/campaign/previous).
   // CTR и CPC — за весь период (клики ÷ показы, затраты ÷ клики), а не среднее по дням: так они сравнимы с прошлым периодом.
   // up — рост хорош (зелёный), down — рост плох (красный), neutral — затраты: рост сам по себе ни хорош, ни плох.
@@ -1162,6 +1221,7 @@
     return result;
   }
   document.addEventListener('click',event=>{
+    if(event.target.closest('[data-budget-add]')){openBudgetDeposit();return}
     const statusButton=event.target.closest('[data-campaign-status]');
     if(statusButton){
       const pause=statusButton.dataset.campaignStatus==='pause';
@@ -1226,7 +1286,7 @@
     state.rows=result.campaign.daily||[];state.productDaily=result.productDaily||[];
     state.setupProducts=new Map((result.setup?.bids||[]).map(item=>[String(item.nmId),{name:item.name,vendorCode:item.vendorCode}]));
     state.activity=result.activity||null;state.campaignCreatedAt=result.campaign?.createdAt||'';
-    renderMeta(result.campaign);renderSummary(result.campaign);renderSetup(result.setup);renderOptions();renderChart();renderTable();renderProductTable();renderCampaignMinis();loadPositions(result.activePeriod||result.period,silent);loadChartEvents();
+    renderMeta(result.campaign);loadBudget();renderSummary(result.campaign);renderSetup(result.setup);renderOptions();renderChart();renderTable();renderProductTable();renderCampaignMinis();loadPositions(result.activePeriod||result.period,silent);loadChartEvents();
     $('#campaignTitle').textContent=result.campaign.name||`Кампания #${result.campaign.id}`;document.title=`${$('#campaignTitle').textContent} — WB Pulse`;renderCampaignHeader(result);
     state.period=result.activePeriod||result.period;
     if(silent){if(!keywords.loading)loadKeywords(state.period,true,true)}else{loadKeywords(state.period);loadPrevious(result.period,result.campaign)}

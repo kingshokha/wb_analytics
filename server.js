@@ -665,6 +665,30 @@ function groupStockUpdates(items = []) {
   return grouped;
 }
 
+// После изменения сайт не перезагружает весь список: сервер перечитывает у WB только изменённые размеры на этих складах
+// (POST /api/v3/stocks/{warehouseId}, до 1000 chrtId за запрос, 300 запросов в минуту) и возвращает их остатки — сайт
+// подставляет их в свои строки. Если перечитать не удалось, возвращаются отправленные значения: WB их уже принял (204).
+async function readBackFbsStocks(token, grouped) {
+  const stocks = [], warnings = [];
+  for (const [warehouseId, items] of grouped) {
+    for (let offset = 0; offset < items.length; offset += 1000) {
+      const chunk = items.slice(offset, offset + 1000);
+      if (stocks.length || warnings.length) await wait(220);
+      try {
+        const result = await wbRequest(token, `https://marketplace-api.wildberries.ru/api/v3/stocks/${encodeURIComponent(warehouseId)}`, { method: 'POST', body: { chrtIds: chunk.map(item => item.chrtId) } });
+        const found = new Map((Array.isArray(result?.stocks) ? result.stocks : []).map(stock => [Number(stock.chrtId), Number(stock.amount || 0)]));
+        chunk.forEach(item => stocks.push({ warehouseId, chrtId: item.chrtId, amount: found.has(item.chrtId) ? found.get(item.chrtId) : item.amount }));
+        const differ = chunk.filter(item => found.has(item.chrtId) && found.get(item.chrtId) !== item.amount).length;
+        if (differ) warnings.push(`WB пока показывает другой остаток у ${differ} поз. — показан остаток из WB, проверьте позже кнопкой «Обновить»`);
+      } catch (error) {
+        warnings.push(`Остатки сохранены, но перечитать их у WB не удалось: ${error.message}`);
+        chunk.forEach(item => stocks.push({ warehouseId, chrtId: item.chrtId, amount: item.amount }));
+      }
+    }
+  }
+  return { stocks, warnings: [...new Set(warnings)] };
+}
+
 async function updateFbsStocks(body) {
   const token = tokenFor(body.cabinet); const grouped = groupStockUpdates(body.items);
   if (!grouped.size) throw apiError(400, 'Выберите хотя бы один товар и укажите корректный остаток');
@@ -674,7 +698,7 @@ async function updateFbsStocks(body) {
     results.push({ warehouseId, count: stocks.length, response: response || null });
   }
   forgetList(`fbs-stocks:${body.cabinet}`);
-  return { ok: true, updated: results.reduce((sum, item) => sum + item.count, 0), warehouses: results };
+  return { ok: true, updated: results.reduce((sum, item) => sum + item.count, 0), warehouses: results, ...await readBackFbsStocks(token, grouped) };
 }
 
 async function copyFbsStocks(body) {
@@ -689,7 +713,8 @@ async function copyFbsStocks(body) {
     results.push({ targetWarehouseId, count: stocks.length, response: response || null });
   }
   forgetList(`fbs-stocks:${body.cabinet}`);
-  return { ok: true, updated: stocks.length * results.length, warehouses: results, targetWarehouseIds };
+  const grouped = new Map(targetWarehouseIds.map(warehouseId => [warehouseId, stocks]));
+  return { ok: true, updated: stocks.length * results.length, warehouses: results, targetWarehouseIds, ...await readBackFbsStocks(token, grouped) };
 }
 
 function enrichOrders(orders, cards) {
@@ -1975,6 +2000,79 @@ async function setCampaignStatus(id, campaignId, action) {
   await wait(800);
   const after = await fetchCampaign(token, campaignId).catch(() => null);
   return { ok: true, id: Number(campaignId), status: Number(after?.status ?? spec.expected) };
+}
+
+// --- Бюджет кампании и его пополнение ---
+// Остаток — POST /api/advert/v2/budget (как в списке кампаний, тот же интервал 3 с), в рублях; только статусы 4, 9, 11,
+// по другим WB ничего не возвращает — тогда budget: null.
+// Источники для пополнения — GET /adv/v1/balance (1 запрос в секунду): balance — счёт, net — баланс (взаиморасчёт из будущих
+// продаж), bonus — бонусы; суммы в рублях. Минимум пополнения — minTopUp из GET /api/advert/v1/config в копейках (1 запрос
+// в минуту, только персональный и сервисный токен); если конфиг недоступен — 1000 ₽, как в ошибке WB
+// «Invalid Params: minimum deposit amount is 1000».
+const AD_BALANCE_URL = 'https://advert-api.wildberries.ru/adv/v1/balance';
+const AD_CONFIG_URL = 'https://advert-api.wildberries.ru/api/advert/v1/config';
+const AD_DEPOSIT_URL = 'https://advert-api.wildberries.ru/adv/v1/budget/deposit';
+const AD_DEPOSIT_MIN = 1000;
+// В документации net — «Баланс», но в кабинете WB эта же сумма подписана «Единый счёт» (сверено с кабинетом: 95 324 ₽
+// в net и в окне пополнения WB) — называем как в кабинете.
+const AD_DEPOSIT_SOURCES = [{ type: 0, field: 'balance', name: 'Счёт продвижения' }, { type: 1, field: 'net', name: 'Единый счёт' }, { type: 3, field: 'bonus', name: 'Бонусы' }];
+
+async function campaignBudget(id, campaignId) {
+  if (!/^\d{1,15}$/.test(String(campaignId || ''))) throw apiError(400, 'Некорректный номер кампании');
+  if (id === 'demo' || !cabinets().length) return { demo: true, budget: 2450, currency: 'RUB' };
+  const token = tokenFor(id);
+  const data = await cachedAnalytics(`ad-budget:${id}:${campaignId}`, async () => {
+    const pause = AD_BUDGET_INTERVAL - (Date.now() - (adBudgetLastCall.get(id) || 0));
+    if (pause > 0) await wait(pause);
+    adBudgetLastCall.set(id, Date.now());
+    return wbRequest(token, AD_BUDGET_URL, { method: 'POST', body: { advertIds: [Number(campaignId)] } });
+  }, 30_000);
+  const item = (Array.isArray(data?.adverts) ? data.adverts : []).find(advert => String(advert.advertId) === String(campaignId));
+  return { demo: false, budget: item?.total != null ? Number(item.total) : null, currency: item?.currency || 'RUB' };
+}
+
+async function adDepositMinimum(id, token) {
+  try {
+    const config = await cachedAnalytics(`ad-config:${id}`, () => wbRequest(token, AD_CONFIG_URL), 60 * 60_000);
+    const min = Number(config?.minTopUp) / 100;
+    return Number.isFinite(min) && min > 0 ? Math.ceil(min) : AD_DEPOSIT_MIN;
+  } catch { return AD_DEPOSIT_MIN; }
+}
+
+async function adFinance(id) {
+  if (id === 'demo' || !cabinets().length) {
+    return { demo: true, currency: 'RUB', minTopUp: AD_DEPOSIT_MIN, sources: [{ type: 0, name: 'Счёт продвижения', amount: 0 }, { type: 1, name: 'Единый счёт', amount: 95324 }, { type: 3, name: 'Бонусы', amount: 1200 }] };
+  }
+  const token = tokenFor(id);
+  const balance = await cachedAnalytics(`ad-balance:${id}`, () => wbRequest(token, AD_BALANCE_URL), 5_000);
+  return { demo: false, currency: balance?.currency || 'RUB', minTopUp: await adDepositMinimum(id, token),
+    sources: AD_DEPOSIT_SOURCES.map(source => ({ type: source.type, name: source.name, amount: Number(balance?.[source.field] || 0) })) };
+}
+
+// Пополнение: POST /adv/v1/budget/deposit?id= с { sum, type, return: true } — в ответе новый бюджет { total, currency }.
+// Лимит — 1 запрос в секунду. Кампания после пополнения сама не запускается: для этого есть запуск (setCampaignStatus).
+async function depositCampaignBudget(id, campaignId, body = {}) {
+  if (id === 'demo' || !cabinets().length) throw apiError(400, 'В демо-режиме пополнять бюджет нельзя');
+  if (!/^\d{1,15}$/.test(String(campaignId || ''))) throw apiError(400, 'Некорректный номер кампании');
+  const sum = Number(body.sum), type = Number(body.type), source = AD_DEPOSIT_SOURCES.find(item => item.type === type);
+  if (!source) throw apiError(400, 'Выберите источник списания');
+  const token = tokenFor(id), min = await adDepositMinimum(id, token);
+  if (!Number.isInteger(sum) || sum < min) throw apiError(400, `Сумма пополнения — целое число рублей, не меньше ${min.toLocaleString('ru-RU')} ₽`);
+  const campaign = await fetchCampaign(token, campaignId);
+  if (!campaign) throw apiError(404, 'WB не нашёл кампанию');
+  if (!AD_BUDGET_STATUSES.has(Number(campaign.status))) throw apiError(400, `Кампанию в статусе «${CAMPAIGN_STATUS_NAMES[campaign.status] || campaign.status}» пополнить нельзя`);
+  const balance = await wbRequest(token, AD_BALANCE_URL).catch(() => null);
+  if (balance && Number(balance[source.field] || 0) < sum) throw apiError(400, `Источник «${source.name}»: доступно ${Number(balance[source.field] || 0).toLocaleString('ru-RU')} ₽ — меньше суммы пополнения`);
+  let result;
+  try { result = await wbRequest(token, `${AD_DEPOSIT_URL}?id=${encodeURIComponent(campaignId)}`, { method: 'POST', body: { sum, type, return: true } }); }
+  catch (error) {
+    const text = wbErrorText(error), minimum = text.match(/minimum deposit amount is (\d+)/i);
+    if (minimum) throw apiError(400, `WB: минимальная сумма пополнения — ${Number(minimum[1]).toLocaleString('ru-RU')} ₽`);
+    throw apiError(error.status || 502, text ? `WB: ${text.slice(0, 200)}` : error.message);
+  }
+  analyticsCache.delete(`ad-budget:${id}:${campaignId}`); analyticsCache.delete(`ad-balance:${id}`);
+  const budget = result?.total != null ? Number(result.total) : (await campaignBudget(id, campaignId).catch(() => ({ budget: null }))).budget;
+  return { ok: true, id: Number(campaignId), budget, currency: result?.currency || 'RUB', status: Number(campaign.status) };
 }
 
 // --- Места показа: PUT /adv/v0/auction/placements — только ручная ставка и оплата за показы (cpm), статусы 4, 9, 11 ---
@@ -3699,6 +3797,17 @@ async function handleApi(req, res, url) {
     if (!body.confirm) throw apiError(400, 'Подтвердите запуск или паузу кампании');
     return send(res, 200, await setCampaignStatus(body.cabinet || 'demo', body.id, body.action));
   }
+  if (req.method === 'GET' && url.pathname === '/api/advertising/campaign/budget') {
+    return send(res, 200, await campaignBudget(url.searchParams.get('cabinet') || 'demo', url.searchParams.get('id')));
+  }
+  if (req.method === 'GET' && url.pathname === '/api/advertising/finance') {
+    return send(res, 200, await adFinance(url.searchParams.get('cabinet') || 'demo'));
+  }
+  if (req.method === 'POST' && url.pathname === '/api/advertising/campaign/budget/deposit') {
+    const body = await readJson(req);
+    if (!body.confirm) throw apiError(400, 'Подтвердите пополнение бюджета');
+    return send(res, 200, await depositCampaignBudget(body.cabinet || 'demo', body.id, body));
+  }
   if (req.method === 'POST' && url.pathname === '/api/advertising/campaign/placements') {
     const body = await readJson(req);
     if (!body.confirm) throw apiError(400, 'Подтвердите изменение мест показа');
@@ -3922,7 +4031,7 @@ if (require.main === module) server.listen(PORT, '127.0.0.1', () => {
   if (sheetConfigured()) { setTimeout(syncSheet, 20_000); setInterval(syncSheet, SHEET_SYNC_EVERY); }
 });
 
-module.exports = { server, wbErrorText, setCampaignStatus, setCampaignPlacements, slimFunnelProduct, funnelTableFresh, campaignActivePeriod,productCampaignTimeline, mergeSheetRows, saveSheetRows, readSheetHistory, sheetSiteCabinet, sheetCabinetFilter, withoutClubPriceRepeats,mergeMinusList, minusPlan, archivedPresetsFromError, todoNmId, todoFields, productAdDays, productDetailPeriod, funnelOrdersByNmId, summarizeHourlyOrders, orderFeedPeriod, itemRatingPeriods, normalizeItemRatings, itemReturnsPeriod, normalizeItemReturns, returnStatusGroup, summarizeKeywordDaily, summarizePositionDaily, normalizeOrders, normalizeOrderFeed, enrichOrders, extractFunnel, summarizeAdStats, campaignProductDaily, withAdBudgets, summarizeKeywords, normalizeStockPreset, normalizePricePreset, adCampaignMayHaveStats, validAdPeriod, historyPeriod, historyChunks, planAdFetch, datesBetween, safeFolderName, funnelDaysToFetch, pairFunnelDays, funnelPeriods, funnelRangeBuckets, funnelRecordCounts, funnelRangeValues, funnelSalesMatrix, summaryTopProducts, summaryDrops, summaryProducts, normalizeFbsStocks, normalizeFbwStocks, normalizePrices, summarizeStockTotals, normalizeNewOrders, summarizeSupplies, normalizeTrbxes, chunkOrders, stickerType, localPhoto, WB_HOSTS };
+module.exports = { server, wbErrorText, readBackFbsStocks, depositCampaignBudget, setCampaignStatus, setCampaignPlacements, slimFunnelProduct, funnelTableFresh, campaignActivePeriod,productCampaignTimeline, mergeSheetRows, saveSheetRows, readSheetHistory, sheetSiteCabinet, sheetCabinetFilter, withoutClubPriceRepeats,mergeMinusList, minusPlan, archivedPresetsFromError, todoNmId, todoFields, productAdDays, productDetailPeriod, funnelOrdersByNmId, summarizeHourlyOrders, orderFeedPeriod, itemRatingPeriods, normalizeItemRatings, itemReturnsPeriod, normalizeItemReturns, returnStatusGroup, summarizeKeywordDaily, summarizePositionDaily, normalizeOrders, normalizeOrderFeed, enrichOrders, extractFunnel, summarizeAdStats, campaignProductDaily, withAdBudgets, summarizeKeywords, normalizeStockPreset, normalizePricePreset, adCampaignMayHaveStats, validAdPeriod, historyPeriod, historyChunks, planAdFetch, datesBetween, safeFolderName, funnelDaysToFetch, pairFunnelDays, funnelPeriods, funnelRangeBuckets, funnelRecordCounts, funnelRangeValues, funnelSalesMatrix, summaryTopProducts, summaryDrops, summaryProducts, normalizeFbsStocks, normalizeFbwStocks, normalizePrices, summarizeStockTotals, normalizeNewOrders, summarizeSupplies, normalizeTrbxes, chunkOrders, stickerType, localPhoto, WB_HOSTS };
 
 
 

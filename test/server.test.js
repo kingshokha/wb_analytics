@@ -1,7 +1,7 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { wbErrorText, setCampaignStatus, setCampaignPlacements, slimFunnelProduct, funnelTableFresh, productCampaignTimeline,mergeSheetRows, saveSheetRows, readSheetHistory, sheetSiteCabinet, sheetCabinetFilter, withoutClubPriceRepeats,minusPlan, archivedPresetsFromError, productAdDays, productDetailPeriod, todoNmId, todoFields, funnelOrdersByNmId, summarizeHourlyOrders, orderFeedPeriod, itemRatingPeriods, normalizeItemRatings, itemReturnsPeriod, normalizeItemReturns, returnStatusGroup, campaignActivePeriod, mergeMinusList, summarizeKeywordDaily, summarizePositionDaily, normalizeOrders, normalizeOrderFeed, enrichOrders, extractFunnel, summarizeAdStats, campaignProductDaily, withAdBudgets, summarizeKeywords, normalizeStockPreset, normalizePricePreset, adCampaignMayHaveStats, validAdPeriod, historyPeriod, historyChunks, planAdFetch, datesBetween, safeFolderName, funnelDaysToFetch, pairFunnelDays, funnelPeriods, funnelRangeBuckets, funnelRecordCounts, funnelRangeValues, funnelSalesMatrix, summaryTopProducts, summaryDrops, summaryProducts, normalizeFbsStocks, normalizeFbwStocks, normalizePrices, summarizeStockTotals, normalizeNewOrders, summarizeSupplies, normalizeTrbxes, chunkOrders, stickerType, localPhoto, WB_HOSTS } = require('../server');
+const { wbErrorText, readBackFbsStocks, depositCampaignBudget, setCampaignStatus, setCampaignPlacements, slimFunnelProduct, funnelTableFresh, productCampaignTimeline,mergeSheetRows, saveSheetRows, readSheetHistory, sheetSiteCabinet, sheetCabinetFilter, withoutClubPriceRepeats,minusPlan, archivedPresetsFromError, productAdDays, productDetailPeriod, todoNmId, todoFields, funnelOrdersByNmId, summarizeHourlyOrders, orderFeedPeriod, itemRatingPeriods, normalizeItemRatings, itemReturnsPeriod, normalizeItemReturns, returnStatusGroup, campaignActivePeriod, mergeMinusList, summarizeKeywordDaily, summarizePositionDaily, normalizeOrders, normalizeOrderFeed, enrichOrders, extractFunnel, summarizeAdStats, campaignProductDaily, withAdBudgets, summarizeKeywords, normalizeStockPreset, normalizePricePreset, adCampaignMayHaveStats, validAdPeriod, historyPeriod, historyChunks, planAdFetch, datesBetween, safeFolderName, funnelDaysToFetch, pairFunnelDays, funnelPeriods, funnelRangeBuckets, funnelRecordCounts, funnelRangeValues, funnelSalesMatrix, summaryTopProducts, summaryDrops, summaryProducts, normalizeFbsStocks, normalizeFbwStocks, normalizePrices, summarizeStockTotals, normalizeNewOrders, summarizeSupplies, normalizeTrbxes, chunkOrders, stickerType, localPhoto, WB_HOSTS } = require('../server');
 
 test('текст ошибки WB у запуска, паузы и мест показа: JSON { error }, { detail } и простой текст 422', () => {
   assert.equal(wbErrorText({ details: { error: 'AdvertChangeStatus: Low Budget: not enough budget' } }), 'AdvertChangeStatus: Low Budget: not enough budget');
@@ -10,9 +10,30 @@ test('текст ошибки WB у запуска, паузы и мест по�
   assert.equal(wbErrorText({}), '');
 });
 
+test('после изменения остатков перечитываются только изменённые позиции на своих складах', async () => {
+  const realFetch = global.fetch, calls = [];
+  global.fetch = async (url, options) => {
+    const body = JSON.parse(options.body); calls.push({ url: String(url), method: options.method, chrtIds: body.chrtIds });
+    if (String(url).endsWith('/stocks/2')) return new Response('{"code":"NotFound","message":"Not found"}', { status: 404 });
+    return new Response(JSON.stringify({ stocks: [{ chrtId: 11, amount: 5 }, { chrtId: 12, amount: 7 }] }), { status: 200, headers: { 'content-type': 'application/json' } });
+  };
+  try {
+    const grouped = new Map([['1', [{ chrtId: 11, amount: 5 }, { chrtId: 12, amount: 9 }]], ['2', [{ chrtId: 11, amount: 3 }]]]);
+    const result = await readBackFbsStocks('token', grouped);
+    assert.deepEqual(calls.map(call => [call.url.replace('https://marketplace-api.wildberries.ru', ''), call.method, call.chrtIds]),
+      [['/api/v3/stocks/1', 'POST', [11, 12]], ['/api/v3/stocks/2', 'POST', [11]]]);
+    // Склад 1 — остатки из WB (у 12 WB показывает 7, а не 9), склад 2 перечитать не удалось — отправленное значение.
+    assert.deepEqual(result.stocks, [{ warehouseId: '1', chrtId: 11, amount: 5 }, { warehouseId: '1', chrtId: 12, amount: 7 }, { warehouseId: '2', chrtId: 11, amount: 3 }]);
+    assert.equal(result.warnings.length, 2);
+    assert.match(result.warnings[0], /другой остаток у 1 поз/);
+    assert.match(result.warnings[1], /перечитать их у WB не удалось/);
+  } finally { global.fetch = realFetch; }
+});
+
 test('запуск, пауза и места показа: в демо-режиме и с неверными данными запрос в WB не уходит', async () => {
   await assert.rejects(setCampaignStatus('demo', '123', 'start'), /демо-режиме/);
   await assert.rejects(setCampaignPlacements('demo', '123', { search: true, recommendations: false }), /демо-режиме/);
+  await assert.rejects(depositCampaignBudget('demo', '123', { sum: 1000, type: 1 }), /демо-режиме пополнять бюджет нельзя/);
 });
 
 test('возвраты: группы статусов, даты WB с пробелом, карточка товара, нулевой orderId', () => {
