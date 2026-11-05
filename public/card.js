@@ -238,11 +238,47 @@
   function panelGroup() {
     const data = view.data, card = data.card, group = data.group || [], same = data.sameSubject || [];
     const imts = [...new Map(same.map(item => [item.imtID, item])).values()];
-    return `<section class="panel"><div class="panel-head"><h2>Объединённая карточка</h2><span class="hint">imtID ${card.imtID}</span></div><div class="panel-body">
+    const free = 30 - group.length - 1;
+    return `<section class="panel"><div class="panel-head"><h2>Склейка</h2><span class="hint">imtID ${card.imtID}</span></div><div class="panel-body">
       ${group.length ? `<p class="hint" style="margin-bottom:8px">Вместе с этой карточкой (покупатель видит их как варианты одного товара):</p><div class="group-list">${group.map(item => `<div class="group-item">${item.photo ? `<img src="${esc(item.photo)}" alt="">` : ''}<a href="/card.html?${new URLSearchParams({ cabinet, nmId: item.nmID })}">${esc(item.vendorCode)}</a><span class="hint">${esc(short(item.title, 40))}</span></div>`).join('')}</div>
       <div class="row-actions"><button type="button" class="btn small" data-action="unmerge">Отсоединить эту карточку</button></div>` : '<p class="hint" style="margin-bottom:8px">Карточка не объединена с другими.</p>'}
+      ${data.trashed ? '' : `<div class="row-actions" style="margin-top:10px"><button type="button" class="btn small primary" data-action="glue-open"${same.length && free > 0 ? '' : ' disabled'}>Добавить в карточку другие товары</button></div>`}
       ${imts.length ? `<div class="row-actions" style="margin-top:10px"><select id="mergeTarget" aria-label="С какой карточкой объединить"><option value="">Присоединить к карточке того же предмета…</option>${imts.map(item => `<option value="${item.imtID}">${esc(item.vendorCode)} — ${esc(short(item.title, 40))}</option>`).join('')}</select><button type="button" class="btn small" data-action="merge">Присоединить</button></div>` : ''}
-      <p class="hint" style="margin-top:8px">Объединять можно только карточки одного предмета, до 30 в группе.</p></div></section>`;
+      <p class="hint" style="margin-top:8px">Объединять можно только карточки одного предмета, до 30 в группе${group.length ? ` (свободно ${Math.max(0, free)})` : ''}.</p></div></section>`;
+  }
+  // --- Окно «Добавить в карточку другие товары»: несколько карточек того же предмета сразу (как в кабинете WB) ---
+  // Список — карточки того же предмета не из этой склейки. Выбрать можно столько, чтобы в склейке было не больше 30.
+  const glue = { selected: new Set(), term: '' };
+  const GLUE_SHOWN = 200;
+  function glueItems() {
+    const term = glue.term.trim().toLowerCase();
+    return (view.data.sameSubject || []).filter(item => !term || `${item.vendorCode} ${item.nmID} ${item.title}`.toLowerCase().includes(term));
+  }
+  function glueList() {
+    const items = glueItems(), free = 30 - (view.data.group || []).length - 1, full = glue.selected.size >= free;
+    const rows = items.slice(0, GLUE_SHOWN).map(item => { const checked = glue.selected.has(item.nmID);
+      return `<label class="glue-item"><span class="glue-photo">${item.photo ? `<img src="${esc(item.photo)}" alt="" loading="lazy">` : ''}</span><span class="glue-text"><b>${esc(item.title || 'Без названия')}</b><small>Артикул WB: ${esc(item.nmID)} · Артикул: ${esc(item.vendorCode || '—')}${item.groupSize > 1 ? ` · сейчас в склейке из ${item.groupSize}` : ''}</small></span><input type="checkbox" data-glue-nm="${esc(item.nmID)}"${checked ? ' checked' : ''}${!checked && full ? ' disabled' : ''} aria-label="Выбрать ${esc(item.vendorCode || item.nmID)}"></label>`; }).join('');
+    $('#glueList').innerHTML = rows || '<p class="hint">Ничего не найдено</p>';
+    $('#glueMore').textContent = items.length > GLUE_SHOWN ? `Показаны первые ${GLUE_SHOWN} из ${items.length} — уточните поиск.` : '';
+    $('#glueRun').disabled = !glue.selected.size;
+    $('#glueRun').textContent = glue.selected.size ? `Объединить выбранные варианты: ${glue.selected.size}` : 'Объединить выбранные варианты';
+    $('#glueFree').textContent = `В склейке будет ${(view.data.group || []).length + 1 + glue.selected.size} из 30${full ? ' — больше добавить нельзя' : ''}.`;
+  }
+  function openGlue() {
+    glue.selected.clear(); glue.term = '';
+    dialog(`<h2>Добавить в карточку другие товары</h2><p class="hint">Укажите артикул продавца, артикул WB или название. Объединять можно только товары одного предмета — «${esc(view.data.card.subjectName || '')}».</p>
+      <label class="glue-search"><input type="search" id="glueSearch" placeholder="Например, 123456789" autocomplete="off" aria-label="Поиск карточки"></label>
+      <div class="glue-list" id="glueList"></div><p class="hint" id="glueMore"></p><p class="hint" id="glueFree"></p>
+      <div class="actions glue-actions"><button type="button" class="btn primary" id="glueRun" disabled>Объединить выбранные варианты</button><button type="button" class="btn" data-dialog-close>Отменить</button></div>`);
+    glueList(); $('#glueSearch').focus();
+  }
+  function runGlue() {
+    const card = view.data.card, chosen = (view.data.sameSubject || []).filter(item => glue.selected.has(item.nmID));
+    if (!chosen.length) return;
+    const moving = chosen.filter(item => item.groupSize > 1);
+    confirmAction('Объединить карточки?', `К карточке ${esc(card.vendorCode)} (imtID ${card.imtID}) присоединятся как варианты одного товара:<ul>${chosen.map(item => `<li>${esc(item.vendorCode || item.nmID)} <span>· ${esc(item.nmID)} · ${esc(short(item.title, 50))}</span></li>`).join('')}</ul>${moving.length ? `Из своих склеек уйдут: ${moving.map(item => esc(item.vendorCode || item.nmID)).join(', ')}. ` : ''}Изменение сразу уйдёт в WB.`, 'Объединить', async () => {
+      await post('/api/cards/move', { nmIds: chosen.map(item => item.nmID), targetIMT: card.imtID }); closeDialog(); load(`Объединено карточек: ${chosen.length}`);
+    });
   }
   function panelTrash() {
     if (view.data.trashed) return '';
@@ -290,6 +326,7 @@
 
   // --- События ---
   document.addEventListener('input', event => {
+    if (event.target.id === 'glueSearch') { glue.term = event.target.value; glueList(); return; }
     const input = event.target, d = view.draft; if (!d) return;
     if (input.dataset.field && input.type !== 'checkbox') {
       d[input.dataset.field] = input.value;
@@ -303,6 +340,7 @@
     if (input.dataset.doc !== undefined && input.dataset.key && input.type !== 'checkbox') { d.documents.items[Number(input.dataset.doc)][input.dataset.key] = input.dataset.key === 'type' ? Number(input.value) || '' : input.value; updateSavebar(); }
   });
   document.addEventListener('change', event => {
+    if (event.target.dataset.glueNm) { const nmId = Number(event.target.dataset.glueNm); if (event.target.checked) glue.selected.add(nmId); else glue.selected.delete(nmId); glueList(); return; }
     const input = event.target, d = view.draft; if (!d) return;
     if (input.type === 'checkbox' && input.dataset.field === 'kizMarked') { d.kizMarked = input.checked; updateSavebar(); return; }
     if (input.type === 'checkbox' && input.dataset.field === 'excludeDocuments') { d.documents.excludeDocuments = input.checked; render(); return; }
@@ -360,6 +398,7 @@
   document.addEventListener('click', event => {
     const target = event.target;
     if (target.closest('[data-dialog-close]') || target === $('#overlay')) { closeDialog(); return; }
+    if (target.closest('#glueRun')) { runGlue(); return; }
     const copy = target.closest('[data-copy]');
     if (copy) { navigator.clipboard?.writeText(copy.dataset.copy).then(() => status(`Скопировано: ${copy.dataset.copy}`)).catch(() => {}); return; }
     if (target.closest('#reloadButton')) { if (changes().length && !window.confirm('Несохранённые изменения пропадут. Загрузить карточку заново?')) return; load(); return; }
@@ -402,6 +441,7 @@
     if (action === 'tags-save') confirmAction('Сохранить ярлыки?', `На карточке будут ярлыки: ${esc((view.data.tags || []).filter(item => view.tags.includes(item.id)).map(item => item.name).join(', ') || 'без ярлыков')}.`, 'Сохранить', async () => {
       await post('/api/card/tags', { nmId: card.nmID, tagIds: view.tags }); closeDialog(); load('Ярлыки сохранены в WB');
     });
+    if (action === 'glue-open') openGlue();
     if (action === 'unmerge') confirmAction('Отсоединить карточку?', `Карточка ${esc(card.vendorCode)} станет отдельным товаром со своим imtID. Остальные карточки группы останутся вместе.`, 'Отсоединить', async () => {
       await post('/api/cards/move', { nmIds: [card.nmID] }); closeDialog(); load('Карточка отсоединена');
     });

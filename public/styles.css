@@ -448,6 +448,11 @@ tr.rating-row-attention td:first-child{box-shadow:inset 3px 0 0 var(--red)}
 .card-tag{display:inline-block;margin:1px 2px 1px 0;padding:2px 8px;border-radius:999px;background:var(--tag);color:var(--ink);font-size:11px;font-weight:700;white-space:nowrap}
 .card-warn{color:#b84949!important;font-weight:700}
 .card-errors div{margin:2px 0;white-space:normal;line-height:1.4}
+/* Склейка: карточки одной группы подряд, над ними строка группы, слева — цветная полоса группы. */
+.cards-table tr.card-glue-head td{padding:8px 12px;background:#f6f4fd;color:#5b36c8;font-size:11px;font-weight:800;letter-spacing:.04em;border-top:2px solid #e3dcfb}
+.cards-table tr.card-glue-head small{display:inline;margin-left:8px;color:var(--muted);font-weight:600;letter-spacing:0}
+.cards-table tr.card-glued td:first-child{box-shadow:inset 3px 0 0 var(--glue,#9d77ff)}
+.card-glue-chip{display:inline-block;padding:0 6px;border-radius:999px;background:#ece5ff;color:#5b36c8;font-weight:700}
 .card-tags-button,.card-recover{height:35px;padding:0 13px;border:1px solid var(--line);border-radius:8px;background:white;color:var(--ink);font:700 12px Manrope;cursor:pointer}
 .card-tags-button:hover,.card-recover:hover{border-color:var(--purple);color:var(--purple)}
 .funnel-tab b.alert{background:#fdecec;color:#b84949}

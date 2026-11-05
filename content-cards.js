@@ -16,16 +16,17 @@
 'use strict';
 
 const CONTENT = 'https://content-api.wildberries.ru';
-const CARDS_TTL = 10 * 60_000;
 const NAMED_DIRECTORIES = ['colors', 'kinds', 'countries', 'seasons', 'vat'];
 const TAG_COLORS = ['D1CFD7', 'FEE0E0', 'ECDAFF', 'E4EAFF', 'DEF1DD', 'FFECC7'];
 const DOCUMENT_TYPES = [1, 2, 3, 4, 5, 7, 8, 9];
 const MEDIA_MAX_BYTES = 50 * 1024 * 1024;
 
-module.exports = function createContentCards({ wbRequest, tokenFor, cabinets, cachedAnalytics, analyticsCache, apiError, readJson, send, localPhoto, loadProductCards }) {
+module.exports = function createContentCards({ wbRequest, tokenFor, cabinets, cachedAnalytics, analyticsCache, apiError, readJson, send, localPhoto, productCards, refreshProductCards, productCardsChanged, productCardsStatus }) {
   const isDemo = id => id === 'demo' || !cabinets().length;
   const cardsKey = id => `product-cards:${id}`;
-  const forgetCards = id => analyticsCache.delete(cardsKey(id));
+  // Список карточек хранится на сервере и на диске (productCards в server.js). После изменения он поправляется
+  // на месте (patch) и перечитывается из WB в фоне.
+  const forgetCards = (id, patch) => productCardsChanged(id, patch);
 
   // Ответы Контента: { data, error, errorText, additionalErrors }. Ошибка бывает и при 200 — тогда тоже исключение.
   // Текст ошибки — errorText и additionalErrors (по артикулам продавца или { error }).
@@ -86,10 +87,11 @@ module.exports = function createContentCards({ wbRequest, tokenFor, cabinets, ca
   }
 
   // --- Чтение ---
-  async function allCards(id, force) {
+  // force — «Обновить»: свежий список грузится в фоне, а пока отдаётся сохранённый.
+  async function allCards(id, force, wait = true) {
     if (isDemo(id)) return demoCards();
-    if (force) forgetCards(id);
-    return cachedAnalytics(cardsKey(id), () => loadProductCards(tokenFor(id)), CARDS_TTL);
+    if (force && !productCardsStatus(id).refreshing) productCardsChanged(id);
+    return productCards(id, tokenFor(id), { wait });
   }
   async function tagsOf(id) {
     if (isDemo(id)) return demo.tags;
@@ -113,12 +115,16 @@ module.exports = function createContentCards({ wbRequest, tokenFor, cabinets, ca
       characteristics: (card.characteristics || []).length, groupSize: groupSizes.get(card.imtID) || 1, createdAt: card.createdAt || '', updatedAt: card.updatedAt || '', trashedAt: card.trashedAt || ''
     };
   }
+  // refreshing — из WB как раз грузится свежий список: страница спросит ещё раз и покажет его. loading — самой первой
+  // загрузки ещё нет на диске: в cards то, что уже пришло, loaded — сколько.
   async function cardsList(id, force) {
-    const cards = await allCards(id, force), groupSizes = new Map();
+    const cards = await allCards(id, force, false), groupSizes = new Map();
     cards.forEach(card => groupSizes.set(card.imtID, (groupSizes.get(card.imtID) || 0) + 1));
     const warnings = [];
     const tags = await tagsOf(id).catch(error => (warnings.push(`Ярлыки: ${error.message}`), []));
-    return { demo: isDemo(id), cards: cards.map(card => listItem(card, groupSizes)), tags, warnings, fetchedAt: new Date().toISOString() };
+    const status = isDemo(id) ? { savedAt: Date.now(), refreshing: false } : productCardsStatus(id);
+    return { demo: isDemo(id), cards: cards.map(card => listItem(card, groupSizes)), tags, warnings, fetchedAt: new Date(status.savedAt || Date.now()).toISOString(),
+      refreshing: status.refreshing, loading: !status.savedAt && status.refreshing, loaded: status.loaded || 0 };
   }
   async function trashList(id) {
     if (isDemo(id)) { demoCards(); return { demo: true, cards: demo.trash.map(card => listItem(card, new Map())) }; }
@@ -194,7 +200,9 @@ module.exports = function createContentCards({ wbRequest, tokenFor, cabinets, ca
     // Свежая карточка заменяет её же в кэше списка — список сразу показывает новые данные.
     if (!trashed && !isDemo(id)) { const cached = analyticsCache.get(cardsKey(id)); if (cached?.value) { const index = cached.value.findIndex(item => item.nmID === nmId); if (index >= 0) cached.value[index] = card; } }
     const group = trashed ? [] : cards.filter(item => item.imtID === card.imtID && item.nmID !== nmId).map(item => ({ nmID: item.nmID, vendorCode: item.vendorCode, title: item.title, photo: localPhoto(item.photos?.[0]?.tm || item.photos?.[0]?.c246x328 || '') }));
-    const sameSubject = trashed ? [] : cards.filter(item => item.subjectID === card.subjectID && item.imtID !== card.imtID).map(item => ({ nmID: item.nmID, imtID: item.imtID, vendorCode: item.vendorCode, title: item.title }));
+    const groupSizes = new Map(); cards.forEach(item => groupSizes.set(item.imtID, (groupSizes.get(item.imtID) || 0) + 1));
+    const sameSubject = trashed ? [] : cards.filter(item => item.subjectID === card.subjectID && item.imtID !== card.imtID).map(item => ({ nmID: item.nmID, imtID: item.imtID, vendorCode: item.vendorCode, title: item.title,
+      photo: localPhoto(item.photos?.[0]?.tm || item.photos?.[0]?.c246x328 || ''), groupSize: groupSizes.get(item.imtID) || 1 }));
     return { demo: isDemo(id), trashed, card, charcs, dictionaries: dicts, tags, group, sameSubject, errors: (errors.items || []).filter(item => item.vendorCode === card.vendorCode), warnings, fetchedAt: new Date().toISOString() };
   }
 
@@ -357,21 +365,33 @@ module.exports = function createContentCards({ wbRequest, tokenFor, cabinets, ca
       return { ok: true, demo: true };
     }
     await content(tokenFor(id), restore ? '/content/v2/cards/recover' : '/content/v2/cards/delete/trash', { method: 'POST', body: { nmIDs: nmIds } });
-    forgetCards(id);
+    forgetCards(id, restore ? null : list => list.filter(card => !nmIds.includes(card.nmID)));
     return { ok: true };
   }
   // Объединение (с targetIMT — до 30 карточек одного предмета) и разъединение (без targetIMT; по одной карточке за запрос,
-  // иначе отделённые карточки объединятся между собой).
+  // иначе отделённые карточки объединятся между собой). По документации в группе после объединения — не больше 30 карточек
+  // («В группу можно объединить не больше 30 карточек») и все одного предмета: это проверяется заранее по списку карточек.
+  // Карточка, которая была в другой группе, уходит из неё.
   async function moveCards(body) {
     needConfirm(body);
     const id = String(body.cabinet || 'demo'), nmIds = nmIdsOf(body.nmIds), targetIMT = body.targetIMT == null || body.targetIMT === '' ? null : Number(body.targetIMT);
     if (nmIds.length > 30) throw apiError(400, 'Объединить можно не больше 30 карточек');
     if (targetIMT !== null && !Number.isInteger(targetIMT)) throw apiError(400, 'Некорректный imtID');
     if (targetIMT === null && nmIds.length > 1) throw apiError(400, 'Отсоединять карточки нужно по одной');
-    if (isDemo(id)) { const card = demoCards().find(item => item.nmID === nmIds[0]); if (card) card.imtID = targetIMT ?? 9200000 + card.nmID % 1000; return { ok: true, demo: true }; }
+    if (targetIMT !== null) {
+      const cards = await allCards(id).catch(() => []), group = cards.filter(card => card.imtID === targetIMT);
+      if (group.length) {
+        const total = new Set([...group.map(card => card.nmID), ...nmIds]).size;
+        if (total > 30) throw apiError(400, `В группе будет ${total} карточек, а можно не больше 30`);
+        const subject = group[0].subjectID, other = cards.filter(card => nmIds.includes(card.nmID) && card.subjectID !== subject);
+        if (other.length) throw apiError(400, `Объединять можно только карточки одного предмета («${group[0].subjectName}»): ${other.map(card => card.vendorCode || card.nmID).join(', ')}`);
+      }
+    }
+    if (isDemo(id)) { demoCards().filter(item => nmIds.includes(item.nmID)).forEach(card => { card.imtID = targetIMT ?? 9200000 + card.nmID % 1000; }); return { ok: true, demo: true }; }
     await content(tokenFor(id), '/content/v2/cards/moveNm', { method: 'POST', body: targetIMT === null ? { nmIDs: nmIds } : { targetIMT, nmIDs: nmIds } });
-    forgetCards(id);
-    return { ok: true };
+    // Новый imtID отсоединённой карточки WB сообщит при перечитывании; до тех пор — свой, отрицательный, чтобы она была отдельно.
+    forgetCards(id, list => list.map(card => nmIds.includes(card.nmID) ? { ...card, imtID: targetIMT ?? -card.nmID } : card));
+    return { ok: true, moved: nmIds.length };
   }
   async function barcodes(body) {
     const id = String(body.cabinet || 'demo'), count = Math.max(1, Math.min(20, Math.round(Number(body.count) || 1)));

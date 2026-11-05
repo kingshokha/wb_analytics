@@ -157,6 +157,20 @@
     .dialog ul{margin:10px 0;padding-left:18px;font-size:13px;line-height:1.6}
     .dialog li span{color:var(--muted)}
     .dialog .actions{display:flex;justify-content:flex-end;gap:8px;margin-top:14px}
+    /* Окно «Добавить в карточку другие товары» */
+    .glue-search{display:block;margin:14px 0 10px}
+    .glue-search input{width:100%;height:42px;padding:0 14px;border:1px solid var(--line);border-radius:10px;font:600 14px Manrope,Arial,sans-serif;color:var(--ink);outline:0}
+    .glue-search input:focus{border-color:var(--purple)}
+    .glue-list{display:grid;max-height:46vh;overflow:auto;margin-bottom:6px}
+    .glue-item{display:grid;grid-template-columns:36px 1fr auto;align-items:center;gap:12px;padding:9px 4px;border-bottom:1px solid #f0f1ef;cursor:pointer}
+    .glue-item:hover{background:#faf9ff}
+    .glue-photo{width:36px;height:46px;border-radius:6px;background:#eef0ee;overflow:hidden}
+    .glue-photo img{width:100%;height:100%;object-fit:cover}
+    .glue-text{min-width:0}
+    .glue-text b{display:block;font-size:13px;line-height:1.35}
+    .glue-text small{display:block;margin-top:2px;color:var(--muted);font-size:11px}
+    .glue-item input{width:20px;height:20px;accent-color:var(--purple)}
+    .dialog .glue-actions{justify-content:flex-start}
     .loading{padding:60px 0;text-align:center;color:var(--muted)}
     @media(max-width:1180px){.layout{grid-template-columns:1fr}}
     @media(max-width:980px){main{padding:24px 24px 120px}.savebar{padding:12px 24px}}

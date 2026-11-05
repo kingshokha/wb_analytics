@@ -308,6 +308,110 @@ const PRODUCT_CARDS_MAX_PAGES = 300;
 // Карточки, которые ещё грузятся (по токену): списки, собираемые по частям (progressiveList), берут из них названия
 // и фото, не дожидаясь всех карточек.
 const productCardsLoading = new Map();
+// Карточки кабинета нужны почти везде (названия, фото), а у кабинета с тысячами карточек полная загрузка — десятки
+// запросов к WB и минута-две. Поэтому список хранится и на диске: data/Cards/<кабинет>/ — по файлу на каждый предмет
+// («Худи (12).json», в скобках — сколько в нём карточек) и index.json с временем загрузки и списком файлов (там же номер
+// предмета subjectID). Число карточек меняется — прежний файл предмета переименовывается, а не копится рядом.
+// Читаются только файлы из index.json: файл предмета, в котором карточек больше нет, остаётся на диске, но в список
+// не попадает. Если копия старше 10 минут или сервер
+// перезапущен, сразу отдаётся сохранённая, а свежая грузится в фоне и заменяет её.
+// После изменения карточки на сайте (productCardsChanged) копия поправляется на месте и сразу перечитывается в фоне.
+const CARDS_DIR = path.join(ROOT, 'data', 'Cards');
+const PRODUCT_CARDS_TTL = 10 * 60_000;
+const productCardsGen = new Map();
+const productCardsKey = id => `product-cards:${id}`;
+const productCardsDir = id => path.join(CARDS_DIR, cabinetFolderName(id));
+function readProductCardsCopy(id) {
+  const dir = productCardsDir(id);
+  try {
+    const index = JSON.parse(fs.readFileSync(path.join(dir, 'index.json'), 'utf8')), cards = [];
+    for (const item of index.files || []) {
+      const saved = JSON.parse(fs.readFileSync(path.join(dir, item.file), 'utf8'));
+      if (!Array.isArray(saved?.cards)) return null;
+      cards.push(...saved.cards);
+    }
+    return { value: cards, savedAt: Date.parse(index.savedAt) || 0 };
+  } catch {}
+  // Прежний формат — один файл cards.json на кабинет.
+  try {
+    const saved = JSON.parse(fs.readFileSync(path.join(dir, 'cards.json'), 'utf8'));
+    if (Array.isArray(saved?.cards)) return { value: saved.cards, savedAt: Date.parse(saved.savedAt) || 0 };
+  } catch {}
+  return null;
+}
+function writeProductCardsCopy(id, cards, savedAt) {
+  const dir = productCardsDir(id), groups = new Map();
+  for (const card of cards) {
+    const subjectID = card.subjectID ?? 0;
+    if (!groups.has(subjectID)) groups.set(subjectID, { subjectID, subjectName: card.subjectName || '', cards: [] });
+    groups.get(subjectID).cards.push(card);
+  }
+  // Имя файла — «Предмет (сколько карточек).json». Совпало с другим предметом — к числу добавляется номер предмета.
+  const bySubject = new Map();
+  for (const group of groups.values()) {
+    const base = safeFolderName(group.subjectName, 'Без предмета');
+    let file = `${base} (${group.cards.length}).json`;
+    if (bySubject.has(file)) file = `${base} (${group.cards.length}, ${group.subjectID}).json`;
+    bySubject.set(file, group);
+  }
+  fs.mkdirSync(dir, { recursive: true });
+  // Прежний файл того же предмета (по index.json) переименовывается в новое имя — так он не остаётся лишним рядом.
+  let previous = [];
+  try { previous = JSON.parse(fs.readFileSync(path.join(dir, 'index.json'), 'utf8')).files || []; } catch {}
+  const oldFile = new Map(previous.map(item => [item.subjectID, item.file]));
+  for (const [file, group] of bySubject) {
+    const old = oldFile.get(group.subjectID);
+    if (old && old !== file && !bySubject.has(old) && fs.existsSync(path.join(dir, old)) && !fs.existsSync(path.join(dir, file))) fs.renameSync(path.join(dir, old), path.join(dir, file));
+  }
+  const write = (file, data) => { const target = path.join(dir, file); fs.writeFileSync(`${target}.tmp`, JSON.stringify(data)); fs.renameSync(`${target}.tmp`, target); };
+  for (const [file, group] of bySubject) write(file, { cabinet: id, savedAt: new Date(savedAt).toISOString(), ...group });
+  // Индекс — последним: пока все файлы предметов не записаны, читается прежний набор.
+  write('index.json', { cabinet: id, savedAt: new Date(savedAt).toISOString(), count: cards.length,
+    files: [...bySubject].map(([file, group]) => ({ file, subjectID: group.subjectID, subjectName: group.subjectName, count: group.cards.length })) });
+}
+function productCardsCopy(id) {
+  const key = productCardsKey(id);
+  if (!analyticsCache.has(key)) { const saved = readProductCardsCopy(id); if (saved) analyticsCache.set(key, saved); }
+  return analyticsCache.get(key) || null;
+}
+function refreshProductCards(id, token = tokenFor(id)) {
+  const key = productCardsKey(id);
+  if (!analyticsPending.has(key)) {
+    const gen = productCardsGen.get(id) || 0;
+    const job = (async () => {
+      try {
+        const value = await loadProductCards(token), savedAt = Date.now();
+        // Карточку изменили на сайте, пока шла загрузка: список мог прочитать старые данные — он сразу считается устаревшим.
+        analyticsCache.set(key, { value, savedAt, stale: (productCardsGen.get(id) || 0) !== gen });
+        try { writeProductCardsCopy(id, value, savedAt); }
+        catch (error) { console.error(`Не удалось сохранить карточки кабинета ${id}: ${error.message}`); }
+        return value;
+      } finally { analyticsPending.delete(key); }
+    })();
+    job.catch(error => console.error(`Карточки кабинета ${id}: ${error.message}`));
+    analyticsPending.set(key, job);
+  }
+  return analyticsPending.get(key);
+}
+// wait: false — при самой первой загрузке не ждать: вернуть то, что уже пришло (раздел «Карточки» показывает их по ходу).
+async function productCards(id, token = tokenFor(id), { wait = true } = {}) {
+  const copy = productCardsCopy(id);
+  if (copy && !copy.stale && Date.now() - copy.savedAt < PRODUCT_CARDS_TTL) return copy.value;
+  if (copy) { refreshProductCards(id, token); return copy.value; }
+  const job = refreshProductCards(id, token);
+  return wait ? job : [...(productCardsLoading.get(token) || [])];
+}
+// patch(list) — поправить сохранённый список сразу (например, imtID после объединения), не дожидаясь WB.
+function productCardsChanged(id, patch) {
+  productCardsGen.set(id, (productCardsGen.get(id) || 0) + 1);
+  const copy = productCardsCopy(id);
+  if (copy) { if (patch) copy.value = patch(copy.value) || copy.value; copy.stale = true; }
+  refreshProductCards(id);
+}
+function productCardsStatus(id) {
+  const copy = analyticsCache.get(productCardsKey(id));
+  return { savedAt: copy?.savedAt || 0, refreshing: analyticsPending.has(productCardsKey(id)), loaded: productCardsLoading.get(tokenFor(id))?.length || 0 };
+}
 async function loadProductCards(token) {
   const cards = [];
   productCardsLoading.set(token, cards);
@@ -456,7 +560,7 @@ const forgetList = key => listJobs.delete(key);
 // Карточки кабинета: готовые — сразу, а пока грузятся — те, что уже пришли. cards() — текущий список, done — промис конца.
 function cardsSoFar(id, token, warnings) {
   let cards = null;
-  const done = cachedAnalytics(`product-cards:${id}`, () => loadProductCards(token), 10 * 60_000)
+  const done = productCards(id, token)
     .then(list => { cards = list; }, error => { cards = []; warnings.push(`Карточки товаров: ${error.message}`); });
   return { cards: () => cards || productCardsLoading.get(token) || [], loading: () => !cards, done };
 }
@@ -1367,7 +1471,7 @@ async function productDetail(id, nmIdInput, from, to, live = false) {
   const period = productDetailPeriod(from, to), dates = datesBetween(period.from, period.to);
   if (id === 'demo' || !cabinets().length) return demoProductDetail(nmId, period, dates);
   const token = tokenFor(id), warnings = [], today = moscowDate(0);
-  const cardsJob = cachedAnalytics(`product-cards:${id}`, () => loadProductCards(token), 10 * 60_000).catch(error => (warnings.push(`Карточки товаров: ${error.message}`), []));
+  const cardsJob = productCards(id, token).catch(error => (warnings.push(`Карточки товаров: ${error.message}`), []));
   const funnelJob = funnelHistory(id, period.from, period.to, 'day', [nmId], live);
   let allCampaigns = [];
   try {
@@ -1746,7 +1850,7 @@ async function todoProducts(tasks) {
   const ids = new Set(tasks.filter(task => task.nmId).flatMap(task => task.cabinet ? [task.cabinet] : cabinets().map(item => item.id)));
   for (const id of ids) {
     if (!cabinets().some(item => item.id === id)) continue;
-    const cards = await cachedAnalytics(`product-cards:${id}`, () => loadProductCards(tokenFor(id)), 10 * 60_000).catch(() => []);
+    const cards = await productCards(id).catch(() => []);
     for (const card of cards) if (wanted.has(String(card.nmID))) products.set(String(card.nmID), { name: card.title || '', vendorCode: card.vendorCode || '', photo: cardPhoto(card) });
   }
   return products;
@@ -2379,7 +2483,7 @@ async function campaignKeywords(id, campaignId, from, to, refresh = false) {
   }
   const statuses = await fetchNormqueryStatuses(id, token, campaignId, nmIds)
     .catch(error => (warnings.push(`Статусы ключевых запросов: ${error.message}`), new Map()));
-  const cards = await cachedAnalytics(`product-cards:${id}`, () => loadProductCards(token), 10 * 60_000).catch(() => []);
+  const cards = await productCards(id, token).catch(() => []);
   const byNmIdCard = new Map(cards.map(card => [String(card.nmID), { name: card.title || `Товар ${card.nmID}`, vendorCode: card.vendorCode || '', photo: cardPhoto(card) }]));
   const summary = summarizeKeywords(groups, statuses);
   const result = { demo: false, format: KEYWORDS_FORMAT, campaignId, period, updatedAt: new Date().toISOString(), ...summary,
@@ -2408,7 +2512,7 @@ async function advertisingCampaignHistory(id, campaignId, from, to, report = () 
   let meta = null; let cardsPromise = Promise.resolve([]); let campaign = null;
   if (!demo) {
     // Карточки нужны только для названий и фото, поэтому грузятся параллельно и не задерживают запросы статистики.
-    cardsPromise = cachedAnalytics(`product-cards:${id}`, () => loadProductCards(token), 10 * 60_000).catch(() => []);
+    cardsPromise = productCards(id, token).catch(() => []);
     const campaignData = await cachedAnalytics(`ad-campaigns:${id}`, () => wbRequest(token, AD_CAMPAIGNS_URL), 3 * 60_000);
     meta = (Array.isArray(campaignData?.adverts) ? campaignData.adverts : []).find(item => String(item.id) === String(campaignId));
     if (!meta) throw apiError(404, 'Кампания не найдена');
@@ -2516,7 +2620,7 @@ async function advertising(id, from, to, part = 'all') {
   const { campaigns, stats } = await loadAdStats(id, token, period, warnings, partial ? 'running' : 'all');
   // Карточки нужны только для фото и названий товаров. Быстрый ответ их не ждёт: если в кэше их нет,
   // загрузка идёт в фоне, и фото с названиями приходят вместе с полным ответом.
-  const cardsJob = cachedAnalytics(`product-cards:${id}`, () => loadProductCards(token), 10 * 60_000);
+  const cardsJob = productCards(id, token);
   const cards = partial ? (await Promise.race([cardsJob.catch(() => []), wait(0).then(() => null)]) ?? []) : await cardsJob;
   const budgets = partial ? new Map() : await advertBudgets(id, token, campaigns, warnings);
   const summary = enrichAdvertising(summarizeAdStats(campaigns, stats, period.from, period.to), cards);
@@ -3072,7 +3176,7 @@ function startFunnelTableJob(id, periods, entry) {
   // Фото — из карточек товаров (свой лимит у Контента): не ждём их ради первой страницы. Пришли позже — фото
   // проставляются всем загруженным строкам, а новая version заставляет сайт взять список целиком.
   let photos = null;
-  const cards = cachedAnalytics(`product-cards:${id}`, () => loadProductCards(token), 10 * 60_000).catch(() => []).then(list => {
+  const cards = productCards(id, token).catch(() => []).then(list => {
     photos = new Map(list.map(card => [String(card.nmID), cardPhoto(card)]));
     if (job.products.length) { job.products.forEach(item => { item.product.photo = photos.get(String(item.product.nmId)) || ''; }); job.version = `${job.version}p`; }
   });
@@ -3260,7 +3364,7 @@ async function summary(id, from, to, refresh = false) {
   const rangesJob = summaryFunnelRanges(id, token, periods, refresh);
   rangesJob.catch(() => {});
   const history = await funnelHistory(id, periods.current.from, periods.current.to, 'day', null, refresh);
-  const cards = await cachedAnalytics(`product-cards:${id}`, () => loadProductCards(token), 10 * 60_000)
+  const cards = await productCards(id, token)
     .catch(error => (warnings.push(`Карточки товаров: ${error.message}`), []));
   const ranges = await rangesJob;
   if (ranges.staleError) warnings.push(`Воронка: ${ranges.staleError}. Показаны сохранённые данные`);
@@ -3369,7 +3473,7 @@ async function itemRatings(id, from, to) {
     }
     return result;
   }, 30 * 60_000);
-  const cards = await cachedAnalytics(`product-cards:${id}`, () => loadProductCards(token), 10 * 60_000).catch(() => []);
+  const cards = await productCards(id, token).catch(() => []);
   return { demo: false, periods, ...normalizeItemRatings(pages, cards) };
 }
 
@@ -3464,7 +3568,7 @@ async function itemReturns(id, from, to) {
   const token = tokenFor(id), active = [], archive = [];
   for (const chunk of historyChunks(activeWindow)) active.push(...await itemReturnsChunk(id, token, 'active', chunk));
   for (const chunk of historyChunks(period)) archive.push(...await itemReturnsChunk(id, token, 'archive', chunk));
-  const cards = await cachedAnalytics(`product-cards:${id}`, () => loadProductCards(token), 10 * 60_000).catch(() => []);
+  const cards = await productCards(id, token).catch(() => []);
   return pack(active, archive, cards, false);
 }
 
@@ -3570,7 +3674,7 @@ async function dashboard(id, from, to) {
   const jobs = [
     wbRequest(token, 'https://marketplace-api.wildberries.ru/api/v3/orders/new').catch(e => (warnings.push(`FBS: ${e.message}`), { orders: [] })),
     orderFeedMonth(id, token).then(({ feed }) => feed).catch(e => (warnings.push(`Лента заказов: ${e.message}`), { data: { orders: [] } })),
-    cachedAnalytics(`product-cards:${id}`, () => loadProductCards(token), 10 * 60_000)
+    productCards(id, token)
       .catch(e => (warnings.push(`Карточки товаров: ${e.message}`), [])),
     cachedAnalytics(`balance:${id}`, () => wbRequest(token, 'https://finance-api.wildberries.ru/api/v1/account/balance'), 60_000)
       .catch(e => (warnings.push(`Баланс: ${e.message}`), null))
@@ -3669,7 +3773,7 @@ async function newFbsOrders(id) {
   const token = tokenFor(id); const warnings = [];
   const response = await wbRequest(token, `${MARKETPLACE_API}/api/v3/orders/new`);
   const orders = Array.isArray(response?.orders) ? response.orders : [];
-  const cards = await cachedAnalytics(`product-cards:${id}`, () => loadProductCards(token), 10 * 60_000)
+  const cards = await productCards(id, token)
     .catch(error => (warnings.push(`Карточки товаров: ${error.message}`), []));
   return { demo: false, ...normalizeNewOrders(orders, cards), warnings };
 }
@@ -3728,7 +3832,7 @@ async function supplyDetails(id, supplyId) {
   const foundOrders = orderIds.length ? await ordersByIds(token, orderIds).catch(error => (warnings.push(`Данные заданий: ${error.message}`), [])) : [];
   const trbxResponse = await wbRequest(token, `${MARKETPLACE_API}/api/v3/supplies/${encodeURIComponent(supplyId)}/trbx`)
     .catch(error => (warnings.push(`Грузоместа: ${error.message}`), { trbxes: [] }));
-  const cards = await cachedAnalytics(`product-cards:${id}`, () => loadProductCards(token), 10 * 60_000).catch(() => []);
+  const cards = await productCards(id, token).catch(() => []);
   const byId = new Map(foundOrders.map(order => [String(order.id), order]));
   const orders = normalizeNewOrders(orderIds.map(orderId => byId.get(String(orderId)) || { id: orderId, supplyId }), cards).rows
     .map(row => byId.has(String(row.id)) ? row : { ...row, name: `Задание ${row.id}`, detailsMissing: true });
@@ -3858,7 +3962,7 @@ async function orderStickers(body) {
 }
 
 // Раздел «Карточки товаров» — отдельный модуль (content-cards.js), маршруты /api/card и /api/cards/*.
-const contentCards = require('./content-cards')({ wbRequest, tokenFor, cabinets, cachedAnalytics, analyticsCache, apiError, readJson, send, localPhoto, loadProductCards });
+const contentCards = require('./content-cards')({ wbRequest, tokenFor, cabinets, cachedAnalytics, analyticsCache, apiError, readJson, send, localPhoto, productCards, refreshProductCards, productCardsChanged, productCardsStatus });
 // Раздел «Сообщения» — отдельный модуль (communications.js), маршруты /api/messages/*. События чатов — в data/Chats
 // (для тестового сервера — WB_CHATS_DIR, чтобы не трогать копию на компьютере).
 const CHATS_DIR = process.env.WB_CHATS_DIR ? path.resolve(process.env.WB_CHATS_DIR) : path.join(ROOT, 'data', 'Chats');
