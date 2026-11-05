@@ -237,25 +237,32 @@
   }
   function panelGroup() {
     const data = view.data, card = data.card, group = data.group || [], same = data.sameSubject || [];
-    const imts = [...new Map(same.map(item => [item.imtID, item])).values()];
     const free = 30 - group.length - 1;
     return `<section class="panel"><div class="panel-head"><h2>Склейка</h2><span class="hint">imtID ${card.imtID}</span></div><div class="panel-body">
       ${group.length ? `<p class="hint" style="margin-bottom:8px">Вместе с этой карточкой (покупатель видит их как варианты одного товара):</p><div class="group-list">${group.map(item => `<div class="group-item">${item.photo ? `<img src="${esc(item.photo)}" alt="">` : ''}<a href="/card.html?${new URLSearchParams({ cabinet, nmId: item.nmID })}">${esc(item.vendorCode)}</a><span class="hint">${esc(short(item.title, 40))}</span></div>`).join('')}</div>
       <div class="row-actions"><button type="button" class="btn small" data-action="unmerge">Отсоединить эту карточку</button></div>` : '<p class="hint" style="margin-bottom:8px">Карточка не объединена с другими.</p>'}
       ${data.trashed ? '' : `<div class="row-actions" style="margin-top:10px"><button type="button" class="btn small primary" data-action="glue-open"${same.length && free > 0 ? '' : ' disabled'}>Добавить в карточку другие товары</button></div>`}
-      ${imts.length ? `<div class="row-actions" style="margin-top:10px"><select id="mergeTarget" aria-label="С какой карточкой объединить"><option value="">Присоединить к карточке того же предмета…</option>${imts.map(item => `<option value="${item.imtID}">${esc(item.vendorCode)} — ${esc(short(item.title, 40))}</option>`).join('')}</select><button type="button" class="btn small" data-action="merge">Присоединить</button></div>` : ''}
       <p class="hint" style="margin-top:8px">Объединять можно только карточки одного предмета, до 30 в группе${group.length ? ` (свободно ${Math.max(0, free)})` : ''}.</p></div></section>`;
   }
   // --- Окно «Добавить в карточку другие товары»: несколько карточек того же предмета сразу (как в кабинете WB) ---
   // Список — карточки того же предмета не из этой склейки. Выбрать можно столько, чтобы в склейке было не больше 30.
-  const glue = { selected: new Set(), term: '' };
+  // Карточки из других склеек скрыты, пока не отмечено «Склеенные». «Выбрать все» берёт несклеенные из найденных — до лимита.
+  const glue = { selected: new Set(), term: '', glued: false };
   const GLUE_SHOWN = 200;
+  const glueFree = () => 30 - (view.data.group || []).length - 1;
   function glueItems() {
     const term = glue.term.trim().toLowerCase();
-    return (view.data.sameSubject || []).filter(item => !term || `${item.vendorCode} ${item.nmID} ${item.title}`.toLowerCase().includes(term));
+    return (view.data.sameSubject || []).filter(item => (glue.glued || item.groupSize <= 1) && (!term || `${item.vendorCode} ${item.nmID} ${item.title}`.toLowerCase().includes(term)));
+  }
+  function glueSelectAll(on) {
+    if (!on) { glue.selected.clear(); return; }
+    for (const item of glueItems()) { if (glue.selected.size >= glueFree()) break; if (item.groupSize <= 1) glue.selected.add(item.nmID); }
   }
   function glueList() {
-    const items = glueItems(), free = 30 - (view.data.group || []).length - 1, full = glue.selected.size >= free;
+    const items = glueItems(), free = glueFree(), full = glue.selected.size >= free;
+    const singles = items.filter(item => item.groupSize <= 1);
+    $('#glueAll').checked = full || (singles.length > 0 && singles.every(item => glue.selected.has(item.nmID)));
+    $('#glueAll').disabled = !singles.length && !glue.selected.size;
     const rows = items.slice(0, GLUE_SHOWN).map(item => { const checked = glue.selected.has(item.nmID);
       return `<label class="glue-item"><span class="glue-photo">${item.photo ? `<img src="${esc(item.photo)}" alt="" loading="lazy">` : ''}</span><span class="glue-text"><b>${esc(item.title || 'Без названия')}</b><small>Артикул WB: ${esc(item.nmID)} · Артикул: ${esc(item.vendorCode || '—')}${item.groupSize > 1 ? ` · сейчас в склейке из ${item.groupSize}` : ''}</small></span><input type="checkbox" data-glue-nm="${esc(item.nmID)}"${checked ? ' checked' : ''}${!checked && full ? ' disabled' : ''} aria-label="Выбрать ${esc(item.vendorCode || item.nmID)}"></label>`; }).join('');
     $('#glueList').innerHTML = rows || '<p class="hint">Ничего не найдено</p>';
@@ -265,9 +272,10 @@
     $('#glueFree').textContent = `В склейке будет ${(view.data.group || []).length + 1 + glue.selected.size} из 30${full ? ' — больше добавить нельзя' : ''}.`;
   }
   function openGlue() {
-    glue.selected.clear(); glue.term = '';
+    glue.selected.clear(); glue.term = ''; glue.glued = false;
     dialog(`<h2>Добавить в карточку другие товары</h2><p class="hint">Укажите артикул продавца, артикул WB или название. Объединять можно только товары одного предмета — «${esc(view.data.card.subjectName || '')}».</p>
       <label class="glue-search"><input type="search" id="glueSearch" placeholder="Например, 123456789" autocomplete="off" aria-label="Поиск карточки"></label>
+      <div class="glue-options"><label><input type="checkbox" id="glueAll"> Выбрать все</label><label title="Карточки, которые уже в других склейках: при объединении они уйдут из них"><input type="checkbox" id="glueGlued"> Склеенные</label></div>
       <div class="glue-list" id="glueList"></div><p class="hint" id="glueMore"></p><p class="hint" id="glueFree"></p>
       <div class="actions glue-actions"><button type="button" class="btn primary" id="glueRun" disabled>Объединить выбранные варианты</button><button type="button" class="btn" data-dialog-close>Отменить</button></div>`);
     glueList(); $('#glueSearch').focus();
@@ -340,6 +348,9 @@
     if (input.dataset.doc !== undefined && input.dataset.key && input.type !== 'checkbox') { d.documents.items[Number(input.dataset.doc)][input.dataset.key] = input.dataset.key === 'type' ? Number(input.value) || '' : input.value; updateSavebar(); }
   });
   document.addEventListener('change', event => {
+    if (event.target.id === 'glueAll') { glueSelectAll(event.target.checked); glueList(); return; }
+    // Склеенные скрыли — их выбор снимается, чтобы не объединить то, чего не видно.
+    if (event.target.id === 'glueGlued') { glue.glued = event.target.checked; if (!glue.glued) (view.data.sameSubject || []).forEach(item => { if (item.groupSize > 1) glue.selected.delete(item.nmID); }); glueList(); return; }
     if (event.target.dataset.glueNm) { const nmId = Number(event.target.dataset.glueNm); if (event.target.checked) glue.selected.add(nmId); else glue.selected.delete(nmId); glueList(); return; }
     const input = event.target, d = view.draft; if (!d) return;
     if (input.type === 'checkbox' && input.dataset.field === 'kizMarked') { d.kizMarked = input.checked; updateSavebar(); return; }
@@ -445,13 +456,6 @@
     if (action === 'unmerge') confirmAction('Отсоединить карточку?', `Карточка ${esc(card.vendorCode)} станет отдельным товаром со своим imtID. Остальные карточки группы останутся вместе.`, 'Отсоединить', async () => {
       await post('/api/cards/move', { nmIds: [card.nmID] }); closeDialog(); load('Карточка отсоединена');
     });
-    if (action === 'merge') {
-      const select = $('#mergeTarget'), targetIMT = Number(select?.value), option = select?.selectedOptions?.[0];
-      if (!targetIMT) { status('Выберите карточку, к которой присоединить', true); return; }
-      confirmAction('Присоединить карточку?', `Карточка ${esc(card.vendorCode)} станет вариантом товара «${esc(option.textContent)}» (imtID ${targetIMT}).`, 'Присоединить', async () => {
-        await post('/api/cards/move', { nmIds: [card.nmID], targetIMT }); closeDialog(); load('Карточка присоединена');
-      });
-    }
     if (action === 'trash') confirmAction('Перенести в корзину?', `Карточка ${esc(card.vendorCode)} уйдёт в корзину WB и получит новый imtID (отделится от группы). Она продаётся, пока есть остатки; чтобы снять с продажи, обнулите остатки. Без остатков WB удалит её через 30 дней.`, 'В корзину', async () => {
       await post('/api/cards/trash', { nmIds: [card.nmID] }); closeDialog(); load('Карточка перенесена в корзину');
     }, true);
