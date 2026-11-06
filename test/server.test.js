@@ -1,7 +1,7 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { wbErrorText, readBackFbsStocks, depositCampaignBudget, mergeCampaignZones, campaignZones, setCampaignStatus, setCampaignPlacements, slimFunnelProduct, funnelTableFresh, productCampaignTimeline,mergeSheetRows, saveSheetRows, readSheetHistory, sheetSiteCabinet, sheetCabinetFilter, withoutClubPriceRepeats,minusPlan, archivedPresetsFromError, productAdDays, productDetailPeriod, todoNmId, todoFields, funnelOrdersByNmId, summarizeHourlyOrders, orderFeedPeriod, itemRatingPeriods, normalizeItemRatings, itemReturnsPeriod, normalizeItemReturns, returnStatusGroup, campaignActivePeriod, mergeMinusList, summarizeKeywordDaily, summarizePositionDaily, normalizeOrders, normalizeOrderFeed, enrichOrders, extractFunnel, summarizeAdStats, campaignProductDaily, withAdBudgets, summarizeKeywords, normalizeStockPreset, normalizePricePreset, adCampaignMayHaveStats, validAdPeriod, historyPeriod, historyChunks, planAdFetch, datesBetween, safeFolderName, funnelDaysToFetch, pairFunnelDays, funnelPeriods, funnelRangeBuckets, funnelRecordCounts, funnelRangeValues, funnelSalesMatrix, summaryTopProducts, summaryDrops, summaryProducts, normalizeFbsStocks, normalizeFbwStocks, normalizePrices, summarizeStockTotals, normalizeNewOrders, summarizeSupplies, normalizeTrbxes, chunkOrders, stickerType, localPhoto, WB_HOSTS } = require('../server');
+const { wbErrorText, loadProductCards, readBackFbsStocks, depositCampaignBudget, mergeCampaignZones, campaignZones, setCampaignStatus, setCampaignPlacements, slimFunnelProduct, funnelTableFresh, productCampaignTimeline,mergeSheetRows, saveSheetRows, readSheetHistory, sheetSiteCabinet, sheetCabinetFilter, withoutClubPriceRepeats,minusPlan, archivedPresetsFromError, productAdDays, productDetailPeriod, todoNmId, todoFields, funnelOrdersByNmId, summarizeHourlyOrders, orderFeedPeriod, itemRatingPeriods, normalizeItemRatings, itemReturnsPeriod, normalizeItemReturns, returnStatusGroup, campaignActivePeriod, mergeMinusList, summarizeKeywordDaily, summarizePositionDaily, normalizeOrders, normalizeOrderFeed, enrichOrders, extractFunnel, summarizeAdStats, campaignProductDaily, withAdBudgets, summarizeKeywords, normalizeStockPreset, normalizePricePreset, adCampaignMayHaveStats, validAdPeriod, historyPeriod, historyChunks, planAdFetch, datesBetween, safeFolderName, funnelDaysToFetch, pairFunnelDays, funnelPeriods, funnelRangeBuckets, funnelRecordCounts, funnelRangeValues, funnelSalesMatrix, summaryTopProducts, summaryDrops, summaryProducts, normalizeFbsStocks, normalizeFbwStocks, normalizePrices, summarizeStockTotals, normalizeNewOrders, summarizeSupplies, normalizeTrbxes, chunkOrders, stickerType, localPhoto, WB_HOSTS } = require('../server');
 
 test('текст ошибки WB у запуска, паузы и мест показа: JSON { error }, { detail } и простой текст 422', () => {
   assert.equal(wbErrorText({ details: { error: 'AdvertChangeStatus: Low Budget: not enough budget' } }), 'AdvertChangeStatus: Low Budget: not enough budget');
@@ -33,6 +33,20 @@ test('зоны показов от расширения: присланные д
   assert.throws(() => mergeCampaignZones(null, { from: '2026-11-02', to: '2026-11-01' }), /Неверный период/);
   const demo = campaignZones('demo', '1', '2026-11-01', '2026-11-03');
   assert.equal(Object.keys(demo.days).length, 3);
+});
+
+test('список карточек: повтор карточки на стыке страниц WB не добавляется второй раз', async () => {
+  const realFetch = global.fetch, at = '2026-11-02T13:12:31.175828Z';
+  const page = from => Array.from({ length: 100 }, (_, i) => ({ nmID: from + i, imtID: from + i, updatedAt: at }));
+  // Вторая страница начинается с двух карточек, которые уже были в конце первой (так WB делает при одинаковом updatedAt).
+  const pages = [page(1), [...page(99).slice(0, 2), ...page(101).slice(0, 50)]];
+  let call = 0;
+  global.fetch = async () => new Response(JSON.stringify({ cards: pages[call++] || [], cursor: { updatedAt: at, nmID: 1, total: 100 } }), { status: 200, headers: { 'content-type': 'application/json' } });
+  try {
+    const cards = await loadProductCards('token');
+    assert.equal(cards.length, 150);
+    assert.equal(new Set(cards.map(card => card.nmID)).size, 150);
+  } finally { global.fetch = realFetch; }
 });
 
 test('после изменения остатков перечитываются только изменённые позиции на своих складах', async () => {

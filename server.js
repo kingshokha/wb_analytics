@@ -371,7 +371,11 @@ function writeProductCardsCopy(id, cards, savedAt) {
 }
 function productCardsCopy(id) {
   const key = productCardsKey(id);
-  if (!analyticsCache.has(key)) { const saved = readProductCardsCopy(id); if (saved) analyticsCache.set(key, saved); }
+  if (!analyticsCache.has(key)) {
+    const saved = readProductCardsCopy(id);
+    // Копии, сохранённые до исправления повторов (см. loadProductCardPages), могут содержать карточку дважды.
+    if (saved) { const seen = new Set(); saved.value = saved.value.filter(card => !seen.has(card.nmID) && seen.add(card.nmID)); analyticsCache.set(key, saved); }
+  }
   return analyticsCache.get(key) || null;
 }
 function refreshProductCards(id, token = tokenFor(id)) {
@@ -417,8 +421,12 @@ async function loadProductCards(token) {
   productCardsLoading.set(token, cards);
   try { return await loadProductCardPages(token, cards); } finally { productCardsLoading.delete(token); }
 }
+// По документации следующая страница — по cursor { updatedAt, nmID } из ответа. На деле, когда у сотен карточек одинаковое
+// updatedAt (изменены одной пачкой), WB на стыке страниц присылает часть из них ещё раз — с другим порядком характеристик.
+// Из-за повторов карточка выглядела «в склейке сама с собой», поэтому повтор по nmID не добавляется.
 async function loadProductCardPages(token, cards) {
   let cursor = { limit: 100 };
+  const seen = new Set();
   for (let page = 0; page < PRODUCT_CARDS_MAX_PAGES; page++) {
     let response;
     for (let retry = 0; ; retry++) {
@@ -434,7 +442,7 @@ async function loadProductCardPages(token, cards) {
       }
     }
     const batch = Array.isArray(response?.cards) ? response.cards : [];
-    cards.push(...batch);
+    for (const card of batch) if (!seen.has(card.nmID)) { seen.add(card.nmID); cards.push(card); }
     if (batch.length < 100 || !response?.cursor?.updatedAt || !response?.cursor?.nmID) break;
     cursor = { limit: 100, updatedAt: response.cursor.updatedAt, nmID: response.cursor.nmID };
     if ((page + 1) % 5 === 0) await wait(650);
@@ -3159,7 +3167,9 @@ function saveFunnelTable(id, period, table) {
 }
 function funnelTableFresh(table, period, now = Date.now()) {
   if (!table) return false;
-  const age = now - (Date.parse(table.fetchedAt || '') || 0), final = period.to < addDays(moscowDate(0), -FUNNEL_FINAL_AFTER_DAYS);
+  // «Сегодня» по Москве — от того же now, что и возраст таблицы (иначе проверка зависела от настоящей даты).
+  const today = new Date(now + 3 * 3_600_000).toISOString().slice(0, 10);
+  const age = now - (Date.parse(table.fetchedAt || '') || 0), final = period.to < addDays(today, -FUNNEL_FINAL_AFTER_DAYS);
   return age < (final ? FUNNEL_TABLE_FINAL_TTL : FUNNEL_TABLE_TTL);
 }
 function funnelTableEntry(id, periods) {
@@ -4272,7 +4282,7 @@ if (require.main === module) server.listen(PORT, '127.0.0.1', () => {
   if (sheetConfigured()) { setTimeout(syncSheet, 20_000); setInterval(syncSheet, SHEET_SYNC_EVERY); }
 });
 
-module.exports = { server, wbErrorText, readBackFbsStocks, depositCampaignBudget, mergeCampaignZones, campaignZones, setCampaignStatus, setCampaignPlacements, slimFunnelProduct, funnelTableFresh, campaignActivePeriod,productCampaignTimeline, mergeSheetRows, saveSheetRows, readSheetHistory, sheetSiteCabinet, sheetCabinetFilter, withoutClubPriceRepeats,mergeMinusList, minusPlan, archivedPresetsFromError, todoNmId, todoFields, productAdDays, productDetailPeriod, funnelOrdersByNmId, summarizeHourlyOrders, orderFeedPeriod, itemRatingPeriods, normalizeItemRatings, itemReturnsPeriod, normalizeItemReturns, returnStatusGroup, summarizeKeywordDaily, summarizePositionDaily, normalizeOrders, normalizeOrderFeed, enrichOrders, extractFunnel, summarizeAdStats, campaignProductDaily, withAdBudgets, summarizeKeywords, normalizeStockPreset, normalizePricePreset, adCampaignMayHaveStats, validAdPeriod, historyPeriod, historyChunks, planAdFetch, datesBetween, safeFolderName, funnelDaysToFetch, pairFunnelDays, funnelPeriods, funnelRangeBuckets, funnelRecordCounts, funnelRangeValues, funnelSalesMatrix, summaryTopProducts, summaryDrops, summaryProducts, normalizeFbsStocks, normalizeFbwStocks, normalizePrices, summarizeStockTotals, normalizeNewOrders, summarizeSupplies, normalizeTrbxes, chunkOrders, stickerType, localPhoto, WB_HOSTS };
+module.exports = { server, wbErrorText, loadProductCards, readBackFbsStocks, depositCampaignBudget, mergeCampaignZones, campaignZones, setCampaignStatus, setCampaignPlacements, slimFunnelProduct, funnelTableFresh, campaignActivePeriod,productCampaignTimeline, mergeSheetRows, saveSheetRows, readSheetHistory, sheetSiteCabinet, sheetCabinetFilter, withoutClubPriceRepeats,mergeMinusList, minusPlan, archivedPresetsFromError, todoNmId, todoFields, productAdDays, productDetailPeriod, funnelOrdersByNmId, summarizeHourlyOrders, orderFeedPeriod, itemRatingPeriods, normalizeItemRatings, itemReturnsPeriod, normalizeItemReturns, returnStatusGroup, summarizeKeywordDaily, summarizePositionDaily, normalizeOrders, normalizeOrderFeed, enrichOrders, extractFunnel, summarizeAdStats, campaignProductDaily, withAdBudgets, summarizeKeywords, normalizeStockPreset, normalizePricePreset, adCampaignMayHaveStats, validAdPeriod, historyPeriod, historyChunks, planAdFetch, datesBetween, safeFolderName, funnelDaysToFetch, pairFunnelDays, funnelPeriods, funnelRangeBuckets, funnelRecordCounts, funnelRangeValues, funnelSalesMatrix, summaryTopProducts, summaryDrops, summaryProducts, normalizeFbsStocks, normalizeFbwStocks, normalizePrices, summarizeStockTotals, normalizeNewOrders, summarizeSupplies, normalizeTrbxes, chunkOrders, stickerType, localPhoto, WB_HOSTS };
 
 
 
