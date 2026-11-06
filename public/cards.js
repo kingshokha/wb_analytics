@@ -7,7 +7,9 @@ const CARD_PROBLEMS=[['','Все карточки'],['nophoto','Без фото'
 const CARD_TAG_COLORS=[['D1CFD7','серый'],['FEE0E0','красный'],['ECDAFF','фиолетовый'],['E4EAFF','синий'],['DEF1DD','зелёный'],['FFECC7','жёлтый']];
 // Цвет полосы у карточек одной склейки: соседние группы — разными цветами.
 const CARD_GLUE_COLORS=['#9d77ff','#318f68','#f0a04b','#277a70','#e76464','#5a7d9a'];
-const cardsView={data:null,key:'',error:'',tab:'cards',trash:null,trashKey:'',errors:null,errorsKey:'',search:'',subject:'',brand:'',tag:'',problem:'',glue:'',sort:{key:'updatedAt',dir:'desc'},page:1,pageSize:pageSizeFor('cards'),request:0,poll:0};
+const cardsView={data:null,key:'',error:'',tab:'cards',trash:null,trashKey:'',errors:null,errorsKey:'',search:'',subject:'',brand:'',tag:'',problem:'',glue:'',sort:{key:'updatedAt',dir:'desc'},page:1,pageSize:pageSizeFor('cards'),request:0,poll:0,selected:new Set()};
+// Склейка по 30: в группе WB не больше 30 карточек (метод moveNm).
+const CARD_GLUE_LIMIT=30;
 
 const cardDate=iso=>iso?new Date(iso).toLocaleString('ru-RU',{day:'2-digit',month:'2-digit',year:'2-digit',hour:'2-digit',minute:'2-digit'}).replace(',',''):'—';
 const cardLink=nmId=>`/card.html?${new URLSearchParams({cabinet:state.cabinet,nmId})}`;
@@ -24,7 +26,7 @@ async function loadCards(force=false,silent=false){
   const key=state.cabinet,request=++cardsView.request;
   clearTimeout(cardsView.poll);
   if(!force&&!silent&&cardsView.key===key&&cardsView.data){renderCards();return}
-  if(cardsView.key!==key){Object.assign(cardsView,{data:null,trash:null,errors:null,subject:'',brand:'',tag:'',glue:'',page:1})}
+  if(cardsView.key!==key){Object.assign(cardsView,{data:null,trash:null,errors:null,subject:'',brand:'',tag:'',glue:'',page:1});cardsView.selected.clear()}
   cardsView.key=key;cardsView.error='';if(!silent)renderCards();
   const btn=$('#refresh');if(!silent)btn.classList.add('loading');
   try{
@@ -74,6 +76,45 @@ function cardRows(){
   const groups=new Map();rows.forEach(card=>{if(!groups.has(card.imtID))groups.set(card.imtID,[]);groups.get(card.imtID).push(card)});
   return [...groups.values()].flat();
 }
+// Выбор для «Объединить по 30 шт» — только когда выбран предмет: склеить можно лишь карточки одного предмета.
+// Уже склеенные не выбираются, их склейки не меняются. Выбранные — из строк по текущим фильтрам, в порядке таблицы.
+const cardSelectable=card=>card.groupSize<=1;
+const cardChosen=rows=>rows.filter(card=>cardSelectable(card)&&cardsView.selected.has(card.nmID));
+function cardGlueChunks(list){const chunks=[];for(let i=0;i<list.length;i+=CARD_GLUE_LIMIT)chunks.push(list.slice(i,i+CARD_GLUE_LIMIT));return chunks}
+function renderCardSelectBar(rows,selecting){
+  const bar=$('#cardsSelectBar'),chosen=selecting?cardChosen(rows):[],free=rows.filter(cardSelectable).length;
+  bar.classList.toggle('hidden',!chosen.length);
+  if(!chosen.length){bar.innerHTML='';return}
+  const chunks=cardGlueChunks(chosen),groups=chunks.filter(chunk=>chunk.length>1),alone=chunks.at(-1).length===1;
+  const plan=groups.length?`будет ${fmtNum(groups.length)} ${pluralRu(groups.length,['склейка','склейки','склеек'])}: ${groups.map(chunk=>chunk.length).join(' + ')}${alone?' · последнюю 1 карточку не с чем склеить':''}`:'для склейки выберите хотя бы 2 карточки';
+  bar.innerHTML=`<span>Выбрано <b>${fmtNum(chosen.length)}</b> из ${fmtNum(free)} без склейки · ${plan}</span>${groups.length?`<button type="button" class="primary" id="cardGlueRun">Объединить по ${CARD_GLUE_LIMIT} шт</button>`:''}<button type="button" class="ghost" id="cardSelectClear">Снять выбор</button>`;
+}
+// Склейки уходят в WB по очереди: первая карточка группы — основа (её imtID), остальные присоединяются к ней.
+// Лимит Контента WB — 100 запросов в минуту с интервалом 600 мс, поэтому между запросами пауза.
+function openCardGlueBatch(){
+  const chunks=cardGlueChunks(cardChosen(cardRows())).filter(chunk=>chunk.length>1);if(!chunks.length)return;
+  const name=card=>escapeHtml(card.vendorCode||card.nmID);
+  openModal(`<div class="card-glue-batch"><h2>Объединить по ${CARD_GLUE_LIMIT} шт?</h2><p class="muted">Карточки «${escapeHtml(cardsView.subject)}» объединятся в порядке таблицы. Изменения сразу уйдут в WB.</p>
+    <ol>${chunks.map(chunk=>`<li>${fmtNum(chunk.length)} ${cardWord(chunk.length)}: ${name(chunk[0])} … ${name(chunk.at(-1))}</li>`).join('')}</ol>
+    <p class="card-tag-note" id="cardGlueNote" role="status"></p><div class="modal-actions"><button type="button" data-modal-close-inline>Отмена</button><button type="button" class="primary" id="cardGlueConfirm">Объединить</button></div></div>`);
+  $('#cardGlueConfirm').onclick=()=>runCardGlueBatch(chunks);
+}
+async function runCardGlueBatch(chunks){
+  const cabinet=state.cabinet,button=$('#cardGlueConfirm'),note=$('#cardGlueNote');
+  button.disabled=true;note.classList.remove('error');
+  let done=0;
+  try{
+    for(const chunk of chunks){
+      note.textContent=`Отправляем склейку ${done+1} из ${chunks.length}…`;
+      if(done)await new Promise(resolve=>setTimeout(resolve,700));
+      await api('/api/cards/move',{method:'POST',body:JSON.stringify({cabinet,confirm:true,nmIds:chunk.slice(1).map(card=>card.nmID),targetIMT:chunk[0].imtID})});
+      chunk.forEach(card=>{card.imtID=chunk[0].imtID;card.groupSize=chunk.length;cardsView.selected.delete(card.nmID)});
+      done++;
+    }
+    closeModal();toast(`Объединено: ${fmtNum(done)} ${pluralRu(done,['склейка','склейки','склеек'])}`);
+  }catch(e){note.textContent=`${done?`Готово ${done} из ${chunks.length}. `:''}Склейка ${done+1} не прошла: ${e.message}`;note.classList.add('error');button.textContent='Закрыть';button.disabled=false;button.onclick=closeModal}
+  if(state.cabinet===cabinet){renderCards();if(done)loadCards(false,true)}
+}
 
 function renderCards(){
   const v=cardsView,data=v.data,cards=data?.cards||[];
@@ -89,7 +130,7 @@ function renderCards(){
   const errorCount=v.errors?.items?.length||0;$('#errorsTabCount').textContent=errorCount?fmtNum(errorCount):'';$('#errorsTabCount').classList.toggle('alert',errorCount>0);
   $('#cardsFilters').classList.toggle('hidden',v.tab!=='cards');
   // Корзина и ошибки — в своей таблице (#cardsAlt): у основной таблицы запомненные ширины столбцов по ключам.
-  $('#cardsMain').classList.toggle('hidden',v.tab!=='cards');$('#cardsAlt').classList.toggle('hidden',v.tab==='cards');
+  $('#cardsMain').classList.toggle('hidden',v.tab!=='cards');$('#cardsAlt').classList.toggle('hidden',v.tab==='cards');$('#cardsSelectBar').classList.add('hidden');
   if(v.tab==='trash')return renderCardTrash();
   if(v.tab==='errors')return renderCardErrors();
   $('#emptyCardsTitle').textContent='Карточек не найдено';
@@ -110,8 +151,14 @@ function renderCards(){
   const columns=[['title','Товар',360],['subjectName','Предмет',150],['brand','Бренд',120],['sizes','Размеры',140],['photos','Медиа',110],['tags','Ярлыки',150],['verdict','Проверка',170],['updatedAt','Изменена',120]];
   // Заголовки создаются один раз — так сохраняются ширины столбцов (column-widths.js); при сортировке меняется только стрелка.
   const head=$('#cardsHead');
-  if(!head.children.length){head.innerHTML=columns.map(([key,label,width])=>`<th data-card-sort="${key}" data-col-key="${key}" data-col-width="${width}">${label} <span class="rating-sort-arrow"></span></th>`).join('')}
+  if(!head.children.length){head.innerHTML=columns.map(([key,label,width])=>`<th data-card-sort="${key}" data-col-key="${key}" data-col-width="${width}">${key==='title'?'<input type="checkbox" class="card-select" id="cardSelectAll" aria-label="Выбрать все карточки предмета">':''}${label} <span class="rating-sort-arrow"></span></th>`).join('')}
   head.querySelectorAll('[data-card-sort]').forEach(th=>{th.querySelector('.rating-sort-arrow').textContent=v.sort.key===th.dataset.cardSort?(v.sort.dir==='asc'?'↑':'↓'):'↕'});
+  // Галочки — когда выбран предмет. «Выбрать все» — все карточки без склейки по фильтрам, на всех страницах.
+  const selecting=Boolean(v.subject),free=rows.filter(cardSelectable).length,chosen=selecting?cardChosen(rows).length:0,all=$('#cardSelectAll');
+  $('#cardsMain table').classList.toggle('selecting',selecting);
+  all.checked=free>0&&chosen===free;all.indeterminate=chosen>0&&chosen<free;all.disabled=!free;
+  all.title=free?`Выбрать все без склейки: ${fmtNum(free)}`:'Все карточки уже в склейках';
+  renderCardSelectBar(rows,selecting);
   const verdict={ok:'<span class="status status-complete">пройдена</span>',fail:'<span class="status status-cancel">не пройдена</span>',pending:'<span class="status status-confirm">на проверке</span>'};
   // В режиме «Со склейкой» над каждой группой — строка группы (и в начале страницы, если группа продолжается с прошлой).
   const pageRows=rows.slice((v.page-1)*v.pageSize,v.page*v.pageSize),glued=v.glue==='glued',shown=new Map();
@@ -126,7 +173,7 @@ function renderCards(){
       const count=shown.get(card.imtID),continued=index===0&&v.page>1&&rows[(v.page-1)*v.pageSize-1]?.imtID===card.imtID;
       head=`<tr class="card-glue-head" style="--glue:${CARD_GLUE_COLORS[groupIndex%CARD_GLUE_COLORS.length]}"><td colspan="${columns.length}">Склейка · ${fmtNum(card.groupSize)} ${cardWord(card.groupSize)}${continued?' (продолжение)':''}<small>${escapeHtml(card.subjectName||'')} · imtID ${escapeHtml(card.imtID)}${count<card.groupSize?` · по фильтрам видно ${fmtNum(count)}`:''}</small></td></tr>`;
     }
-    return `${head}<tr${glued?` class="card-glued" style="--glue:${CARD_GLUE_COLORS[groupIndex%CARD_GLUE_COLORS.length]}"`:''}><td><div class="card-cell">${card.photo?`<img class="stock-product-photo" src="${escapeHtml(card.photo)}" alt="" loading="lazy">`:'<span class="card-nophoto" title="Нет фото">нет фото</span>'}<span><a class="card-title-link" href="${escapeHtml(cardLink(card.nmID))}" target="_blank" rel="noopener noreferrer" title="Открыть карточку: ${escapeHtml(card.title)}">${escapeHtml(card.title||'Без названия')}</a><small>${escapeHtml(card.vendorCode||'—')} · <button type="button" class="copy-article" data-copy="${escapeHtml(card.nmID)}" title="Скопировать артикул WB">${escapeHtml(card.nmID)}</button>${card.groupSize>1&&!glued?` · <span class="card-glue-chip" title="Объединена с другими карточками">склейка · ${card.groupSize}</span>`:''}</small></span></div></td>`+
+    return `${head}<tr${glued?` class="card-glued" style="--glue:${CARD_GLUE_COLORS[groupIndex%CARD_GLUE_COLORS.length]}"`:''}><td><div class="card-cell">${selecting?`<input type="checkbox" class="card-select" data-card-select="${escapeHtml(card.nmID)}"${cardSelectable(card)?`${v.selected.has(card.nmID)?' checked':''} aria-label="Выбрать"`:' disabled title="Уже в склейке"'}>`:''}${card.photo?`<img class="stock-product-photo" src="${escapeHtml(card.photo)}" alt="" loading="lazy">`:'<span class="card-nophoto" title="Нет фото">нет фото</span>'}<span><a class="card-title-link" href="${escapeHtml(cardLink(card.nmID))}" target="_blank" rel="noopener noreferrer" title="Открыть карточку: ${escapeHtml(card.title)}">${escapeHtml(card.title||'Без названия')}</a><small>${escapeHtml(card.vendorCode||'—')} · <button type="button" class="copy-article" data-copy="${escapeHtml(card.nmID)}" title="Скопировать артикул WB">${escapeHtml(card.nmID)}</button>${card.groupSize>1&&!glued?` · <span class="card-glue-chip" title="Объединена с другими карточками">склейка · ${card.groupSize}</span>`:''}</small></span></div></td>`+
       `<td>${escapeHtml(card.subjectName||'—')}</td><td>${escapeHtml(card.brand||'—')}</td>`+
       `<td>${sizes.length?escapeHtml(sizes.slice(0,5).join(', '))+(sizes.length>5?` +${sizes.length-5}`:''):'без размера'}<small>${fmtNum(barcodes.length)} ${barcodes.length===1?'баркод':barcodes.length<5&&barcodes.length?'баркода':'баркодов'}</small></td>`+
       `<td class="${card.photos<3?'card-warn':''}">${fmtNum(card.photos)} фото${card.video?' · видео':''}</td>`+
@@ -185,11 +232,13 @@ async function sendCardTag(body){
 }
 
 document.addEventListener('click',event=>{
-  if(!event.target.closest('#page-cards')&&!event.target.closest('.card-tags-modal')&&!event.target.closest('.card-recover-confirm'))return;
+  if(!event.target.closest('#page-cards')&&!event.target.closest('.card-tags-modal')&&!event.target.closest('.card-recover-confirm')&&!event.target.closest('.card-glue-batch'))return;
   const tab=event.target.closest('[data-cards-tab]');
   if(tab){cardsView.tab=tab.dataset.cardsTab;if(cardsView.tab==='trash')loadCardTrash();if(cardsView.tab==='errors')loadCardErrors(true);renderCards();return}
+  if(event.target.closest('#cardGlueRun'))return openCardGlueBatch();
+  if(event.target.closest('#cardSelectClear')){cardsView.selected.clear();renderCards();return}
   const sort=event.target.closest('[data-card-sort]');
-  if(sort&&!event.target.closest('.column-resizer')){const key=sort.dataset.cardSort;cardsView.sort=cardsView.sort.key===key?{key,dir:cardsView.sort.dir==='asc'?'desc':'asc'}:{key,dir:['title','subjectName','brand'].includes(key)?'asc':'desc'};renderCards();return}
+  if(sort&&!event.target.closest('.column-resizer')&&!event.target.closest('.card-select')){const key=sort.dataset.cardSort;cardsView.sort=cardsView.sort.key===key?{key,dir:cardsView.sort.dir==='asc'?'desc':'asc'}:{key,dir:['title','subjectName','brand'].includes(key)?'asc':'desc'};renderCards();return}
   if(event.target.closest('#cardTagsButton'))return openCardTags();
   const remove=event.target.closest('[data-card-tag-delete]');
   if(remove){
@@ -218,5 +267,8 @@ document.addEventListener('submit',event=>{
 document.addEventListener('input',event=>{if(event.target.id!=='cardSearch')return;cardsView.search=event.target.value;cardsView.page=1;if(cardsView.data)renderCards()});
 document.addEventListener('change',event=>{
   const map={cardSubjectFilter:'subject',cardBrandFilter:'brand',cardTagFilter:'tag',cardProblemFilter:'problem',cardGlueFilter:'glue'},key=map[event.target.id];
-  if(key){cardsView[key]=event.target.value;cardsView.page=1;renderCards()}
+  if(key){cardsView[key]=event.target.value;cardsView.page=1;if(key==='subject')cardsView.selected.clear();renderCards();return}
+  const one=event.target.closest('[data-card-select]');
+  if(one){const nmId=Number(one.dataset.cardSelect);if(one.checked)cardsView.selected.add(nmId);else cardsView.selected.delete(nmId);renderCards();return}
+  if(event.target.id==='cardSelectAll'){const free=cardRows().filter(cardSelectable);free.forEach(card=>event.target.checked?cardsView.selected.add(card.nmID):cardsView.selected.delete(card.nmID));renderCards()}
 });

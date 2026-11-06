@@ -453,6 +453,16 @@ tr.rating-row-attention td:first-child{box-shadow:inset 3px 0 0 var(--red)}
 .cards-table tr.card-glue-head small{display:inline;margin-left:8px;color:var(--muted);font-weight:600;letter-spacing:0}
 .cards-table tr.card-glued td:first-child{box-shadow:inset 3px 0 0 var(--glue,#9d77ff)}
 .card-glue-chip{display:inline-block;padding:0 6px;border-radius:999px;background:#ece5ff;color:#5b36c8;font-weight:700}
+/* Выбор карточек предмета для «Объединить по 30 шт»: галочки видны, только когда выбран предмет. */
+.card-select{flex:0 0 auto;width:16px;height:16px;margin:0;accent-color:var(--purple);cursor:pointer}
+.card-select:disabled{cursor:not-allowed;opacity:.4}
+#cardSelectAll{display:none;margin-right:8px;vertical-align:middle}
+.cards-table.selecting #cardSelectAll{display:inline-block}
+.cards-select-bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:10px 20px;background:#f6f4fd;border-bottom:1px solid #e3dcfb;font-size:12px}
+.cards-select-bar span{margin-right:auto}
+.cards-select-bar .primary{width:auto;margin:0;padding:9px 14px}
+.cards-select-bar .ghost{height:33px;padding:0 12px;border:1px solid var(--line);border-radius:8px;background:white;font:700 12px Manrope;cursor:pointer}
+.card-glue-batch ol{margin:10px 0;padding-left:20px;font-size:12px;line-height:1.7}
 .card-tags-button,.card-recover{height:35px;padding:0 13px;border:1px solid var(--line);border-radius:8px;background:white;color:var(--ink);font:700 12px Manrope;cursor:pointer}
 .card-tags-button:hover,.card-recover:hover{border-color:var(--purple);color:var(--purple)}
 .funnel-tab b.alert{background:#fdecec;color:#b84949}
