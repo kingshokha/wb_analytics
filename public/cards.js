@@ -3,19 +3,31 @@
 // Карточка открывается на отдельной странице card.html — там её данные можно изменить. Здесь же — ярлыки продавца
 // (создать, переименовать, удалить) и восстановление карточек из корзины. Создавать карточки сайт не умеет — так задумано.
 // Файл подключается до app.js: $, state, api, escapeHtml и прочее из app.js используются только внутри функций.
-const CARD_PROBLEMS=[['','Все карточки'],['nophoto','Без фото'],['fewphoto','Меньше 3 фото'],['desc','Описание короче 1000 символов'],['dims','Габариты под вопросом'],['docs','Проверка документов не пройдена'],['docs-pending','Документы на проверке'],['kiz','Маркировка не подтверждена']];
+const CARD_PROBLEMS=[['','Все карточки'],['nophoto','Без фото'],['fewphoto','Меньше 3 фото'],['desc','Описание короче 1000 символов'],['dims','Габариты под вопросом']];
 const CARD_TAG_COLORS=[['D1CFD7','серый'],['FEE0E0','красный'],['ECDAFF','фиолетовый'],['E4EAFF','синий'],['DEF1DD','зелёный'],['FFECC7','жёлтый']];
 // Цвет полосы у карточек одной склейки: соседние группы — разными цветами.
 const CARD_GLUE_COLORS=['#9d77ff','#318f68','#f0a04b','#277a70','#e76464','#5a7d9a'];
-const cardsView={data:null,key:'',error:'',tab:'cards',trash:null,trashKey:'',errors:null,errorsKey:'',search:'',subject:'',brand:'',tag:'',problem:'',glue:'',sort:{key:'updatedAt',dir:'desc'},page:1,pageSize:pageSizeFor('cards'),request:0,poll:0,selected:new Set(),lastSelected:null,shiftSelect:false,glueMode:'title',glueFill:true};
+const cardsView={data:null,key:'',error:'',tab:'cards',trash:null,trashKey:'',errors:null,errorsKey:'',search:'',subject:'',brand:'',tag:'',problem:'',doc:'',glue:'',sort:{key:'updatedAt',dir:'desc'},page:1,pageSize:pageSizeFor('cards'),request:0,poll:0,selected:new Set(),lastSelected:null,shiftSelect:false,glueMode:'title',glueFill:true};
 // Склейка по 30: в группе WB не больше 30 карточек (метод moveNm).
 const CARD_GLUE_LIMIT=30;
 
 const cardDate=iso=>iso?new Date(iso).toLocaleString('ru-RU',{day:'2-digit',month:'2-digit',year:'2-digit',hour:'2-digit',minute:'2-digit'}).replace(',',''):'—';
 const cardLink=nmId=>`/card.html?${new URLSearchParams({cabinet:state.cabinet,nmId})}`;
-// Причины результата проверки карточки (documents.overallVerdict.reason): известные — по-русски, остальные — как есть.
-const CARD_VERDICT_REASONS={documents_missing:'нет нужных документов',valid:'',expired:'срок документа истёк',invalid:'документ недействителен'};
-const cardVerdictReason=reason=>reason in CARD_VERDICT_REASONS?CARD_VERDICT_REASONS[reason]:reason;
+// Причины, по которым WB не принял карточку или документ: известные — по-русски, остальные — как есть.
+const CARD_DOC_ERRORS={documents_missing:'нет нужных документов',documents_invalid:'документ недействителен',document_missing:'документ не загружен',document_not_found:'документ не найден в реестре',document_inactive:'у документа нет юридической силы',document_expired:'истёк срок документа',document_type_mismatch:'номер не соответствует типу документа',document_dates_mismatch:'неверные даты в документе',applicant_mismatch:'заявитель в документе и карточке различается',trade_name_mismatch:'торговое наименование отличается от документа',tnved_missing:'не указан код ТН ВЭД',supplier_inn_missing:'не указан ИНН',supplier_not_registered:'поставщик не найден в реестре',supplier_inactive:'ошибка в статусе поставщика',product_group_not_registered:'неверная товарная группа в маркировке',kiz_required:'нельзя продавать без кода Честного знака',kiz_certificate_missing:'нет подтверждения нанесения маркировки',unknown:'проверка не пройдена'};
+const cardDocError=code=>CARD_DOC_ERRORS[code]||code;
+const CARD_DOC_TYPES={1:'сертификат соответствия',2:'декларация о соответствии',3:'свидетельство о госрегистрации',4:'РУ на медизделия',5:'РУ Республики Беларусь',7:'данные о регистрации пестицида',8:'данные о регистрации агрохимиката',9:'РУ на лекарства'};
+// «Без КИЗ»: WB требует код Честного знака (needKiz), а продавец не подтвердил его нанесение (kizMarked), или проверка отклонила карточку по маркировке.
+const cardNoKiz=card=>(card.needKiz&&!card.kizMarked)||card.docErrors.some(code=>code==='kiz_required'||code==='kiz_certificate_missing');
+const cardDocKeys=card=>[...(cardNoKiz(card)?['kiz']:[]),...(card.verdict==='fail'?['fail']:[]),...(card.verdict==='pending'?['pending']:[]),...card.missingDocs.map(type=>`missing:${type}`),...card.docErrors.map(code=>`error:${code}`)];
+const cardDocLabel=key=>key==='kiz'?'Без КИЗ (Честный знак)':key==='fail'?'Проверка не пройдена':key==='pending'?'На проверке':key.startsWith('missing:')?`Нет: ${CARD_DOC_TYPES[key.slice(8)]||`документ типа ${key.slice(8)}`}`:`Ошибка: ${cardDocError(key.slice(6))}`;
+// Пункты фильтра «Документы»: «Без КИЗ» — всегда первым, дальше — только то, что есть в кабинете; выбранный пункт остаётся в списке.
+function cardDocOptions(cards,selected){
+  const counts=new Map([['kiz',0],['fail',0],['pending',0]]);
+  cards.forEach(card=>cardDocKeys(card).forEach(key=>counts.set(key,(counts.get(key)||0)+1)));
+  const group=key=>key==='kiz'||key==='fail'||key==='pending'?0:key.startsWith('missing:')?1:2,fixed=['kiz','fail','pending'];
+  return [...counts].filter(([key,count])=>key==='kiz'||count>0||key===selected).sort((a,b)=>group(a[0])-group(b[0])||(group(a[0])?b[1]-a[1]:fixed.indexOf(a[0])-fixed.indexOf(b[0]))).map(([key,count])=>[key,`${cardDocLabel(key)} · ${fmtNum(count)}`]);
+}
 const cardWord=n=>{const a=n%100,b=n%10;return a>10&&a<20?'карточек':b===1?'карточка':b>1&&b<5?'карточки':'карточек'};
 const cardTagChip=tag=>`<span class="card-tag" style="--tag:#${escapeHtml(tag.color||'D1CFD7')}">${escapeHtml(tag.name)}</span>`;
 
@@ -26,7 +38,7 @@ async function loadCards(force=false,silent=false){
   const key=state.cabinet,request=++cardsView.request;
   clearTimeout(cardsView.poll);
   if(!force&&!silent&&cardsView.key===key&&cardsView.data){renderCards();return}
-  if(cardsView.key!==key){Object.assign(cardsView,{data:null,trash:null,errors:null,subject:'',brand:'',tag:'',glue:'',page:1});cardsView.selected.clear()}
+  if(cardsView.key!==key){Object.assign(cardsView,{data:null,trash:null,errors:null,subject:'',brand:'',tag:'',doc:'',glue:'',page:1});cardsView.selected.clear()}
   cardsView.key=key;cardsView.error='';if(!silent)renderCards();
   const btn=$('#refresh');if(!silent)btn.classList.add('loading');
   try{
@@ -57,9 +69,6 @@ function cardProblem(card,key){
   if(key==='fewphoto')return card.photos<3;
   if(key==='desc')return card.descriptionLength<1000;
   if(key==='dims')return card.dimensions?.isValid===false;
-  if(key==='docs')return card.verdict==='fail';
-  if(key==='docs-pending')return card.verdict==='pending';
-  if(key==='kiz')return card.needKiz&&!card.kizMarked;
   return true;
 }
 // Строка поиска по карточке собирается один раз на загрузку — при тысячах карточек ввод в поиск не тормозит.
@@ -67,7 +76,7 @@ const cardSearchText=new WeakMap();
 const cardHaystack=card=>{let text=cardSearchText.get(card);if(text==null){text=[card.title,card.vendorCode,card.nmID,card.brand,card.subjectName,...card.sizes.flatMap(size=>size.skus)].join(' ').toLowerCase();cardSearchText.set(card,text)}return text};
 function cardRows(){
   const v=cardsView,term=v.search.trim().toLowerCase();
-  const rows=(v.data?.cards||[]).filter(card=>(!v.subject||card.subjectName===v.subject)&&(!v.brand||card.brand===v.brand)&&(!v.tag||card.tags.some(tag=>String(tag.id)===v.tag))&&cardProblem(card,v.problem)
+  const rows=(v.data?.cards||[]).filter(card=>(!v.subject||card.subjectName===v.subject)&&(!v.brand||card.brand===v.brand)&&(!v.tag||card.tags.some(tag=>String(tag.id)===v.tag))&&cardProblem(card,v.problem)&&(!v.doc||cardDocKeys(card).includes(v.doc))
     &&(!v.glue||(v.glue==='glued')===(card.groupSize>1))&&(!term||cardHaystack(card).includes(term)));
   const dir=v.sort.dir==='asc'?1:-1,key=v.sort.key;
   rows.sort((a,b)=>{const av=a[key]??'',bv=b[key]??'';return dir*(typeof av==='number'&&typeof bv==='number'?av-bv:String(av).localeCompare(String(bv),'ru',{numeric:true}))});
@@ -207,6 +216,7 @@ function renderCards(){
   options('#cardBrandFilter','Все бренды',uniq(cards.map(card=>card.brand)),v.brand);
   options('#cardTagFilter','Все ярлыки',(data?.tags||[]).map(tag=>[String(tag.id),tag.name]),v.tag);
   options('#cardProblemFilter','Все карточки',CARD_PROBLEMS.slice(1),v.problem);
+  options('#cardDocFilter','Документы: все',cardDocOptions(cards,v.doc),v.doc);
   $('#cardGlueFilter').value=v.glue;
   $('#cardsTitle').textContent='Карточки товаров';
   if(!data){$('#cardsCount').textContent=v.error?`Не удалось загрузить: ${v.error}`:'Загрузка карточек…';$('#cardsBody').innerHTML='';$('#emptyCards').classList.add('hidden');$('#cardsPagination').classList.add('hidden');return}
@@ -247,7 +257,7 @@ function renderCards(){
       `<td>${sizes.length?escapeHtml(sizes.slice(0,5).join(', '))+(sizes.length>5?` +${sizes.length-5}`:''):'без размера'}<small>${fmtNum(barcodes.length)} ${barcodes.length===1?'баркод':barcodes.length<5&&barcodes.length?'баркода':'баркодов'}</small></td>`+
       `<td class="${card.photos<3?'card-warn':''}">${fmtNum(card.photos)} фото${card.video?' · видео':''}</td>`+
       `<td>${card.tags.map(cardTagChip).join(' ')||'<span class="muted">—</span>'}</td>`+
-      `<td>${card.verdict?verdict[card.verdict]:'<span class="muted">нет документов</span>'}${card.verdict==='fail'&&cardVerdictReason(card.verdictReason)?`<small>${escapeHtml(cardVerdictReason(card.verdictReason))}</small>`:''}${card.needKiz?`<small>${card.kizMarked?'маркировка подтверждена':'<b class="card-warn">маркировка не подтверждена</b>'}</small>`:''}${card.dimensions?.isValid===false?'<small class="card-warn">габариты под вопросом</small>':''}</td>`+
+      `<td>${card.verdict?verdict[card.verdict]:'<span class="muted">нет документов</span>'}${card.verdict==='fail'&&card.docErrors.length?`<small>${escapeHtml(card.docErrors.map(cardDocError).join(', '))}</small>`:''}${card.needKiz?`<small>${card.kizMarked?'маркировка подтверждена':'<b class="card-warn">маркировка не подтверждена</b>'}</small>`:''}${card.dimensions?.isValid===false?'<small class="card-warn">габариты под вопросом</small>':''}</td>`+
       `<td>${cardDate(card.updatedAt)}</td></tr>`;
   }).join('');
   $$('#cardsBody .stock-product-photo').forEach(image=>{if(image.dataset.previewBound)return;image.dataset.previewBound='1';bindPhotoPreview(image)});
@@ -338,7 +348,7 @@ document.addEventListener('submit',event=>{
 });
 document.addEventListener('input',event=>{if(event.target.id!=='cardSearch')return;cardsView.search=event.target.value;cardsView.page=1;if(cardsView.data)renderCards()});
 document.addEventListener('change',event=>{
-  const map={cardSubjectFilter:'subject',cardBrandFilter:'brand',cardTagFilter:'tag',cardProblemFilter:'problem',cardGlueFilter:'glue'},key=map[event.target.id];
+  const map={cardSubjectFilter:'subject',cardBrandFilter:'brand',cardTagFilter:'tag',cardProblemFilter:'problem',cardDocFilter:'doc',cardGlueFilter:'glue'},key=map[event.target.id];
   if(key){cardsView[key]=event.target.value;cardsView.page=1;if(key==='subject'){cardsView.selected.clear();cardsView.lastSelected=null}renderCards();return}
   const one=event.target.closest('[data-card-select]');
   if(one){

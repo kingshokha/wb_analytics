@@ -104,6 +104,14 @@ module.exports = function createContentCards({ wbRequest, tokenFor, cabinets, ca
     if (docs.overallVerdict?.status === 1) return 'ok';
     return items.length ? 'pending' : null;
   }
+  // Причины ошибок проверки: общая по карточке и по каждому документу. По документации reason приходит только при status 2;
+  // на деле бывает status 1 с reason, поэтому берётся только status 2. Причин documents_missing и documents_invalid и поля
+  // issues (каких типов документов не хватает) в документации нет, но WB их присылает.
+  function docErrorsOf(card) {
+    const docs = card.documents || {}, checks = [docs.overallVerdict, ...(docs.items || []).map(item => item.verdict)];
+    return [...new Set(checks.filter(check => check?.status === 2 && check.reason).map(check => check.reason))];
+  }
+  const missingDocsOf = card => [...new Set((card.documents?.issues || []).filter(issue => issue.code === 'document_missing').flatMap(issue => issue.documentTypes || []))];
   function listItem(card, groupSizes) {
     const photo = card.photos?.[0] || {};
     return {
@@ -111,7 +119,7 @@ module.exports = function createContentCards({ wbRequest, tokenFor, cabinets, ca
       photo: localPhoto(photo.c246x328 || photo.tm || photo.square || photo.big || ''), photos: (card.photos || []).length, video: Boolean(card.video),
       sizes: (card.sizes || []).map(size => ({ techSize: size.techSize || '', wbSize: size.wbSize || '', skus: size.skus || [] })),
       tags: card.tags || [], needKiz: Boolean(card.needKiz), kizMarked: Boolean(card.kizMarked), dimensions: card.dimensions || null,
-      documents: (card.documents?.items || []).length, verdict: verdictOf(card), verdictReason: card.documents?.overallVerdict?.reason || '', descriptionLength: String(card.description || '').length,
+      documents: (card.documents?.items || []).length, verdict: verdictOf(card), docErrors: docErrorsOf(card), missingDocs: missingDocsOf(card), descriptionLength: String(card.description || '').length,
       characteristics: (card.characteristics || []).length, groupSize: groupSizes.get(card.imtID) || 1, createdAt: card.createdAt || '', updatedAt: card.updatedAt || '', trashedAt: card.trashedAt || ''
     };
   }

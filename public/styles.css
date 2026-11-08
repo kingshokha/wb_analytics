@@ -458,6 +458,8 @@ tr.rating-row-attention td:first-child{box-shadow:inset 3px 0 0 var(--red)}
 .card-select:disabled{cursor:not-allowed;opacity:.4}
 #cardSelectAll{display:none;margin-right:8px;vertical-align:middle}
 .cards-table.selecting #cardSelectAll{display:inline-block}
+/* «Проверка»: причины ошибок длинные — переносятся внутри столбца, а не обрезаются общим правилом таблиц с изменяемой шириной. */
+.cards-table td:nth-child(7){white-space:normal!important}
 .cards-select-bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:10px 20px;background:#f6f4fd;border-bottom:1px solid #e3dcfb;font-size:12px}
 .cards-select-bar span{margin-right:auto}
 .cards-select-bar .primary{width:auto;margin:0;padding:9px 14px}
