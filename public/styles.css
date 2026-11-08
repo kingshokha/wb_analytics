@@ -462,7 +462,14 @@ tr.rating-row-attention td:first-child{box-shadow:inset 3px 0 0 var(--red)}
 .cards-select-bar span{margin-right:auto}
 .cards-select-bar .primary{width:auto;margin:0;padding:9px 14px}
 .cards-select-bar .ghost{height:33px;padding:0 12px;border:1px solid var(--line);border-radius:8px;background:white;font:700 12px Manrope;cursor:pointer}
-.card-glue-batch ol{margin:10px 0;padding-left:20px;font-size:12px;line-height:1.7}
+.card-glue-options{display:flex;flex-wrap:wrap;gap:6px 16px;margin:12px 0 4px;font-size:12px;font-weight:700}
+.card-glue-options label{display:flex;align-items:center;gap:6px;cursor:pointer}
+.modal-card .card-glue-options input{width:auto;margin:0;padding:0;accent-color:var(--purple)}
+.card-glue-hint{font-size:11px;line-height:1.5;margin:4px 0 8px}
+.card-glue-total{margin:8px 0 4px;color:var(--ink);font-weight:800;font-size:12px}
+.card-glue-plan{max-height:320px;overflow:auto;margin:6px 0 10px;padding:8px 8px 8px 30px;border:1px solid var(--line);border-radius:9px;font-size:12px;line-height:1.6}
+.card-glue-plan small{color:var(--muted)}
+.card-tags-button:disabled{opacity:.5;cursor:default}
 .card-tags-button,.card-recover{height:35px;padding:0 13px;border:1px solid var(--line);border-radius:8px;background:white;color:var(--ink);font:700 12px Manrope;cursor:pointer}
 .card-tags-button:hover,.card-recover:hover{border-color:var(--purple);color:var(--purple)}
 .funnel-tab b.alert{background:#fdecec;color:#b84949}

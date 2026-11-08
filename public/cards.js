@@ -7,7 +7,7 @@ const CARD_PROBLEMS=[['','Все карточки'],['nophoto','Без фото'
 const CARD_TAG_COLORS=[['D1CFD7','серый'],['FEE0E0','красный'],['ECDAFF','фиолетовый'],['E4EAFF','синий'],['DEF1DD','зелёный'],['FFECC7','жёлтый']];
 // Цвет полосы у карточек одной склейки: соседние группы — разными цветами.
 const CARD_GLUE_COLORS=['#9d77ff','#318f68','#f0a04b','#277a70','#e76464','#5a7d9a'];
-const cardsView={data:null,key:'',error:'',tab:'cards',trash:null,trashKey:'',errors:null,errorsKey:'',search:'',subject:'',brand:'',tag:'',problem:'',glue:'',sort:{key:'updatedAt',dir:'desc'},page:1,pageSize:pageSizeFor('cards'),request:0,poll:0,selected:new Set()};
+const cardsView={data:null,key:'',error:'',tab:'cards',trash:null,trashKey:'',errors:null,errorsKey:'',search:'',subject:'',brand:'',tag:'',problem:'',glue:'',sort:{key:'updatedAt',dir:'desc'},page:1,pageSize:pageSizeFor('cards'),request:0,poll:0,selected:new Set(),lastSelected:null,shiftSelect:false,glueMode:'title',glueFill:true};
 // Склейка по 30: в группе WB не больше 30 карточек (метод moveNm).
 const CARD_GLUE_LIMIT=30;
 
@@ -81,38 +81,104 @@ function cardRows(){
 const cardSelectable=card=>card.groupSize<=1;
 const cardChosen=rows=>rows.filter(card=>cardSelectable(card)&&cardsView.selected.has(card.nmID));
 function cardGlueChunks(list){const chunks=[];for(let i=0;i<list.length;i+=CARD_GLUE_LIMIT)chunks.push(list.slice(i,i+CARD_GLUE_LIMIT));return chunks}
+// Название для «похожих по названию»: регистр, ё/е, кавычки и знаки препинания не важны.
+const cardTitleKey=title=>String(title||'').toLowerCase().replace(/ё/g,'е').replace(/[^\p{L}\p{N}]+/gu,' ').trim();
+// План склейки. list — карточки без склейки в порядке таблицы; склеиваются только карточки одного предмета (так требует WB).
+// mode 'title' — карточки с одинаковым названием (карточка без пары остаётся одна), 'order' — подряд по таблице.
+// fill — сначала дополнить до 30 неполные склейки того же предмета (в режиме 'title' — где есть карточка с тем же названием),
+// самые большие — первыми. Шаг: before > 0 — карточки добавляются к склейке target, иначе новая склейка с основой cards[0].
+function cardGluePlan(list,mode,fill){
+  const buckets=new Map(),groups=[];let alone=0;
+  list.forEach(card=>{const title=cardTitleKey(card.title);if(mode==='title'&&!title){alone++;return}const key=mode==='title'?`${card.subjectID}|${title}`:String(card.subjectID);if(!buckets.has(key))buckets.set(key,[]);buckets.get(key).push(card)});
+  if(fill){const byImt=new Map();(cardsView.data?.cards||[]).forEach(card=>{if(card.groupSize<2||card.groupSize>=CARD_GLUE_LIMIT)return;let group=byImt.get(card.imtID);if(!group){byImt.set(card.imtID,group={imtID:card.imtID,subjectID:card.subjectID,size:card.groupSize,titles:new Set()});groups.push(group)}group.titles.add(cardTitleKey(card.title))});groups.sort((a,b)=>b.size-a.size)}
+  const steps=[];
+  for(let rest of buckets.values()){
+    const {subjectID,subjectName}=rest[0],title=cardTitleKey(rest[0].title);
+    for(const group of groups){
+      if(!rest.length)break;
+      if(group.subjectID!==subjectID||group.size>=CARD_GLUE_LIMIT||(mode==='title'&&!group.titles.has(title)))continue;
+      const take=rest.slice(0,CARD_GLUE_LIMIT-group.size);rest=rest.slice(take.length);
+      steps.push({target:group.imtID,before:group.size,cards:take,subject:subjectName});group.size+=take.length;
+    }
+    cardGlueChunks(rest).forEach(chunk=>{if(chunk.length>1)steps.push({target:chunk[0].imtID,before:0,cards:chunk,subject:subjectName});else alone++});
+  }
+  return {steps,alone};
+}
+function cardGlueSummary({steps,alone}){
+  const created=steps.filter(step=>!step.before).length,filled=steps.length-created,count=steps.reduce((sum,step)=>sum+step.cards.length,0);
+  const parts=[created&&`${fmtNum(created)} ${pluralRu(created,['новая склейка','новые склейки','новых склеек'])}`,filled&&`дополнится ${fmtNum(filled)} ${pluralRu(filled,['склейка','склейки','склеек'])}`,count&&`склеится ${fmtNum(count)} ${cardWord(count)}`,alone&&`без пары останется ${fmtNum(alone)}`].filter(Boolean);
+  return parts.join(' · ')||'склеить нечего';
+}
+const CARD_GLUE_MODES={title:'похожие по названию',order:'подряд по таблице'};
 function renderCardSelectBar(rows,selecting){
   const bar=$('#cardsSelectBar'),chosen=selecting?cardChosen(rows):[],free=rows.filter(cardSelectable).length;
   bar.classList.toggle('hidden',!chosen.length);
   if(!chosen.length){bar.innerHTML='';return}
-  const chunks=cardGlueChunks(chosen),groups=chunks.filter(chunk=>chunk.length>1),alone=chunks.at(-1).length===1;
-  const plan=groups.length?`будет ${fmtNum(groups.length)} ${pluralRu(groups.length,['склейка','склейки','склеек'])}: ${groups.map(chunk=>chunk.length).join(' + ')}${alone?' · последнюю 1 карточку не с чем склеить':''}`:'для склейки выберите хотя бы 2 карточки';
-  bar.innerHTML=`<span>Выбрано <b>${fmtNum(chosen.length)}</b> из ${fmtNum(free)} без склейки · ${plan}</span>${groups.length?`<button type="button" class="primary" id="cardGlueRun">Объединить по ${CARD_GLUE_LIMIT} шт</button>`:''}<button type="button" class="ghost" id="cardSelectClear">Снять выбор</button>`;
+  const plan=cardGluePlan(chosen,cardsView.glueMode,cardsView.glueFill);
+  bar.innerHTML=`<span>Выбрано <b>${fmtNum(chosen.length)}</b> из ${fmtNum(free)} без склейки · ${CARD_GLUE_MODES[cardsView.glueMode]}: ${cardGlueSummary(plan)}</span>${plan.steps.length?`<button type="button" class="primary" id="cardGlueRun">Объединить по ${CARD_GLUE_LIMIT} шт</button>`:''}<button type="button" class="ghost" id="cardSelectClear">Снять выбор</button>`;
 }
-// Склейки уходят в WB по очереди: первая карточка группы — основа (её imtID), остальные присоединяются к ней.
-// Лимит Контента WB — 100 запросов в минуту с интервалом 600 мс, поэтому между запросами пауза.
-function openCardGlueBatch(){
-  const chunks=cardGlueChunks(cardChosen(cardRows())).filter(chunk=>chunk.length>1);if(!chunks.length)return;
-  const name=card=>escapeHtml(card.vendorCode||card.nmID);
-  openModal(`<div class="card-glue-batch"><h2>Объединить по ${CARD_GLUE_LIMIT} шт?</h2><p class="muted">Карточки «${escapeHtml(cardsView.subject)}» объединятся в порядке таблицы. Изменения сразу уйдут в WB.</p>
-    <ol>${chunks.map(chunk=>`<li>${fmtNum(chunk.length)} ${cardWord(chunk.length)}: ${name(chunk[0])} … ${name(chunk.at(-1))}</li>`).join('')}</ol>
-    <p class="card-tag-note" id="cardGlueNote" role="status"></p><div class="modal-actions"><button type="button" data-modal-close-inline>Отмена</button><button type="button" class="primary" id="cardGlueConfirm">Объединить</button></div></div>`);
-  $('#cardGlueConfirm').onclick=()=>runCardGlueBatch(chunks);
+// Окно склейки: scope 'selected' — выбранные карточки предмета, 'all' — все карточки без склейки по фильтрам, по всем предметам.
+const cardGlue={scope:'selected',plan:null,run:null};
+function cardGlueList(){const rows=cardRows();return cardGlue.scope==='all'?rows.filter(cardSelectable):cardChosen(rows)}
+function openCardGlueBatch(scope){
+  if(cardGlue.run)return toast('Склейка ещё идёт — дождитесь окончания');
+  cardGlue.scope=scope;
+  openModal(`<div class="card-glue-batch"><p class="eyebrow">Карточки товаров</p><h2>Объединить по ${CARD_GLUE_LIMIT} шт</h2><p class="muted" id="cardGlueScope"></p>
+    <div class="card-glue-options"><label><input type="radio" name="cardGlueMode" value="title"> Похожие по названию</label><label><input type="radio" name="cardGlueMode" value="order"> Подряд по таблице</label><label><input type="checkbox" id="cardGlueFill"> Дополнять неполные склейки до ${CARD_GLUE_LIMIT}</label></div>
+    <p class="muted card-glue-hint" id="cardGlueHint"></p><p class="card-glue-total" id="cardGlueTotal"></p><ol class="card-glue-plan" id="cardGluePlan"></ol>
+    <p class="card-tag-note" id="cardGlueNote" role="status"></p><div class="modal-actions"><button type="button" data-modal-close-inline id="cardGlueCancel">Отмена</button><button type="button" class="primary" id="cardGlueConfirm">Объединить</button></div></div>`,true);
+  $('#cardGlueConfirm').onclick=runCardGlueBatch;
+  renderCardGluePlan();
 }
-async function runCardGlueBatch(chunks){
-  const cabinet=state.cabinet,button=$('#cardGlueConfirm'),note=$('#cardGlueNote');
-  button.disabled=true;note.classList.remove('error');
-  let done=0;
-  try{
-    for(const chunk of chunks){
-      note.textContent=`Отправляем склейку ${done+1} из ${chunks.length}…`;
-      if(done)await new Promise(resolve=>setTimeout(resolve,700));
-      await api('/api/cards/move',{method:'POST',body:JSON.stringify({cabinet,confirm:true,nmIds:chunk.slice(1).map(card=>card.nmID),targetIMT:chunk[0].imtID})});
-      chunk.forEach(card=>{card.imtID=chunk[0].imtID;card.groupSize=chunk.length;cardsView.selected.delete(card.nmID)});
-      done++;
-    }
-    closeModal();toast(`Объединено: ${fmtNum(done)} ${pluralRu(done,['склейка','склейки','склеек'])}`);
-  }catch(e){note.textContent=`${done?`Готово ${done} из ${chunks.length}. `:''}Склейка ${done+1} не прошла: ${e.message}`;note.classList.add('error');button.textContent='Закрыть';button.disabled=false;button.onclick=closeModal}
+function renderCardGluePlan(){
+  if(!$('.card-glue-batch')||cardGlue.run)return;
+  const v=cardsView,list=cardGlueList(),plan=cardGluePlan(list,v.glueMode,v.glueFill),all=cardGlue.scope==='all',subjects=new Set(list.map(card=>card.subjectID)).size;
+  cardGlue.plan=plan;
+  $$('[name=cardGlueMode]').forEach(input=>{input.checked=input.value===v.glueMode});$('#cardGlueFill').checked=v.glueFill;
+  $('#cardGlueScope').textContent=all?`Все предметы по текущим фильтрам: ${fmtNum(list.length)} ${cardWord(list.length)} без склейки в ${fmtNum(subjects)} ${pluralRu(subjects,['предмете','предметах','предметах'])}. Каждый предмет склеивается отдельно — WB не склеивает разные предметы. Изменения сразу уйдут в WB.`
+    :`Предмет «${v.subject}»: выбрано ${fmtNum(list.length)} ${cardWord(list.length)} без склейки. Изменения сразу уйдут в WB.`;
+  $('#cardGlueHint').textContent=(v.glueMode==='title'?'Вместе — карточки одного предмета с одинаковым названием (регистр и знаки препинания не важны), в порядке таблицы. Карточка с уникальным названием остаётся одна.':'Вместе — подряд в порядке таблицы, по 30.')
+    +(v.glueFill?(v.glueMode==='title'?' Сначала карточки добавляются в неполные склейки, где есть товар с тем же названием.':' Сначала карточки добавляются в неполные склейки того же предмета.'):'');
+  $('#cardGlueTotal').textContent=cardGlueSummary(plan);
+  const short=text=>text.length>60?`${text.slice(0,59)}…`:text,name=card=>escapeHtml(card.vendorCode||card.nmID),SHOWN=300;
+  $('#cardGluePlan').innerHTML=plan.steps.slice(0,SHOWN).map(step=>{const count=step.cards.length,first=step.cards[0];
+    return `<li>${all?`<b>${escapeHtml(step.subject)}</b> · `:''}${step.before?`дополнить склейку ${fmtNum(step.before)} → ${fmtNum(step.before+count)}: +${fmtNum(count)}`:`новая · ${fmtNum(count)} ${cardWord(count)}`} — «${escapeHtml(short(first.title||'Без названия'))}» <small>${name(first)}${count>1?` … ${name(step.cards.at(-1))}`:''}</small></li>`}).join('')
+    +(plan.steps.length>SHOWN?`<li class="muted">…и ещё ${fmtNum(plan.steps.length-SHOWN)}</li>`:'');
+  $('#cardGlueConfirm').disabled=!plan.steps.length;
+  $('#cardGlueConfirm').textContent=plan.steps.length>1?`Объединить: ${fmtNum(plan.steps.length)} ${pluralRu(plan.steps.length,['шаг','шага','шагов'])}`:'Объединить';
+}
+// Шаги уходят в WB по очереди. Лимит Контента WB — 100 запросов в минуту, всплеск 5: первые 5 — сразу, дальше раз в 650 мс
+// (на 429 сервер сам подождёт и повторит). Ошибка одного шага не останавливает остальные; три ошибки подряд — остановка.
+async function runCardGlueBatch(){
+  const steps=cardGlue.plan?.steps||[];if(!steps.length||cardGlue.run)return;
+  const cabinet=state.cabinet,run={stop:false},button=$('#cardGlueConfirm'),note=$('#cardGlueNote'),errors=[];
+  cardGlue.run=run;
+  $$('.card-glue-options input').forEach(input=>{input.disabled=true});
+  $('#cardGlueCancel').textContent='Скрыть окно';note.classList.remove('error');
+  button.textContent='Остановить';button.onclick=()=>{run.stop=true;button.disabled=true;button.textContent='Останавливаем…'};
+  let done=0,streak=0;
+  for(const [index,step] of steps.entries()){
+    if(run.stop)break;
+    note.textContent=`Отправляем ${fmtNum(index+1)} из ${fmtNum(steps.length)}…${errors.length?` · не прошло: ${errors.length}`:''}`;
+    if(index>=5)await new Promise(resolve=>setTimeout(resolve,650));
+    try{
+      await api('/api/cards/move',{method:'POST',body:JSON.stringify({cabinet,confirm:true,nmIds:(step.before?step.cards:step.cards.slice(1)).map(card=>card.nmID),targetIMT:step.target})});
+      done++;streak=0;
+      if(cardsView.key===cabinet&&cardsView.data){
+        const ids=new Set(step.cards.map(card=>card.nmID)),list=cardsView.data.cards;
+        list.forEach(card=>{if(ids.has(card.nmID)){card.imtID=step.target;cardsView.selected.delete(card.nmID)}});
+        const size=list.filter(card=>card.imtID===step.target).length;list.forEach(card=>{if(card.imtID===step.target)card.groupSize=size});
+      }
+    }catch(e){errors.push(`${step.subject} · ${step.cards[0].vendorCode||step.cards[0].nmID}: ${e.message}`);if(++streak>=3)break}
+  }
+  cardGlue.run=null;
+  const rest=steps.length-done-errors.length,word=n=>pluralRu(n,['шаг','шага','шагов']);
+  toast(`Склейка: готово ${fmtNum(done)} из ${fmtNum(steps.length)}`);
+  if(note.isConnected){
+    if(!errors.length&&!rest)closeModal();
+    else{note.innerHTML=`Готово ${fmtNum(done)} из ${fmtNum(steps.length)}${rest?` · не отправлено ${fmtNum(rest)} ${word(rest)}${run.stop?' (остановлено)':' (три ошибки подряд — остановлено)'}`:''}${errors.length?`<br>Не прошло ${fmtNum(errors.length)}:<br>${errors.slice(0,10).map(escapeHtml).join('<br>')}`:''}`;
+      note.classList.toggle('error',errors.length>0);button.disabled=false;button.textContent='Закрыть';button.onclick=closeModal;$('#cardGlueCancel').classList.add('hidden')}
+  }
   if(state.cabinet===cabinet){renderCards();if(done)loadCards(false,true)}
 }
 
@@ -158,6 +224,9 @@ function renderCards(){
   $('#cardsMain table').classList.toggle('selecting',selecting);
   all.checked=free>0&&chosen===free;all.indeterminate=chosen>0&&chosen<free;all.disabled=!free;
   all.title=free?`Выбрать все без склейки: ${fmtNum(free)}`:'Все карточки уже в склейках';
+  // Без предмета — «Склеить по 30…» сразу по всем предметам (каждый отдельно).
+  const glueAll=$('#cardGlueAll');glueAll.classList.toggle('hidden',selecting);glueAll.disabled=!free;
+  glueAll.title=free?`Карточек без склейки по фильтрам: ${fmtNum(free)} — склеить по предметам`:'Карточек без склейки нет';
   renderCardSelectBar(rows,selecting);
   const verdict={ok:'<span class="status status-complete">пройдена</span>',fail:'<span class="status status-cancel">не пройдена</span>',pending:'<span class="status status-confirm">на проверке</span>'};
   // В режиме «Со склейкой» над каждой группой — строка группы (и в начале страницы, если группа продолжается с прошлой).
@@ -235,7 +304,10 @@ document.addEventListener('click',event=>{
   if(!event.target.closest('#page-cards')&&!event.target.closest('.card-tags-modal')&&!event.target.closest('.card-recover-confirm')&&!event.target.closest('.card-glue-batch'))return;
   const tab=event.target.closest('[data-cards-tab]');
   if(tab){cardsView.tab=tab.dataset.cardsTab;if(cardsView.tab==='trash')loadCardTrash();if(cardsView.tab==='errors')loadCardErrors(true);renderCards();return}
-  if(event.target.closest('#cardGlueRun'))return openCardGlueBatch();
+  if(event.target.closest('#cardGlueRun'))return openCardGlueBatch('selected');
+  if(event.target.closest('#cardGlueAll'))return openCardGlueBatch('all');
+  // Shift+клик по галочке отмечает (или снимает) все карточки между ней и прошлой нажатой — сам выбор в обработчике change.
+  if(event.target.closest('[data-card-select]'))cardsView.shiftSelect=event.shiftKey;
   if(event.target.closest('#cardSelectClear')){cardsView.selected.clear();renderCards();return}
   const sort=event.target.closest('[data-card-sort]');
   if(sort&&!event.target.closest('.column-resizer')&&!event.target.closest('.card-select')){const key=sort.dataset.cardSort;cardsView.sort=cardsView.sort.key===key?{key,dir:cardsView.sort.dir==='asc'?'desc':'asc'}:{key,dir:['title','subjectName','brand'].includes(key)?'asc':'desc'};renderCards();return}
@@ -267,8 +339,17 @@ document.addEventListener('submit',event=>{
 document.addEventListener('input',event=>{if(event.target.id!=='cardSearch')return;cardsView.search=event.target.value;cardsView.page=1;if(cardsView.data)renderCards()});
 document.addEventListener('change',event=>{
   const map={cardSubjectFilter:'subject',cardBrandFilter:'brand',cardTagFilter:'tag',cardProblemFilter:'problem',cardGlueFilter:'glue'},key=map[event.target.id];
-  if(key){cardsView[key]=event.target.value;cardsView.page=1;if(key==='subject')cardsView.selected.clear();renderCards();return}
+  if(key){cardsView[key]=event.target.value;cardsView.page=1;if(key==='subject'){cardsView.selected.clear();cardsView.lastSelected=null}renderCards();return}
   const one=event.target.closest('[data-card-select]');
-  if(one){const nmId=Number(one.dataset.cardSelect);if(one.checked)cardsView.selected.add(nmId);else cardsView.selected.delete(nmId);renderCards();return}
+  if(one){
+    const v=cardsView,nmId=Number(one.dataset.cardSelect),rows=cardRows(),from=rows.findIndex(card=>card.nmID===v.lastSelected),to=rows.findIndex(card=>card.nmID===nmId);
+    const range=v.shiftSelect&&from>=0&&to>=0?rows.slice(Math.min(from,to),Math.max(from,to)+1).filter(cardSelectable):[{nmID:nmId}];
+    range.forEach(card=>one.checked?v.selected.add(card.nmID):v.selected.delete(card.nmID));
+    v.lastSelected=nmId;v.shiftSelect=false;renderCards();return;
+  }
+  if(event.target.name==='cardGlueMode'||event.target.id==='cardGlueFill'){
+    if(event.target.name==='cardGlueMode')cardsView.glueMode=event.target.value;else cardsView.glueFill=event.target.checked;
+    renderCardGluePlan();renderCards();return;
+  }
   if(event.target.id==='cardSelectAll'){const free=cardRows().filter(cardSelectable);free.forEach(card=>event.target.checked?cardsView.selected.add(card.nmID):cardsView.selected.delete(card.nmID));renderCards()}
 });

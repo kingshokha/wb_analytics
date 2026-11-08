@@ -388,7 +388,12 @@ module.exports = function createContentCards({ wbRequest, tokenFor, cabinets, ca
       }
     }
     if (isDemo(id)) { demoCards().filter(item => nmIds.includes(item.nmID)).forEach(card => { card.imtID = targetIMT ?? 9200000 + card.nmID % 1000; }); return { ok: true, demo: true }; }
-    await content(tokenFor(id), '/content/v2/cards/moveNm', { method: 'POST', body: targetIMT === null ? { nmIDs: nmIds } : { targetIMT, nmIDs: nmIds } });
+    // Склейки по 30 сайт шлёт подряд (лимит Контента — 100 запросов в минуту, всплеск 5). Если WB всё же ответил 429 —
+    // ждём, сколько он сказал в X-Ratelimit-Retry, и повторяем (до 3 раз).
+    for (let retry = 0; ; retry++) {
+      try { await content(tokenFor(id), '/content/v2/cards/moveNm', { method: 'POST', body: targetIMT === null ? { nmIDs: nmIds } : { targetIMT, nmIDs: nmIds } }); break; }
+      catch (error) { if (error.status !== 429 || retry >= 3) throw error; await new Promise(resolve => setTimeout(resolve, Math.max(1000, (error.retryAfter || 0) * 1000))); }
+    }
     // Новый imtID отсоединённой карточки WB сообщит при перечитывании; до тех пор — свой, отрицательный, чтобы она была отдельно.
     forgetCards(id, list => list.map(card => nmIds.includes(card.nmID) ? { ...card, imtID: targetIMT ?? -card.nmID } : card));
     return { ok: true, moved: nmIds.length };
