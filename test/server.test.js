@@ -1,7 +1,7 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { wbErrorText, loadProductCards, readBackFbsStocks, depositCampaignBudget, mergeCampaignZones, campaignZones, setCampaignStatus, setCampaignPlacements, slimFunnelProduct, funnelTableFresh, productCampaignTimeline,mergeSheetRows, saveSheetRows, saveSheetCurrent, readSheetHistory, sheetSiteCabinet, sheetCabinetFilter, withoutClubPriceRepeats,minusPlan, archivedPresetsFromError, productAdDays, productDetailPeriod, todoNmId, todoFields, funnelOrdersByNmId, summarizeHourlyOrders, orderFeedPeriod, itemRatingPeriods, normalizeItemRatings, itemReturnsPeriod, normalizeItemReturns, returnStatusGroup, campaignActivePeriod, mergeMinusList, summarizeKeywordDaily, summarizePositionDaily, normalizeOrders, normalizeOrderFeed, enrichOrders, extractFunnel, summarizeAdStats, campaignProductDaily, withAdBudgets, summarizeKeywords, normalizeStockPreset, normalizePricePreset, adCampaignMayHaveStats, validAdPeriod, historyPeriod, historyChunks, planAdFetch, datesBetween, safeFolderName, funnelDaysToFetch, pairFunnelDays, funnelPeriods, funnelRangeBuckets, funnelRecordCounts, funnelRangeValues, funnelSalesMatrix, summaryTopProducts, summaryDrops, summaryProducts, normalizeFbsStocks, normalizeFbwStocks, normalizePrices, summarizeStockTotals, normalizeNewOrders, summarizeSupplies, normalizeTrbxes, chunkOrders, stickerType, localPhoto, WB_HOSTS } = require('../server');
+const { wbErrorText, loadProductCards, readBackFbsStocks, depositCampaignBudget, mergeCampaignZones, campaignZones, setCampaignStatus, setCampaignPlacements, slimFunnelProduct, funnelTableFresh, productCampaignTimeline,mergeSheetRows, saveSheetRows, saveSheetCurrent, readSheetHistory, sheetCabinetSince, sheetSiteCabinet, sheetCabinetFilter, withoutClubPriceRepeats,minusPlan, archivedPresetsFromError, productAdDays, productDetailPeriod, todoNmId, todoFields, funnelOrdersByNmId, summarizeHourlyOrders, orderFeedPeriod, itemRatingPeriods, normalizeItemRatings, itemReturnsPeriod, normalizeItemReturns, returnStatusGroup, campaignActivePeriod, mergeMinusList, summarizeKeywordDaily, summarizePositionDaily, normalizeOrders, normalizeOrderFeed, enrichOrders, extractFunnel, summarizeAdStats, campaignProductDaily, withAdBudgets, summarizeKeywords, normalizeStockPreset, normalizePricePreset, adCampaignMayHaveStats, validAdPeriod, historyPeriod, historyChunks, planAdFetch, datesBetween, safeFolderName, funnelDaysToFetch, pairFunnelDays, funnelPeriods, funnelRangeBuckets, funnelRecordCounts, funnelRangeValues, funnelSalesMatrix, summaryTopProducts, summaryDrops, summaryProducts, normalizeFbsStocks, normalizeFbwStocks, normalizePrices, summarizeStockTotals, normalizeNewOrders, summarizeSupplies, normalizeTrbxes, chunkOrders, stickerType, localPhoto, WB_HOSTS } = require('../server');
 
 test('текст ошибки WB у запуска, паузы и мест показа: JSON { error }, { detail } и простой текст 422', () => {
   assert.equal(wbErrorText({ details: { error: 'AdvertChangeStatus: Low Budget: not enough budget' } }), 'AdvertChangeStatus: Low Budget: not enough budget');
@@ -880,7 +880,55 @@ test('копия Google Таблицы: склейка без повторов, 
     const site = [{ id: '1', name: 'Кабинет 1' }, { id: '2', name: 'Другой' }];
     assert.equal(readSheetHistory({ sections: ['Цены', 'Ставки'], current: false, cabinet: sheetCabinetFilter('1', site) }, dir).items.length, 5);
     assert.equal(readSheetHistory({ sections: ['Цены', 'Ставки'], current: false, cabinet: sheetCabinetFilter('2', site) }, dir).items.length, 0);
+    // С какого момента таблица ведёт кабинет: самая ранняя строка его папки — по всем разделам или только по выбранным;
+    // новая более ранняя строка сдвигает начало своего раздела, а не чужого.
+    const folder = require('node:path').join(dir, 'Кабинет 1');
+    assert.equal(sheetCabinetSince(folder), '2026-09-30T10:00:00.000Z');
+    assert.equal(sheetCabinetSince(folder, ['Ставки']), '2026-10-02T10:00:00.000Z');
+    assert.equal(saveSheetRows([row('2026-09-12T08:00:00.000Z', 'Ставки', '77', 'Ставка в поиске, ₽', 2, 3)], dir), 1);
+    assert.equal(sheetCabinetSince(folder), '2026-09-12T08:00:00.000Z');
+    assert.equal(sheetCabinetSince(folder, ['Ставки']), '2026-09-12T08:00:00.000Z');
+    assert.equal(sheetCabinetSince(folder, ['Цены']), '2026-09-30T10:00:00.000Z');
+    assert.equal(sheetCabinetSince(folder, ['Реклама']), null);
+    assert.equal(sheetCabinetSince(require('node:path').join(dir, 'Нет такого кабинета')), null);
   } finally { require('node:fs').rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('окно цены товара: история — с появления товара в таблице, разрыв на «Пропало», период и круглая шкала', () => {
+  // public/price-product.js — скрипт страницы: запускается в отдельном контексте, из него берутся функции расчёта.
+  const vm = require('node:vm'), context = vm.createContext({ document: { addEventListener() {} } });
+  vm.runInContext(require('node:fs').readFileSync(require('node:path').join(__dirname, '..', 'public', 'price-product.js'), 'utf8'), context);
+  const plain = value => JSON.parse(JSON.stringify(value));
+  const model = (...args) => plain(context.priceHistoryModel(...args));
+  const item = (at, what, before, after) => ({ at, cabinet: 'К', section: 'Цены', id: '1', what, before, after });
+  const row = { price: 1000, discount: 10, discountedPrice: 900, clubDiscount: 0, clubDiscountedPrice: 900 };
+  const change = [item('2026-11-03T10:00:00.000Z', 'Цена со скидкой, ₽', 1000, 900), item('2026-11-03T10:00:00.000Z', 'Скидка продавца, %', 0, 10), item('2026-11-03T10:00:00.000Z', 'Цена в WB Клубе, ₽', 1000, 900)];
+  // Товар появился позже начала таблицы: история — с «Появилось», раньше ничего нет.
+  const appeared = model(row, [item('2026-11-01T10:00:00.000Z', 'Появилось в списке', '—', 1000), ...change], '2026-10-20T00:00:00.000Z');
+  assert.deepEqual(appeared.points.map(point => [point.takenAt.slice(0, 10), point.kind, point.discountedPrice, point.discount]), [['2026-11-01', 'appear', 1000, 0], ['2026-11-03', 'change', 900, 10]]);
+  assert.deepEqual([appeared.before, appeared.unrecorded, appeared.changes], [null, false, 1]);
+  // Товар был в таблице с самого начала: цена до первого изменения известна с начала записей кабинета.
+  const started = model(row, change, '2026-10-20T00:00:00.000Z');
+  assert.deepEqual(started.points.map(point => [point.takenAt.slice(0, 10), point.kind, point.discountedPrice]), [['2026-10-20', 'start', 1000], ['2026-11-03', 'change', 900]]);
+  // Начало записей неизвестно: цена «до» есть, но без даты — в before, график начинается с первого изменения.
+  const unknown = model(row, change, null);
+  assert.deepEqual([unknown.points.length, unknown.points[0].kind, unknown.before.discountedPrice, unknown.before.discount], [1, 'change', 1000, 0]);
+  // «Пропало из списка»: цена с этого момента неизвестна; товар в списке сайта есть — «сейчас» ещё не записано.
+  const gone = model(row, [...change, item('2026-11-05T10:00:00.000Z', 'Пропало из списка', 900, '—')], '2026-10-20T00:00:00.000Z');
+  assert.deepEqual(gone.points.map(point => [point.kind, point.absent, point.discountedPrice]), [['start', false, 1000], ['change', false, 900], ['gone', true, null]]);
+  assert.equal(gone.unrecorded, true);
+  // Изменений нет: ровная линия с начала записей; цена на сайте уже другая — unrecorded; копейки не считаются изменением.
+  assert.deepEqual(model(row, [], '2026-10-20T00:00:00.000Z').points.map(point => [point.kind, point.discountedPrice]), [['start', 900]]);
+  assert.equal(model(row, [], null).points.length, 0);
+  assert.equal(model({ ...row, discountedPrice: 850 }, change, null).unrecorded, true);
+  assert.equal(model({ ...row, discountedPrice: 900.4 }, change, null).unrecorded, false);
+  // Период: точки с его начала, цена на начало — перенесённая точка; «всё время» — с первой точки.
+  const now = Date.parse('2026-11-10T10:00:00.000Z'), week = plain(context.priceHistoryView(started, 3, now)), all = plain(context.priceHistoryView(started, 0, now));
+  assert.deepEqual(week.points.map(point => [point.takenAt, point.kind, point.discountedPrice]), [['2026-11-07T10:00:00.000Z', 'carry', 900]]);
+  assert.deepEqual([week.whole, all.whole, all.points.length, all.to], [false, true, 2, now]);
+  // Шкала цены — круглые деления, не дробные и не ниже нуля.
+  assert.deepEqual(plain(context.priceAxisTicks(4380, 5020)), { low: 4200, high: 5200, ticks: [4200, 4400, 4600, 4800, 5000, 5200] });
+  assert.deepEqual(plain(context.priceAxisTicks(0, 3).ticks), [0, 1, 2, 3]);
 });
 
 test('копия Google Таблицы: у каждого кабинета своя папка; старые общие файлы раскладываются по кабинетам и целиком остаются в архиве', () => {

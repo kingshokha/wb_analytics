@@ -1655,9 +1655,30 @@ function saveSheetRows(items = [], dir = SHEET_DIR) {
   for (const [group, list] of groups) {
     const [folder, section, month] = group.split('|'), file = path.join(dir, folder, section, `${month}.json`);
     const merged = mergeSheetRows(readSheetJson(file, { items: [] }).items || [], list);
-    if (merged.added.length) { writeSheetJson(file, { items: merged.rows }); added += merged.added.length; }
+    if (merged.added.length) { writeSheetJson(file, { items: merged.rows }); added += merged.added.length; sheetSinceCache.delete(path.join(dir, folder)); }
   }
   return added;
+}
+// С какого момента таблица ведёт разделы sections кабинета: самая ранняя строка этих разделов в его папке (у каждого
+// раздела — в файле самого раннего месяца). Нужна графику цены: у товара без записи «Появилось в списке» история
+// известна с этого момента, а не с начала всей таблицы — кабинеты добавлялись в неё в разное время, и разделы одного
+// кабинета тоже (ИП Шамсиддинов: остатки с 22.10.2026, цены с 28.10.2026). Запоминается до новых строк в папке.
+const sheetSinceCache = new Map();
+function sheetCabinetSince(folder, sections = SHEET_SECTIONS) {
+  if (!sheetSinceCache.has(folder)) sheetSinceCache.set(folder, new Map());
+  const cache = sheetSinceCache.get(folder);
+  let since = '';
+  for (const section of sections) {
+    if (!cache.has(section)) {
+      const [month] = sheetMonths(path.join(folder, section));
+      let first = '';
+      if (month) for (const item of readSheetJson(path.join(folder, section, `${month}.json`), { items: [] }).items || []) if (item?.at && (!first || String(item.at) < first)) first = String(item.at);
+      cache.set(section, first);
+    }
+    const first = cache.get(section);
+    if (first && (!since || first < since)) since = first;
+  }
+  return since || null;
 }
 // Текущие остатки — снимок, а не история: новый заменяет прежний целиком, как и раньше (изменения остатков — в файлах
 // по месяцам). У кабинета, которого в новом снимке нет, текущие остатки становятся пустыми. keep — не трогать файлы,
@@ -1793,6 +1814,8 @@ function syncSheet() {
 // (предел только ответа, строки на диске остаются; за 14 дней в большом кабинете уже больше 50 000);
 // с cabinet — только кабинета сайта с этим id (и в «Истории изменений» — без повторов клубной цены; у остатков — и текущие
 // остатки только этого кабинета). truncated — за период изменений больше, отданы самые новые.
+// cabinetSince — с какого момента таблица ведёт запрошенные разделы кабинета из cabinet (sheetCabinetSince);
+// since — начало всей таблицы.
 const SHEET_ALL_LIMIT = 200_000;
 async function sheetHistory(idsInput, sectionsInput, daysInput, source = 'local', all = false, cabinetInput = '') {
   if (!sheetConfigured()) return { configured: false, items: [], current: null, since: null };
@@ -1803,7 +1826,13 @@ async function sheetHistory(idsInput, sectionsInput, daysInput, source = 'local'
   const days = Math.min(all ? 3660 : 365, Math.max(0, Math.round(Number(daysInput) || 0)));
   const sync = source === 'sheet' ? await syncSheet() : null;
   const saved = readSheetJson(path.join(SHEET_DIR, 'sync.json'), {});
-  const cabinet = /^[\w-]{1,40}$/.test(String(cabinetInput || '')) ? sheetCabinetFilter(cabinetInput) : null;
+  const asked = /^[\w-]{1,40}$/.test(String(cabinetInput || '')) ? sheetCabinetFilter(cabinetInput) : null;
+  splitSheetByCabinet();
+  const folders = asked ? sheetCabinetFolders().filter(item => item.names.some(name => asked(name))) : [];
+  // История по артикулу или кампании: если кабинет сайта не нашёлся в таблице по названию, ищем по всем кабинетам,
+  // как без cabinet, — артикул и номер кампании и так относятся к одному кабинету.
+  const cabinet = asked && !folders.length && ids.length && !stocks && !all ? null : asked;
+  const cabinetSince = folders.map(item => sheetCabinetSince(path.join(SHEET_DIR, item.folder), sections.length ? sections : SHEET_SECTIONS)).filter(Boolean).sort()[0] || null;
   const history = all
     ? readSheetHistory({ ids, sections: sections.length ? sections : SHEET_SECTIONS, days, limit: Infinity, current: false, cabinet })
     : readSheetHistory({ ids, sections: sections.length ? sections : SHEET_SECTIONS.filter(item => !item.startsWith('Остатки ')), days, cabinet });
@@ -1812,7 +1841,7 @@ async function sheetHistory(idsInput, sectionsInput, daysInput, source = 'local'
   const truncated = all && history.items.length > SHEET_ALL_LIMIT;
   if (truncated) history.items = history.items.slice(0, SHEET_ALL_LIMIT);
   return { configured: true, source: source === 'sheet' ? 'sheet' : 'local', ...history, ...(all ? { truncated } : {}),
-    since: saved.since || null, syncedAt: saved.syncedAt || null, added: sync?.added || 0, syncError: sync?.lastError || '' };
+    since: saved.since || null, cabinetSince, syncedAt: saved.syncedAt || null, added: sync?.added || 0, syncError: sync?.lastError || '' };
 }
 
 // --- Отметки ключевых запросов (data/keyword-tags.json) ---
@@ -4364,7 +4393,7 @@ if (require.main === module) server.listen(PORT, '127.0.0.1', () => {
   if (sheetConfigured()) { setTimeout(syncSheet, 20_000); setInterval(syncSheet, SHEET_SYNC_EVERY); }
 });
 
-module.exports = { server, wbErrorText, loadProductCards, readBackFbsStocks, depositCampaignBudget, mergeCampaignZones, campaignZones, setCampaignStatus, setCampaignPlacements, slimFunnelProduct, funnelTableFresh, campaignActivePeriod,productCampaignTimeline, mergeSheetRows, saveSheetRows, saveSheetCurrent, readSheetHistory, sheetSiteCabinet, sheetCabinetFilter, withoutClubPriceRepeats,mergeMinusList, minusPlan, archivedPresetsFromError, todoNmId, todoFields, productAdDays, productDetailPeriod, funnelOrdersByNmId, summarizeHourlyOrders, orderFeedPeriod, itemRatingPeriods, normalizeItemRatings, itemReturnsPeriod, normalizeItemReturns, returnStatusGroup, summarizeKeywordDaily, summarizePositionDaily, normalizeOrders, normalizeOrderFeed, enrichOrders, extractFunnel, summarizeAdStats, campaignProductDaily, withAdBudgets, summarizeKeywords, normalizeStockPreset, normalizePricePreset, adCampaignMayHaveStats, validAdPeriod, historyPeriod, historyChunks, planAdFetch, datesBetween, safeFolderName, funnelDaysToFetch, pairFunnelDays, funnelPeriods, funnelRangeBuckets, funnelRecordCounts, funnelRangeValues, funnelSalesMatrix, summaryTopProducts, summaryDrops, summaryProducts, normalizeFbsStocks, normalizeFbwStocks, normalizePrices, summarizeStockTotals, normalizeNewOrders, summarizeSupplies, normalizeTrbxes, chunkOrders, stickerType, localPhoto, WB_HOSTS };
+module.exports = { server, wbErrorText, loadProductCards, readBackFbsStocks, depositCampaignBudget, mergeCampaignZones, campaignZones, setCampaignStatus, setCampaignPlacements, slimFunnelProduct, funnelTableFresh, campaignActivePeriod,productCampaignTimeline, mergeSheetRows, saveSheetRows, saveSheetCurrent, readSheetHistory, sheetCabinetSince, sheetSiteCabinet, sheetCabinetFilter, withoutClubPriceRepeats,mergeMinusList, minusPlan, archivedPresetsFromError, todoNmId, todoFields, productAdDays, productDetailPeriod, funnelOrdersByNmId, summarizeHourlyOrders, orderFeedPeriod, itemRatingPeriods, normalizeItemRatings, itemReturnsPeriod, normalizeItemReturns, returnStatusGroup, summarizeKeywordDaily, summarizePositionDaily, normalizeOrders, normalizeOrderFeed, enrichOrders, extractFunnel, summarizeAdStats, campaignProductDaily, withAdBudgets, summarizeKeywords, normalizeStockPreset, normalizePricePreset, adCampaignMayHaveStats, validAdPeriod, historyPeriod, historyChunks, planAdFetch, datesBetween, safeFolderName, funnelDaysToFetch, pairFunnelDays, funnelPeriods, funnelRangeBuckets, funnelRecordCounts, funnelRangeValues, funnelSalesMatrix, summaryTopProducts, summaryDrops, summaryProducts, normalizeFbsStocks, normalizeFbwStocks, normalizePrices, summarizeStockTotals, normalizeNewOrders, summarizeSupplies, normalizeTrbxes, chunkOrders, stickerType, localPhoto, WB_HOSTS };
 
 
 
