@@ -1,7 +1,7 @@
 // --- «История изменений»: всё, что Google Таблица записала в историю, — одной лентой с фильтрами ---
 // Данные — /api/sheet-history?all=1&cabinet=: цены, кампании (статус, название, места показа, состав), ставки, минус-фразы
 // и остатки FBW / FBS. Сначала копия с компьютера (data/Sheet), потом дозагрузка из таблицы (SheetSync).
-// Период — общий период сайта (даты сверху), время и дни — местные (Душанбе), дни отделены строкой с датой. Фильтры: поиск, разделы (кнопки со счётчиками), вид изменения.
+// У раздела свой период (даты сверху): по умолчанию последние 14 дней, период других разделов он не меняет. Время и дни — местные (Душанбе), дни отделены строкой с датой. Фильтры: поиск, разделы (кнопки со счётчиками), вид изменения.
 // Только изменения кабинета, выбранного на сайте: сервер сопоставляет его с кабинетом таблицы по названию и убирает
 // цену в WB Клубе, изменившуюся так же, как цена со скидкой. Кампании (реклама, ставки, минус-фразы) — ссылками на детализацию кампании, товары — на детализацию товара.
 // В кабинете бывают десятки тысяч строк: день, вид изменения и текст для поиска считаются один раз при загрузке,
@@ -9,7 +9,17 @@
 // Файл подключается до app.js: $, state, escapeHtml и прочее из app.js используются только внутри функций.
 const CHANGE_SECTIONS=['Реклама','Ставки','Ключевые слова','Цены','Остатки FBW','Остатки FBS'];
 const CHANGE_CAMPAIGN_SECTIONS=['Реклама','Ставки','Ключевые слова'];
-const changeView={data:null,error:'',loading:false,request:0,key:'',cabinet:'',period:null,periodKey:'',sections:new Set(),kind:'',search:'',searchTimer:0,page:1,pageSize:pageSizeFor('history')};
+const changeView={data:null,error:'',loading:false,request:0,key:'',cabinet:'',period:null,periodKey:'',sections:new Set(),kind:'',search:'',searchTimer:0,page:1,pageSize:pageSizeFor('history'),sitePeriod:null,ownPeriod:null};
+
+// Даты сверху общие для всех разделов: при входе в историю они заменяются на её период (выбранный здесь, иначе последние
+// 14 дней включая сегодня), при выходе возвращается период остальных разделов. «Сегодня» здесь — по Душанбе, как дни в таблице:
+// и в период по умолчанию, и в календарь; у остальных разделов — по Москве, как у дат WB.
+function switchChangePeriod(from,to){
+  if((from==='history')===(to==='history'))return;
+  const v=changeView,inputs=[$('#dateFrom'),$('#dateTo')],group=$('.date');
+  if(to==='history'){v.sitePeriod=inputs.map(input=>input.value);group.dataset.todayUtc='5';const period=v.ownPeriod||[changeToday(-13),changeToday(0)];inputs.forEach((input,index)=>{input.value=period[index]})}
+  else{delete group.dataset.todayUtc;inputs.forEach((input,index)=>{input.value=v.sitePeriod[index]})}
+}
 
 // Время — местное, Душанбе (как в «Заказах по часам»); по нему же дни периода и разделители дней в таблице.
 // Форматы создаются один раз: toLocale…String с часовым поясом на каждую строку — это секунды на 20 000 строк.
@@ -22,6 +32,7 @@ const CHANGE_FORMAT={
 };
 const changeFormat=(format,iso)=>{const date=new Date(iso);return Number.isNaN(date.getTime())?'':CHANGE_FORMAT[format].format(date)};
 const changeDay=iso=>changeFormat('day',iso);
+const changeToday=(offsetDays=0)=>changeDay(new Date(Date.now()+offsetDays*86_400_000).toISOString());
 const changeTime=iso=>changeFormat('time',iso).replace(',','');
 const changeClock=iso=>changeFormat('clock',iso);
 // «Вторник, 20 октября 2026»: заглавная только первая буква, без «г.».
@@ -63,7 +74,8 @@ function changeRows(period){
   return period.filter(item=>(!v.sections.size||v.sections.has(item.section))&&(!v.kind||item.kind===v.kind)&&(!term||item.text.includes(term)));
 }
 function changeLink(page,params,label,title){
-  const query=new URLSearchParams({...params,from:$('#dateFrom').value,to:$('#dateTo').value});
+  // Страницы детализации считают дни по Москве: там «сегодня» могло ещё не наступить.
+  const to=$('#dateTo').value,today=mskDate(0),query=new URLSearchParams({...params,from:$('#dateFrom').value,to:to>today?today:to});
   return `<a class="change-link" href="/${page}?${query}" target="_blank" rel="noopener noreferrer" title="${escapeHtml(title)}">${escapeHtml(label)}</a>`;
 }
 // Объект изменения. У ставок и минус-фраз подпись таблицы — «Кампания · артикул (артикул продавца)», ID — кампания.
@@ -91,8 +103,13 @@ function changeValue(item,value){
 function changeDelta(item){
   const before=Number(item.before),after=Number(item.after);
   if(item.before===''||item.after===''||!Number.isFinite(before)||!Number.isFinite(after)||before===after)return '';
-  const diff=after-before;
-  return `<small class="change-delta ${diff>0?'up':'down'}">${diff>0?'+':'−'}${fmtNum(Math.abs(diff))}</small>`;
+  const diff=after-before,sign=diff>0?'+':'−',amount=`${sign}${fmtNum(Math.abs(diff))}`;
+  // У цен в рублях — ещё и изменение в процентах от прежней цены.
+  if(item.section==='Цены'&&/₽/.test(item.what||'')&&before>0){
+    const percent=Math.abs(diff)/before*100,text=percent<0.05?'<0,1':Number(percent.toFixed(1)).toLocaleString('ru-RU');
+    return `<small class="change-delta change-delta-price ${diff>0?'up':'down'}">${amount} ₽ · ${sign}${text}%</small>`;
+  }
+  return `<small class="change-delta ${diff>0?'up':'down'}">${amount}</small>`;
 }
 function changeWhat(item){
   const what=String(item.what||'');
@@ -124,7 +141,7 @@ function renderChangeHistory(){
   const rows=changeRows(period),pageCount=Math.ceil(rows.length/v.pageSize);
   v.page=Math.min(Math.max(1,v.page),Math.max(1,pageCount));
   const since=data.since?` · таблица следит с ${changeTime(data.since)}`:'';
-  $('#changeCount').textContent=`${fmtNum(rows.length)} из ${fmtNum(period.length)} за период${since} · время местное (Душанбе)${data.truncated?' · показаны 50 000 самых новых — сократите период':''}`;
+  $('#changeCount').textContent=`${fmtNum(rows.length)} из ${fmtNum(period.length)} за период${since} · время местное (Душанбе)${data.truncated?' · показаны 200 000 самых новых — сократите период':''}`;
   // Перед первой строкой каждого дня — строка-разделитель с датой (и в начале страницы, чтобы день был виден сразу).
   let lastDay='';
   body.innerHTML=rows.slice((v.page-1)*v.pageSize,v.page*v.pageSize).map(item=>{
@@ -156,6 +173,6 @@ document.addEventListener('input',event=>{
 });
 document.addEventListener('change',event=>{
   // Период: история берётся с компьютера быстро, поэтому пересчитываем сразу, без кнопки «Обновить».
-  if(['dateFrom','dateTo'].includes(event.target.id)&&state.activePage==='history'){changeView.page=1;loadChangeHistory()}
+  if(['dateFrom','dateTo'].includes(event.target.id)&&state.activePage==='history'){changeView.ownPeriod=[$('#dateFrom').value,$('#dateTo').value];changeView.page=1;loadChangeHistory()}
   if(event.target.id==='changeKind'){changeView.kind=event.target.value;changeView.page=1;renderChangeHistory()}
 });

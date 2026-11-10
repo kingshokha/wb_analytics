@@ -430,6 +430,7 @@ tr.rating-row-attention td:first-child{box-shadow:inset 3px 0 0 var(--red)}
 /* Разделитель дней: строка с датой и линией сверху */
 .change-table tr.change-day-row td{padding:16px 20px 7px;border-top:2px solid #d9dfdb;background:#f7f8f6;color:var(--ink);font-size:12px;font-weight:800;white-space:nowrap}
 .change-table tbody tr.change-day-row:first-child td{border-top:0}
+.change-table td.change-value .change-delta-price{display:block;margin:2px 0 0}
 .change-table .change-delta.up{color:var(--green)}
 .change-table .change-delta.down{color:var(--red)}
 

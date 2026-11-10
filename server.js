@@ -1573,9 +1573,10 @@ function setProductNote(cabinet, nmId, body = {}) {
 
 // --- История из Google Таблицы: копия на компьютере (data/Sheet) и дозагрузка ---
 // Таблица (google-sheets/wb-sheets.gs) раз в час записывает изменения цен, статусов, ставок, минус-фраз и остатков.
-// Сервер держит копию в data/Sheet/<раздел>/<ГГГГ-ММ>.json (в «Остатки FBW / FBS» ещё current.json — текущие
-// остатки), в sync.json — до какого момента скачано. Дозагружается только новое (?sync=1&after=…), повторы
-// отбрасываются. Копия хранит всю историю (до 02.11.2026 таблица обрезала «Историю» до 20 000 строк).
+// Сервер держит копию по кабинетам таблицы: data/Sheet/<кабинет>/<раздел>/<ГГГГ-ММ>.json (в «Остатки FBW / FBS» ещё
+// current.json — текущие остатки), в sync.json — до какого момента скачано (одно на всю таблицу). Дозагружается только
+// новое (?sync=1&after=…), повторы отбрасываются. Копия хранит всю историю (до 02.11.2026 таблица обрезала «Историю»
+// до 20 000 строк). До 10.11.2026 кабинеты лежали вместе в data/Sheet/<раздел>/ — см. splitSheetByCabinet.
 // Окна истории на сайте сначала берут данные с компьютера (source=local), потом просят дозагрузку (source=sheet).
 // Адрес веб-приложения и ключ — WB_SHEET_URL и WB_SHEET_KEY в .env; без них — configured: false.
 // WB_SHEET_DIR — другая папка для копии (для тестов, чтобы не трогать data/).
@@ -1605,28 +1606,103 @@ function writeSheetJson(file, value) {
   fs.writeFileSync(`${file}.tmp`, JSON.stringify(value));
   fs.renameSync(`${file}.tmp`, file);
 }
-function sheetMonths(section, dir = SHEET_DIR) {
-  try { return fs.readdirSync(path.join(dir, section)).filter(name => /^\d{4}-\d{2}\.json$/.test(name)).map(name => name.slice(0, 7)).sort(); } catch { return []; }
+function sheetMonths(folder) {
+  try { return fs.readdirSync(folder).filter(name => /^\d{4}-\d{2}\.json$/.test(name)).map(name => name.slice(0, 7)).sort(); } catch { return []; }
 }
-// Порция строк из таблицы → файлы по разделам и месяцам. Возвращает число новых строк.
+// Папка кабинета — его название из таблицы (как в строках: поле cabinet) без знаков, запрещённых в именах папок.
+// Папки с «_» в начале и с названиями разделов — не кабинеты: это старая раскладка и её архив.
+const SHEET_OLD_DIR = '_Все кабинеты вместе (до разделения)';
+function sheetCabinetFolder(name) {
+  const folder = safeFolderName(String(name ?? '').replace(/^_+/, ''), 'Без кабинета');
+  return SHEET_SECTIONS.includes(folder) ? `Кабинет ${folder}` : folder;
+}
+// Папки кабинетов в копии и названия кабинетов таблицы в каждой. Название обычно равно папке; если отличается
+// (запрещённые знаки, другой регистр), оно записано в cabinets.json: { папка строчными: [названия] }.
+function sheetCabinetFolders(dir = SHEET_DIR) {
+  const other = readSheetJson(path.join(dir, 'cabinets.json'), {});
+  try {
+    return fs.readdirSync(dir, { withFileTypes: true }).filter(entry => entry.isDirectory() && !entry.name.startsWith('_') && !SHEET_SECTIONS.includes(entry.name))
+      .map(entry => ({ folder: entry.name, names: [entry.name, ...(other[entry.name.toLowerCase()] || [])] }));
+  } catch { return []; }
+}
+// Название кабинета из строки → его папка. Регистр не различается (как в Windows): «samiri» попадёт в папку «Samiri».
+function sheetFolderOf(dir) {
+  const existing = new Map(sheetCabinetFolders(dir).map(item => [item.folder.toLowerCase(), item.folder])), known = new Map();
+  return value => {
+    const name = String(value ?? '');
+    if (!known.has(name)) {
+      const clean = sheetCabinetFolder(name), key = clean.toLowerCase(), folder = existing.get(key) || clean;
+      existing.set(key, folder); known.set(name, folder);
+      if (name && name !== folder) {
+        const file = path.join(dir, 'cabinets.json'), names = readSheetJson(file, {});
+        if (!(names[key] || []).includes(name)) writeSheetJson(file, { ...names, [key]: [...(names[key] || []), name] });
+      }
+    }
+    return known.get(name);
+  };
+}
+// Порция строк из таблицы → файлы по кабинетам, разделам и месяцам. Возвращает число новых строк.
 function saveSheetRows(items = [], dir = SHEET_DIR) {
-  const groups = new Map();
+  splitSheetByCabinet(dir);
+  const groups = new Map(), folderOf = sheetFolderOf(dir);
   for (const item of items) {
     if (!SHEET_SECTIONS.includes(item?.section) || !/^\d{4}-\d{2}/.test(String(item.at || ''))) continue;
-    const group = `${item.section}|${String(item.at).slice(0, 7)}`;
+    const group = `${folderOf(item.cabinet)}|${item.section}|${String(item.at).slice(0, 7)}`;
     if (!groups.has(group)) groups.set(group, []);
     groups.get(group).push(item);
   }
   let added = 0;
   for (const [group, list] of groups) {
-    const [section, month] = group.split('|'), file = path.join(dir, section, `${month}.json`);
+    const [folder, section, month] = group.split('|'), file = path.join(dir, folder, section, `${month}.json`);
     const merged = mergeSheetRows(readSheetJson(file, { items: [] }).items || [], list);
     if (merged.added.length) { writeSheetJson(file, { items: merged.rows }); added += merged.added.length; }
   }
   return added;
 }
-function saveSheetCurrent(current = [], dir = SHEET_DIR) {
-  for (const type of ['FBW', 'FBS']) writeSheetJson(path.join(dir, `Остатки ${type}`, 'current.json'), { items: current.filter(row => row.type === type) });
+// Текущие остатки — снимок, а не история: новый заменяет прежний целиком, как и раньше (изменения остатков — в файлах
+// по месяцам). У кабинета, которого в новом снимке нет, текущие остатки становятся пустыми. keep — не трогать файлы,
+// которые уже есть (перенос старой раскладки).
+function saveSheetCurrent(current = [], dir = SHEET_DIR, keep = false) {
+  splitSheetByCabinet(dir);
+  const groups = new Map(), folderOf = sheetFolderOf(dir), fileOf = group => { const [folder, type] = group.split('|'); return path.join(dir, folder, `Остатки ${type}`, 'current.json'); };
+  for (const row of current) {
+    if (!['FBW', 'FBS'].includes(row?.type)) continue;
+    const group = `${folderOf(row.cabinet)}|${row.type}`;
+    if (!groups.has(group)) groups.set(group, []);
+    groups.get(group).push(row);
+  }
+  if (!keep) for (const { folder } of sheetCabinetFolders(dir)) for (const type of ['FBW', 'FBS']) {
+    const group = `${folder}|${type}`;
+    if (!groups.has(group) && fs.existsSync(fileOf(group))) groups.set(group, []);
+  }
+  for (const [group, items] of groups) if (!keep || !fs.existsSync(fileOf(group))) writeSheetJson(fileOf(group), { items });
+}
+// Старая раскладка (до 10.11.2026): data/Sheet/<раздел>/<файл> — все кабинеты в одном файле. Строки дописываются в файлы
+// кабинетов (повторы отбрасываются, поэтому перенос можно повторять), а сам старый файл целиком переезжает в папку
+// SHEET_OLD_DIR: ничего не удаляется. Файл, который не удалось прочитать или разложить, остаётся на месте.
+const sheetSplitDone = new Set();
+function splitSheetByCabinet(dir = SHEET_DIR) {
+  if (sheetSplitDone.has(dir)) return;
+  sheetSplitDone.add(dir);
+  for (const section of SHEET_SECTIONS) {
+    let files;
+    try { files = fs.readdirSync(path.join(dir, section)).filter(name => name.endsWith('.json')); } catch { continue; }
+    for (const name of files) {
+      try {
+        const file = path.join(dir, section, name), items = readSheetJson(file, null)?.items;
+        if (!Array.isArray(items)) throw new Error('файл не читается');
+        if (name === 'current.json') saveSheetCurrent(items, dir, true);
+        else saveSheetRows(items, dir);
+        let target = path.join(dir, SHEET_OLD_DIR, section, name);
+        for (let copy = 2; fs.existsSync(target); copy++) target = path.join(dir, SHEET_OLD_DIR, section, `${name.slice(0, -5)} (${copy}).json`);
+        fs.mkdirSync(path.dirname(target), { recursive: true });
+        fs.renameSync(file, target);
+        console.log(`Копия Google Таблицы: ${section}/${name} разложен по кабинетам (${items.length} строк), старый файл — в «${SHEET_OLD_DIR}»`);
+      } catch (error) { console.error(`Копия Google Таблицы: ${section}/${name} не разложен по кабинетам:`, error.message); }
+    }
+    // Пустая папка раздела старой раскладки больше не нужна; непустую rmdir не тронет.
+    try { fs.rmdirSync(path.join(dir, section)); } catch { /* в папке остались файлы */ }
+  }
 }
 // Кабинет сайта по названию из таблицы. Названия заданы отдельно на сайте и в таблице («2 ИП Шамсиддинов» и «ИП Шамсиддинов»),
 // поэтому сравниваются без номера в начале и без регистра: сначала точно, потом — одно содержит другое, если такой кабинет один.
@@ -1651,18 +1727,21 @@ function withoutClubPriceRepeats(items) {
   return items.filter(item => !(item.section === 'Цены' && item.what === 'Цена в WB Клубе, ₽' && discounted.has(key(item))));
 }
 // Чтение копии: строки нужных разделов (по артикулам или кампаниям, за последние days дней, одного кабинета), новые сверху;
-// для остатков — ещё текущие остатки. limit — сколько самых новых строк отдать.
+// для остатков — ещё текущие остатки. limit — сколько самых новых строк отдать. С cabinet читаются только папки этого
+// кабинета, без него — всех кабинетов.
 function readSheetHistory({ ids = [], sections = [], days = 0, limit = 0, current: withCurrent = true, cabinet = null } = {}, dir = SHEET_DIR) {
+  splitSheetByCabinet(dir);
   const fromIso = days ? new Date(Date.now() - days * 86_400_000).toISOString() : '', fromMonth = fromIso.slice(0, 7), items = [];
-  for (const section of sections) for (const month of sheetMonths(section, dir)) {
+  const folders = sheetCabinetFolders(dir).filter(item => !cabinet || item.names.some(name => cabinet(name))).map(item => path.join(dir, item.folder));
+  for (const folder of folders) for (const section of sections) for (const month of sheetMonths(path.join(folder, section))) {
     if (fromMonth && month < fromMonth) continue;
-    for (const item of readSheetJson(path.join(dir, section, `${month}.json`), { items: [] }).items || []) {
+    for (const item of readSheetJson(path.join(folder, section, `${month}.json`), { items: [] }).items || []) {
       if ((!ids.length || ids.includes(String(item.id))) && (!fromIso || String(item.at) >= fromIso) && (!cabinet || cabinet(item.cabinet))) items.push(item);
     }
   }
   const stockTypes = sections.filter(item => item.startsWith('Остатки ')).map(item => item.slice('Остатки '.length));
-  const current = stockTypes.length && withCurrent ? stockTypes.flatMap(type => (readSheetJson(path.join(dir, `Остатки ${type}`, 'current.json'), { items: [] }).items || [])
-    .filter(row => (!ids.length || ids.includes(String(row.nmId))) && (!cabinet || cabinet(row.cabinet)))) : null;
+  const current = stockTypes.length && withCurrent ? folders.flatMap(folder => stockTypes.flatMap(type => (readSheetJson(path.join(folder, `Остатки ${type}`, 'current.json'), { items: [] }).items || [])
+    .filter(row => (!ids.length || ids.includes(String(row.nmId))) && (!cabinet || cabinet(row.cabinet))))) : null;
   items.sort((a, b) => String(b.at).localeCompare(String(a.at)));
   return { items: items.slice(0, limit || (stockTypes.length ? 60_000 : 5_000)), current };
 }
@@ -1710,10 +1789,11 @@ function syncSheet() {
 }
 // /api/sheet-history: source=local — сразу с компьютера; source=sheet — сначала дозагрузка из таблицы.
 // added — сколько новых строк скачано за эту дозагрузку (по всей таблице), syncError — почему не получилось.
-// all — раздел «История изменений»: все строки всех разделов (или выбранных) без текущих остатков, до 50 000 новых;
+// all — раздел «История изменений»: все строки всех разделов (или выбранных) без текущих остатков, до 200 000 новых
+// (предел только ответа, строки на диске остаются; за 14 дней в большом кабинете уже больше 50 000);
 // с cabinet — только кабинета сайта с этим id (и в «Истории изменений» — без повторов клубной цены; у остатков — и текущие
 // остатки только этого кабинета). truncated — за период изменений больше, отданы самые новые.
-const SHEET_ALL_LIMIT = 50_000;
+const SHEET_ALL_LIMIT = 200_000;
 async function sheetHistory(idsInput, sectionsInput, daysInput, source = 'local', all = false, cabinetInput = '') {
   if (!sheetConfigured()) return { configured: false, items: [], current: null, since: null };
   const ids = [...new Set(String(idsInput || '').split(',').map(id => id.trim()).filter(id => /^\d{1,15}$/.test(id)))].slice(0, 50);
@@ -1725,11 +1805,12 @@ async function sheetHistory(idsInput, sectionsInput, daysInput, source = 'local'
   const saved = readSheetJson(path.join(SHEET_DIR, 'sync.json'), {});
   const cabinet = /^[\w-]{1,40}$/.test(String(cabinetInput || '')) ? sheetCabinetFilter(cabinetInput) : null;
   const history = all
-    ? readSheetHistory({ ids, sections: sections.length ? sections : SHEET_SECTIONS, days, limit: SHEET_ALL_LIMIT + 1, current: false, cabinet })
+    ? readSheetHistory({ ids, sections: sections.length ? sections : SHEET_SECTIONS, days, limit: Infinity, current: false, cabinet })
     : readSheetHistory({ ids, sections: sections.length ? sections : SHEET_SECTIONS.filter(item => !item.startsWith('Остатки ')), days, cabinet });
+  // Сначала без повторов клубной цены, потом предел: иначе повторы вытесняют из ответа старые дни периода.
+  if (all && cabinet) history.items = withoutClubPriceRepeats(history.items);
   const truncated = all && history.items.length > SHEET_ALL_LIMIT;
   if (truncated) history.items = history.items.slice(0, SHEET_ALL_LIMIT);
-  if (all && cabinet) history.items = withoutClubPriceRepeats(history.items);
   return { configured: true, source: source === 'sheet' ? 'sheet' : 'local', ...history, ...(all ? { truncated } : {}),
     since: saved.since || null, syncedAt: saved.syncedAt || null, added: sync?.added || 0, syncError: sync?.lastError || '' };
 }
@@ -4278,11 +4359,12 @@ const server = http.createServer(async (req, res) => {
 
 if (require.main === module) server.listen(PORT, '127.0.0.1', () => {
   console.log(`WB Analytics: http://127.0.0.1:${PORT}`);
-  // Копия Google Таблицы на компьютере: дозагрузка вскоре после запуска и дальше раз в час.
+  // Копия Google Таблицы на компьютере: старая раскладка — по кабинетам, дозагрузка вскоре после запуска и дальше раз в час.
+  splitSheetByCabinet();
   if (sheetConfigured()) { setTimeout(syncSheet, 20_000); setInterval(syncSheet, SHEET_SYNC_EVERY); }
 });
 
-module.exports = { server, wbErrorText, loadProductCards, readBackFbsStocks, depositCampaignBudget, mergeCampaignZones, campaignZones, setCampaignStatus, setCampaignPlacements, slimFunnelProduct, funnelTableFresh, campaignActivePeriod,productCampaignTimeline, mergeSheetRows, saveSheetRows, readSheetHistory, sheetSiteCabinet, sheetCabinetFilter, withoutClubPriceRepeats,mergeMinusList, minusPlan, archivedPresetsFromError, todoNmId, todoFields, productAdDays, productDetailPeriod, funnelOrdersByNmId, summarizeHourlyOrders, orderFeedPeriod, itemRatingPeriods, normalizeItemRatings, itemReturnsPeriod, normalizeItemReturns, returnStatusGroup, summarizeKeywordDaily, summarizePositionDaily, normalizeOrders, normalizeOrderFeed, enrichOrders, extractFunnel, summarizeAdStats, campaignProductDaily, withAdBudgets, summarizeKeywords, normalizeStockPreset, normalizePricePreset, adCampaignMayHaveStats, validAdPeriod, historyPeriod, historyChunks, planAdFetch, datesBetween, safeFolderName, funnelDaysToFetch, pairFunnelDays, funnelPeriods, funnelRangeBuckets, funnelRecordCounts, funnelRangeValues, funnelSalesMatrix, summaryTopProducts, summaryDrops, summaryProducts, normalizeFbsStocks, normalizeFbwStocks, normalizePrices, summarizeStockTotals, normalizeNewOrders, summarizeSupplies, normalizeTrbxes, chunkOrders, stickerType, localPhoto, WB_HOSTS };
+module.exports = { server, wbErrorText, loadProductCards, readBackFbsStocks, depositCampaignBudget, mergeCampaignZones, campaignZones, setCampaignStatus, setCampaignPlacements, slimFunnelProduct, funnelTableFresh, campaignActivePeriod,productCampaignTimeline, mergeSheetRows, saveSheetRows, saveSheetCurrent, readSheetHistory, sheetSiteCabinet, sheetCabinetFilter, withoutClubPriceRepeats,mergeMinusList, minusPlan, archivedPresetsFromError, todoNmId, todoFields, productAdDays, productDetailPeriod, funnelOrdersByNmId, summarizeHourlyOrders, orderFeedPeriod, itemRatingPeriods, normalizeItemRatings, itemReturnsPeriod, normalizeItemReturns, returnStatusGroup, summarizeKeywordDaily, summarizePositionDaily, normalizeOrders, normalizeOrderFeed, enrichOrders, extractFunnel, summarizeAdStats, campaignProductDaily, withAdBudgets, summarizeKeywords, normalizeStockPreset, normalizePricePreset, adCampaignMayHaveStats, validAdPeriod, historyPeriod, historyChunks, planAdFetch, datesBetween, safeFolderName, funnelDaysToFetch, pairFunnelDays, funnelPeriods, funnelRangeBuckets, funnelRecordCounts, funnelRangeValues, funnelSalesMatrix, summaryTopProducts, summaryDrops, summaryProducts, normalizeFbsStocks, normalizeFbwStocks, normalizePrices, summarizeStockTotals, normalizeNewOrders, summarizeSupplies, normalizeTrbxes, chunkOrders, stickerType, localPhoto, WB_HOSTS };
 
 
 

@@ -15,8 +15,8 @@
   const text = time => { const date = new Date(time); return `${pad(date.getUTCDate())}.${pad(date.getUTCMonth() + 1)}.${date.getUTCFullYear()}`; };
   const monthStart = time => { const date = new Date(time); return Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), 1); };
   const addMonths = (time, count) => { const date = new Date(time); return Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + count, 1); };
-  // «Сегодня» — по Москве (UTC+3), как во всём сайте.
-  const today = () => { const date = new Date(Date.now() + 3 * 3_600_000); return Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()); };
+  // «Сегодня» — по Москве (UTC+3), как во всём сайте. У блока с data-today-utc — по этому смещению (история изменений живёт по Душанбе).
+  const today = group => { const date = new Date(Date.now() + (Number(group.dataset.todayUtc) || 3) * 3_600_000); return Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()); };
   const daysText = count => `${count} ${count % 10 === 1 && count % 100 !== 11 ? 'день' : [2, 3, 4].includes(count % 10) && ![12, 13, 14].includes(count % 100) ? 'дня' : 'дней'}`;
   let active = null;
 
@@ -40,7 +40,7 @@
     // month — первый день левого месяца; hover — день под курсором, пока выбран только конец периода.
     const view = { month: 0, from: null, to: null, hover: null };
     // Будущие дни выбрать нельзя: верхняя граница — сегодня, если у полей нет более ранней.
-    const limits = () => { const max = parse(toInput.max) ?? parse(fromInput.max), now = today(); return { min: parse(fromInput.min) ?? parse(toInput.min), max: max != null && max < now ? max : now }; };
+    const limits = () => { const max = parse(toInput.max) ?? parse(fromInput.max), now = today(group); return { min: parse(fromInput.min) ?? parse(toInput.min), max: max != null && max < now ? max : now }; };
     const monthsCount = () => window.innerWidth >= 640 ? 2 : 1;
 
     function refresh() {
@@ -57,7 +57,7 @@
     }
 
     function render() {
-      const count = monthsCount(), { min, max } = limits(), now = today();
+      const count = monthsCount(), { min, max } = limits(), now = today(group);
       let months = '';
       for (let index = 0; index < count; index++) {
         const first = new Date(addMonths(view.month, index)), year = first.getUTCFullYear(), month = first.getUTCMonth();
@@ -104,7 +104,7 @@
       view.from = parse(fromInput.value); view.to = parse(toInput.value); view.hover = null;
       // Справа — месяц конца периода; если начало раньше, левым становится месяц начала. Месяцы за пределами min/max не показываем.
       const count = monthsCount(), { min, max } = limits();
-      let month = addMonths(monthStart(view.to ?? view.from ?? today()), -(count - 1));
+      let month = addMonths(monthStart(view.to ?? view.from ?? today(group)), -(count - 1));
       if (view.from != null && view.from < month) month = monthStart(view.from);
       if (max != null && addMonths(month, count - 1) > monthStart(max)) month = addMonths(monthStart(max), -(count - 1));
       if (min != null && month < monthStart(min)) month = monthStart(min);

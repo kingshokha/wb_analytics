@@ -1,7 +1,7 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { wbErrorText, loadProductCards, readBackFbsStocks, depositCampaignBudget, mergeCampaignZones, campaignZones, setCampaignStatus, setCampaignPlacements, slimFunnelProduct, funnelTableFresh, productCampaignTimeline,mergeSheetRows, saveSheetRows, readSheetHistory, sheetSiteCabinet, sheetCabinetFilter, withoutClubPriceRepeats,minusPlan, archivedPresetsFromError, productAdDays, productDetailPeriod, todoNmId, todoFields, funnelOrdersByNmId, summarizeHourlyOrders, orderFeedPeriod, itemRatingPeriods, normalizeItemRatings, itemReturnsPeriod, normalizeItemReturns, returnStatusGroup, campaignActivePeriod, mergeMinusList, summarizeKeywordDaily, summarizePositionDaily, normalizeOrders, normalizeOrderFeed, enrichOrders, extractFunnel, summarizeAdStats, campaignProductDaily, withAdBudgets, summarizeKeywords, normalizeStockPreset, normalizePricePreset, adCampaignMayHaveStats, validAdPeriod, historyPeriod, historyChunks, planAdFetch, datesBetween, safeFolderName, funnelDaysToFetch, pairFunnelDays, funnelPeriods, funnelRangeBuckets, funnelRecordCounts, funnelRangeValues, funnelSalesMatrix, summaryTopProducts, summaryDrops, summaryProducts, normalizeFbsStocks, normalizeFbwStocks, normalizePrices, summarizeStockTotals, normalizeNewOrders, summarizeSupplies, normalizeTrbxes, chunkOrders, stickerType, localPhoto, WB_HOSTS } = require('../server');
+const { wbErrorText, loadProductCards, readBackFbsStocks, depositCampaignBudget, mergeCampaignZones, campaignZones, setCampaignStatus, setCampaignPlacements, slimFunnelProduct, funnelTableFresh, productCampaignTimeline,mergeSheetRows, saveSheetRows, saveSheetCurrent, readSheetHistory, sheetSiteCabinet, sheetCabinetFilter, withoutClubPriceRepeats,minusPlan, archivedPresetsFromError, productAdDays, productDetailPeriod, todoNmId, todoFields, funnelOrdersByNmId, summarizeHourlyOrders, orderFeedPeriod, itemRatingPeriods, normalizeItemRatings, itemReturnsPeriod, normalizeItemReturns, returnStatusGroup, campaignActivePeriod, mergeMinusList, summarizeKeywordDaily, summarizePositionDaily, normalizeOrders, normalizeOrderFeed, enrichOrders, extractFunnel, summarizeAdStats, campaignProductDaily, withAdBudgets, summarizeKeywords, normalizeStockPreset, normalizePricePreset, adCampaignMayHaveStats, validAdPeriod, historyPeriod, historyChunks, planAdFetch, datesBetween, safeFolderName, funnelDaysToFetch, pairFunnelDays, funnelPeriods, funnelRangeBuckets, funnelRecordCounts, funnelRangeValues, funnelSalesMatrix, summaryTopProducts, summaryDrops, summaryProducts, normalizeFbsStocks, normalizeFbwStocks, normalizePrices, summarizeStockTotals, normalizeNewOrders, summarizeSupplies, normalizeTrbxes, chunkOrders, stickerType, localPhoto, WB_HOSTS } = require('../server');
 
 test('текст ошибки WB у запуска, паузы и мест показа: JSON { error }, { detail } и простой текст 422', () => {
   assert.equal(wbErrorText({ details: { error: 'AdvertChangeStatus: Low Budget: not enough budget' } }), 'AdvertChangeStatus: Low Budget: not enough budget');
@@ -851,7 +851,7 @@ test('минус-фразы: исключение добавляет к теку
   assert.deepEqual(mergeMinusList([], ['фен'], 'include'), []);
 });
 
-test('копия Google Таблицы: склейка без повторов, файлы по разделам и месяцам, чтение с фильтрами', () => {
+test('копия Google Таблицы: склейка без повторов, файлы по кабинетам, разделам и месяцам, чтение с фильтрами', () => {
   const dir = require('node:fs').mkdtempSync(require('node:path').join(require('node:os').tmpdir(), 'wb-sheet-'));
   try {
     const row = (at, section, id, what, before, after) => ({ at, cabinet: 'Кабинет 1', section, id, title: 't', what, before, after });
@@ -860,7 +860,7 @@ test('копия Google Таблицы: склейка без повторов, 
     assert.equal(saveSheetRows(first, dir), 3);
     // Повторная порция (дозагрузка с запасом в минуту) не добавляет повторов.
     assert.equal(saveSheetRows([first[1], row('2026-10-03T10:00:00.000Z', 'Цены', '1', 'Цена со скидкой, ₽', 1400, 1450)], dir), 1);
-    const months = require('node:fs').readdirSync(require('node:path').join(dir, 'Цены')).sort();
+    const months = require('node:fs').readdirSync(require('node:path').join(dir, 'Кабинет 1', 'Цены')).sort();
     assert.deepEqual(months, ['2026-09.json', '2026-10.json']);
     const prices = readSheetHistory({ ids: ['1'], sections: ['Цены'] }, dir);
     assert.deepEqual(prices.items.map(item => item.after), [1450, 1400]);
@@ -881,6 +881,46 @@ test('копия Google Таблицы: склейка без повторов, 
     assert.equal(readSheetHistory({ sections: ['Цены', 'Ставки'], current: false, cabinet: sheetCabinetFilter('1', site) }, dir).items.length, 5);
     assert.equal(readSheetHistory({ sections: ['Цены', 'Ставки'], current: false, cabinet: sheetCabinetFilter('2', site) }, dir).items.length, 0);
   } finally { require('node:fs').rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('копия Google Таблицы: у каждого кабинета своя папка; старые общие файлы раскладываются по кабинетам и целиком остаются в архиве', () => {
+  const fs = require('node:fs'), path = require('node:path');
+  const dir = fs.mkdtempSync(path.join(require('node:os').tmpdir(), 'wb-sheet-'));
+  try {
+    const row = (cabinet, at, section, id, after) => ({ at, cabinet, section, id, title: 't', what: 'Цена со скидкой, ₽', before: 1, after });
+    const stock = (cabinet, type, nmId) => ({ type, cabinet, nmId, title: 't', total: 5 });
+    const items = name => JSON.parse(fs.readFileSync(path.join(dir, name), 'utf8')).items;
+    // Старая раскладка: все кабинеты в одном файле раздела.
+    const oldPrices = JSON.stringify({ items: [row('ИП Первый', '2026-10-01T10:00:00.000Z', 'Цены', '1', 100), row('Второй: тест', '2026-10-02T10:00:00.000Z', 'Цены', '2', 200), row('ИП Первый', '2026-10-03T10:00:00.000Z', 'Цены', '1', 300)] });
+    const oldCurrent = JSON.stringify({ items: [stock('ИП Первый', 'FBW', 1), stock('Второй: тест', 'FBW', 2)] });
+    fs.mkdirSync(path.join(dir, 'Цены')); fs.writeFileSync(path.join(dir, 'Цены', '2026-10.json'), oldPrices);
+    fs.mkdirSync(path.join(dir, 'Остатки FBW')); fs.writeFileSync(path.join(dir, 'Остатки FBW', 'current.json'), oldCurrent);
+    const site = [{ id: '1', name: 'ИП Первый' }, { id: '2', name: 'Второй: тест' }];
+    // Первое же чтение раскладывает старые файлы; строки не теряются.
+    assert.equal(readSheetHistory({ sections: ['Цены'] }, dir).items.length, 3);
+    assert.deepEqual(items('ИП Первый/Цены/2026-10.json').map(item => item.after), [100, 300]);
+    assert.deepEqual(items('Второй тест/Цены/2026-10.json').map(item => item.after), [200]);
+    assert.deepEqual(items('ИП Первый/Остатки FBW/current.json').map(item => item.nmId), [1]);
+    // Старые файлы — в архиве без изменений, папок старой раскладки больше нет.
+    assert.equal(fs.readFileSync(path.join(dir, '_Все кабинеты вместе (до разделения)', 'Цены', '2026-10.json'), 'utf8'), oldPrices);
+    assert.equal(fs.readFileSync(path.join(dir, '_Все кабинеты вместе (до разделения)', 'Остатки FBW', 'current.json'), 'utf8'), oldCurrent);
+    assert.equal(fs.existsSync(path.join(dir, 'Цены')), false);
+    // Кабинет сайта читает только свою папку — и когда название в таблице не годится в имя папки.
+    assert.deepEqual(readSheetHistory({ sections: ['Цены'], cabinet: sheetCabinetFilter('1', site) }, dir).items.map(item => item.after), [300, 100]);
+    assert.deepEqual(readSheetHistory({ sections: ['Цены'], cabinet: sheetCabinetFilter('2', site) }, dir).items.map(item => item.after), [200]);
+    assert.deepEqual(readSheetHistory({ sections: ['Остатки FBW'], cabinet: sheetCabinetFilter('2', site) }, dir).current.map(item => item.nmId), [2]);
+    // Новые строки — в папку своего кабинета; другой регистр названия — та же папка.
+    assert.equal(saveSheetRows([row('ип первый', '2026-11-01T10:00:00.000Z', 'Цены', '1', 400), row('Третий', '2026-11-01T10:00:00.000Z', 'Цены', '3', 500)], dir), 2);
+    assert.deepEqual(items('ИП Первый/Цены/2026-11.json').map(item => item.after), [400]);
+    assert.deepEqual(items('Третий/Цены/2026-11.json').map(item => item.after), [500]);
+    assert.equal(readSheetHistory({ sections: ['Цены'], cabinet: sheetCabinetFilter('1', site) }, dir).items.length, 3);
+    // Новый снимок текущих остатков заменяет прежний у каждого кабинета; истории и архива не касается.
+    saveSheetCurrent([stock('ИП Первый', 'FBW', 7), stock('ИП Первый', 'FBS', 8)], dir);
+    assert.deepEqual(items('ИП Первый/Остатки FBW/current.json').map(item => item.nmId), [7]);
+    assert.deepEqual(items('ИП Первый/Остатки FBS/current.json').map(item => item.nmId), [8]);
+    assert.deepEqual(items('Второй тест/Остатки FBW/current.json'), []);
+    assert.equal(readSheetHistory({ sections: ['Цены'] }, dir).items.length, 5);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
 test('история изменений: кабинет таблицы — по названию без номера в начале; повтор клубной цены убирается', () => {
