@@ -32,38 +32,49 @@ test('прибыль Сималенда: артикул Сималенда из 
 
 test('прибыль Сималенда: строки — цена WB, комиссия FBS предмета, объём упаковки и состояние цены Сималенда', () => {
   const card = (nmID, vendorCode, subjectID = 7) => ({ nmID, vendorCode, subjectID, subjectName: 'Кружки', title: `Товар ${nmID}`, dimensions: { length: 11, width: 12, height: 7 } });
-  const cards = [card(1, '1011/105/ШДФ'), card(2, '1012/90/ШДФ'), card(3, '1013/1/ШДФ'), card(4, '1014/1/ШДФ'), card(5, '1015/1/ШДФ', 99), card(6, '205-132/L')];
+  const cards = [card(1, '1011/105/ШДФ'), card(2, '1012/90/ШДФ'), card(3, '1013/1/ШДФ'), card(4, '1014/1/ШДФ'), card(5, '1015/1/ШДФ', 99), card(6, 'MUG-1')];
   const goods = [{ nmID: 1, sizes: [{ price: 2000, discountedPrice: 1744 }] }, { nmID: 2, sizes: [{ discountedPrice: 500 }] }];
   const sima = { sids: ['1011', '1012', '1013', '1014'], failed: ['1013'], found: { 1011: { name: 'Кружка', price: 140, wholesale_price: 105, balance: null, isEnough: true }, 1012: { name: 'Нет', price: 0, wholesale_price: 0, balance: 0 } } };
   const rows = profitRows(cards, goods, [{ subjectID: 7, kgvpMarketplace: 39, paidStorageKgvp: 33.5 }], sima, value => `photo-${value.nmID}`);
-  assert.deepEqual(rows.map(row => row.sid), ['1011', '1012', '1013', '1014', '1015'], 'товар без артикула Сималенда не попадает');
-  assert.deepEqual({ ...rows[0], sima: { ...rows[0].sima } }, { nmId: 1, name: 'Товар 1', photo: 'photo-1', subject: 'Кружки', vendorCode: '1011/105/ШДФ', sid: '1011', price: 1744, commission: 39, volume: 0.924,
-    sima: { status: 'ok', name: 'Кружка', wholesale: 105, retail: 140, inStock: true } });
-  assert.deepEqual(rows.map(row => row.sima.status), ['ok', 'noPrice', 'failed', 'missing', 'notListed']);
-  assert.equal(rows[1].sima.inStock, false);
+  assert.deepEqual(rows.map(row => row.article), ['1011', '1012', '1013', '1014', '1015'], 'товар не Сималенда и не Lenardi не попадает');
+  assert.deepEqual({ ...rows[0], supplier: { ...rows[0].supplier } }, { nmId: 1, name: 'Товар 1', photo: 'photo-1', subject: 'Кружки', vendorCode: '1011/105/ШДФ', article: '1011', price: 1744, commission: 39, volume: 0.924,
+    supplier: { source: 'sima', status: 'ok', name: 'Кружка', wholesale: 105, retail: 140, inStock: true } });
+  assert.deepEqual(rows.map(row => row.supplier.status), ['ok', 'noPrice', 'failed', 'missing', 'notListed']);
+  assert.equal(rows[1].supplier.inStock, false);
   assert.equal(rows[2].price, null, 'нет в ценах WB');
   assert.equal(rows[4].commission, null, 'нет комиссии предмета');
-  assert.equal(profitRows([card(1, '1011/1/ШДФ')], [], [], null)[0].sima.status, 'notLoaded');
+  assert.equal(profitRows([card(1, '1011/1/ШДФ')], [], [], null)[0].supplier.status, 'notLoaded');
+});
+
+test('прибыль Сималенда: товары Lenardi — артикул без /L, опт из загруженного файла', () => {
+  const card = (nmID, vendorCode) => ({ nmID, vendorCode, subjectID: 7, title: `Товар ${nmID}`, dimensions: { length: 10, width: 10, height: 10 } });
+  const cards = [card(1, '305-043/L'), card(2, '160-200/l'), card(3, '205-132/L'), card(4, '999-999/L'), card(5, '305-043'), card(6, '305-043/L/2')];
+  const lenardi = { prices: { '305-043': 1905, '160-200': 80, '205-132': null } };
+  const rows = profitRows(cards, [{ nmID: 1, sizes: [{ discountedPrice: 9129 }] }], [{ subjectID: 7, kgvpMarketplace: 48 }], null, () => '', lenardi);
+  assert.deepEqual(rows.map(row => [row.nmId, row.article, row.supplier.source, row.supplier.status, row.supplier.wholesale]),
+    [[1, '305-043', 'lenardi', 'ok', 1905], [2, '160-200', 'lenardi', 'ok', 80], [3, '205-132', 'lenardi', 'noPrice', null], [4, '999-999', 'lenardi', 'notListed', null]], 'артикулы без /L и с хвостом — не Lenardi');
+  assert.deepEqual({ ...rows[0].supplier }, { source: 'lenardi', status: 'ok', name: '', wholesale: 1905, retail: null, inStock: null });
+  assert.equal(profitRows([card(1, '305-043/L')], [], [], null)[0].supplier.status, 'notLoaded', 'файл опт Lenardi не загружен');
 });
 
 test('прибыль Сималенда: расчёт страницы совпадает с формулами таблицы «Артикулы … с логистикой»', () => {
   const { simaProfitCalc, simaLogistics } = pageScript();
   // Строки 2 и 3 таблицы: до литра — ступень × 1,7, больше литра — 78,2 + 23,8 за каждый следующий литр.
-  const first = simaProfitCalc({ price: 1744, commission: 39, volume: 0.924, sima: { wholesale: 105, retail: 140 } }, SETTINGS, TARIFF);
+  const first = simaProfitCalc({ price: 1744, commission: 39, volume: 0.924, supplier: { wholesale: 105, retail: 140 } }, SETTINGS, TARIFF);
   near(first.logistics, 54.4, 'логистика'); near(first.tax, 104.64, 'налог'); near(first.fee, 680.16, 'комиссия');
   near(first.profit, 749.8, 'чистая прибыль'); assert.equal(first.need, 598.29); near(first.diff, -65.694, 'отличие, %');
-  const second = simaProfitCalc({ price: 2142, commission: 43, volume: 1.35, sima: { wholesale: 94.5 } }, SETTINGS, TARIFF);
+  const second = simaProfitCalc({ price: 2142, commission: 43, volume: 1.35, supplier: { wholesale: 94.5 } }, SETTINGS, TARIFF);
   near(second.logistics, 86.53, 'логистика больше литра'); near(second.profit, 861.39, 'чистая прибыль'); assert.equal(second.need, 745.26);
   assert.deepEqual([0.2, 0.21, 0.4, 0.6, 0.8, 1].map(volume => Math.round(simaLogistics(volume, TARIFF) * 100) / 100), [39.1, 44.2, 44.2, 49.3, 51, 54.4]);
   assert.equal(simaLogistics(null, TARIFF), null);
   // Закупка по обычной цене; налог, комиссия и желаемая прибыль ≥ 100% — «недостижимо».
-  assert.equal(simaProfitCalc({ price: 1744, commission: 39, volume: 0.924, sima: { wholesale: 105, retail: 140 } }, { ...SETTINGS, cost: 'retail' }, TARIFF).cost, 140);
-  assert.equal(simaProfitCalc({ price: 1000, commission: 60, volume: 2, sima: { wholesale: 10 } }, { ...SETTINGS, target: 40 }, TARIFF).need, 'unreachable');
+  assert.equal(simaProfitCalc({ price: 1744, commission: 39, volume: 0.924, supplier: { wholesale: 105, retail: 140 } }, { ...SETTINGS, cost: 'retail' }, TARIFF).cost, 140);
+  assert.equal(simaProfitCalc({ price: 1000, commission: 60, volume: 2, supplier: { wholesale: 10 } }, { ...SETTINGS, target: 40 }, TARIFF).need, 'unreachable');
   // Ниже желаемой — по значению на экране (до десятой): 14,96% — это «15%», не ниже 15%.
   const { simaBelow } = pageScript();
   assert.deepEqual([simaBelow(14.96, 15), simaBelow(14.94, 15), simaBelow(15.03, 15)], [false, true, false]);
   // Без цены Сималенда — только налог и комиссия, прибыли нет.
-  const noSima = simaProfitCalc({ price: 1000, commission: 30, volume: 2, sima: { wholesale: null } }, SETTINGS, TARIFF);
+  const noSima = simaProfitCalc({ price: 1000, commission: 30, volume: 2, supplier: { wholesale: null } }, SETTINGS, TARIFF);
   assert.deepEqual([noSima.tax, noSima.fee, noSima.profit, noSima.need], [60, 300, null, null]);
 });
 
@@ -80,7 +91,7 @@ test('прибыль Сималенда: маршрут — данные каб�
   const module = createSimaProfit(deps), res = {};
   assert.equal(await module.handle({ method: 'GET' }, res, new URL('http://local/api/sima-profit?cabinet=1')), true);
   assert.deepEqual(requests, ['https://common-api.wildberries.ru/api/v1/tariffs/commission?locale=ru', 'https://common-api.wildberries.ru/api/v1/tariffs/box?date=2026-11-11']);
-  assert.deepEqual({ price: res.payload.rows[0].price, commission: res.payload.rows[0].commission, volume: res.payload.rows[0].volume, wholesale: res.payload.rows[0].sima.wholesale }, { price: 900, commission: 30, volume: 1, wholesale: 100 });
+  assert.deepEqual({ price: res.payload.rows[0].price, commission: res.payload.rows[0].commission, volume: res.payload.rows[0].volume, wholesale: res.payload.rows[0].supplier.wholesale }, { price: 900, commission: 30, volume: 1, wholesale: 100 });
   assert.deepEqual([res.payload.tariff.base, res.payload.tariff.liter, res.payload.tariff.coef, res.payload.simaAt, res.payload.cards], [78.2, 23.8, 170, '2026-11-11T10:00:00.000Z', 1]);
   assert.match(res.payload.warnings.join(' | '), /Тарифы логистики WB не загрузились: WB API вернул 429 \| Логистика посчитана по тарифу 78,2 ₽/);
   const demo = createSimaProfit({ ...deps, cabinets: () => [] }), demoRes = {};

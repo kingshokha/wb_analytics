@@ -4,11 +4,15 @@
 // и товары, которых нет на Сималенде. Сначала копия с компьютера (data/Sima), потом дозагрузка из таблицы (SheetSync).
 // «Загрузить цены сейчас» — POST /api/sima/refresh, не дожидаясь часа. Раздел не зависит от кабинета WB.
 // Устроен как «История изменений»: дни отделены строкой с датой, время — местное (Душанбе, функции change-history.js),
-// поиск по артикулу и названию, вид изменения, свой период (по умолчанию 14 дней, запоминается в браузере).
+// поиск по артикулу и названию, вид изменения (по умолчанию — цена по акции «Опт») и свой период (по умолчанию
+// 14 дней); вид и период запоминаются в браузере. Над таблицей — одна строка: дозагрузка из таблицы и последняя
+// загрузка цен с Сималенда.
 // Файл подключается до app.js: $, escapeHtml и прочее из app.js используются только внутри функций.
 const SIMA_PERIODS=[[7,'7 дней'],[14,'14 дней'],[30,'30 дней'],[90,'90 дней'],[365,'Год'],[0,'Всё время']];
-const simaView={data:null,error:'',request:0,days:14,search:'',kind:'',searchTimer:0,page:1,pageSize:pageSizeFor('sima'),refreshing:false};
+const SIMA_WHOLESALE='Цена по акции «Опт»';
+const simaView={data:null,error:'',request:0,days:14,search:'',kind:SIMA_WHOLESALE,hint:'',searchTimer:0,page:1,pageSize:pageSizeFor('sima'),refreshing:false};
 try{const saved=Number(localStorage.getItem('wb-sima-period'));if(SIMA_PERIODS.some(([days])=>days===saved)&&localStorage.getItem('wb-sima-period')!==null)simaView.days=saved}catch{/* период по умолчанию */}
+try{const kind=localStorage.getItem('wb-sima-kind');if(kind!==null)simaView.kind=kind}catch{/* вид по умолчанию */}
 // Цены Сималенда бывают в копейках (0,14 ₽), поэтому до двух знаков после запятой.
 const simaNumber=new Intl.NumberFormat('ru-RU',{maximumFractionDigits:2});
 // В «было / стало» — цены: у изменений цены и у «Добавлен в список», «Убран из списка…», «Нет на Сималенде» и т. п.
@@ -26,7 +30,7 @@ function loadSimaHistory(force=false){
   if(!v.data){$('#simaCount').textContent='Загрузка истории…';$('#simaBody').innerHTML=''}
   window.SheetSync?.load(`/api/sima/history?days=${v.days}`,(data,phase,error,previous)=>{
     if(request!==v.request)return;
-    $('#simaHint').textContent=SheetSync.hint(data,phase,error,previous);
+    v.hint=SheetSync.hint(data,phase,error,previous);
     if(data){v.data=prepareSimaItems(data);v.error=''}else if(error&&!v.data)v.error=error.message;
     renderSimaHistory();
   });
@@ -57,7 +61,7 @@ function simaStatusText(data){
 // минуты на 10 000 артикулов), потом раздел перечитывает историю.
 async function refreshSimaPrices(){
   const button=$('#simaRefresh');if(simaView.refreshing)return;
-  simaView.refreshing=true;button.disabled=true;button.textContent='Загружаем цены…';if(simaView.data)$('#simaStatus').textContent=simaStatusText(simaView.data);
+  simaView.refreshing=true;button.disabled=true;button.textContent='Загружаем цены…';if(simaView.data)renderSimaHistory();
   try{
     const result=await api('/api/sima/refresh',{method:'POST',body:'{}'});
     toast(result.ok?`Цены загружены: ${result.result||'готово'}${result.first?' — первое обновление, изменения начнут записываться со следующего':''}`:`Цены не загружены: ${result.error}`);
@@ -74,7 +78,7 @@ function renderSimaHistory(){
   const v=simaView,data=v.data,body=$('#simaBody');
   if(!body)return;
   $('#simaPeriod').innerHTML=SIMA_PERIODS.map(([days,label])=>`<option value="${days}"${days===v.days?' selected':''}>${label}</option>`).join('');
-  const empty=text=>{body.innerHTML='';$('#simaKind').innerHTML='<option value="">Все изменения</option>';$('#simaStatus').textContent='';$('#emptySimaText').textContent=text;$('#emptySima').classList.toggle('hidden',!text);$('#simaPagination').classList.add('hidden')};
+  const empty=text=>{body.innerHTML='';$('#simaKind').innerHTML='<option value="">Все изменения</option>';$('#simaHint').textContent=v.hint;$('#emptySimaText').textContent=text;$('#emptySima').classList.toggle('hidden',!text);$('#simaPagination').classList.add('hidden')};
   if(!data){$('#simaCount').textContent=v.error?`Не удалось загрузить историю: ${v.error}`:'Загрузка истории…';return empty('')}
   if(!data.configured){$('#simaCount').textContent='Таблица Сималенда не подключена';return empty('Впишите в .env сайта SIMA_SHEET_URL и SIMA_SHEET_KEY (ключ — в таблице «Сималенд → Ключ для сайта») и перезапустите сервер. Инструкция — google-sheets/sima-land/README.md.')}
   const all=data.items||[],term=v.search.trim().toLowerCase();
@@ -84,7 +88,7 @@ function renderSimaHistory(){
   v.page=Math.min(Math.max(1,v.page),Math.max(1,pageCount));
   const since=data.since?` · таблица следит с ${changeTime(data.since)}`:'';
   $('#simaCount').textContent=`${fmtNum(rows.length)} из ${fmtNum(all.length)} за период${since} · время местное (Душанбе)${data.truncated?' · показаны 200 000 самых новых — сократите период':''}`;
-  $('#simaStatus').textContent=simaStatusText(data);
+  $('#simaHint').textContent=[v.hint,simaStatusText(data)].filter(Boolean).join(' · ');
   let lastDay='';
   body.innerHTML=rows.slice((v.page-1)*v.pageSize,v.page*v.pageSize).map(item=>{
     const head=item.day!==lastDay?`<tr class="change-day-row"><td colspan="5">${escapeHtml(changeDayTitle(item.at))}</td></tr>`:'';lastDay=item.day;
@@ -103,6 +107,6 @@ document.addEventListener('input',event=>{
   simaView.searchTimer=setTimeout(()=>{simaView.search=event.target.value;simaView.page=1;if(simaView.data)renderSimaHistory()},250);
 });
 document.addEventListener('change',event=>{
-  if(event.target.id==='simaKind'){simaView.kind=event.target.value;simaView.page=1;renderSimaHistory()}
+  if(event.target.id==='simaKind'){simaView.kind=event.target.value;simaView.page=1;try{localStorage.setItem('wb-sima-kind',simaView.kind)}catch{/* без сохранения */}renderSimaHistory()}
   if(event.target.id==='simaPeriod'){simaView.days=Number(event.target.value);simaView.page=1;try{localStorage.setItem('wb-sima-period',String(simaView.days))}catch{/* без сохранения */}loadSimaHistory()}
 });

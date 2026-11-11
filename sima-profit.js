@@ -1,7 +1,8 @@
-// --- Раздел «Прибыль Сималенда»: оптовые цены Сималенда против цен товаров на WB ---
+// --- Раздел «Прибыль Сималенда»: оптовые цены Сималенда и Lenardi против цен товаров на WB ---
 // Как таблица «Артикулы … с логистикой.xlsx»: по каждому товару кабинета, у которого артикул продавца начинается
-// с артикула Сималенда (6938164/125/ШДФ → 6938164), — цена на WB, комиссия, налог, сборка, логистика, закупка
-// по оптовой цене Сималенда, чистая прибыль и цена, при которой прибыль будет желаемой. Сервер отдаёт исходные
+// с артикула Сималенда (6938164/125/ШДФ → 6938164) или это артикул Lenardi (305-043/L → 305-043, модуль lenardi.js), —
+// цена на WB, комиссия, налог, сборка, логистика, закупка по оптовой цене поставщика, чистая прибыль и цена,
+// при которой прибыль будет желаемой. Сервер отдаёт исходные
 // данные, расчёт — на странице (public/sima-profit.js), чтобы желаемая прибыль, налог и сборка менялись сразу.
 // Источники:
 //   - карточки кабинета (productCards): предмет, размеры упаковки → объём в литрах, фото, название;
@@ -15,7 +16,8 @@
 //     boxDeliveryMarketplaceCoefExpr, %, уже учтён). Числа приходят строками с запятой ("78,2"), «-» — нет тарифа.
 //     Лимит — 60 запросов в минуту; хранится 6 часов. Товары до литра WB считает по ступеням, их в API нет —
 //     SMALL_LITERS (из таблицы), умножаются на коэффициент склада;
-//   - цены Сималенда — последняя загрузка модуля sima-land.js (data/Sima/prices.json).
+//   - цены Сималенда — последняя загрузка модуля sima-land.js (data/Sima/prices.json);
+//   - опт Lenardi — последний загруженный на странице отчёт (модуль lenardi.js, data/Sima/lenardi.json).
 // Маршрут: GET /api/sima-profit?cabinet=ID[&force=1] — force заново берёт цены WB.
 //
 // «Применить цены»: POST /api/sima-profit/apply { cabinet, items: [{ nmId, target }], confirm: true } — target — нужная
@@ -35,6 +37,7 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
+const { lenardiArticle } = require('./lenardi');
 
 const TARIFF_TTL = 6 * 60 * 60_000;
 const PRICES_API = 'https://discounts-prices-api.wildberries.ru';
@@ -75,29 +78,39 @@ function goodError(text) {
 }
 const positive = value => Number.isFinite(Number(value)) && Number(value) > 0 ? round(Number(value)) : null;
 
-// Строки раздела: товары с артикулом Сималенда и всё, что нужно для расчёта.
-function profitRows(cards = [], goods = [], commission = [], sima = null, photo = () => '') {
+// Строки раздела: товары с артикулом Сималенда или Lenardi и всё, что нужно для расчёта. article — артикул
+// поставщика, supplier — его цены: { source: 'sima' | 'lenardi', status, name, wholesale, retail, inStock }.
+// status: ok; noPrice — у поставщика нет цены; missing — нет на Сималенде; failed — цена не загрузилась;
+// notListed — нет на листе «Артикулы» таблицы Сималенда или в файле опт Lenardi; notLoaded — цен ещё нет совсем.
+function profitRows(cards = [], goods = [], commission = [], sima = null, photo = () => '', lenardi = null) {
   const prices = new Map(goods.map(good => [String(good.nmID), good]));
   const fees = new Map(commission.map(item => [Number(item.subjectID), item]));
   const listed = new Set((sima?.sids || []).map(String)), failed = new Set((sima?.failed || []).map(String)), found = sima?.found || {};
+  const simaSupplier = sid => {
+    const item = found[sid], balance = item?.balance ?? null;
+    const status = item ? (positive(item.wholesale_price) || positive(item.price) ? 'ok' : 'noPrice') : !sima ? 'notLoaded' : failed.has(sid) ? 'failed' : listed.has(sid) ? 'missing' : 'notListed';
+    return { source: 'sima', status, name: item?.name || '', wholesale: positive(item?.wholesale_price), retail: positive(item?.price), inStock: balance === null ? (item?.isEnough ? true : null) : balance > 0 };
+  };
+  const lenardiSupplier = article => {
+    const known = Boolean(lenardi && Object.hasOwn(lenardi.prices, article)), wholesale = known ? positive(lenardi.prices[article]) : null;
+    return { source: 'lenardi', status: !lenardi ? 'notLoaded' : !known ? 'notListed' : wholesale ? 'ok' : 'noPrice', name: '', wholesale, retail: null, inStock: null };
+  };
   const rows = [];
   for (const card of cards) {
-    const sid = simaSid(card.vendorCode);
-    if (!sid) continue;
+    const sid = simaSid(card.vendorCode), lenardiCode = sid ? '' : lenardiArticle(card.vendorCode);
+    if (!sid && !lenardiCode) continue;
     const good = prices.get(String(card.nmID)), size = good?.sizes?.[0] || {}, fee = fees.get(Number(card.subjectID));
     const d = card.dimensions || {}, volume = d.length * d.width * d.height / 1000;
-    const item = found[sid];
-    const status = item ? (positive(item.wholesale_price) || positive(item.price) ? 'ok' : 'noPrice') : !sima ? 'notLoaded' : failed.has(sid) ? 'failed' : listed.has(sid) ? 'missing' : 'notListed';
-    const balance = item?.balance ?? null;
-    rows.push({ nmId: Number(card.nmID), name: card.title || `Товар ${card.nmID}`, photo: photo(card), subject: card.subjectName || '', vendorCode: card.vendorCode || '', sid,
+    rows.push({ nmId: Number(card.nmID), name: card.title || `Товар ${card.nmID}`, photo: photo(card), subject: card.subjectName || '', vendorCode: card.vendorCode || '', article: sid || lenardiCode,
       price: positive(size.discountedPrice ?? good?.discountedPrice), commission: Number.isFinite(Number(fee?.kgvpMarketplace)) ? Number(fee.kgvpMarketplace) : null,
       volume: Number.isFinite(volume) && volume > 0 ? round(volume, 3) : null,
-      sima: { status, name: item?.name || '', wholesale: positive(item?.wholesale_price), retail: positive(item?.price), inStock: balance === null ? (item?.isEnough ? true : null) : balance > 0 } });
+      supplier: sid ? simaSupplier(sid) : lenardiSupplier(lenardiCode) });
   }
   return rows;
 }
 
 module.exports = function createSimaProfit({ send, apiError, readJson, cabinets, tokenFor, wbRequest, cachedAnalytics, analyticsCache, productCards, loadPriceGoods, cardPhoto, simaLand,
+  lenardi = { prices: () => null, info: () => null },
   pricesChanged = () => {}, root = '.', dir = path.join(root, 'data', 'Sima'), pause = ms => new Promise(resolve => setTimeout(resolve, ms)),
   today = () => new Date(Date.now() + 3 * 3_600_000).toISOString().slice(0, 10) }) {
   const jobs = new Map();
@@ -219,7 +232,7 @@ module.exports = function createSimaProfit({ send, apiError, readJson, cabinets,
     return publicJob(job);
   }
   async function profit(id, force = false) {
-    if (id === 'demo' || !cabinets().length) return { demo: true, configured: simaLand.configured(), rows: [], warnings: [], tariff: { ...FALLBACK_TARIFF, small: SMALL_LITERS, warehouse: WAREHOUSE } };
+    if (id === 'demo' || !cabinets().length) return { demo: true, configured: simaLand.configured(), rows: [], warnings: [], lenardi: lenardi.info(), tariff: { ...FALLBACK_TARIFF, small: SMALL_LITERS, warehouse: WAREHOUSE } };
     const token = tokenFor(id), warnings = [];
     if (force) analyticsCache.delete(`sima-profit:goods:${id}`);
     const [cards, goods, commission, box] = await Promise.all([
@@ -237,8 +250,8 @@ module.exports = function createSimaProfit({ send, apiError, readJson, cabinets,
       tariff = FALLBACK_TARIFF;
     }
     const sima = simaLand.prices();
-    return { demo: false, configured: simaLand.configured(), rows: profitRows(cards, goods, commission, sima, cardPhoto), cards: cards.length,
-      simaAt: sima?.at || null, simaArticles: sima?.sids?.length || 0, simaRefreshing: simaLand.refreshing(), tariff: { ...tariff, small: SMALL_LITERS, warehouse: WAREHOUSE }, warnings };
+    return { demo: false, configured: simaLand.configured(), rows: profitRows(cards, goods, commission, sima, cardPhoto, lenardi.prices()), cards: cards.length,
+      simaAt: sima?.at || null, simaArticles: sima?.sids?.length || 0, simaRefreshing: simaLand.refreshing(), lenardi: lenardi.info(), tariff: { ...tariff, small: SMALL_LITERS, warehouse: WAREHOUSE }, warnings };
   }
   async function handle(req, res, target) {
     if (req.method === 'GET' && target.pathname === '/api/sima-profit') {

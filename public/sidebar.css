@@ -41,6 +41,24 @@
 .sidebar:not(.expanded) .sidebar-cabinet>span:not(.avatar){display:none}
 .sidebar-backdrop{position:fixed;inset:0;z-index:49;background:#17211d59;opacity:0;pointer-events:none;transition:opacity .2s ease}
 body.sidebar-open .sidebar-backdrop{opacity:1;pointer-events:auto}
+/* Невысокий экран компьютера: пункты плотнее; если и так не помещаются — список прокручивается колесом,
+   а кабинет внизу всегда на виду (раньше 15 пунктов выталкивали его за нижний край при высоте 768). */
+@media(min-width:681px){
+  .sidebar nav{flex:0 1 auto;min-height:0;overflow-y:auto;overflow-x:hidden;scrollbar-width:none}
+  /* Пункты могут ужаться (у них overflow:hidden), но не ниже 32px — дальше список прокручивается. */
+  .sidebar .nav-item{min-height:32px}
+  .sidebar nav::-webkit-scrollbar{display:none}
+  .sidebar .cabinet-wrap,.sidebar-cabinet{flex:0 0 auto}
+}
+@media(min-width:681px) and (max-height:920px){
+  .sidebar{padding-top:12px}
+  .sidebar-head{margin-bottom:10px}
+  .sidebar nav{gap:2px}
+  .sidebar .nav-item{padding:9px 16px}
+}
+@media(min-width:681px) and (max-height:820px){
+  .sidebar .nav-item{padding:7px 16px}
+}
 /* Телефон: меню — панель внизу экрана с иконками, у активного пункта видна подпись. */
 @media(max-width:680px){
   .shell{display:block}

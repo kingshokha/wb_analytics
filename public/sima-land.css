@@ -4,7 +4,7 @@
 .sima-profit-settings label{display:flex;flex-direction:column;gap:4px;font-size:11px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
 .sima-profit-settings input,.sima-profit-settings select{height:36px;min-width:0;width:150px;padding:0 10px;border:1px solid var(--line);border-radius:10px;background:#fff;color:var(--ink);font:600 13px Manrope;text-transform:none;letter-spacing:0}
 .sima-profit-settings input{width:110px}
-.sima-profit-table{min-width:1590px!important}
+.sima-profit-table{min-width:1610px!important}
 .sima-profit-table th[data-sima-sort]{cursor:pointer;white-space:normal;line-height:1.3}
 .sima-profit-table th[data-sima-sort]:hover,.sima-profit-table th.sorted{color:var(--purple)}
 .sima-profit-table td{vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -22,6 +22,11 @@
 .sima-profit-mark.warn{color:#b7791f}
 small.sima-profit-mark{display:block;margin-top:2px;font-size:11px;font-weight:800}
 #page-sima-profit .stock-product-photo{flex:0 0 auto}
+/* «Загрузить опт Lenardi» — подпись к скрытому полю выбора файла, выглядит как кнопка. */
+.sima-upload{display:inline-flex;align-items:center;cursor:pointer;white-space:nowrap}
+/* В строке настроек — справа, по низу полей ввода; обычная подпись кнопки, не как у подписей полей. */
+.sima-profit-settings .sima-upload{flex-direction:row;align-self:flex-end;margin-left:auto;height:36px;text-transform:none;letter-spacing:0}
+.sima-upload.busy{opacity:.6;cursor:wait;pointer-events:none}
 /* Окно «Применить цены»: сводка, примеры изменений, ход загрузки и ошибки. */
 .sima-apply-summary{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px;margin:14px 0}
 .sima-apply-summary div{padding:10px 12px;border:1px solid var(--line);border-radius:10px}
