@@ -86,7 +86,12 @@ test('цены Сималенда на сайте: загрузка — арти
     return { json: async () => ({ items: [{ at: changedAt, id: '11', title: 'Кружка', what: 'Цена, ₽', before: 110, after: 120 }], more: false, articles: 2, updatedAt: changedAt, lastResult: 'артикулов 2, изменений 1' }) };
   });
   try {
-    // Таблица обновлялась 10 минут назад — плановая загрузка пропускается, только дозагрузка истории.
+    // Таблица обновлялась 10 минут назад, но цен на компьютере ещё нет — загрузка всё равно идёт (они нужны «Прибыли»).
+    assert.notEqual((await module.refresh()).skipped, true);
+    assert.deepEqual(module.prices().found, { 11: { name: 'Кружка', price: 120, wholesale_price: 100, balance: 0, isEnough: false } });
+    assert.deepEqual(module.prices().sids, ['11', '12']);
+    sheetCalls.length = 0;
+    // Цены есть и таблица свежая — плановая загрузка пропускается, только дозагрузка истории.
     assert.equal((await module.refresh()).skipped, true);
     assert.ok(!sheetCalls.some(call => call.options.method === 'POST'));
     updatedAt = old;

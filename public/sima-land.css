@@ -1,4 +1,32 @@
-/* «Цены Сималенда» (public/sima-land.js). Таблица и строки — общие стили «Истории изменений» (change-*). */
+/* «Цены Сималенда» (public/sima-land.js) и «Прибыль Сималенда» (public/sima-profit.js). Таблица истории и строки —
+   общие стили «Истории изменений» (change-*), таблица прибыли — общие стили таблиц остатков и цен (stock-*). */
+.sima-profit-settings{display:flex;flex-wrap:wrap;gap:10px 14px;padding:0 20px 12px}
+.sima-profit-settings label{display:flex;flex-direction:column;gap:4px;font-size:11px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
+.sima-profit-settings input,.sima-profit-settings select{height:36px;min-width:0;width:150px;padding:0 10px;border:1px solid var(--line);border-radius:10px;background:#fff;color:var(--ink);font:600 13px Manrope;text-transform:none;letter-spacing:0}
+.sima-profit-settings input{width:110px}
+.sima-profit-table{min-width:1545px!important}
+.sima-profit-table th[data-sima-sort]{cursor:pointer;white-space:normal;line-height:1.3}
+.sima-profit-table th[data-sima-sort]:hover,.sima-profit-table th.sorted{color:var(--purple)}
+.sima-profit-table td{vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* Товар: фото и название в блоке внутри ячейки — у самой ячейки display:flex сломал бы раскладку таблицы. */
+.sima-profit-product{display:flex;align-items:center;gap:10px;min-width:0}
+.sima-profit-product>span{display:block;min-width:0}
+.sima-profit-product strong,.sima-profit-product small{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sima-profit-product small{margin-top:2px;font-size:11px;color:var(--muted)}
+/* Сильнее общего .stock-table td:nth-child(6) small{display:none}: в 6-й колонке — комиссия в рублях. */
+.sima-profit-table td small.sima-profit-sub,.sima-profit-table td small.sima-profit-mark{display:block;overflow:hidden;text-overflow:ellipsis}
+.sima-profit-sub{display:block;margin-top:2px;font-size:11px;color:var(--muted);font-weight:600}
+.sima-profit-mark.up{color:var(--green)}
+.sima-profit-mark.down{color:var(--red)}
+.sima-profit-mark.warn{color:#b7791f}
+small.sima-profit-mark{display:block;margin-top:2px;font-size:11px;font-weight:800}
+#page-sima-profit .stock-product-photo{flex:0 0 auto}
+@media(max-width:680px){
+  #page-sima-profit .stock-filters{display:grid;grid-template-columns:1fr;gap:8px;width:100%}
+  #page-sima-profit .stock-filters select{width:100%;min-width:0}
+  .sima-profit-settings{display:grid;grid-template-columns:1fr 1fr;padding:0 16px 12px}
+  .sima-profit-settings input,.sima-profit-settings select{width:100%}
+}
 #page-sima .preset-button:disabled{opacity:.6;cursor:wait}
 /* На телефоне поиск — на всю ширину, под ним вид изменения и период, ниже — «Загрузить цены сейчас». */
 @media(max-width:680px){

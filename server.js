@@ -4090,12 +4090,15 @@ const communications = require('./communications')({ wbRequest, tokenFor, cabine
 // Раздел «Цены Сималенда» — отдельный модуль (sima-land.js), маршруты /api/sima/*: раз в час загружает оптовые цены
 // Сималенда в отдельную Google Таблицу (google-sheets/sima-land) и держит копию их истории в data/Sima.
 const simaLand = require('./sima-land')({ send, apiError, readJson, root: ROOT });
+// Раздел «Прибыль Сималенда» (sima-profit.js), маршрут /api/sima-profit: оптовые цены Сималенда против цен на WB.
+const simaProfit = require('./sima-profit')({ send, apiError, cabinets, tokenFor, wbRequest, cachedAnalytics, analyticsCache, productCards, loadPriceGoods, cardPhoto, simaLand });
 
 async function handleApi(req, res, url) {
   if (req.method === 'GET' && url.pathname.startsWith('/api/photo/')) return servePhoto(res, url);
   if (url.pathname.startsWith('/api/card') && await contentCards.handle(req, res, url)) return;
   if (url.pathname.startsWith('/api/messages/') && await communications.handle(req, res, url)) return;
   if (url.pathname.startsWith('/api/sima/') && await simaLand.handle(req, res, url)) return;
+  if (url.pathname.startsWith('/api/sima-profit') && await simaProfit.handle(req, res, url)) return;
   if (req.method === 'GET' && url.pathname === '/api/cabinets') return send(res, 200, { cabinets: publicCabinets(), demo: !cabinets().length });
   if (req.method === 'PATCH' && /^\/api\/cabinets\/[^/]+$/.test(url.pathname)) {
     const id = decodeURIComponent(url.pathname.split('/').pop());

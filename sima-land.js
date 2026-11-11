@@ -5,9 +5,11 @@
 //   3) отправляет их в таблицу (POST): она сравнивает с листом «Цены» и пишет изменения на лист «История»;
 //   4) дозагружает «Историю» в копию на компьютере: data/Sima/История/<ГГГГ-ММ>.json — строки по месяцам,
 //      data/Sima/sync.json — до какого момента скачано и что таблица сказала о последнем обновлении (повторы
-//      отбрасываются, хранится всё). Итог последней загрузки цен — data/Sima/refresh.json.
-// Первая загрузка — через минуту после запуска сервера (если таблица не обновлялась последние 50 минут), дальше раз
-// в час; «Загрузить цены сейчас» на сайте — сразу. Пока компьютер выключен, цены не обновляются.
+//      отбрасываются, хранится всё). Итог последней загрузки цен — data/Sima/refresh.json, сами цены последней
+//      загрузки — data/Sima/prices.json (по ним раздел «Прибыль Сималенда», модуль sima-profit.js, сравнивает с WB).
+// Первая загрузка — через минуту после запуска сервера (если таблица не обновлялась последние 50 минут и цены на
+// компьютере уже есть), дальше раз в час; «Загрузить цены сейчас» на сайте — сразу. Пока компьютер выключен, цены
+// не обновляются.
 // API Сималенда v3 (https://www.sima-land.ru/api/v3/help/, раздел «Товар»):
 //   GET https://www.sima-land.ru/api/v3/item/?sid=<артикулы через запятую>&per-page=100&fields=<поля>
 //   sid — артикул (несколько через запятую), per-page — 10, 20, 50 или 100; fields — только нужные поля (ответ
@@ -62,7 +64,7 @@ function mergeRows(existing = [], incoming = []) {
 module.exports = function createSimaLand({ send, apiError, readJson, root, dir = process.env.SIMA_DIR ? path.resolve(process.env.SIMA_DIR) : path.join(root, 'data', 'Sima'),
   url = () => process.env.SIMA_SHEET_URL, key = () => process.env.SIMA_SHEET_KEY, token = () => process.env.SIMA_TOKEN, fetchImpl = (...args) => fetch(...args),
   pause = ms => new Promise(resolve => setTimeout(resolve, ms)) }) {
-  const historyDir = path.join(dir, 'История'), syncFile = path.join(dir, 'sync.json'), refreshFile = path.join(dir, 'refresh.json');
+  const historyDir = path.join(dir, 'История'), syncFile = path.join(dir, 'sync.json'), refreshFile = path.join(dir, 'refresh.json'), pricesFile = path.join(dir, 'prices.json');
   const configured = () => Boolean(String(url() || '').trim() && String(key() || '').trim());
   const months = () => { try { return fs.readdirSync(historyDir).filter(name => /^\d{4}-\d{2}\.json$/.test(name)).map(name => name.slice(0, 7)).sort(); } catch { return []; } };
   const state = { running: null, refreshing: null, timer: null };
@@ -122,9 +124,11 @@ module.exports = function createSimaLand({ send, apiError, readJson, root, dir =
       let result;
       try {
         const list = await sheetRequest({ articles: 1 });
-        if (!force && list.updatedAt && Date.now() - Date.parse(list.updatedAt) < FRESH_MS) result = { ok: true, skipped: true, at: startedAt, result: 'таблица обновлялась меньше часа назад' };
+        if (!force && list.updatedAt && Date.now() - Date.parse(list.updatedAt) < FRESH_MS && fs.existsSync(pricesFile)) result = { ok: true, skipped: true, at: startedAt, result: 'таблица обновлялась меньше часа назад' };
         else {
           const sids = Array.isArray(list.sids) ? list.sids.map(String) : [], loaded = await loadItems(sids);
+          // Цены — на компьютер до отправки в таблицу: разделу «Прибыль Сималенда» они нужны, даже если таблица не ответила.
+          writeJsonFile(pricesFile, { at: new Date().toISOString(), sids, found: loaded.found, failed: loaded.failed });
           const answer = await sheetRequest({}, { sids, found: loaded.found, failed: loaded.failed, errors: loaded.errors, skipped: Number(list.skipped) || 0 });
           result = { ok: true, at: startedAt, finishedAt: new Date().toISOString(), result: String(answer.result || ''), changes: Number(answer.changes) || 0, first: Boolean(answer.first), articles: sids.length, failed: loaded.failed.length };
         }
@@ -235,6 +239,8 @@ module.exports = function createSimaLand({ send, apiError, readJson, root, dir =
     setTimeout(() => refresh(), 60_000);
     state.timer = setInterval(() => refresh(), SYNC_EVERY);
   }
-  return { handle, start, sync, refresh, loadItems, saveRows, readHistory, history, configured };
+  // Цены последней загрузки: { at, sids — артикулы таблицы, found — артикул → цены, failed } или null, если загрузок не было.
+  const prices = () => readJsonFile(pricesFile, null);
+  return { handle, start, sync, refresh, loadItems, saveRows, readHistory, history, configured, prices, refreshing: () => Boolean(state.refreshing) };
 };
 module.exports.mergeRows = mergeRows;

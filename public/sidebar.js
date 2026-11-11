@@ -25,7 +25,9 @@
     // Часы со стрелкой вокруг — история изменений из Google Таблицы.
     { page: 'history', label: 'История изменений', icon: SVG('<path d="M3.5 12A8.5 8.5 0 1 0 6 6L3.5 8.5"/><path d="M3.5 4v4.5H8"/><path d="M12 7.5V12l3 2"/>') },
     // Коробка со стрелкой цены — оптовые цены Сималенда (отдельная Google Таблица).
-    { page: 'sima', label: 'Цены Сималенда', icon: SVG('<path d="M4 8.5L12 4.5l8 4v8l-8 4-8-4z"/><path d="M4 8.5l8 4 8-4M12 12.5v8"/><path d="M15.5 6.3L8 10.2"/>') }
+    { page: 'sima', label: 'Цены Сималенда', icon: SVG('<path d="M4 8.5L12 4.5l8 4v8l-8 4-8-4z"/><path d="M4 8.5l8 4 8-4M12 12.5v8"/><path d="M15.5 6.3L8 10.2"/>') },
+    // Знак процента — прибыль с товаров Сималенда на WB.
+    { page: 'sima-profit', label: 'Прибыль Сималенда', icon: SVG('<path d="M18 6L6 18"/><circle cx="7.5" cy="7.5" r="2.5"/><circle cx="16.5" cy="16.5" r="2.5"/>') }
   ];
   const sidebar = document.querySelector('.sidebar'), toggle = document.querySelector('.sidebar-toggle'), nav = sidebar?.querySelector('nav');
   if (!sidebar || !toggle || !nav) return;
