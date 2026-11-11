@@ -4091,7 +4091,8 @@ const communications = require('./communications')({ wbRequest, tokenFor, cabine
 // Сималенда в отдельную Google Таблицу (google-sheets/sima-land) и держит копию их истории в data/Sima.
 const simaLand = require('./sima-land')({ send, apiError, readJson, root: ROOT });
 // Раздел «Прибыль Сималенда» (sima-profit.js), маршрут /api/sima-profit: оптовые цены Сималенда против цен на WB.
-const simaProfit = require('./sima-profit')({ send, apiError, cabinets, tokenFor, wbRequest, cachedAnalytics, analyticsCache, productCards, loadPriceGoods, cardPhoto, simaLand });
+const simaProfit = require('./sima-profit')({ send, apiError, readJson, cabinets, tokenFor, wbRequest, cachedAnalytics, analyticsCache, productCards, loadPriceGoods, cardPhoto, simaLand,
+  root: ROOT, pricesChanged: id => forgetList(`prices:${id}`) });
 
 async function handleApi(req, res, url) {
   if (req.method === 'GET' && url.pathname.startsWith('/api/photo/')) return servePhoto(res, url);

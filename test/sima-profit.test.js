@@ -59,6 +59,9 @@ test('прибыль Сималенда: расчёт страницы совп�
   // Закупка по обычной цене; налог, комиссия и желаемая прибыль ≥ 100% — «недостижимо».
   assert.equal(simaProfitCalc({ price: 1744, commission: 39, volume: 0.924, sima: { wholesale: 105, retail: 140 } }, { ...SETTINGS, cost: 'retail' }, TARIFF).cost, 140);
   assert.equal(simaProfitCalc({ price: 1000, commission: 60, volume: 2, sima: { wholesale: 10 } }, { ...SETTINGS, target: 40 }, TARIFF).need, 'unreachable');
+  // Ниже желаемой — по значению на экране (до десятой): 14,96% — это «15%», не ниже 15%.
+  const { simaBelow } = pageScript();
+  assert.deepEqual([simaBelow(14.96, 15), simaBelow(14.94, 15), simaBelow(15.03, 15)], [false, true, false]);
   // Без цены Сималенда — только налог и комиссия, прибыли нет.
   const noSima = simaProfitCalc({ price: 1000, commission: 30, volume: 2, sima: { wholesale: null } }, SETTINGS, TARIFF);
   assert.deepEqual([noSima.tax, noSima.fee, noSima.profit, noSima.need], [60, 300, null, null]);
