@@ -4087,11 +4087,15 @@ const contentCards = require('./content-cards')({ wbRequest, tokenFor, cabinets,
 // (для тестового сервера — WB_CHATS_DIR, чтобы не трогать копию на компьютере).
 const CHATS_DIR = process.env.WB_CHATS_DIR ? path.resolve(process.env.WB_CHATS_DIR) : path.join(ROOT, 'data', 'Chats');
 const communications = require('./communications')({ wbRequest, tokenFor, cabinets, cachedAnalytics, analyticsCache, apiError, readJson, send, chatsDir: CHATS_DIR });
+// Раздел «Цены Сималенда» — отдельный модуль (sima-land.js), маршруты /api/sima/*: раз в час загружает оптовые цены
+// Сималенда в отдельную Google Таблицу (google-sheets/sima-land) и держит копию их истории в data/Sima.
+const simaLand = require('./sima-land')({ send, apiError, readJson, root: ROOT });
 
 async function handleApi(req, res, url) {
   if (req.method === 'GET' && url.pathname.startsWith('/api/photo/')) return servePhoto(res, url);
   if (url.pathname.startsWith('/api/card') && await contentCards.handle(req, res, url)) return;
   if (url.pathname.startsWith('/api/messages/') && await communications.handle(req, res, url)) return;
+  if (url.pathname.startsWith('/api/sima/') && await simaLand.handle(req, res, url)) return;
   if (req.method === 'GET' && url.pathname === '/api/cabinets') return send(res, 200, { cabinets: publicCabinets(), demo: !cabinets().length });
   if (req.method === 'PATCH' && /^\/api\/cabinets\/[^/]+$/.test(url.pathname)) {
     const id = decodeURIComponent(url.pathname.split('/').pop());
@@ -4391,6 +4395,7 @@ if (require.main === module) server.listen(PORT, '127.0.0.1', () => {
   // Копия Google Таблицы на компьютере: старая раскладка — по кабинетам, дозагрузка вскоре после запуска и дальше раз в час.
   splitSheetByCabinet();
   if (sheetConfigured()) { setTimeout(syncSheet, 20_000); setInterval(syncSheet, SHEET_SYNC_EVERY); }
+  simaLand.start();
 });
 
 module.exports = { server, wbErrorText, loadProductCards, readBackFbsStocks, depositCampaignBudget, mergeCampaignZones, campaignZones, setCampaignStatus, setCampaignPlacements, slimFunnelProduct, funnelTableFresh, campaignActivePeriod,productCampaignTimeline, mergeSheetRows, saveSheetRows, saveSheetCurrent, readSheetHistory, sheetCabinetSince, sheetSiteCabinet, sheetCabinetFilter, withoutClubPriceRepeats,mergeMinusList, minusPlan, archivedPresetsFromError, todoNmId, todoFields, productAdDays, productDetailPeriod, funnelOrdersByNmId, summarizeHourlyOrders, orderFeedPeriod, itemRatingPeriods, normalizeItemRatings, itemReturnsPeriod, normalizeItemReturns, returnStatusGroup, summarizeKeywordDaily, summarizePositionDaily, normalizeOrders, normalizeOrderFeed, enrichOrders, extractFunnel, summarizeAdStats, campaignProductDaily, withAdBudgets, summarizeKeywords, normalizeStockPreset, normalizePricePreset, adCampaignMayHaveStats, validAdPeriod, historyPeriod, historyChunks, planAdFetch, datesBetween, safeFolderName, funnelDaysToFetch, pairFunnelDays, funnelPeriods, funnelRangeBuckets, funnelRecordCounts, funnelRangeValues, funnelSalesMatrix, summaryTopProducts, summaryDrops, summaryProducts, normalizeFbsStocks, normalizeFbwStocks, normalizePrices, summarizeStockTotals, normalizeNewOrders, summarizeSupplies, normalizeTrbxes, chunkOrders, stickerType, localPhoto, WB_HOSTS };

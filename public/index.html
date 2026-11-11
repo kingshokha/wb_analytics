@@ -12,6 +12,7 @@
   <link rel="stylesheet" href="/pager.css">
   <link rel="stylesheet" href="/messages.css">
   <link rel="stylesheet" href="/tables.css">
+  <link rel="stylesheet" href="/sima-land.css">
 </head>
 <body>
   <div class="shell">
@@ -306,6 +307,18 @@
         </div>
       </section>
 
+      <!-- «Цены Сималенда» — public/sima-land.js, данные — отдельная Google Таблица (google-sheets/sima-land). -->
+      <section class="page" id="page-sima">
+        <div class="panel stock-panel change-panel">
+          <div class="panel-head"><div><h2>Оптовые цены Сималенда</h2><p id="simaCount">Загрузка истории…</p></div><div class="filters stock-filters"><label class="search">⌕ <input id="simaSearch" placeholder="Артикул или товар"></label><select id="simaKind" aria-label="Что изменилось"></select><select id="simaPeriod" aria-label="Период"></select><button type="button" class="preset-button" id="simaRefresh" title="Загрузить цены артикулов из таблицы с Сималенда сейчас, не дожидаясь часа">Загрузить цены сейчас</button></div></div>
+          <p class="sheet-hint change-hint" id="simaHint"></p>
+          <p class="sheet-hint change-hint" id="simaStatus"></p>
+          <div class="table-wrap"><table class="stock-table change-table"><thead><tr><th data-col-key="at" data-col-width="90">Время</th><th data-col-key="object" data-col-width="420">Товар</th><th data-col-key="what" data-col-width="240">Что изменилось</th><th data-col-key="before" data-col-width="130">Было</th><th data-col-key="after" data-col-width="170">Стало</th></tr></thead><tbody id="simaBody"></tbody></table></div>
+          <div class="empty hidden" id="emptySima"><span>⟲</span><h3>Изменений не найдено</h3><p id="emptySimaText"></p></div>
+          <div class="stock-pagination hidden" id="simaPagination" aria-label="Пагинация истории цен Сималенда"></div>
+        </div>
+      </section>
+
     </main>
   </div>
 
@@ -327,6 +340,7 @@
   <script src="/stock-history.js"></script>
   <script src="/todo.js"></script>
   <script src="/change-history.js"></script>
+  <script src="/sima-land.js"></script>
   <script src="/cards.js"></script>
   <script src="/messages.js"></script>
   <script src="/app.js"></script>

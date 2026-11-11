@@ -166,20 +166,42 @@ module.exports = function createContentCards({ wbRequest, tokenFor, cabinets, ca
     }, 60_000);
   }
   // Свежая карточка из WB (поиск по артикулу WB), а если её нет в списке — из корзины.
+  // По документации textSearch ищет по артикулу продавца, артикулу WB и баркоду. На деле (кабинет Samiri, 11.11.2026)
+  // поиск ненадёжен: одна и та же карточка по артикулу WB то находится, то нет, другая не находится вовсе, артикул
+  // продавца с пробелами или кириллицей не находится никогда, а по баркоду находятся все. Поэтому, если по артикулу
+  // ничего нет, ищем по баркодам карточки из сохранённого списка, а если и так нет — листаем весь список (и корзину)
+  // по cursor, как в документации. Лимит категории «Контент» — 100 запросов в минуту (интервал 600 мс, всплеск 5).
   async function freshCard(id, nmId) {
     if (isDemo(id)) {
       const card = demoCards().find(item => item.nmID === nmId) || demo.trash.find(item => item.nmID === nmId);
       if (!card) throw apiError(404, 'Карточка не найдена');
       return { card: JSON.parse(JSON.stringify(card)), trashed: demo.trash.includes(card) };
     }
-    const token = tokenFor(id);
-    const response = await content(token, '/content/v2/get/cards/list', { method: 'POST', body: { settings: { cursor: { limit: 100 }, filter: { textSearch: String(nmId), withPhoto: -1 } } } });
-    const card = (response?.cards || []).find(item => item.nmID === nmId);
+    const token = tokenFor(id), mine = cards => (cards || []).find(item => item.nmID === nmId);
+    const search = async (path, text) => mine((await content(token, path, { method: 'POST', body: { settings: { cursor: { limit: 100 }, filter: { textSearch: text, ...(path.endsWith('/list') ? { withPhoto: -1 } : {}) } } } }))?.cards);
+    // Весь список по страницам: cursor — из ответа (у корзины — trashedAt вместо updatedAt), пока страница полная.
+    const scan = async path => {
+      let cursor = { limit: 100 };
+      for (let page = 0; page < 1000; page++) {
+        if (page) await new Promise(resolve => setTimeout(resolve, 650));
+        const response = await content(token, path, { method: 'POST', body: { settings: { sort: { ascending: false }, cursor, filter: path.endsWith('/list') ? { withPhoto: -1 } : {} } } });
+        const found = mine(response?.cards), next = response?.cursor || {};
+        if (found) return found;
+        if ((response?.cards || []).length < 100 || !next.nmID) return null;
+        cursor = { limit: 100, nmID: next.nmID, ...(next.trashedAt ? { trashedAt: next.trashedAt } : { updatedAt: next.updatedAt }) };
+      }
+      return null;
+    };
+    let card = await search('/content/v2/get/cards/list', String(nmId));
+    if (!card) {
+      const saved = mine(await allCards(id, false, false).catch(() => []));
+      for (const barcode of (saved?.sizes || []).flatMap(size => size.skus || []).slice(0, 3)) if (!card) card = await search('/content/v2/get/cards/list', String(barcode));
+    }
+    if (!card) card = await scan('/content/v2/get/cards/list');
     if (card) return { card, trashed: false };
-    const trash = await content(token, '/content/v2/get/cards/trash', { method: 'POST', body: { settings: { cursor: { limit: 100 }, filter: { textSearch: String(nmId) } } } });
-    const trashed = (trash?.cards || []).find(item => item.nmID === nmId);
+    const trashed = await search('/content/v2/get/cards/trash', String(nmId)) || await scan('/content/v2/get/cards/trash');
     if (trashed) return { card: trashed, trashed: true };
-    throw apiError(404, 'Карточка не найдена в WB — возможно, её удалили');
+    throw apiError(404, 'Карточка не найдена в WB — ни в списке карточек, ни в корзине; возможно, её удалили');
   }
   async function charcsOf(id, subjectId) {
     if (isDemo(id)) return DEMO_CHARCS[subjectId] || [];

@@ -45,6 +45,44 @@ test('карточки: проверки наименования, артику�
   assert.equal(endless.id, 'd1'); assert.equal(endless.isEndless, true); assert.equal(endless.endDate, undefined);
 });
 
+// Окно карточки у настоящего кабинета: WB подменён. textSearch по артикулу ничего не находит (так бывает у WB), дальше —
+// баркод из сохранённого списка, потом перебор всего списка и корзины.
+test('карточки: поиск WB по артикулу ничего не дал — баркод из сохранённого списка, потом весь список и корзина', async () => {
+  const target = { ...fresh, nmID: 55, subjectID: 7, sizes: [{ chrtID: 5, techSize: '0', skus: ['999'] }] };
+  const filler = Array.from({ length: 100 }, (_, index) => ({ nmID: 1000 + index, subjectID: 7 }));
+  const run = async ({ barcodeWorks, inList }) => {
+    const calls = [];
+    const wbRequest = async (token, url, options = {}) => {
+      const settings = options.body?.settings || {}, text = settings.filter?.textSearch;
+      if (/cards\/(list|trash)$/.test(url)) calls.push({ path: url.split('/').pop(), text: text ?? null, cursor: settings.cursor });
+      if (url.endsWith('/cards/list')) {
+        if (text === '55') return { cards: [] };
+        if (text === '999') return { cards: barcodeWorks ? [target] : [] };
+        if (!settings.cursor.nmID) return { cards: filler, cursor: { updatedAt: 'u1', nmID: 1099, total: 100 } };
+        return { cards: inList ? [target] : [], cursor: { total: inList ? 1 : 0 } };
+      }
+      if (url.endsWith('/cards/trash')) return { cards: [], cursor: { total: 0 } };
+      return {};
+    };
+    const module = createContentCards({ apiError, cabinets: () => [{ id: '1' }], analyticsCache: new Map(), wbRequest, tokenFor: () => 't', cachedAnalytics: async (key, loader) => loader(), readJson: async () => ({}),
+      send: (res, status, payload) => Object.assign(res, { status, payload }), localPhoto: url => url, productCards: async () => [target], productCardsStatus: () => ({}), productCardsChanged: () => {}, refreshProductCards: () => {} });
+    const res = {};
+    try { await module.handle({ method: 'GET' }, res, new URL('http://local/api/card?cabinet=1&nmId=55')); } catch (error) { res.error = error; }
+    return { res, calls };
+  };
+  const byBarcode = await run({ barcodeWorks: true, inList: true });
+  assert.equal(byBarcode.res.payload.card.nmID, 55);
+  assert.deepEqual(byBarcode.calls.map(call => call.text), ['55', '999'], 'по баркоду нашлась — список не листается');
+  const byScan = await run({ barcodeWorks: false, inList: true });
+  assert.equal(byScan.res.payload.card.nmID, 55);
+  assert.deepEqual(byScan.calls.map(call => [call.path, call.text]), [['list', '55'], ['list', '999'], ['list', null], ['list', null]]);
+  assert.deepEqual(byScan.calls[3].cursor, { limit: 100, nmID: 1099, updatedAt: 'u1' }, 'следующая страница — по cursor из ответа');
+  const missing = await run({ barcodeWorks: false, inList: false });
+  assert.equal(missing.res.error.status, 404);
+  assert.match(missing.res.error.message, /ни в списке карточек, ни в корзине/);
+  assert.deepEqual(missing.calls.slice(-2).map(call => [call.path, call.text]), [['trash', '55'], ['trash', null]]);
+});
+
 test('карточки: текст ошибки Контента — errorText и дополнительные ошибки по артикулам', () => {
   assert.equal(cards.contentErrorText({ errorText: 'some items lacks required characteristics', additionalErrors: { A1: 'missing required characteristics with ids: {5}' } }), 'some items lacks required characteristics — A1: missing required characteristics with ids: {5}');
   assert.equal(cards.contentErrorText({ errorText: 'Указан несуществующий imt', additionalErrors: { error: 'Указан несуществующий imt' } }), 'Указан несуществующий imt');

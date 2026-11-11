@@ -1,0 +1,8 @@
+/* «Цены Сималенда» (public/sima-land.js). Таблица и строки — общие стили «Истории изменений» (change-*). */
+#page-sima .preset-button:disabled{opacity:.6;cursor:wait}
+/* На телефоне поиск — на всю ширину, под ним вид изменения и период, ниже — «Загрузить цены сейчас». */
+@media(max-width:680px){
+  #page-sima .stock-filters{display:grid;grid-template-columns:1fr 1fr;gap:8px;width:100%}
+  #page-sima .stock-filters .search,#page-sima .stock-filters .preset-button{grid-column:1/-1}
+  #page-sima .stock-filters select{width:100%;min-width:0}
+}

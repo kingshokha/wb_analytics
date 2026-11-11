@@ -13,6 +13,9 @@ data/product-notes.json
 data/Sheet/
 # Привязка к своему проекту Apps Script (clasp) — у каждого своя
 google-sheets/.clasp.json
+google-sheets/sima-land/.clasp.json
+# Копия истории оптовых цен Сималенда (раздел «Цены Сималенда»)
+data/Sima/
 *.log
 .DS_Store
 data/Ads/
