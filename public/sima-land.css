@@ -46,6 +46,8 @@ small.sima-profit-mark{display:block;margin-top:2px;font-size:11px;font-weight:8
   .sima-profit-settings input,.sima-profit-settings select{width:100%}
 }
 #page-sima .preset-button:disabled{opacity:.6;cursor:wait}
+/* Выбран один вид изменения — «Что изменилось» в каждой строке одинаковое, колонка скрыта. */
+#page-sima .sima-one-kind th[data-col-key="what"],#page-sima .sima-one-kind td.change-what{display:none}
 /* На телефоне поиск — на всю ширину, под ним вид изменения и период, ниже — «Загрузить цены сейчас». */
 @media(max-width:680px){
   #page-sima .stock-filters{display:grid;grid-template-columns:1fr 1fr;gap:8px;width:100%}

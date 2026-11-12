@@ -5,8 +5,8 @@
 // «Загрузить цены сейчас» — POST /api/sima/refresh, не дожидаясь часа. Раздел не зависит от кабинета WB.
 // Устроен как «История изменений»: дни отделены строкой с датой, время — местное (Душанбе, функции change-history.js),
 // поиск по артикулу и названию, вид изменения (по умолчанию — цена по акции «Опт») и свой период (по умолчанию
-// 14 дней); вид и период запоминаются в браузере. Над таблицей — одна строка: дозагрузка из таблицы и последняя
-// загрузка цен с Сималенда.
+// 14 дней); вид и период запоминаются в браузере; при одном виде колонка «Что изменилось» скрыта. Над таблицей —
+// одна строка: последняя загрузка цен с Сималенда, ошибки и новые изменения из таблицы.
 // Файл подключается до app.js: $, escapeHtml и прочее из app.js используются только внутри функций.
 const SIMA_PERIODS=[[7,'7 дней'],[14,'14 дней'],[30,'30 дней'],[90,'90 дней'],[365,'Год'],[0,'Всё время']];
 const SIMA_WHOLESALE='Цена по акции «Опт»';
@@ -30,7 +30,9 @@ function loadSimaHistory(force=false){
   if(!v.data){$('#simaCount').textContent='Загрузка истории…';$('#simaBody').innerHTML=''}
   window.SheetSync?.load(`/api/sima/history?days=${v.days}`,(data,phase,error,previous)=>{
     if(request!==v.request)return;
-    v.hint=SheetSync.hint(data,phase,error,previous);
+    // Из состояния копирования — только недоступность таблицы и «+N изменений»; «проверяем…» и «нового нет» не нужны.
+    const hint=SheetSync.hint(data,phase,error,previous);
+    v.hint=phase==='sheet'&&(error||data?.syncError||/^Обновлено/.test(hint))?hint:'';
     if(data){v.data=prepareSimaItems(data);v.error=''}else if(error&&!v.data)v.error=error.message;
     renderSimaHistory();
   });
@@ -52,7 +54,7 @@ function simaDelta(item){
 function simaStatusText(data){
   const refresh=data.refresh||{},parts=[];
   if(refresh.running||simaView.refreshing)parts.push('Загружаем цены с Сималенда…');
-  if(data.updatedAt)parts.push(`Таблица обновлена ${changeTime(data.updatedAt)}${data.lastResult?`: ${data.lastResult}`:''}`);
+  if(data.updatedAt)parts.push(`Цены загружены ${changeTime(data.updatedAt)}${data.articles?` · артикулов ${fmtNum(data.articles)}`:''}`);
   else parts.push('Цены ещё не загружались: компьютер с сайтом загружает их раз в час, или нажмите «Загрузить цены сейчас».');
   if(refresh.ok===false&&refresh.error)parts.push(`Последняя загрузка цен (${changeTime(refresh.at)}) не удалась: ${refresh.error}`);
   return parts.join(' · ');
@@ -86,12 +88,13 @@ function renderSimaHistory(){
   $('#simaKind').innerHTML=`<option value="">Все изменения</option>${kinds.map(kind=>`<option value="${escapeHtml(kind)}"${kind===v.kind?' selected':''}>${escapeHtml(kind)}</option>`).join('')}`;
   const rows=all.filter(item=>(!v.kind||item.kind===v.kind)&&(!term||item.text.includes(term))),pageCount=Math.ceil(rows.length/v.pageSize);
   v.page=Math.min(Math.max(1,v.page),Math.max(1,pageCount));
-  const since=data.since?` · таблица следит с ${changeTime(data.since)}`:'';
-  $('#simaCount').textContent=`${fmtNum(rows.length)} из ${fmtNum(all.length)} за период${since} · время местное (Душанбе)${data.truncated?' · показаны 200 000 самых новых — сократите период':''}`;
+  $('#simaCount').textContent=`${fmtNum(rows.length)} из ${fmtNum(all.length)} за период${data.truncated?' · показаны 200 000 самых новых — сократите период':''}`;
+  // Выбран один вид изменения — колонка «Что изменилось» везде одинаковая, её не видно.
+  $('#page-sima .change-table').classList.toggle('sima-one-kind',Boolean(v.kind));
   $('#simaHint').textContent=[v.hint,simaStatusText(data)].filter(Boolean).join(' · ');
   let lastDay='';
   body.innerHTML=rows.slice((v.page-1)*v.pageSize,v.page*v.pageSize).map(item=>{
-    const head=item.day!==lastDay?`<tr class="change-day-row"><td colspan="5">${escapeHtml(changeDayTitle(item.at))}</td></tr>`:'';lastDay=item.day;
+    const head=item.day!==lastDay?`<tr class="change-day-row"><td colspan="${v.kind?4:5}">${escapeHtml(changeDayTitle(item.at))}</td></tr>`:'';lastDay=item.day;
     return `${head}<tr><td class="change-when">${escapeHtml(changeClock(item.at))}</td><td class="change-object">${simaObject(item)}</td><td class="change-what">${escapeHtml(item.kind)}</td>`+
       `<td class="change-value">${simaValue(item,item.before)}</td><td class="change-value">${simaValue(item,item.after)}${simaDelta(item)}</td></tr>`}).join('');
   $('#emptySimaText').textContent=all.length?'Измените поиск или вид изменения.':'Таблица проверяет цены раз в час — за этот период изменений нет. Выберите период длиннее.';

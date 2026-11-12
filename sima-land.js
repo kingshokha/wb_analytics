@@ -8,8 +8,8 @@
 //      отбрасываются, хранится всё). Итог последней загрузки цен — data/Sima/refresh.json, сами цены последней
 //      загрузки — data/Sima/prices.json (по ним раздел «Прибыль Сималенда», модуль sima-profit.js, сравнивает с WB).
 // Первая загрузка — через минуту после запуска сервера (если таблица не обновлялась последние 50 минут и цены на
-// компьютере уже есть), дальше раз в час; «Загрузить цены сейчас» на сайте — сразу. Пока компьютер выключен, цены
-// не обновляются.
+// компьютере уже есть), дальше раз в час, неудавшаяся — повтор через 5 минут; «Загрузить цены сейчас» на сайте —
+// сразу. Пока компьютер выключен, цены не обновляются.
 // API Сималенда v3 (https://www.sima-land.ru/api/v3/help/, раздел «Товар»):
 //   GET https://www.sima-land.ru/api/v3/item/?sid=<артикулы через запятую>&per-page=100&fields=<поля>
 //   sid — артикул (несколько через запятую), per-page — 10, 20, 50 или 100; fields — только нужные поля (ответ
@@ -40,6 +40,7 @@ const BATCH = 100;   // артикулов в запросе (per-page не бо
 const PARALLEL = 5;  // запросов за раз; с паузой в секунду — до 50 запросов за 10 секунд при лимите 250
 // Плановая загрузка пропускается, если таблица обновлялась недавно (сервер перезапускали): раз в час, не чаще.
 const FRESH_MS = 50 * 60_000;
+const RETRY_MS = 5 * 60_000; // повтор неудавшейся плановой загрузки
 // Предел только ответа (строки на диске остаются): за всё время у 10 000 артикулов строк может быть очень много.
 const RESPONSE_LIMIT = 200_000;
 const rowKey = item => [item.at, item.id, item.title, item.what, item.before, item.after].map(value => String(value ?? '')).join('|');
@@ -67,7 +68,7 @@ module.exports = function createSimaLand({ send, apiError, readJson, root, dir =
   const historyDir = path.join(dir, 'История'), syncFile = path.join(dir, 'sync.json'), refreshFile = path.join(dir, 'refresh.json'), pricesFile = path.join(dir, 'prices.json');
   const configured = () => Boolean(String(url() || '').trim() && String(key() || '').trim());
   const months = () => { try { return fs.readdirSync(historyDir).filter(name => /^\d{4}-\d{2}\.json$/.test(name)).map(name => name.slice(0, 7)).sort(); } catch { return []; } };
-  const state = { running: null, refreshing: null, timer: null };
+  const state = { running: null, refreshing: null, timer: null, retry: null };
   // Запрос к веб-приложению таблицы. POST Apps Script отвечает переадресацией на страницу с ответом — fetch идёт по ней.
   async function sheetRequest(params = {}, body = null) {
     const target = new URL(String(url()).trim());
@@ -234,13 +235,19 @@ module.exports = function createSimaLand({ send, apiError, readJson, root, dir =
     if (target.pathname.startsWith('/api/sima/')) throw apiError(404, 'Нет такого метода');
     return false;
   }
+  // Плановая загрузка; не удалась (чаще всего нет сети — компьютер только проснулся или включился) — повтор через
+  // RETRY_MS, а не через час. Повторы идут, пока загрузка не пройдёт; часовой порядок при этом не сбивается.
+  function planned() {
+    clearTimeout(state.retry);
+    return refresh().then(result => { if (result?.ok === false) state.retry = setTimeout(planned, RETRY_MS); return result; });
+  }
   function start() {
     if (!configured() || state.timer) return;
-    setTimeout(() => refresh(), 60_000);
-    state.timer = setInterval(() => refresh(), SYNC_EVERY);
+    setTimeout(planned, 60_000);
+    state.timer = setInterval(planned, SYNC_EVERY);
   }
   // Цены последней загрузки: { at, sids — артикулы таблицы, found — артикул → цены, failed } или null, если загрузок не было.
   const prices = () => readJsonFile(pricesFile, null);
-  return { handle, start, sync, refresh, loadItems, saveRows, readHistory, history, configured, prices, refreshing: () => Boolean(state.refreshing) };
+  return { handle, start, planned, sync, refresh, loadItems, saveRows, readHistory, history, configured, prices, refreshing: () => Boolean(state.refreshing) };
 };
 module.exports.mergeRows = mergeRows;

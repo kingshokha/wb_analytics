@@ -58,10 +58,13 @@ function loadSimaProfit(force=false){
   const request=++v.request;
   if(v.key!==key){v.data=null;v.page=1;v.selected.clear()}
   v.key=key;v.error='';renderSimaProfit();
+  // Как в других разделах: пока идёт загрузка (цены WB всех товаров — до 15 секунд), «Обновить» крутится.
+  const button=$('#refresh');button?.classList.add('loading');
   api(`/api/sima-profit?cabinet=${encodeURIComponent(key)}${force?'&force=1':''}`).then(data=>{
     if(request!==v.request||state.cabinet!==key)return;
     v.data=data;renderSimaProfit();
-  }).catch(error=>{if(request!==v.request||state.cabinet!==key)return;v.error=error.message;renderSimaProfit()});
+  }).catch(error=>{if(request!==v.request||state.cabinet!==key)return;v.error=error.message;renderSimaProfit()})
+    .finally(()=>{if(request===v.request)button?.classList.remove('loading')});
 }
 function saveSimaProfitSettings(){try{localStorage.setItem('wb-sima-profit',JSON.stringify(simaProfit.settings))}catch{/* без сохранения */}}
 
@@ -80,35 +83,39 @@ function simaProfitRows(){
 const simaMoney=(value,format=simaRub)=>value==null?'<span class="change-muted">—</span>':`${format.format(value)} ₽`;
 function simaProfitCells({row,calc}){
   const s=simaProfit.settings,supplier=row.supplier,status=simaSupplierStatus(supplier);
-  const other=s.cost==='retail'?['опт.',supplier.wholesale]:['розн.',supplier.retail];
-  // Сималенд — ссылкой на товар; у Lenardi своей страницы товара нет — артикул и название поставщика.
+  // Сималенд — ссылкой на товар; у Lenardi своей страницы товара нет. Название поставщика — только когда в таблице оба.
+  const name=simaProfit.supplier?'':`<small class="sima-profit-sub">${supplier.source==='sima'?'Сималенд':'Lenardi'}</small>`;
   const article=supplier.source==='sima'
-    ?`<a class="change-link" href="https://www.sima-land.ru/${encodeURIComponent(row.article)}/" target="_blank" rel="noopener noreferrer" title="${escapeHtml(supplier.name||'Открыть на Сималенде')}">${escapeHtml(row.article)}</a><small class="sima-profit-sub">Сималенд</small>`
-    :`<strong>${escapeHtml(row.article)}</strong><small class="sima-profit-sub">Lenardi</small>`;
-  const margin=calc.margin==null?'':`<small class="sima-profit-mark ${calc.margin<0?'down':simaBelow(calc.margin,s.target)?'warn':'up'}">${simaPercent.format(calc.margin)}% от цены</small>`;
+    ?`<a class="change-link" href="https://www.sima-land.ru/${encodeURIComponent(row.article)}/" target="_blank" rel="noopener noreferrer" title="${escapeHtml(supplier.name||'Открыть на Сималенде')}">${escapeHtml(row.article)}</a>${name}`
+    :`<strong>${escapeHtml(row.article)}</strong>${name}`;
+  const margin=calc.margin==null?'':`<small class="sima-profit-mark ${calc.margin<0?'down':simaBelow(calc.margin,s.target)?'warn':'up'}" title="Чистая прибыль в процентах от цены на WB">${simaPercent.format(calc.margin)}%</small>`;
   const need=calc.need==='unreachable'?'<span class="sima-profit-mark down" title="Налог, комиссия и желаемая прибыль вместе — 100% цены или больше">недостижимо</span>':simaMoney(calc.need);
   const diff=calc.diff==null?'<span class="change-muted">—</span>':`<strong class="sima-profit-mark ${calc.diff>0?'down':'up'}">${calc.diff>0?'+':calc.diff<0?'−':''}${simaPercent.format(Math.abs(calc.diff))}%</strong>`;
   return `<td><div class="sima-profit-product">${row.photo?`<img class="stock-product-photo" src="${escapeHtml(row.photo)}" alt="" loading="lazy">`:''}<span><strong title="${escapeHtml(row.name)}">${escapeHtml(row.name)}</strong><small>${escapeHtml(row.subject||'')}</small></span></div></td>`+
     `<td><a class="change-link" href="https://www.wildberries.ru/catalog/${row.nmId}/detail.aspx" target="_blank" rel="noopener noreferrer" title="Открыть на WB">${row.nmId}</a><small class="sima-profit-sub">${escapeHtml(row.vendorCode)}</small></td>`+
     `<td>${article}${status?`<small class="sima-profit-sub sima-profit-mark ${supplier.status==='ok'?'warn':'down'}" title="${escapeHtml(status)}">${escapeHtml(status)}</small>`:''}</td>`+
     `<td><strong>${simaMoney(row.price)}</strong></td>`+
-    `<td><strong>${simaMoney(calc.cost,simaKopecks)}</strong>${other[1]!=null?`<small class="sima-profit-sub">${other[0]} ${simaKopecks.format(other[1])} ₽</small>`:''}</td>`+
+    `<td><strong>${simaMoney(calc.cost,simaKopecks)}</strong></td>`+
     `<td>${row.commission==null?'<span class="change-muted">—</span>':`${simaPercent.format(row.commission)}%`}${calc.fee!=null?`<small class="sima-profit-sub">${simaRub.format(calc.fee)} ₽</small>`:''}</td>`+
     `<td>${simaMoney(calc.tax)}</td>`+
     `<td>${simaMoney(calc.logistics)}${row.volume?`<small class="sima-profit-sub">${simaKopecks.format(row.volume)} л</small>`:''}</td>`+
     `<td><strong>${simaMoney(calc.profit)}</strong>${margin}</td><td><strong>${need}</strong></td><td>${diff}</td>`;
 }
+// Сообщения — только о выбранном поставщике (или об обоих, если выбраны все).
 function simaProfitNotes(data,rows){
-  const t=data.tariff,l=data.lenardi,notes=[];
-  notes.push(data.simaAt?`Цены Сималенда загружены ${changeTime(data.simaAt)}${data.simaRefreshing?' · сейчас загружаются новые':''}`:'Цены Сималенда ещё не загружались — нажмите «Загрузить цены сейчас» в разделе «Цены Сималенда» или подождите плановой загрузки');
-  notes.push(l?`Опт Lenardi — файл «${l.file}»${l.reportDate?`, отчёт от ${l.reportDate}`:''}, загружен ${changeTime(l.uploadedAt)}: артикулов ${fmtNum(l.articles)}, с оптом ${fmtNum(l.withPrice)}`:'Опт Lenardi не загружен — нажмите «Загрузить опт Lenardi» и выберите отчёт xlsx с колонками «Артикул» и «Опт.»');
-  notes.push(`Логистика — тариф WB «${t.warehouse}»: ${simaKopecks.format(t.base)} ₽ первый литр, ${simaKopecks.format(t.liter)} ₽ каждый следующий; до литра — ${t.small.map(([liters,rub])=>`до ${simaKopecks.format(liters)} л ${simaKopecks.format(rub*t.coef/100)} ₽`).join(', ')}`);
-  const notListed=source=>rows.filter(item=>item.row.supplier.source===source&&item.row.supplier.status==='notListed').length,other=(data.cards||0)-rows.length;
+  const l=data.lenardi,notes=[],show=source=>!simaProfit.supplier||simaProfit.supplier===source;
+  if(show('sima'))notes.push(data.simaAt?`Цены Сималенда загружены ${changeTime(data.simaAt)}${data.simaRefreshing?' · сейчас загружаются новые':''}`:'Цены Сималенда ещё не загружались — нажмите «Загрузить цены сейчас» в разделе «Цены Сималенда» или подождите плановой загрузки');
+  // Дата отчёта без времени («11.11.2026 10:42» → «11.11.2026»); нет даты в отчёте — когда загружен файл.
+  if(show('lenardi'))notes.push(l?`Опт Lenardi от ${String(l.reportDate||'').split(' ')[0]||changeTime(l.uploadedAt)}`:'Опт Lenardi не загружен — нажмите «Загрузить опт Lenardi» и выберите отчёт xlsx с колонками «Артикул» и «Опт.»');
+  const notListed=source=>rows.filter(item=>item.row.supplier.source===source&&item.row.supplier.status==='notListed').length;
   const word=count=>pluralRu(count,['артикула','артикулов','артикулов']);
-  if(notListed('sima'))notes.push(`${fmtNum(notListed('sima'))} ${word(notListed('sima'))} нет на листе «Артикулы» таблицы Сималенда — допишите их туда, чтобы загружались цены`);
-  if(l&&notListed('lenardi'))notes.push(`${fmtNum(notListed('lenardi'))} ${word(notListed('lenardi'))} Lenardi нет в файле опт`);
-  if(other>0)notes.push(`Товары не Сималенда и не Lenardi не показаны: ${fmtNum(other)}`);
+  if(show('sima')&&notListed('sima'))notes.push(`${fmtNum(notListed('sima'))} ${word(notListed('sima'))} нет на листе «Артикулы» таблицы Сималенда — допишите их туда, чтобы загружались цены`);
+  if(show('lenardi')&&l&&notListed('lenardi'))notes.push(`${fmtNum(notListed('lenardi'))} ${word(notListed('lenardi'))} Lenardi нет в файле опт`);
   return [...notes,...(data.warnings||[])].join(' · ');
+}
+// Тариф логистики — в подсказке к заголовку «Логистика», а не в строке над таблицей.
+function simaLogisticsTitle(t){
+  return `Логистика по объёму упаковки из карточки, тариф WB «${t.warehouse}»: ${simaKopecks.format(t.base)} ₽ первый литр, ${simaKopecks.format(t.liter)} ₽ каждый следующий; до литра — ${t.small.map(([liters,rub])=>`до ${simaKopecks.format(liters)} л ${simaKopecks.format(rub*t.coef/100)} ₽`).join(', ')}`;
 }
 
 function renderSimaProfit(){
@@ -125,10 +132,12 @@ function renderSimaProfit(){
   if(!data.configured)return empty('Таблица Сималенда не подключена','Впишите в .env сайта SIMA_SHEET_URL и SIMA_SHEET_KEY и перезапустите сервер. Инструкция — google-sheets/sima-land/README.md.');
   const {all,rows}=simaProfitRows(),pageCount=Math.ceil(rows.length/v.pageSize);
   v.page=Math.min(Math.max(1,v.page),Math.max(1,pageCount));
-  // Счётчики — по выбранному поставщику (поиск и отбор их не меняют).
+  // Счётчики — по выбранному поставщику (поиск и отбор их не меняют); нули не показываются.
   const scope=v.supplier?all.filter(item=>item.row.supplier.source===v.supplier):all,count=test=>scope.filter(test).length;
-  $('#simaProfitCount').textContent=`${fmtNum(rows.length)} из ${fmtNum(scope.length)} товаров · убыток: ${fmtNum(count(({calc})=>calc.profit!=null&&calc.profit<0))} · ниже желаемой прибыли: ${fmtNum(count(({calc})=>calc.margin!=null&&simaBelow(calc.margin,v.settings.target)))} · без оптовой цены: ${fmtNum(count(({calc})=>calc.cost==null))}`;
+  const counts=[['убыток',count(({calc})=>calc.profit!=null&&calc.profit<0)],['ниже желаемой прибыли',count(({calc})=>calc.margin!=null&&simaBelow(calc.margin,v.settings.target))],['без оптовой цены',count(({calc})=>calc.cost==null)]];
+  $('#simaProfitCount').textContent=[`${rows.length===scope.length?'':`${fmtNum(rows.length)} из `}${fmtNum(scope.length)} ${pluralRu(scope.length,['товар','товара','товаров'])}`,...counts.filter(([,value])=>value).map(([label,value])=>`${label}: ${fmtNum(value)}`)].join(' · ');
   $('#simaProfitHint').textContent=simaProfitNotes(data,all);
+  if(data.tariff)$('#page-sima-profit [data-sima-sort="logistics"]').title=simaLogisticsTitle(data.tariff);
   const pageRows=rows.slice((v.page-1)*v.pageSize,v.page*v.pageSize);
   body.innerHTML=pageRows.map(item=>`<tr><td class="check-col"><input type="checkbox" data-sima-select="${item.row.nmId}" aria-label="Выбрать товар"${v.selected.has(String(item.row.nmId))?' checked':''}></td>${simaProfitCells(item)}</tr>`).join('');
   $('#simaProfitSelectAll').checked=pageRows.length>0&&pageRows.every(item=>v.selected.has(String(item.row.nmId)));

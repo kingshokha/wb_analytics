@@ -126,6 +126,29 @@ test('цены Сималенда на сайте: таблица отвечае
   } finally { cleanup(); }
 });
 
+test('цены Сималенда на сайте: плановая загрузка не удалась (нет сети) — повтор через 5 минут, а не через час', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  let online = false, attempts = 0;
+  const { module, cleanup } = serverModule([], async (target, options = {}) => {
+    const address = new URL(target);
+    if (address.searchParams.get('articles')) { attempts++; if (!online) throw new TypeError('fetch failed'); return { json: async () => ({ sids: [], updatedAt: '' }) }; }
+    if (options.method === 'POST') return { json: async () => ({ ok: true, result: 'артикулов 0' }) };
+    return { json: async () => ({ items: [], more: false }) };
+  });
+  const settle = async () => { for (let i = 0; i < 20; i++) await Promise.resolve(); };
+  try {
+    assert.equal((await module.planned()).ok, false);
+    t.mock.timers.tick(4 * 60_000); await settle();
+    assert.equal(attempts, 1, 'раньше 5 минут не повторяет');
+    online = true;
+    t.mock.timers.tick(60_000); await settle();
+    assert.equal(attempts, 2);
+    assert.equal((await module.history(0, 'local')).refresh.ok, true, 'повтор прошёл');
+    t.mock.timers.tick(10 * 60_000); await settle();
+    assert.equal(attempts, 2, 'после удачной загрузки повторов нет');
+  } finally { cleanup(); }
+});
+
 test('таблица Сималенда: выгрузка для сайта — сверху до строки старше after, порциями', () => {
   // Даты — из песочницы: Google отдаёт ячейки с датой как Date самого скрипта (instanceof Date).
   const sheets = {}, script = sheetScript({ SpreadsheetApp: { getActive: () => ({ getSheetByName: name => sheets[name] || null }) } });
