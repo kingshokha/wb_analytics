@@ -159,31 +159,7 @@ a.nav-item{text-decoration:none}a.nav-item:focus-visible{outline:2px solid var(-
 .price-history-stats div{display:grid;align-content:start;gap:3px;padding:10px 12px;border-radius:10px;background:#f7f8f6}
 .price-history-stats span,.price-history-stats small{color:var(--muted);font-size:11px;line-height:1.35}
 .price-history-stats strong{font-size:15px}
-/* График — во всю ширину блока и без своей прокрутки; вертикальная прокрутка страницы пальцем поверх него работает */
-.price-history-chart{padding:0;overflow:visible}
-.price-history-chart svg{min-width:0;border-radius:8px;outline:0;touch-action:pan-y}
-.price-history-chart svg:focus-visible{box-shadow:0 0 0 2px var(--purple)}
-.price-history-chart .chart-tooltip{top:0;transform:none;min-width:164px}
-.price-history-legend{display:flex;flex-wrap:wrap;align-items:center;gap:6px 8px;margin-bottom:6px;font-size:11px}
-.price-history-legend>span{display:inline-flex;align-items:center;gap:7px;margin-right:6px;font-weight:600}
-.price-toggle{display:inline-flex;align-items:center;gap:7px;padding:5px 9px;border:1px solid var(--line);border-radius:8px;background:white;color:var(--ink);font:600 11px Manrope;cursor:pointer}
-.price-toggle:hover{border-color:#cfc4f7}
-.price-toggle[aria-pressed="false"]{background:#fafbfa;color:var(--muted)}
-.price-toggle[aria-pressed="false"] .price-legend{opacity:.3}
-.price-legend{display:inline-block;width:16px;border-top:3px solid var(--purple);border-radius:2px}
-.price-legend.base{border-top:2px dashed #9aa39e}
-.price-legend.club{border-top:2px solid #d77b28}
-.price-legend.orders{width:10px;height:10px;border:0;background:var(--green)}
-.price-step{fill:none;stroke-width:2.5;stroke-linejoin:round}
-.price-step.current{stroke:var(--purple)}
-.price-step.base{stroke:#9aa39e;stroke-width:2;stroke-dasharray:5 4}
-.price-step.club{stroke:#d77b28;stroke-width:2}
-.price-dot{fill:var(--purple);stroke:#fff;stroke-width:2}
-.price-dot.appear{fill:#fff;stroke:var(--purple)}
-.price-jump{stroke:var(--purple);stroke-width:2;opacity:.35}
-.price-gap{fill:#f3f4f2}
-.price-order-bar{fill:var(--green);opacity:.72}
-.price-order-bar.active{opacity:1}
+/* График истории — карточка в price-metric.css */
 .price-history-table{max-height:240px;overflow:auto;border:1px solid var(--line);border-radius:10px}
 .price-history-table table{width:100%;min-width:0!important;table-layout:auto}
 .price-history-table table th,.price-history-table table td{padding:7px 12px;font-size:12px;white-space:nowrap;overflow:visible}

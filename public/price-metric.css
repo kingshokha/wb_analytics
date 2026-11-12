@@ -1,0 +1,66 @@
+/* «Цены и скидки», окно товара: карточка «История цены» (public/price-metric.js) — по мотивам Metric Card из Kokonut UI. */
+.pm-card{padding:18px 18px 10px;border:1px solid var(--line);border-radius:20px;background:#fff;user-select:none;-webkit-user-select:none}
+.pm-sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.pm-head{display:flex;align-items:center;justify-content:space-between;gap:14px}
+.pm-label{margin:0;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;color:var(--muted)}
+.pm-label b{color:var(--ink);font-weight:700}
+.pm-periods{position:relative;display:flex;flex:none;padding:2px;border-radius:999px;background:#f1f2ef}
+.pm-pill{position:absolute;top:2px;bottom:2px;left:2px;width:52px;border-radius:999px;background:#fff;box-shadow:0 1px 3px #17211d24;transition:transform .2s cubic-bezier(.23,1,.32,1)}
+.pm-periods button{position:relative;width:52px;padding:5px 0;border:0;border-radius:999px;background:none;font:700 11px Manrope;color:var(--muted);cursor:pointer;transition:color .2s}
+.pm-periods button:hover,.pm-periods button[aria-pressed="true"]{color:var(--ink)}
+.pm-periods button:focus-visible,.pm-chart:focus-visible,.pm-list button:focus-visible,.pm-clear:focus-visible{outline:2px solid #b9a8f3;outline-offset:2px}
+.pm-value{position:relative;margin:12px 0 0;color:var(--ink);font:600 32px/1 Unbounded,sans-serif;letter-spacing:-.03em;font-variant-numeric:tabular-nums}
+.pm-roll{display:inline-flex}
+.pm-digit{position:relative;display:inline-block;height:1em;overflow:hidden}
+.pm-ghost{visibility:hidden}
+.pm-wheel{position:absolute;left:0;right:0;top:0;display:flex;flex-direction:column;transition:transform .38s cubic-bezier(.23,1,.32,1)}
+.pm-wheel span{display:block;height:1em;line-height:1;text-align:center}
+.pm-sep{white-space:pre}
+.pm-delta{display:flex;align-items:center;gap:8px;min-height:22px;margin-top:7px;font-size:12px;font-variant-numeric:tabular-nums}
+.pm-change{flex:none;font-weight:800}
+.pm-change:empty{display:none}
+.pm-up{color:var(--green)}
+.pm-down{color:#b84949}
+.pm-flat{color:var(--muted);font-weight:600}
+.pm-caption{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--muted)}
+.pm-caption em{font-style:normal;font-weight:700;color:#c46a12}
+.pm-clear{margin-left:auto;flex:none;padding:3px 9px;border:0;border-radius:999px;background:none;font:600 11px Manrope;color:var(--muted);cursor:pointer}
+.pm-clear:hover{background:#f1f2ef;color:var(--ink)}
+.pm-chart{position:relative;margin-top:14px;border-radius:8px;cursor:crosshair;touch-action:pan-y;outline:0}
+.pm-chart svg{display:block;width:100%;overflow:visible}
+.pm-base{stroke:#e4e8e5}
+.pm-guide{stroke:#e4e8e5;stroke-dasharray:2 4}
+.pm-guide-label{font:600 10.5px Manrope;fill:#8a938f}
+.pm-prev{fill:none;stroke:#bfc6c1;stroke-width:1.25;stroke-dasharray:3 4}
+.pm-area{fill:#17211d0d}
+.pm-dim{fill:none;stroke:#17211d40;stroke-width:2;stroke-linejoin:round}
+.pm-line{fill:none;stroke:var(--ink);stroke-width:2;stroke-linejoin:round}
+.pm-gap{fill:#f4f5f2}
+.pm-pin line{stroke:#e8912f;stroke-opacity:.55;stroke-dasharray:3 3}
+.pm-pin circle{fill:#e8912f;stroke:#fff;stroke-width:2}
+.pm-bar{fill:#17211d24;transition:fill .15s}
+.pm-bar.on{fill:#17211d66}
+.pm-cursor-line{stroke:#d3d9d5}
+.pm-range-line{stroke:#a3aba6}
+.pm-dot{fill:var(--ink);stroke:#fff;stroke-width:4;paint-order:stroke}
+.pm-prev-dot{fill:#fff;stroke:#a3aba6;stroke-width:1.5}
+.pm-strip-note{font:600 11px Manrope;fill:var(--muted)}
+.pm-axis{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-top:8px;font-size:11px;color:#8a938f;font-variant-numeric:tabular-nums}
+.pm-prev-key{display:inline-flex;align-items:center;gap:6px}
+.pm-prev-key i{width:12px;border-top:1px dashed #a3aba6}
+.pm-list{display:grid;gap:1px;margin:14px -8px 0;padding:10px 0 0;border-top:1px solid #eef1ee;list-style:none}
+.pm-list button{display:flex;align-items:center;gap:10px;width:100%;padding:7px 8px;border:0;border-radius:9px;background:none;font:500 12px Manrope;color:var(--ink);text-align:left;cursor:pointer;transition:background-color .15s,opacity .15s}
+.pm-list button:hover{background:#f7f8f6}
+.pm-list button[aria-pressed="true"]{background:#f1f2ef}
+.pm-list .sw{flex:none;width:8px;height:8px;border-radius:50%;background:#c6ccc8}
+.pm-list button[aria-pressed="true"] .sw{background:var(--ink)}
+.pm-list .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#4b5550}
+.pm-list .v{font-weight:700;font-variant-numeric:tabular-nums}
+.pm-list .c{width:84px;text-align:right;font-size:11px;font-variant-numeric:tabular-nums}
+.pm-list .orders .sw{border-radius:2px;background:#17211d66}
+.pm-list .orders[aria-pressed="false"]{opacity:.55}
+.pm-list .orders[aria-pressed="true"]{background:none}
+.pm-list .orders[aria-pressed="true"]:hover{background:#f7f8f6}
+.pm-list .orders .c{color:var(--muted)}
+@media (prefers-reduced-motion:reduce){.pm-pill,.pm-wheel,.pm-bar{transition:none}}
+@media (max-width:680px){.pm-card{padding:14px 12px 8px}.pm-value{font-size:26px}.pm-periods button,.pm-pill{width:44px}.pm-list .c{width:70px}}

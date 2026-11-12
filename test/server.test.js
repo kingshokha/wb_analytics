@@ -894,7 +894,7 @@ test('копия Google Таблицы: склейка без повторов, 
   } finally { require('node:fs').rmSync(dir, { recursive: true, force: true }); }
 });
 
-test('окно цены товара: история — с появления товара в таблице, разрыв на «Пропало», период и круглая шкала', () => {
+test('окно цены товара: история — с появления товара в таблице, разрыв на «Пропало», период', () => {
   // public/price-product.js — скрипт страницы: запускается в отдельном контексте, из него берутся функции расчёта.
   const vm = require('node:vm'), context = vm.createContext({ document: { addEventListener() {} } });
   vm.runInContext(require('node:fs').readFileSync(require('node:path').join(__dirname, '..', 'public', 'price-product.js'), 'utf8'), context);
@@ -926,9 +926,28 @@ test('окно цены товара: история — с появления �
   const now = Date.parse('2026-11-10T10:00:00.000Z'), week = plain(context.priceHistoryView(started, 3, now)), all = plain(context.priceHistoryView(started, 0, now));
   assert.deepEqual(week.points.map(point => [point.takenAt, point.kind, point.discountedPrice]), [['2026-11-07T10:00:00.000Z', 'carry', 900]]);
   assert.deepEqual([week.whole, all.whole, all.points.length, all.to], [false, true, 2, now]);
-  // Шкала цены — круглые деления, не дробные и не ниже нуля.
-  assert.deepEqual(plain(context.priceAxisTicks(4380, 5020)), { low: 4200, high: 5200, ticks: [4200, 4400, 4600, 4800, 5000, 5200] });
-  assert.deepEqual(plain(context.priceAxisTicks(0, 3).ticks), [0, 1, 2, 3]);
+});
+
+test('карточка истории цены: значение в момент времени, последнее изменение, ступенчатая линия с разрывом', () => {
+  // public/price-metric.js — расчёты карточки; вспомогательные функции окна — из price-product.js.
+  const vm = require('node:vm'), fs = require('node:fs'), path = require('node:path');
+  const context = vm.createContext({ document: { addEventListener() {} } });
+  for (const file of ['price-product.js', 'price-metric.js']) vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'public', file), 'utf8'), context);
+  const point = (takenAt, kind, discountedPrice, absent = false) => ({ takenAt, kind, absent, discountedPrice, price: null, discount: null, clubDiscount: null, clubDiscountedPrice: null });
+  const t = iso => Date.parse(iso), end = t('2026-11-10T00:00:00Z');
+  const model = { points: [point('2026-11-01T00:00:00Z', 'start', 1000), point('2026-11-03T00:00:00Z', 'change', 900), point('2026-11-05T00:00:00Z', 'gone', null, true), point('2026-11-07T00:00:00Z', 'appear', 950)],
+    before: null, current: { discountedPrice: 990 }, unrecorded: true };
+  const at = iso => context.pmValueAt(model, 'discountedPrice', t(iso), end);
+  // До первой записи цены нет; дальше — держится до следующей записи; на «Пропало» — пусто; у правого края — цена с сайта.
+  assert.deepEqual([at('2026-10-30T00:00:00Z'), at('2026-11-02T00:00:00Z'), at('2026-11-04T00:00:00Z'), at('2026-11-06T00:00:00Z'), at('2026-11-08T00:00:00Z'), context.pmValueAt(model, 'discountedPrice', end, end)], [null, 1000, 900, null, 950, 990]);
+  // Последнее изменение до момента: что было до него; пропуск не считается изменением, сравнение — с последней известной ценой.
+  assert.deepEqual(JSON.parse(JSON.stringify(context.pmLastChange(model, 'discountedPrice', t('2026-11-04T00:00:00Z'), end))), { at: t('2026-11-03T00:00:00Z'), before: 1000 });
+  assert.deepEqual(JSON.parse(JSON.stringify(context.pmLastChange(model, 'discountedPrice', t('2026-11-08T00:00:00Z'), end))), { at: t('2026-11-07T00:00:00Z'), before: 900 });
+  assert.equal(context.pmLastChange(model, 'discountedPrice', end, end).before, 950);
+  // Ступенька: значение держится до следующей точки, null — разрыв; заливка закрыта до низа.
+  const paths = context.pmPaths([{ x: 0, y: 10 }, { x: 5, y: 20 }, { x: 8, y: null }, { x: 9, y: 30 }], 12, 50);
+  assert.equal(paths.line, 'M0 10H5V20H8M9 30H12');
+  assert.equal(paths.area, 'M0 50V10H5V20H8V50ZM9 50V30H12V50Z');
 });
 
 test('копия Google Таблицы: у каждого кабинета своя папка; старые общие файлы раскладываются по кабинетам и целиком остаются в архиве', () => {
