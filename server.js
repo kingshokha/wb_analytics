@@ -13,7 +13,12 @@ const PORT = Number(process.env.PORT || 4173);
 const DATA_FILE = path.join(ROOT, 'data', 'cabinets.json');
 const ADS_DIR = path.join(ROOT, 'data', 'Ads');
 const FUNNEL_DIR = path.join(ROOT, 'data', 'Funnel');
-const FUNNEL_COUNT_KEYS = ['openCount', 'cartCount', 'orderCount', 'orderSum', 'buyoutCount', 'buyoutSum', 'addToWishlistCount'];
+// Порядок важен: по артикулам показатели хранятся массивами в этом порядке. Новые ключи — только в конец.
+// cancelCount («Отменили и вернули товаров, шт.», statistic.cancelCount в sales-funnel/products) нужен для процента выкупа
+// (выкупы ÷ (выкупы + отмены), как у WB). В днях, сохранённых до его появления, отмен нет — там он NaN (в ответе null),
+// чтобы процент выкупа таких дней считался неизвестным, а не 100%.
+const FUNNEL_COUNT_KEYS = ['openCount', 'cartCount', 'orderCount', 'orderSum', 'buyoutCount', 'buyoutSum', 'addToWishlistCount', 'cancelCount'];
+const FUNNEL_OPTIONAL_KEYS = new Set(['cancelCount']);
 const FUNNEL_PRODUCTS_URL = 'https://seller-analytics-api.wildberries.ru/api/analytics/v3/sales-funnel/products';
 const FUNNEL_BUCKET_SIZE = 3;
 const FUNNEL_BUCKET_INTERVAL = 20_500;
@@ -2820,8 +2825,14 @@ function moscowDate(offsetDays = 0) {
   return date.toISOString().slice(0, 10);
 }
 
-function pickFunnelCounts(point = {}) {
-  return Object.fromEntries(FUNNEL_COUNT_KEYS.map(key => [key, Number(point[key] || 0)]));
+// Значение показателя из записи: пусто — 0, а у необязательного (отмены) пусто — неизвестно (NaN, в сумме тоже NaN).
+function funnelCount(key, value) {
+  if (FUNNEL_OPTIONAL_KEYS.has(key) && (value == null || Number.isNaN(Number(value)))) return NaN;
+  return Number(value || 0);
+}
+// Без записи — нули (начало суммы); из записи — её показатели.
+function pickFunnelCounts(point = null) {
+  return Object.fromEntries(FUNNEL_COUNT_KEYS.map(key => [key, point ? funnelCount(key, point[key]) : 0]));
 }
 
 function funnelDir(cabinetId) {
@@ -2957,7 +2968,7 @@ function funnelRecordCounts(record, nmIds = null) {
   const total = pickFunnelCounts();
   for (const nmId of nmIds) {
     const values = record.products[nmId];
-    if (values) FUNNEL_COUNT_KEYS.forEach((key, index) => { total[key] += Number(values[index] || 0); });
+    if (values) FUNNEL_COUNT_KEYS.forEach((key, index) => { total[key] += funnelCount(key, values[index]); });
   }
   return total;
 }
@@ -3145,7 +3156,7 @@ function demoFunnelHistory(periods, grouping = 'day') {
   const make = ({ from, to }, shift) => datesBetween(from, to).map((date, index) => {
     const open = 900 + ((index * 37 + shift) % 11) * 45; const cart = Math.round(open * (0.05 + ((index + shift) % 4) * 0.006));
     const orders = Math.round(cart * 0.26); const buyouts = Math.round(orders * 0.62);
-    return { date, openCount: open, cartCount: cart, orderCount: orders, orderSum: orders * 1490, buyoutCount: buyouts, buyoutSum: buyouts * 1490, addToWishlistCount: Math.round(open * 0.012) };
+    return { date, openCount: open, cartCount: cart, orderCount: orders, orderSum: orders * 1490, buyoutCount: buyouts, buyoutSum: buyouts * 1490, addToWishlistCount: Math.round(open * 0.012), cancelCount: Math.round(buyouts * (0.12 + ((index + shift) % 5) * 0.04)) };
   });
   const current = make(periods.current, 0); const previous = make(periods.previous, 5);
   const byDate = new Map([...current, ...previous].map(day => [day.date, { ...day, fetchedAt: '2100-01-01T00:00:00Z', products: {} }]));
@@ -3377,7 +3388,7 @@ const DROP_MIN_OPENS = 100;
 const DROP_RATIO = 0.7;
 
 function funnelCountsFromValues(values = []) {
-  return Object.fromEntries(FUNNEL_COUNT_KEYS.map((key, index) => [key, Number(values?.[index] || 0)]));
+  return Object.fromEntries(FUNNEL_COUNT_KEYS.map((key, index) => [key, values ? funnelCount(key, values[index]) : 0]));
 }
 
 function summaryProducts(current = {}, previous = null, cards = []) {

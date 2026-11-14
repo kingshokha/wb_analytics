@@ -683,11 +683,22 @@ const FUNNEL_TREND_METRICS=[
   {key:'cartCount',label:'Корзины',unit:'шт'},
   {key:'cartConversion',label:'Конв. в корзину',unit:'%'},
   {key:'addToWishlistCount',label:'Отложено',unit:'шт'},
-  {key:'orderCount',label:'Заказы, шт',unit:'шт'},
   {key:'orderConversion',label:'Конв. в заказ',unit:'%'},
+  {key:'orderCount',label:'Заказы, шт',unit:'шт'},
   {key:'orderSum',label:'Заказы, ₽',unit:'₽'},
   {key:'buyoutCount',label:'Выкупы, шт',unit:'шт'},
-  {key:'buyoutSum',label:'Выкупы, ₽',unit:'₽'}];
+  {key:'buyoutSum',label:'Выкупы, ₽',unit:'₽'},
+  {key:'buyoutPercent',label:'Выкуп, %',unit:'%'}];
+// Производные показатели точки графика. Выкуп, % — как у WB: выкупы ÷ (выкупы + отмены и возвраты), а не выкупы ÷ заказы:
+// выкупы дня — это заказы прошлых дней, поэтому делить их на заказы того же дня нельзя. У дней, сохранённых до того, как
+// сервер стал хранить отмены, cancelCount = null — выкуп таких дней неизвестен (на графике разрыв).
+function funnelTrendDerived(values){
+  values.cartConversion=values.openCount?values.cartCount/values.openCount*100:0;
+  values.orderConversion=values.cartCount?values.orderCount/values.cartCount*100:0;
+  const done=values.buyoutCount+values.cancelCount;
+  values.buyoutPercent=values.cancelCount==null||Number.isNaN(values.cancelCount)?null:done?values.buyoutCount/done*100:null;
+  return values;
+}
 const TREND_MONTHS=['янв','фев','мар','апр','май','июн','июл','авг','сен','окт','ноя','дек'];
 const funnelTrend={data:null,metric:'orderCount',compare:true,grouping:'day',loading:false,error:'',pollTimer:0,filterTimer:0,requestId:0,nmIds:null};
 const trendShift=(date,days)=>{const d=new Date(`${date}T00:00:00Z`);d.setUTCDate(d.getUTCDate()+days);return d.toISOString().slice(0,10)};
@@ -742,18 +753,16 @@ function funnelTrendPoints(days=[],period,grouping){
   return buckets.map(bucket=>{
     if(!bucket.rows.length)return {...bucket,values:null};
     const sum=key=>bucket.rows.reduce((total,row)=>total+Number(row[key]||0),0);
-    const values={openCount:sum('openCount'),cartCount:sum('cartCount'),orderCount:sum('orderCount'),orderSum:sum('orderSum'),buyoutCount:sum('buyoutCount'),buyoutSum:sum('buyoutSum'),addToWishlistCount:sum('addToWishlistCount')};
-    values.cartConversion=values.openCount?values.cartCount/values.openCount*100:0;
-    values.orderConversion=values.cartCount?values.orderCount/values.cartCount*100:0;
-    return {...bucket,values};
+    // Отмены — только если они есть у всех дней отрезка, иначе выкуп за отрезок посчитался бы неверно.
+    const cancels=bucket.rows.every(row=>row.cancelCount!=null)?sum('cancelCount'):null;
+    const values={openCount:sum('openCount'),cartCount:sum('cartCount'),orderCount:sum('orderCount'),orderSum:sum('orderSum'),buyoutCount:sum('buyoutCount'),buyoutSum:sum('buyoutSum'),addToWishlistCount:sum('addToWishlistCount'),cancelCount:cancels};
+    return {...bucket,values:funnelTrendDerived(values)};
   });
 }
 function funnelBucketPoint(range){
   const total=datesBetweenTrend(range.from,range.to);
   if(!range.values)return {key:range.key||range.from,from:range.from,to:range.to,total,rows:[],values:null};
-  const values={...range.values};
-  values.cartConversion=values.openCount?values.cartCount/values.openCount*100:0;
-  values.orderConversion=values.cartCount?values.orderCount/values.cartCount*100:0;
+  const values=funnelTrendDerived({...range.values});
   return {key:range.key||range.from,from:range.from,to:range.to,total,rows:Array(total).fill(null),values};
 }
 function datesBetweenTrend(from,to){let count=0;for(let date=from;date<=to;date=trendShift(date,1))count++;return count}
@@ -816,8 +825,14 @@ function renderFunnelTrend(){
   if(!current.some(point=>point.values)&&!previous.some(point=>point.values)){chart.innerHTML='<div class="chart-empty">Нет сохранённых данных за выбранный период</div>';return}
   const w=900,h=300,left=14,right=62,top=24,bottom=34,plotW=w-left-right,plotH=h-top-bottom,count=current.length;
   const x=i=>left+(count<=1?plotW/2:i*plotW/(count-1));
-  const valuesOf=list=>list.map(point=>point.values?Number(point.values[metric.key]||0):null);
+  // Пустое значение показателя (выкуп без данных об отменах) — разрыв линии, а не ноль.
+  const valuesOf=list=>list.map(point=>point.values&&point.values[metric.key]!=null?Number(point.values[metric.key]):null);
   const currentValues=valuesOf(current),previousValues=valuesOf(previous).slice(0,count);
+  // Отмены сервер хранит с 14.11.2026: у дней, скачанных раньше, выкупа нет, пока они не перекачаются из WB.
+  if(metric.key==='buyoutPercent'&&[...current,...previous].some(point=>point.values&&point.values.buyoutPercent==null&&point.values.buyoutCount)){
+    notes.push('Выкуп, % считается как у WB: выкупы ÷ (выкупы + отмены и возвраты). Отмены сайт сохраняет с 14.11.2026: дни за последнюю неделю дозагрузятся сами в течение часа, более ранние — кнопкой «Перекачать».');
+    note.textContent=notes.join(' ');
+  }
   const max=niceTrendMax(Math.max(0,...currentValues.filter(value=>value!=null),...previousValues.filter(value=>value!=null)));
   const y=value=>top+plotH-(value/max)*plotH;
   const segments=values=>{const parts=[];let part=[];values.forEach((value,i)=>{if(value==null){if(part.length)parts.push(part);part=[];return}part.push({x:x(i),y:y(value)})});if(part.length)parts.push(part);return parts};

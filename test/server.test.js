@@ -642,9 +642,19 @@ test('считает воронку только по выбранным арт�
   const day = { openCount: 30, cartCount: 6, orderCount: 2, orderSum: 3000, buyoutCount: 1, buyoutSum: 1500, addToWishlistCount: 4,
     products: { '100': [20, 4, 2, 3000, 1, 1500, 3], '200': [10, 2, 0, 0, 0, 0, 1] } };
   assert.equal(funnelRecordCounts(day).openCount, 30);
-  assert.deepEqual(funnelRecordCounts(day, ['200']), { openCount: 10, cartCount: 2, orderCount: 0, orderSum: 0, buyoutCount: 0, buyoutSum: 0, addToWishlistCount: 1 });
-  assert.equal(funnelRecordCounts(day, ['300']).openCount, 0);
+  // Записи до появления отмен (7 чисел на артикул): отмены неизвестны — NaN, а не 0, чтобы выкуп не вышел 100%.
+  assert.deepEqual(funnelRecordCounts(day, ['200']), { openCount: 10, cartCount: 2, orderCount: 0, orderSum: 0, buyoutCount: 0, buyoutSum: 0, addToWishlistCount: 1, cancelCount: NaN });
+  assert.ok(Number.isNaN(funnelRecordCounts(day).cancelCount));
+  // Ни один выбранный артикул не продавался — сумма нулевая, отмены тоже 0.
+  assert.deepEqual(funnelRecordCounts(day, ['300']), { openCount: 0, cartCount: 0, orderCount: 0, orderSum: 0, buyoutCount: 0, buyoutSum: 0, addToWishlistCount: 0, cancelCount: 0 });
   assert.equal(funnelRecordCounts({ openCount: 5 }, ['100']), null);
+  // Новые записи: отмены — восьмым числом и в итоге дня; если хоть у одного артикула их нет — сумма неизвестна.
+  const fresh = { ...day, cancelCount: 2, products: { '100': [20, 4, 2, 3000, 1, 1500, 3, 2], '200': [10, 2, 0, 0, 0, 0, 1, 0] } };
+  assert.equal(funnelRecordCounts(fresh).cancelCount, 2);
+  assert.equal(funnelRecordCounts(fresh, ['100', '200']).cancelCount, 2);
+  assert.ok(Number.isNaN(funnelRecordCounts({ ...fresh, products: { ...fresh.products, '200': [10, 2, 0, 0, 0, 0, 1] } }, ['100', '200']).cancelCount));
+  // Ответ уходит через JSON: неизвестные отмены там — null.
+  assert.equal(JSON.parse(JSON.stringify(funnelRecordCounts(day))).cancelCount, null);
 });
 
 test('складывает отрезок воронки из дней с учётом фильтра артикулов', () => {
