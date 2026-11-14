@@ -573,6 +573,8 @@
   };
   // null — WB этот показатель не прислал (показы, CTR и CPM по CPC-кампаниям), поэтому прочерк, а не 0.
   const keywordValue=(key,value)=>key==='query'?String(value??''):metricText(key,value);
+  // Запрос в таблице — ссылка на поиск WB по нему: видно, кто и как стоит в выдаче.
+  const wbSearchUrl=query=>`https://www.wildberries.ru/catalog/0/search.aspx?search=${encodeURIComponent(query)}`;
   function keywordRows(view){
     const data=keywords.data;if(!data)return [];
     const term=keywords.search.trim().toLowerCase();
@@ -645,7 +647,7 @@
     const rowClass=row=>[row.status==='excluded'||row.status==='archived'?'keyword-off':'',keywords.selected.has(row.query)?'keyword-selected':''].filter(Boolean).join(' ');
     const columns=visibleColumns('keywords'),cells=row=>columns.map(column=>`<td class="c-metric c-${column.key}">${esc(keywordValue(column.key,row[column.key]))}</td>`).join('');
     body.innerHTML=rows.length?`<tr class="total-row"><td></td><td>Итого · ${number(rows.length)} ${plural(rows.length,['запрос','запроса','запросов'])}</td><td></td>${cells(totals)}</tr>`+
-      shown.map(row=>`<tr class="${rowClass(row)}"><td><input type="checkbox" data-keyword-select="${esc(row.query)}" ${keywords.selected.has(row.query)?'checked':''} aria-label="Выбрать запрос «${esc(row.query)}»"></td><td><span class="keyword-query"><button type="button" class="keyword-chart-button" data-keyword-daily="${esc(row.query)}" title="Статистика по дням" aria-label="Статистика запроса «${esc(row.query)}» по дням"><svg viewBox="0 0 16 16" aria-hidden="true"><rect x="1.75" y="1.75" width="12.5" height="12.5" rx="3"/><path d="M4.5 10.5l2.5-3 2 2 2.5-4"/></svg></button>${keywordTagButton(row.query)}<span>${esc(row.query)}</span>${keywordNoteButton(row.query)}</span></td><td>${keywordStatusCell(row)}</td>${cells(row)}</tr>`).join(''):
+      shown.map(row=>`<tr class="${rowClass(row)}"><td><input type="checkbox" data-keyword-select="${esc(row.query)}" ${keywords.selected.has(row.query)?'checked':''} aria-label="Выбрать запрос «${esc(row.query)}»"></td><td><span class="keyword-query"><button type="button" class="keyword-chart-button" data-keyword-daily="${esc(row.query)}" title="Статистика по дням" aria-label="Статистика запроса «${esc(row.query)}» по дням"><svg viewBox="0 0 16 16" aria-hidden="true"><rect x="1.75" y="1.75" width="12.5" height="12.5" rx="3"/><path d="M4.5 10.5l2.5-3 2 2 2.5-4"/></svg></button>${keywordTagButton(row.query)}<a class="keyword-link" href="${esc(wbSearchUrl(row.query))}" target="_blank" rel="noopener noreferrer" title="Открыть поиск WB по запросу «${esc(row.query)}»">${esc(row.query)}</a>${keywordNoteButton(row.query)}</span></td><td>${keywordStatusCell(row)}</td>${cells(row)}</tr>`).join(''):
       `<tr><td colspan="${columns.length+3}" class="empty">${empty}</td></tr>`;
     renderKeywordPagination(pageCount,rows.length);
     renderKeywordActions();

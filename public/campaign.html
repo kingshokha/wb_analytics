@@ -100,6 +100,9 @@
     /* Кнопка графика у ключевого запроса и окно статистики по дням */
     .keyword-query{display:flex;align-items:center;gap:9px;min-width:0}
     .keyword-query span{overflow:hidden;text-overflow:ellipsis}
+    .keyword-link{min-width:0;overflow:hidden;text-overflow:ellipsis;color:inherit;text-decoration:none;border-radius:4px}
+    .keyword-link:hover{color:var(--purple);text-decoration:underline;text-underline-offset:3px}
+    .keyword-link:focus-visible{outline:2px solid var(--purple);outline-offset:2px}
     .keyword-chart-button{flex:0 0 26px;width:26px;height:26px;padding:0;display:grid;place-items:center;border:1px solid var(--line);border-radius:7px;background:white;color:var(--muted)}
     .keyword-chart-button:hover,.keyword-chart-button:focus-visible{border-color:var(--purple);color:var(--purple);background:#f6f4fd;outline:0}
     /* Отметки ключевых запросов */
@@ -389,7 +392,8 @@
     .sheet-hint:empty{display:none}
     /* Фильтр запросов по статусу: Все / Активные / Исключённые */
     .keyword-filter{display:inline-flex;height:38px;padding:3px;gap:2px;border:1px solid var(--line);border-radius:9px;background:#fafbfa}
-    .keyword-filter button{padding:0 11px;border:0;border-radius:6px;background:transparent;color:var(--muted);font-size:12px;font-weight:700;cursor:pointer}
+    /* height:auto — иначе общее правило button{height:40px} вытягивает кнопки за рамку переключателя */
+    .keyword-filter button{height:auto;padding:0 11px;border:0;border-radius:6px;background:transparent;color:var(--muted);font-size:12px;font-weight:700;cursor:pointer}
     .keyword-filter button:hover{color:var(--ink)}
     .keyword-filter button[aria-pressed=true]{background:white;color:#5b36c8;box-shadow:0 1px 3px #17211d1f}
     tbody tr.keyword-off td{background:#fdf7f6}
