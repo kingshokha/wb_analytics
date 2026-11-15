@@ -1431,19 +1431,24 @@ const timelineOnAt = (timeline, time) => { let on = timeline.initial; for (const
 // events — точные переходы из таблицы за период (для подсказки флажка). Только копия таблицы на компьютере.
 function campaignActivity(campaignId, period, daily = [], currentStatus) {
   const dates = datesBetween(period.from, period.to), views = new Map(daily.map(day => [String(day.date).slice(0, 10), Number(day.views || 0)]));
-  const byViews = date => (views.get(date) || 0) >= PRODUCT_AD_MIN_VIEWS;
-  const since = sheetConfigured() ? readSheetJson(path.join(SHEET_DIR, 'sync.json'), {}).since : null;
-  if (!since || moscowDateOf(since) > period.to) return { tracking: null, days: dates.map(date => ({ date, on: byViews(date) })), events: [] };
+  const byViews = date => (views.get(date) || 0) >= PRODUCT_AD_MIN_VIEWS, untracked = { tracking: null, days: dates.map(date => ({ date, on: byViews(date) })), events: [] };
+  if (!sheetConfigured()) return untracked;
+  const rows = readSheetHistory({ ids: [String(campaignId)], sections: ['Реклама'], limit: 1_000_000 }).items;
+  const since = sheetAdsTrackingSince(readSheetJson(path.join(SHEET_DIR, 'sync.json'), {}).since, rows);
+  if (!since || moscowDateOf(since) > period.to) return untracked;
   const fromDate = moscowDateOf(since) < period.from ? period.from : moscowDateOf(since);
   const startTime = [since, moscowDayStart(period.from)].sort().at(-1), endTime = moscowDayStart(addDays(period.to, 1));
-  const rows = readSheetHistory({ ids: [String(campaignId)], sections: ['Реклама'], limit: 1_000_000 }).items;
   const timeline = productCampaignTimeline('', rows, new Map([[String(campaignId), { status: Number(currentStatus) === 9, member: true }]])).get(String(campaignId));
   const days = dates.map(date => {
     if (date < fromDate) return { date, on: byViews(date) };
     const dayStart = [startTime, moscowDayStart(date)].sort().at(-1), dayEnd = moscowDayStart(addDays(date, 1));
     return { date, on: timelineOnAt(timeline, dayStart) || timeline.changes.some(change => change.on && change.at > dayStart && change.at < dayEnd) };
   });
-  const events = timeline.changes.filter(change => change.at > startTime && change.at < endTime).map(change => ({ at: change.at, date: moscowDateOf(change.at), on: change.on }));
+  // pausedAt — у включения: когда кампанию перед этим выключили (по таблице), чтобы подсказка флажка ▶ показывала,
+  // что это запуск после паузы, а не первый запуск кампании.
+  const events = timeline.changes.map((change, index) => ({ change, previous: timeline.changes[index - 1] }))
+    .filter(({ change }) => change.at > startTime && change.at < endTime)
+    .map(({ change, previous }) => ({ at: change.at, date: moscowDateOf(change.at), on: change.on, ...(change.on && previous && !previous.on ? { pausedAt: previous.at } : {}) }));
   return { tracking: { since, fromDate }, days, events };
 }
 // Данные таблицы для детализации товара (только копия на компьютере — без запросов к таблице):
@@ -1460,12 +1465,13 @@ function productSheetData(nmId, period, dates, allCampaigns = [], inSettings = n
     groups.get(row.at).items.push({ what: row.what, before: row.before, after: row.after });
   }
   const priceChanges = [...groups.values()].sort((a, b) => a.at.localeCompare(b.at));
-  const since = readSheetJson(path.join(SHEET_DIR, 'sync.json'), {}).since;
+  const current = new Map([...new Set([...statIds.map(String), ...inSettings])].map(id => [id, { status: allCampaigns.find(item => String(item.id) === id)?.status === 9, member: inSettings.has(id) }]));
+  const adRows = readSheetHistory({ sections: ['Реклама'], limit: 1_000_000 }).items;
+  const since = sheetAdsTrackingSince(readSheetJson(path.join(SHEET_DIR, 'sync.json'), {}).since, adRows.filter(row => current.has(String(row.id))));
   if (!since || moscowDateOf(since) > period.to) return { ...empty, priceChanges };
   const fromDate = moscowDateOf(since) < period.from ? period.from : moscowDateOf(since);
   const startTime = [since, moscowDayStart(period.from)].sort().at(-1), endTime = moscowDayStart(addDays(period.to, 1));
-  const current = new Map([...new Set([...statIds.map(String), ...inSettings])].map(id => [id, { status: allCampaigns.find(item => String(item.id) === id)?.status === 9, member: inSettings.has(id) }]));
-  const timelines = productCampaignTimeline(nmId, readSheetHistory({ sections: ['Реклама'], limit: 1_000_000 }).items, current);
+  const timelines = productCampaignTimeline(nmId, adRows, current);
   const onAtStart = [], events = [], onByDate = new Map(dates.filter(date => date >= fromDate).map(date => [date, []]));
   for (const [id, timeline] of timelines) {
     if (!timeline.initial && !timeline.changes.length) continue;
@@ -1684,6 +1690,15 @@ function sheetCabinetSince(folder, sections = SHEET_SECTIONS) {
     if (first && (!since || first < since)) since = first;
   }
   return since || null;
+}
+// С какого момента известны статусы кампаний: since из журнала таблицы (sync.json) или первая запись раздела «Реклама»
+// кабинетов, к которым относятся строки rows, — что раньше. Журнал обновлений начинается позже истории: его первая запись
+// (23.10.2026 02:18 UTC) на 5 часов позже первой записи того же обновления в истории, а статусы кампаний Samiri записаны
+// ещё с 17.10.2026. По одному журналу включения до его начала отбрасывались, и флажок ▶ показывал не то время.
+function sheetAdsTrackingSince(saved, rows = [], dir = SHEET_DIR) {
+  const folderOf = sheetFolderOf(dir), folders = new Set(rows.map(row => folderOf(row.cabinet)));
+  const firsts = [...folders].map(folder => sheetCabinetSince(path.join(dir, folder), ['Реклама'])).filter(Boolean);
+  return [saved, ...firsts].filter(Boolean).sort()[0] || null;
 }
 // Текущие остатки — снимок, а не история: новый заменяет прежний целиком, как и раньше (изменения остатков — в файлах
 // по месяцам). У кабинета, которого в новом снимке нет, текущие остатки становятся пустыми. keep — не трогать файлы,

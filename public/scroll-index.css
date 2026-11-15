@@ -1,0 +1,16 @@
+/* Указатель разделов справа (public/scroll-index.js) — по мотивам Scroll Index из Kokonut UI (MIT). */
+.scroll-index{position:fixed;z-index:30;top:50%;right:10px;width:30px;transform:translateY(-50%)}
+.scroll-index[hidden]{display:none}
+.si-rail{position:relative;height:280px;cursor:pointer;touch-action:none;user-select:none;-webkit-user-select:none}
+.si-rail[data-dragging]{cursor:grabbing}
+/* Общее правило button{height:40px} и фон кнопок сайта здесь не нужны. */
+.scroll-index .si-tick{position:absolute;right:0;width:14px;height:16px;min-width:0;margin:0;padding:0;border:0;border-radius:3px;background:transparent;box-shadow:none;translate:0 -50%;cursor:pointer;outline:none}
+.scroll-index .si-tick:focus-visible{box-shadow:0 0 0 2px #c9bff5}
+.si-tick span{position:absolute;top:50%;right:0;width:100%;height:1.5px;border-radius:2px;background:#c3cbc7;translate:0 -50%;transform:scaleX(var(--swell,1));transform-origin:right;transition:background-color .2s ease-out}
+.si-tick[data-state=passed] span{background:var(--ink,#17211d)}
+.si-tick[data-state=current] span{background:var(--purple,#7651e5)}
+.si-head{position:absolute;top:0;right:0;width:24px;height:2px;border-radius:2px;background:var(--ink,#17211d);translate:0 -50%;pointer-events:none;will-change:transform}
+.si-label{position:absolute;top:0;right:36px;white-space:nowrap;padding:4px 8px;border:1px solid var(--line,#e3e8e5);border-radius:6px;background:#fff;color:#34423d;font:600 12px/1.3 Manrope,Arial,sans-serif;box-shadow:0 2px 8px rgba(23,33,29,.08);opacity:0;pointer-events:none;transition:opacity .15s ease-out,transform .15s ease-out}
+/* Узкий экран: у края нет свободного поля — шкала закрывала бы таблицы. */
+@media(max-width:980px){.scroll-index{display:none}}
+@media(prefers-reduced-motion:reduce){.si-label,.si-tick span{transition:none}}

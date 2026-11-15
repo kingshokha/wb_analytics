@@ -469,6 +469,7 @@
   <link rel="stylesheet" href="/sidebar.css">
   <link rel="stylesheet" href="/pager.css">
   <link rel="stylesheet" href="/tables.css">
+  <link rel="stylesheet" href="/scroll-index.css">
 </head>
 <body>
 <div class="shell">
@@ -515,7 +516,7 @@
     <section class="panel zones-panel">
       <div class="panel-head"><h2>Статистика по дням и зонам показов</h2><div class="keywords-controls"><select id="zonesProduct" aria-label="Артикул"><option value="">Все артикулы</option></select><button type="button" class="secondary-button" id="zonesCollapse" aria-pressed="false">Свернуть все</button></div></div>
       <p id="zonesNote" class="keywords-note zones-note">Загрузка…</p>
-      <div class="table-wrap"><table class="zones-table"><colgroup><col class="zones-col-date"><col span="13"></colgroup><thead id="zonesHead"></thead><tbody id="zonesBody"></tbody></table></div>
+      <div class="table-wrap"><table class="zones-table" data-width-key="zones-v2"><colgroup><col class="zones-col-date"><col span="13"></colgroup><thead id="zonesHead"></thead><tbody id="zonesBody"></tbody></table></div>
     </section>
     <section class="panel">
       <div class="panel-head"><h2>Статистика по дням каждого артикула</h2><details class="columns-menu" data-columns-table="product"><summary>Столбцы</summary><div class="columns-options"></div></details></div>
@@ -547,5 +548,6 @@
 <script src="/sheet-sync.js"></script>
 <script src="/column-widths.js"></script>
 <script src="/campaign.js"></script>
+<script src="/scroll-index.js"></script>
 </body>
 </html>

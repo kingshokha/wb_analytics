@@ -116,8 +116,17 @@
     catch{state.budget=null}
     if(state.campaignMeta)renderMeta(state.campaignMeta);
   }
-  // Окно пополнения: сумма (не меньше минимума WB) и источник списания с его остатком. Кнопка «Пополнить» — подтверждение.
-  // Кампания на паузе или готовая к запуску после пополнения сама не запускается — предлагаем запустить.
+  // Окно пополнения: сумма (не меньше минимума WB) и источник списания с его остатком.
+  // Кампания на паузе или готовая к запуску после пополнения сама не запускается, поэтому у неё кнопка «Пополнить и запустить»:
+  // сначала пополнение, потом запуск. У идущей кампании — просто «Пополнить».
+  // WB может применить пополнение не мгновенно и ответить на запуск «мало бюджета» — тогда запуск повторяется через 3 с, до двух раз.
+  // Если запуск так и не прошёл, деньги уже на бюджете кампании: окно говорит об этом и предлагает запустить ещё раз.
+  async function startAfterDeposit(){
+    for(let attempt=0;;attempt++){
+      try{return await postCampaignAction('status',{action:'start'})}
+      catch(e){if(attempt>=2||!/бюджет/i.test(e.message))throw e;await new Promise(resolve=>setTimeout(resolve,3000))}
+    }
+  }
   async function openBudgetDeposit(){
     $('#confirmTitle').textContent='Пополнение бюджета кампании';
     $('#confirmBody').innerHTML='<p>Загружаем баланс кабинета продвижения…</p>';
@@ -128,11 +137,12 @@
     if($('#confirmModal').hidden)return;
     // Источники — только те, на которых есть деньги (как в окне пополнения WB).
     const min=finance.minTopUp,sources=(finance.sources||[]).filter(source=>source.amount>0),first=sources.find(source=>source.amount>=min)||sources[0];
+    const startAfter=[4,11].includes(state.campaignStatus),label=startAfter?'Пополнить и запустить':'Пополнить';
     $('#confirmBody').innerHTML=`<form class="budget-form" id="budgetForm" novalidate>`+
       `<label class="budget-sum">Сумма пополнения, ₽<input id="budgetSum" type="number" min="${min}" step="1" value="${min}" inputmode="numeric"></label><small>Минимальная сумма — ${money(min)}</small>`+
       `<fieldset class="budget-sources"><legend>Источник списания</legend>${sources.map(source=>`<label><input type="radio" name="budgetSource" value="${source.type}" ${source===first?'checked':''}><span>${esc(source.name)}</span><b>${money(source.amount)}</b></label>`).join('')||'<p class="confirm-error">На счетах продвижения нет денег — пополните счёт в кабинете WB.</p>'}</fieldset>`+
       `<p class="confirm-error" id="confirmError" hidden></p>`+
-      `<div class="confirm-buttons"><button type="button" class="secondary" data-confirm-close>Отменить</button><button type="submit" class="include" id="confirmRun" ${sources.length?'':'disabled'}>Пополнить</button></div></form>`;
+      `<div class="confirm-buttons"><button type="button" class="secondary" data-confirm-close>Отменить</button><button type="submit" class="include" id="confirmRun" ${sources.length?'':'disabled'}>${label}</button></div></form>`;
     $('#budgetSum').focus();$('#budgetSum').select();
     $('#budgetForm').onsubmit=async event=>{
       event.preventDefault();
@@ -141,15 +151,18 @@
       if(!Number.isInteger(sum)||sum<min)return fail(`Введите целое число рублей не меньше ${money(min)}`);
       if(!source)return fail('Выберите источник списания');
       if(source.amount<sum)return fail(`На источнике «${source.name}» только ${money(source.amount)}`);
-      error.hidden=true;button.disabled=true;button.textContent='Отправляем в WB…';
-      try{
-        const result=await postCampaignAction('budget/deposit',{sum,type});
-        state.budget={...(state.budget||{}),budget:result.budget};if(state.campaignMeta)renderMeta(state.campaignMeta);
-        const text=`Пополнено на ${money(sum)} из источника «${source.name}». Бюджет кампании — ${result.budget==null?'обновится чуть позже':money(result.budget)}.`;
-        if([4,11].includes(state.campaignStatus))openActionConfirm({title:'Бюджет пополнен',text,note:`Кампания ${state.campaignStatus===11?'на паузе':'готова к запуску'} и сама не запустится.`,button:'Запустить кампанию',kind:'include',
-          run:async()=>{const started=await postCampaignAction('status',{action:'start'});renderMeta({...state.campaignMeta,status:started.status});if(state.setup)renderSetup(state.setup)}});
-        else openActionConfirm({title:'Бюджет пополнен',text});
-      }catch(e){fail(`Не удалось: ${e.message}`);button.disabled=false;button.textContent='Пополнить'}
+      error.hidden=true;button.disabled=true;button.textContent='Пополняем бюджет…';
+      let result;
+      try{result=await postCampaignAction('budget/deposit',{sum,type})}
+      catch(e){fail(`Не удалось пополнить: ${e.message}`);button.disabled=false;button.textContent=label;return}
+      state.budget={...(state.budget||{}),budget:result.budget};if(state.campaignMeta)renderMeta(state.campaignMeta);
+      const text=`Пополнено на ${money(sum)} из источника «${source.name}». Бюджет кампании — ${result.budget==null?'обновится чуть позже':money(result.budget)}.`;
+      if(!startAfter)return openActionConfirm({title:'Бюджет пополнен',text});
+      const started=status=>{renderMeta({...state.campaignMeta,status});if(state.setup)renderSetup(state.setup)};
+      button.textContent='Запускаем кампанию…';
+      try{const result=await startAfterDeposit();started(result.status);openActionConfirm({title:'Бюджет пополнен, кампания запущена',text})}
+      catch(e){openActionConfirm({title:'Бюджет пополнен, но кампания не запустилась',text:`${text} Запуск не прошёл: ${e.message}`,note:'Деньги уже на бюджете кампании — повторно пополнять не нужно.',button:'Запустить кампанию',kind:'include',
+        run:async()=>{const result=await postCampaignAction('status',{action:'start'});started(result.status)}})}
     };
   }
   // Карточки с изменением к прошлому периоду той же длины (state.previous — /api/advertising/campaign/previous).
@@ -364,7 +377,8 @@
     const tracked=i=>Boolean(activity.tracking)&&days[i]>=activity.tracking.fromDate;
     const step=(isOn,day)=>{const list=(activity.events||[]).filter(event=>event.on===isOn&&event.date===day);return isOn?list[0]:list.at(-1)};
     const created=String(state.campaignCreatedAt||'').slice(0,10),boundary='по статусу на начало отслеживания в Google Таблице';
-    const switched=(isOn,at,when)=>`${isOn?'включена':'выключена'} ${at?stepTime(at):`${when} (${boundary})`}`;
+    // Включение после паузы — с временем, когда кампанию перед этим выключили (pausedAt от сервера): видно, что это не первый запуск.
+    const switched=(isOn,at,when,pausedAt)=>`${isOn?'включена':'выключена'} ${at?stepTime(at):`${when} (${boundary})`}${isOn&&at&&pausedAt?` после паузы с ${stepTime(pausedAt)}`:''}`;
     // run — период работы, к которому относится флажок: при наведении он заливается, как в детализации товара.
     let run;
     const flag=(kind,day,line)=>({kind:'activity',sub:kind,day,date:days[day],text:ACTIVITY_TEXT[kind],color:EVENT_KINDS.activity.color,lines:[line],run});
@@ -372,10 +386,10 @@
       const startTracked=tracked(run.from),stopTracked=run.to<count-1&&tracked(run.to+1);
       const start=startTracked?step(true,days[run.from]):null,stop=stopTracked?step(false,days[run.to]):null,when=ddmmOf(days[run.from]);
       if(run.from===run.to&&run.from>0&&run.to<count-1){
-        events.push(flag('blip',run.from,startTracked?`работала только ${when}: ${switched(true,start?.at,when)}, ${stop?switched(false,stop.at,when):'выключена в тот же день'}`:`50 показов и больше только ${when}`));continue;
+        events.push(flag('blip',run.from,startTracked?`работала только ${when}: ${switched(true,start?.at,when,start?.pausedAt)},${stop?switched(false,stop.at,when):'выключена в тот же день'}`:`50 показов и больше только ${when}`));continue;
       }
       const edge=run.from===0&&!start,kind=edge?(created&&created>=days[0]?'start':'ongoing'):'start';
-      events.push(flag(kind,run.from,kind==='ongoing'?'работала уже на начало периода':startTracked?switched(true,start?.at,when):`первый день с 50 показами и больше ${when}`));
+      events.push(flag(kind,run.from,kind==='ongoing'?'работала уже на начало периода':startTracked?switched(true,start?.at,when,start?.pausedAt):`первый день с 50 показами и больше ${when}`));
       if(run.to<count-1){
         const stopDay=ddmmOf(days[run.to+1]),lastOn=ddmmOf(days[run.to]);
         events.push(flag('stop',run.to+1,stopTracked?(stop?switched(false,stop.at,stopDay):`выключена, последний день работы ${lastOn} (${boundary})`):`первый день, когда показов меньше 50, ${stopDay}`));

@@ -43,7 +43,8 @@
     grip.addEventListener('pointerdown', event => {
       if (event.button !== 0) return;
       event.preventDefault(); event.stopPropagation();
-      const widths = headers.map(th => Math.round(th.getBoundingClientRect().width));
+      // Без округления: иначе при простом нажатии таблица сдвигалась на несколько пикселей (по полпикселя на столбец).
+      const widths = headers.map(th => th.getBoundingClientRect().width);
       if (!widths[index]) return;
       fix(table, headers, widths);
       const startX = event.clientX, startWidth = widths[index], startTotal = widths.reduce((sum, width) => sum + width, 0);
@@ -66,9 +67,13 @@
     });
     return grip;
   }
+  // Столбцы — ячейки нижней строки заголовка. Верхние строки с colspan («Статистика РК» над несколькими столбцами в детализации
+  // кампании) — только подписи групп: их ширина складывается из столбцов. Раньше брались все th заголовка, и при нажатии
+  // на край ширина таблицы считалась как сумма обеих строк — таблица становилась почти вдвое шире.
+  const leafHeaders = table => { const rows = table.querySelectorAll('thead tr'); return rows.length ? [...rows[rows.length - 1].querySelectorAll(':scope > th')] : []; };
   function setup(table) {
     if (table.closest('[data-no-resize]')) return;
-    const headers = [...table.querySelectorAll('thead th')];
+    const headers = leafHeaders(table);
     if (!headers.length) return;
     const keys = headers.map(columnKey), signature = keys.join('|');
     // Заголовки перерисовали (другой набор столбцов или те же, но новые элементы) — ширины применяются заново.
@@ -81,7 +86,7 @@
     headers.forEach((th, i) => { if (!th.querySelector(':scope > .column-resizer')) th.append(handle(table, headers, keys, i, key)); });
   }
   function alignHeaders(table) {
-    const headers = [...table.querySelectorAll('thead th')], row = table.tBodies[0]?.rows[0];
+    const headers = leafHeaders(table), row = table.tBodies[0]?.rows[0];
     if (!row || row.cells.length !== headers.length) return;
     headers.forEach((th, i) => { if (i) th.classList.toggle('col-left', getComputedStyle(row.cells[i]).textAlign === 'left'); });
   }
