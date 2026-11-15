@@ -329,6 +329,7 @@
     .zones-note a{color:var(--purple)}
     #zonesCollapse{height:38px;border-radius:9px}
     .zones-table{min-width:1320px}
+    .zones-ext{font-weight:700}.zones-ext.busy{color:#5b36c8}.zones-ext.ok{color:#1f7a52}.zones-ext.error{color:#c0392b}
     .zones-col-date{width:160px}
     .zones-table th,.zones-table td{height:34px;padding:6px 10px}
     .zones-table th{cursor:default}
@@ -514,7 +515,7 @@
       <div class="table-wrap"><table class="metrics-table daily-table"><thead><tr id="dailyHead"></tr></thead><tbody id="dailyBody"></tbody></table></div>
     </section>
     <section class="panel zones-panel">
-      <div class="panel-head"><h2>Статистика по дням и зонам показов</h2><div class="keywords-controls"><select id="zonesProduct" aria-label="Артикул"><option value="">Все артикулы</option></select><button type="button" class="secondary-button" id="zonesCollapse" aria-pressed="false">Свернуть все</button></div></div>
+      <div class="panel-head"><h2>Статистика по дням и зонам показов</h2><div class="keywords-controls"><select id="zonesProduct" aria-label="Артикул"><option value="">Все артикулы</option></select><button type="button" class="secondary-button" id="zonesRefresh" title="Взять зоны за выбранный период в кабинете WB через расширение">Обновить зоны</button><button type="button" class="secondary-button" id="zonesCollapse" aria-pressed="false">Свернуть все</button></div></div>
       <p id="zonesNote" class="keywords-note zones-note">Загрузка…</p>
       <div class="table-wrap"><table class="zones-table" data-width-key="zones-v2"><colgroup><col class="zones-col-date"><col span="13"></colgroup><thead id="zonesHead"></thead><tbody id="zonesBody"></tbody></table></div>
     </section>

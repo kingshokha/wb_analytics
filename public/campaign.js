@@ -1298,7 +1298,7 @@
   // В открытом API WB её нет: данные присылает расширение Chrome из кабинета WB, сайт хранит их в zones.json папки кампании.
   // WB отдаёт «поиск + каталог» одной строкой, каталог по дням — отдельно, поиск — разница. По отдельному артикулу каталог
   // есть только итогом за период, поэтому у артикула по дням поиск и каталог идут одной строкой.
-  const zones={data:null,product:'',collapsed:false,toggled:new Set(),request:0};
+  const zones={data:null,product:'',collapsed:false,toggled:new Set(),request:0,ext:{tone:'',text:''},fetching:null};
   const ZONE_FIELDS=['views','clicks','atbs','orders','shks','sum_price','spend'],ZONE_OTHER='other';
   const ZONE_NAMES={search:'поиск',shelves:'полки',catalog:'каталог',searchCatalog:'поиск + каталог'};
   const ZONE_COLUMNS=[{key:'views',label:'Показы'},{key:'cpm',label:'CPM',title:'Затраты на 1000 показов'},{key:'clicks',label:'Переходы'},{key:'ctr',label:'CTR',title:'Переходы ÷ показы'},
@@ -1403,13 +1403,14 @@
     const list=received.map(day=>({date:day.date,...zoneDay(day,nms)})).filter(item=>ZONE_FIELDS.some(field=>item.all[field])).sort((a,b)=>a.date.localeCompare(b.date));
     const catalogEntry=zoneCatalogEntry(nms,list),period=zonePeriod(list,nms,catalogEntry);
     const cmp=$('#campaignWbLink')?.href,wb=cmp?`<a href="${esc(cmp)}" target="_blank" rel="noopener noreferrer">кабинете WB</a>`:'кабинете WB';
-    const how=`Чтобы дозагрузить: откройте кампанию в ${wb}, нажмите на расширение «WB: статистика по зонам показов», выберите период и «Загрузить» — данные придут сюда сами.`;
-    if(!received.length){note.innerHTML=`За этот период данных по зонам пока нет: в открытом API WB их нет, их присылает расширение Chrome. ${how}`;body.innerHTML='';return}
+    const how=zonesExtension()?'Нажмите «Обновить зоны» — расширение возьмёт их в кабинете WB.':
+      `Чтобы дозагрузить: откройте кампанию в ${wb}, нажмите на расширение «WB: статистика по зонам показов», выберите период и «Загрузить» — данные придут сюда сами. С расширением 1.3.0 и новее зоны загружаются сами при открытии кампании.`;
+    if(!received.length){note.innerHTML=`${zoneExtNote()}За этот период данных по зонам пока нет: в открытом API WB их нет, их присылает расширение Chrome. ${how}`;body.innerHTML='';return}
     const active=state.period&&state.period.from<=state.period.to?zoneDates(state.period.from,state.period.to):zoneDates(loaded.from,loaded.to);
     const missing=zoneMissing(active,new Set(received.map(day=>day.date)));
     const noCatalog=!nms?received.filter(day=>!day.catalog).map(day=>ddmmOf(day.date)):[];
     const when=data.updatedAt?new Date(data.updatedAt).toLocaleString('ru-RU',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}):'';
-    note.innerHTML=[data.demo?'Демо-данные.':`Из кабинета WB через расширение${when?`, последняя передача ${when}`:''}.`,
+    note.innerHTML=zoneExtNote()+[data.demo?'Демо-данные.':`Из кабинета WB через расширение${when?`, последняя передача ${when}`:''}.`,
       missing?`Нет данных за ${missing}. ${how}`:'',
       noCatalog.length?`За ${noCatalog.join(', ')} WB не отдал каталог отдельно — поиск и каталог одной строкой.`:'',
       nms&&zones.product!==ZONE_OTHER?`По артикулу WB отдаёт каталог только итогом за период, поэтому по дням поиск и каталог — одной строкой${catalogEntry?', а в «За период» разделены':''}.`:''].filter(Boolean).join(' ');
@@ -1435,6 +1436,36 @@
   $('#zonesProduct').addEventListener('change',event=>{zones.product=event.target.value;renderZones()});
   $('#zonesCollapse').addEventListener('click',()=>{zones.collapsed=!zones.collapsed;zones.toggled.clear();renderZones()});
   $('#zonesBody').addEventListener('click',event=>{const row=event.target.closest('[data-zone-day]');if(!row)return;const key=row.dataset.zoneDay;if(zones.toggled.has(key))zones.toggled.delete(key);else zones.toggled.add(key);renderZones()});
+  // --- Загрузка зон без нажатий в кабинете WB: расширение 1.3.0+ (его site-bridge.js и background.js) ---
+  // Сайт просит расширение сообщением на странице; оно берёт данные в кабинете WB (в открытой вкладке кабинета, а если её нет —
+  // открывает страницу кампании в фоне и закрывает после загрузки) и присылает их на сервер, как из своего окна. После ответа
+  // блок перечитывается. Само — при открытии кампании и выгрузке нового периода; вручную — кнопкой «Обновить зоны».
+  // Нужен вход в кабинет продавца WB в этом же Chrome и выбранный в кабинете магазин этой кампании.
+  const zonesExtension=()=>document.documentElement.dataset.wbZonesExtension||'';
+  function zoneExtNote(){return zones.ext.text?`<span class="zones-ext ${zones.ext.tone}">${esc(zones.ext.text)}</span> `:''}
+  function setZoneExt(tone,text){zones.ext={tone,text};const button=$('#zonesRefresh');button.disabled=tone==='busy';button.textContent=tone==='busy'?'Загружаем…':'Обновить зоны';renderZones()}
+  function askExtension(message){
+    const requestId=`${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    return new Promise(resolve=>{
+      const done=result=>{clearTimeout(timer);window.removeEventListener('message',listen);resolve(result)};
+      const listen=event=>{const m=event.data;if(event.source===window&&m&&m.source==='wb-zones-extension'&&m.type==='zones-result'&&m.requestId===requestId)done(m)};
+      const timer=setTimeout(()=>done({ok:false,error:'Расширение не ответило за 2 минуты'}),120000);
+      window.addEventListener('message',listen);
+      window.postMessage({source:'wb-pulse',type:'zones-load',requestId,...message},location.origin);
+    });
+  }
+  async function fetchZonesFromExtension(auto){
+    const loaded=zoneRange(),id=params.get('id')||'',cabinet=params.get('cabinet')||'demo';
+    if(zones.fetching||!loaded||!/^\d{1,15}$/.test(id)||cabinet==='demo')return;
+    if(!zonesExtension()){if(!auto)setZoneExt('error','Расширение «WB: статистика по зонам показов» не найдено или старой версии: нужна 1.3.0 и новее. Установите его и обновите страницу.');return}
+    setZoneExt('busy','Загружаем зоны из кабинета WB через расширение…');
+    zones.fetching=askExtension({campaignId:id,from:loaded.from,to:loaded.to});
+    const result=await zones.fetching;zones.fetching=null;
+    if(!result.ok){setZoneExt('error',`Зоны не обновились: ${result.error||'неизвестная ошибка'}`);return}
+    setZoneExt('ok',`Обновлено из кабинета WB в ${new Date().toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit'})}.`);
+    await loadZones();
+  }
+  $('#zonesRefresh').addEventListener('click',()=>fetchZonesFromExtension(false));
   // Расширение присылает данные, пока пользователь в кабинете WB: при возврате на вкладку сайта блок перечитывается.
   document.addEventListener('visibilitychange',()=>{if(!document.hidden)loadZones()});
   window.addEventListener('focus',()=>loadZones());
@@ -1482,7 +1513,7 @@
     state.activity=result.activity||null;state.campaignCreatedAt=result.campaign?.createdAt||'';
     renderMeta(result.campaign);loadBudget();renderSummary(result.campaign);renderSetup(result.setup);renderOptions();renderChart();renderTable();renderProductTable();renderCampaignMinis();loadPositions(result.activePeriod||result.period,silent);loadChartEvents();
     $('#campaignTitle').textContent=result.campaign.name||`Кампания #${result.campaign.id}`;document.title=`${$('#campaignTitle').textContent} — WB Pulse`;renderCampaignHeader(result);
-    state.period=result.activePeriod||result.period;loadZones();
+    state.period=result.activePeriod||result.period;loadZones();if(!silent)fetchZonesFromExtension(true);
     if(silent){if(!keywords.loading)loadKeywords(state.period,true,true)}else{loadKeywords(state.period);loadPrevious(result.period,result.campaign)}
     $('#periodLabel').textContent=`${date(result.period.from)} — ${date(result.period.to)}${result.folder?` · ${result.folder}`:''}`;
     if(silent)$('#autoRefreshNote').textContent=`Обновлено ${new Date().toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit'})} · автообновление раз в 2 минуты`;
