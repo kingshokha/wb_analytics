@@ -324,6 +324,9 @@ const productCardsLoading = new Map();
 const CARDS_DIR = path.join(ROOT, 'data', 'Cards');
 const PRODUCT_CARDS_TTL = 10 * 60_000;
 const productCardsGen = new Map();
+// Правки списка, сделанные на сайте (patch из productCardsChanged), с номером поколения: их заново накладывают на список,
+// который начал грузиться до них. Хранятся, пока не закончится загрузка, начатая после правки.
+const productCardsPatches = new Map();
 const productCardsKey = id => `product-cards:${id}`;
 const productCardsDir = id => path.join(CARDS_DIR, cabinetFolderName(id));
 function readProductCardsCopy(id) {
@@ -389,9 +392,15 @@ function refreshProductCards(id, token = tokenFor(id)) {
     const gen = productCardsGen.get(id) || 0;
     const job = (async () => {
       try {
-        const value = await loadProductCards(token), savedAt = Date.now();
-        // Карточку изменили на сайте, пока шла загрузка: список мог прочитать старые данные — он сразу считается устаревшим.
-        analyticsCache.set(key, { value, savedAt, stale: (productCardsGen.get(id) || 0) !== gen });
+        let value = await loadProductCards(token);
+        const savedAt = Date.now(), changed = (productCardsGen.get(id) || 0) !== gen;
+        // Карточку изменили на сайте, пока шла загрузка: список мог прочитать старые данные — он сразу считается устаревшим,
+        // а правки, сделанные за время загрузки, накладываются на него заново. Иначе после склейки по 30 (десятки шагов,
+        // пока у кабинета с 15 000 карточек идёт загрузка) часть склеенных карточек снова выглядела отдельными.
+        const patches = productCardsPatches.get(id) || [];
+        if (changed) for (const item of patches) if (item.gen > gen) value = item.patch(value) || value;
+        productCardsPatches.set(id, patches.filter(item => item.gen > gen));
+        analyticsCache.set(key, { value, savedAt, stale: changed });
         try { writeProductCardsCopy(id, value, savedAt); }
         catch (error) { console.error(`Не удалось сохранить карточки кабинета ${id}: ${error.message}`); }
         return value;
@@ -412,7 +421,9 @@ async function productCards(id, token = tokenFor(id), { wait = true } = {}) {
 }
 // patch(list) — поправить сохранённый список сразу (например, imtID после объединения), не дожидаясь WB.
 function productCardsChanged(id, patch) {
-  productCardsGen.set(id, (productCardsGen.get(id) || 0) + 1);
+  const gen = (productCardsGen.get(id) || 0) + 1;
+  productCardsGen.set(id, gen);
+  if (patch) productCardsPatches.set(id, [...(productCardsPatches.get(id) || []), { gen, patch }]);
   const copy = productCardsCopy(id);
   if (copy) { if (patch) copy.value = patch(copy.value) || copy.value; copy.stale = true; }
   refreshProductCards(id);

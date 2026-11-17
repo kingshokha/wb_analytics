@@ -1,7 +1,8 @@
 // --- «Карточки товаров»: все карточки кабинета, корзина и ошибки сохранения ---
 // Данные — /api/cards (сервер: content-cards.js, метод WB «Список карточек товаров»), /api/cards/trash, /api/cards/errors.
 // Карточка открывается на отдельной странице card.html — там её данные можно изменить. Здесь же — ярлыки продавца
-// (создать, переименовать, удалить) и восстановление карточек из корзины. Создавать карточки сайт не умеет — так задумано.
+// (создать, переименовать, удалить), восстановление карточек из корзины, склейка по 30 и копии выбранных карточек
+// («Дублировать»). Новые карточки с нуля сайт не создаёт — так задумано.
 // Файл подключается до app.js: $, state, api, escapeHtml и прочее из app.js используются только внутри функций.
 const CARD_PROBLEMS=[['','Все карточки'],['nophoto','Без фото'],['fewphoto','Меньше 3 фото'],['desc','Описание короче 1000 символов'],['dims','Габариты под вопросом']];
 const CARD_TAG_COLORS=[['D1CFD7','серый'],['FEE0E0','красный'],['ECDAFF','фиолетовый'],['E4EAFF','синий'],['DEF1DD','зелёный'],['FFECC7','жёлтый']];
@@ -85,9 +86,11 @@ function cardRows(){
   const groups=new Map();rows.forEach(card=>{if(!groups.has(card.imtID))groups.set(card.imtID,[]);groups.get(card.imtID).push(card)});
   return [...groups.values()].flat();
 }
-// Выбор для «Объединить по 30 шт» — только когда выбран предмет: склеить можно лишь карточки одного предмета.
-// Уже склеенные не выбираются, их склейки не меняются. Выбранные — из строк по текущим фильтрам, в порядке таблицы.
+// Галочки — у всех карточек: выбранные можно дублировать. «Объединить по 30 шт» — только когда выбран предмет (склеить
+// можно лишь карточки одного предмета) и только для выбранных без склейки: склейки уже склеенных не меняются.
+// Выбранные — из строк по текущим фильтрам, в порядке таблицы.
 const cardSelectable=card=>card.groupSize<=1;
+const cardPicked=rows=>rows.filter(card=>cardsView.selected.has(card.nmID));
 const cardChosen=rows=>rows.filter(card=>cardSelectable(card)&&cardsView.selected.has(card.nmID));
 function cardGlueChunks(list){const chunks=[];for(let i=0;i<list.length;i+=CARD_GLUE_LIMIT)chunks.push(list.slice(i,i+CARD_GLUE_LIMIT));return chunks}
 // Название для «похожих по названию»: регистр, ё/е, кавычки и знаки препинания не важны.
@@ -120,11 +123,12 @@ function cardGlueSummary({steps,alone}){
 }
 const CARD_GLUE_MODES={title:'похожие по названию',order:'подряд по таблице'};
 function renderCardSelectBar(rows,selecting){
-  const bar=$('#cardsSelectBar'),chosen=selecting?cardChosen(rows):[],free=rows.filter(cardSelectable).length;
-  bar.classList.toggle('hidden',!chosen.length);
-  if(!chosen.length){bar.innerHTML='';return}
-  const plan=cardGluePlan(chosen,cardsView.glueMode,cardsView.glueFill);
-  bar.innerHTML=`<span>Выбрано <b>${fmtNum(chosen.length)}</b> из ${fmtNum(free)} без склейки · ${CARD_GLUE_MODES[cardsView.glueMode]}: ${cardGlueSummary(plan)}</span>${plan.steps.length?`<button type="button" class="primary" id="cardGlueRun">Объединить по ${CARD_GLUE_LIMIT} шт</button>`:''}<button type="button" class="ghost" id="cardSelectClear">Снять выбор</button>`;
+  const bar=$('#cardsSelectBar'),picked=cardPicked(rows),chosen=selecting?cardChosen(rows):[],free=rows.filter(cardSelectable).length;
+  bar.classList.toggle('hidden',!picked.length);
+  if(!picked.length){bar.innerHTML='';return}
+  const plan=chosen.length?cardGluePlan(chosen,cardsView.glueMode,cardsView.glueFill):null;
+  const glue=chosen.length?` · без склейки ${fmtNum(chosen.length)} из ${fmtNum(free)} · ${CARD_GLUE_MODES[cardsView.glueMode]}: ${cardGlueSummary(plan)}`:'';
+  bar.innerHTML=`<span>Выбрано <b>${fmtNum(picked.length)}</b> ${cardWord(picked.length)}${glue}</span><button type="button" class="primary" id="cardDuplicateRun">Дублировать</button>${plan?.steps.length?`<button type="button" class="primary" id="cardGlueRun">Объединить по ${CARD_GLUE_LIMIT} шт</button>`:''}<button type="button" class="ghost" id="cardSelectClear">Снять выбор</button>`;
 }
 // Окно склейки: scope 'selected' — выбранные карточки предмета, 'all' — все карточки без склейки по фильтрам, по всем предметам.
 const cardGlue={scope:'selected',plan:null,run:null};
@@ -191,6 +195,70 @@ async function runCardGlueBatch(){
   if(state.cabinet===cabinet){renderCards();if(done)loadCards(false,true)}
 }
 
+// --- «Дублировать»: копии выбранных карточек с новым артикулом продавца и новыми баркодами ---
+// Сервер (POST /api/cards/duplicate) создаёт копии по одной и сам ждёт, пока WB их создаст (до 30 минут), затем копирует
+// фото, видео и ярлыки. Страница раз в 4 с спрашивает ход (GET /api/cards/duplicate) — окно можно закрыть и открыть снова.
+const CARD_DUP_MAX=100;
+const cardDup={job:null,cabinet:'',poll:0};
+const CARD_DUP_STATUS={preparing:'готовим',queued:'в очереди',creating:'отправляем в WB',waiting:'WB создаёт карточку…',media:'копируем фото и ярлыки',video:'копируем видео',done:'готово',error:'ошибка'};
+// Свободный артикул продавца: «артикул-2», «артикул-3»… — которого нет ни в кабинете, ни среди других копий.
+function cardDupVendorCode(base,taken){for(let n=2;;n++){const code=`${base}-${n}`.slice(-72);if(!taken.has(code)){taken.add(code);return code}}}
+function openCardDuplicate(){
+  if(cardDup.job&&!cardDup.job.finishedAt&&cardDup.cabinet===state.cabinet)return renderCardDupModal(true);
+  const picked=cardPicked(cardRows());
+  if(!picked.length)return toast('Выберите карточки');
+  if(picked.length>CARD_DUP_MAX)return toast(`За раз можно дублировать не больше ${CARD_DUP_MAX} карточек — выбрано ${fmtNum(picked.length)}`);
+  const taken=new Set((cardsView.data?.cards||[]).map(card=>card.vendorCode));
+  openModal(`<div class="card-dup"><p class="eyebrow">Карточки товаров</p><h2>Дублировать ${fmtNum(picked.length)} ${cardWord(picked.length)}</h2>
+    <p class="muted">Копия — новая карточка того же предмета. Скопируются наименование, описание, бренд, характеристики, габариты, документы, размеры и цена, фото, видео и ярлыки. Новыми будут артикул продавца (задайте ниже), баркоды (выдаст WB) и артикул WB. В склейку копия не попадает — WB не склеивает карточки с одинаковыми характеристиками. Скидку и остатки задайте после: WB создаёт карточку до 30 минут.</p>
+    <label class="card-dup-suffix">Окончание артикула для всех <input id="cardDupSuffix" maxlength="20" placeholder="-2" aria-label="Окончание артикула для всех копий"></label>
+    <div class="card-dup-list"><table class="stock-table" data-no-resize><thead><tr><th>Оригинал</th><th>Артикул продавца копии</th><th>Ход</th></tr></thead><tbody>${picked.map(card=>`<tr data-dup-nm="${escapeHtml(card.nmID)}"><td><b>${escapeHtml(card.vendorCode||'—')}</b><small>${escapeHtml(card.nmID)} · ${escapeHtml((card.title||'').slice(0,50))}</small></td><td><input class="card-dup-code" data-dup-base="${escapeHtml(card.vendorCode||card.nmID)}" maxlength="72" value="${escapeHtml(cardDupVendorCode(card.vendorCode||String(card.nmID),taken))}" aria-label="Артикул продавца копии ${escapeHtml(card.vendorCode||card.nmID)}"></td><td class="card-dup-state muted">—</td></tr>`).join('')}</tbody></table></div>
+    <p class="card-tag-note" id="cardDupNote" role="status"></p><div class="modal-actions"><button type="button" data-modal-close-inline id="cardDupCancel">Отмена</button><button type="button" class="primary" id="cardDupConfirm">Создать копии</button></div></div>`,true);
+  $('#cardDupConfirm').onclick=startCardDuplicate;
+}
+async function startCardDuplicate(){
+  const rows=$$('.card-dup [data-dup-nm]'),note=$('#cardDupNote'),button=$('#cardDupConfirm');
+  const items=rows.map(row=>({nmId:Number(row.dataset.dupNm),vendorCode:row.querySelector('.card-dup-code').value.trim()}));
+  const empty=items.find(item=>!item.vendorCode);if(empty){note.textContent='Укажите артикул продавца у каждой копии';note.classList.add('error');return}
+  const seen=new Set(),twice=items.find(item=>seen.has(item.vendorCode)||!seen.add(item.vendorCode));if(twice){note.textContent=`Артикул повторяется: ${twice.vendorCode}`;note.classList.add('error');return}
+  button.disabled=true;button.textContent='Отправляем…';note.classList.remove('error');note.textContent='';
+  try{
+    const job=await api('/api/cards/duplicate',{method:'POST',body:JSON.stringify({cabinet:state.cabinet,confirm:true,items})});
+    cardDup.job=job;cardDup.cabinet=job.cabinet;renderCardDupModal(false);pollCardDuplicate();
+  }catch(e){button.disabled=false;button.textContent='Создать копии';note.textContent=`Не удалось: ${e.message}`;note.classList.add('error')}
+}
+// Окно с ходом задания. reopen — окно открыто заново (задание шло, пока окно было закрыто).
+function renderCardDupModal(reopen){
+  const job=cardDup.job;if(!job)return;
+  if(reopen||!$('.card-dup')){
+    openModal(`<div class="card-dup"><p class="eyebrow">Карточки товаров</p><h2>Копии карточек</h2><p class="muted">WB создаёт карточку до 30 минут. Окно можно закрыть — копии создадутся, а ход можно посмотреть, снова нажав «Дублировать».</p>
+      <div class="card-dup-list"><table class="stock-table" data-no-resize><thead><tr><th>Оригинал</th><th>Артикул продавца копии</th><th>Ход</th></tr></thead><tbody>${job.items.map(item=>`<tr data-dup-nm="${escapeHtml(item.nmId)}"><td><b>${escapeHtml(item.sourceVendorCode||'—')}</b><small>${escapeHtml(item.nmId)} · ${escapeHtml((item.title||'').slice(0,50))}</small></td><td><input class="card-dup-code" value="${escapeHtml(item.vendorCode)}" disabled></td><td class="card-dup-state muted">—</td></tr>`).join('')}</tbody></table></div>
+      <p class="card-tag-note" id="cardDupNote" role="status"></p><div class="modal-actions"><button type="button" class="primary" data-modal-close-inline>Закрыть</button></div></div>`,true);
+  }else{$('#cardDupSuffix')?.closest('label')?.remove();$$('.card-dup-code').forEach(input=>{input.disabled=true});$('#cardDupCancel')?.remove();const button=$('#cardDupConfirm');if(button){button.disabled=false;button.textContent='Закрыть';button.onclick=closeModal}}
+  job.items.forEach(item=>{
+    const cell=$(`.card-dup [data-dup-nm="${CSS.escape(String(item.nmId))}"] .card-dup-state`);if(!cell)return;
+    const done=item.status==='done',failed=item.status==='error';
+    cell.className=`card-dup-state${failed?' card-warn':done?'':' muted'}`;
+    cell.innerHTML=`${done&&item.newNmId?`готово · <a class="card-title-link" href="${escapeHtml(cardLink(item.newNmId))}" target="_blank" rel="noopener noreferrer">${escapeHtml(item.newNmId)}</a>`:escapeHtml(CARD_DUP_STATUS[item.status]||item.status)}${failed?`<small>${escapeHtml(item.error)}</small>`:''}${(item.warnings||[]).map(text=>`<small class="card-warn">${escapeHtml(text)}</small>`).join('')}`;
+  });
+  const count=status=>job.items.filter(item=>item.status===status).length;
+  const note=$('#cardDupNote');if(note)note.textContent=job.finishedAt?`Готово ${fmtNum(count('done'))} из ${fmtNum(job.items.length)}${count('error')?` · с ошибкой ${fmtNum(count('error'))}`:''}`:`Создано ${fmtNum(count('done'))} из ${fmtNum(job.items.length)} · ждём WB…`;
+}
+async function pollCardDuplicate(){
+  clearTimeout(cardDup.poll);
+  const job=cardDup.job;if(!job||job.finishedAt)return;
+  cardDup.poll=setTimeout(async()=>{
+    try{const {job:fresh}=await api(`/api/cards/duplicate?${new URLSearchParams({cabinet:cardDup.cabinet,job:job.id})}`);
+      if(!fresh){cardDup.job=null;return}
+      const before=job.items.filter(item=>item.status==='done').length;cardDup.job=fresh;
+      if($('.card-dup'))renderCardDupModal(false);
+      if(fresh.items.filter(item=>item.status==='done').length>before&&state.cabinet===fresh.cabinet&&state.activePage==='cards')loadCards(false,true);
+      if(fresh.finishedAt){const done=fresh.items.filter(item=>item.status==='done').length;toast(`Копии карточек: готово ${fmtNum(done)} из ${fmtNum(fresh.items.length)}`);return}
+    }catch{}
+    pollCardDuplicate();
+  },4000);
+}
+
 function renderCards(){
   const v=cardsView,data=v.data,cards=data?.cards||[];
   if(!$('#page-cards'))return;
@@ -227,13 +295,13 @@ function renderCards(){
   const columns=[['title','Товар',360],['subjectName','Предмет',150],['brand','Бренд',120],['sizes','Размеры',140],['photos','Медиа',110],['tags','Ярлыки',150],['verdict','Проверка',170],['updatedAt','Изменена',120]];
   // Заголовки создаются один раз — так сохраняются ширины столбцов (column-widths.js); при сортировке меняется только стрелка.
   const head=$('#cardsHead');
-  if(!head.children.length){head.innerHTML=columns.map(([key,label,width])=>`<th data-card-sort="${key}" data-col-key="${key}" data-col-width="${width}">${key==='title'?'<input type="checkbox" class="card-select" id="cardSelectAll" aria-label="Выбрать все карточки предмета">':''}${label} <span class="rating-sort-arrow"></span></th>`).join('')}
+  if(!head.children.length){head.innerHTML=columns.map(([key,label,width])=>`<th data-card-sort="${key}" data-col-key="${key}" data-col-width="${width}">${key==='title'?'<input type="checkbox" class="card-select" id="cardSelectAll" aria-label="Выбрать все карточки по фильтрам">':''}${label} <span class="rating-sort-arrow"></span></th>`).join('')}
   head.querySelectorAll('[data-card-sort]').forEach(th=>{th.querySelector('.rating-sort-arrow').textContent=v.sort.key===th.dataset.cardSort?(v.sort.dir==='asc'?'↑':'↓'):'↕'});
-  // Галочки — когда выбран предмет. «Выбрать все» — все карточки без склейки по фильтрам, на всех страницах.
-  const selecting=Boolean(v.subject),free=rows.filter(cardSelectable).length,chosen=selecting?cardChosen(rows).length:0,all=$('#cardSelectAll');
-  $('#cardsMain table').classList.toggle('selecting',selecting);
-  all.checked=free>0&&chosen===free;all.indeterminate=chosen>0&&chosen<free;all.disabled=!free;
-  all.title=free?`Выбрать все без склейки: ${fmtNum(free)}`:'Все карточки уже в склейках';
+  // Галочки — у всех карточек. «Выбрать все» — все карточки по фильтрам, на всех страницах. selecting — выбран предмет:
+  // тогда выбранные без склейки можно склеить.
+  const selecting=Boolean(v.subject),free=rows.filter(cardSelectable).length,picked=cardPicked(rows).length,all=$('#cardSelectAll');
+  all.checked=rows.length>0&&picked===rows.length;all.indeterminate=picked>0&&picked<rows.length;all.disabled=!rows.length;
+  all.title=rows.length?`Выбрать все по фильтрам: ${fmtNum(rows.length)}`:'Карточек нет';
   // Без предмета — «Склеить по 30…» сразу по всем предметам (каждый отдельно).
   const glueAll=$('#cardGlueAll');glueAll.classList.toggle('hidden',selecting);glueAll.disabled=!free;
   glueAll.title=free?`Карточек без склейки по фильтрам: ${fmtNum(free)} — склеить по предметам`:'Карточек без склейки нет';
@@ -252,7 +320,7 @@ function renderCards(){
       const count=shown.get(card.imtID),continued=index===0&&v.page>1&&rows[(v.page-1)*v.pageSize-1]?.imtID===card.imtID;
       head=`<tr class="card-glue-head" style="--glue:${CARD_GLUE_COLORS[groupIndex%CARD_GLUE_COLORS.length]}"><td colspan="${columns.length}">Склейка · ${fmtNum(card.groupSize)} ${cardWord(card.groupSize)}${continued?' (продолжение)':''}<small>${escapeHtml(card.subjectName||'')} · imtID ${escapeHtml(card.imtID)}${count<card.groupSize?` · по фильтрам видно ${fmtNum(count)}`:''}</small></td></tr>`;
     }
-    return `${head}<tr${glued?` class="card-glued" style="--glue:${CARD_GLUE_COLORS[groupIndex%CARD_GLUE_COLORS.length]}"`:''}><td><div class="card-cell">${selecting?`<input type="checkbox" class="card-select" data-card-select="${escapeHtml(card.nmID)}"${cardSelectable(card)?`${v.selected.has(card.nmID)?' checked':''} aria-label="Выбрать"`:' disabled title="Уже в склейке"'}>`:''}${card.photo?`<img class="stock-product-photo" src="${escapeHtml(card.photo)}" alt="" loading="lazy">`:'<span class="card-nophoto" title="Нет фото">нет фото</span>'}<span><a class="card-title-link" href="${escapeHtml(cardLink(card.nmID))}" target="_blank" rel="noopener noreferrer" title="Открыть карточку: ${escapeHtml(card.title)}">${escapeHtml(card.title||'Без названия')}</a><small>${escapeHtml(card.vendorCode||'—')} · <button type="button" class="copy-article" data-copy="${escapeHtml(card.nmID)}" title="Скопировать артикул WB">${escapeHtml(card.nmID)}</button>${card.groupSize>1&&!glued?` · <span class="card-glue-chip" title="Объединена с другими карточками">склейка · ${card.groupSize}</span>`:''}</small></span></div></td>`+
+    return `${head}<tr${glued?` class="card-glued" style="--glue:${CARD_GLUE_COLORS[groupIndex%CARD_GLUE_COLORS.length]}"`:''}><td><div class="card-cell"><input type="checkbox" class="card-select" data-card-select="${escapeHtml(card.nmID)}"${v.selected.has(card.nmID)?' checked':''} aria-label="Выбрать ${escapeHtml(card.vendorCode||card.nmID)}">${card.photo?`<img class="stock-product-photo" src="${escapeHtml(card.photo)}" alt="" loading="lazy">`:'<span class="card-nophoto" title="Нет фото">нет фото</span>'}<span><a class="card-title-link" href="${escapeHtml(cardLink(card.nmID))}" target="_blank" rel="noopener noreferrer" title="Открыть карточку: ${escapeHtml(card.title)}">${escapeHtml(card.title||'Без названия')}</a><small>${escapeHtml(card.vendorCode||'—')} · <button type="button" class="copy-article" data-copy="${escapeHtml(card.nmID)}" title="Скопировать артикул WB">${escapeHtml(card.nmID)}</button>${card.groupSize>1&&!glued?` · <span class="card-glue-chip" title="Объединена с другими карточками">склейка · ${card.groupSize}</span>`:''}</small></span></div></td>`+
       `<td>${escapeHtml(card.subjectName||'—')}</td><td>${escapeHtml(card.brand||'—')}</td>`+
       `<td>${sizes.length?escapeHtml(sizes.slice(0,5).join(', '))+(sizes.length>5?` +${sizes.length-5}`:''):'без размера'}<small>${fmtNum(barcodes.length)} ${barcodes.length===1?'баркод':barcodes.length<5&&barcodes.length?'баркода':'баркодов'}</small></td>`+
       `<td class="${card.photos<3?'card-warn':''}">${fmtNum(card.photos)} фото${card.video?' · видео':''}</td>`+
@@ -311,9 +379,10 @@ async function sendCardTag(body){
 }
 
 document.addEventListener('click',event=>{
-  if(!event.target.closest('#page-cards')&&!event.target.closest('.card-tags-modal')&&!event.target.closest('.card-recover-confirm')&&!event.target.closest('.card-glue-batch'))return;
+  if(!event.target.closest('#page-cards')&&!event.target.closest('.card-tags-modal')&&!event.target.closest('.card-recover-confirm')&&!event.target.closest('.card-glue-batch')&&!event.target.closest('.card-dup'))return;
   const tab=event.target.closest('[data-cards-tab]');
   if(tab){cardsView.tab=tab.dataset.cardsTab;if(cardsView.tab==='trash')loadCardTrash();if(cardsView.tab==='errors')loadCardErrors(true);renderCards();return}
+  if(event.target.closest('#cardDuplicateRun'))return openCardDuplicate();
   if(event.target.closest('#cardGlueRun'))return openCardGlueBatch('selected');
   if(event.target.closest('#cardGlueAll'))return openCardGlueBatch('all');
   // Shift+клик по галочке отмечает (или снимает) все карточки между ней и прошлой нажатой — сам выбор в обработчике change.
@@ -346,6 +415,8 @@ document.addEventListener('submit',event=>{
   event.preventDefault();
   sendCardTag({action:form.dataset.cardTagForm,id:Number(form.dataset.tagId)||undefined,name:form.elements.name.value.trim(),color:form.elements.color.value});
 });
+// «Окончание артикула для всех»: артикул копии = артикул оригинала + окончание.
+document.addEventListener('input',event=>{if(event.target.id!=='cardDupSuffix')return;const suffix=event.target.value.trim();if(suffix)$$('.card-dup-code[data-dup-base]').forEach(input=>{input.value=`${input.dataset.dupBase}${suffix}`.slice(0,72)})});
 document.addEventListener('input',event=>{if(event.target.id!=='cardSearch')return;cardsView.search=event.target.value;cardsView.page=1;if(cardsView.data)renderCards()});
 document.addEventListener('change',event=>{
   const map={cardSubjectFilter:'subject',cardBrandFilter:'brand',cardTagFilter:'tag',cardProblemFilter:'problem',cardDocFilter:'doc',cardGlueFilter:'glue'},key=map[event.target.id];
@@ -353,7 +424,7 @@ document.addEventListener('change',event=>{
   const one=event.target.closest('[data-card-select]');
   if(one){
     const v=cardsView,nmId=Number(one.dataset.cardSelect),rows=cardRows(),from=rows.findIndex(card=>card.nmID===v.lastSelected),to=rows.findIndex(card=>card.nmID===nmId);
-    const range=v.shiftSelect&&from>=0&&to>=0?rows.slice(Math.min(from,to),Math.max(from,to)+1).filter(cardSelectable):[{nmID:nmId}];
+    const range=v.shiftSelect&&from>=0&&to>=0?rows.slice(Math.min(from,to),Math.max(from,to)+1):[{nmID:nmId}];
     range.forEach(card=>one.checked?v.selected.add(card.nmID):v.selected.delete(card.nmID));
     v.lastSelected=nmId;v.shiftSelect=false;renderCards();return;
   }
@@ -361,5 +432,5 @@ document.addEventListener('change',event=>{
     if(event.target.name==='cardGlueMode')cardsView.glueMode=event.target.value;else cardsView.glueFill=event.target.checked;
     renderCardGluePlan();renderCards();return;
   }
-  if(event.target.id==='cardSelectAll'){const free=cardRows().filter(cardSelectable);free.forEach(card=>event.target.checked?cardsView.selected.add(card.nmID):cardsView.selected.delete(card.nmID));renderCards()}
+  if(event.target.id==='cardSelectAll'){cardRows().forEach(card=>event.target.checked?cardsView.selected.add(card.nmID):cardsView.selected.delete(card.nmID));renderCards()}
 });

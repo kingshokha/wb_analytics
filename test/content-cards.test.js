@@ -87,3 +87,18 @@ test('карточки: текст ошибки Контента — errorText �
   assert.equal(cards.contentErrorText({ errorText: 'some items lacks required characteristics', additionalErrors: { A1: 'missing required characteristics with ids: {5}' } }), 'some items lacks required characteristics — A1: missing required characteristics with ids: {5}');
   assert.equal(cards.contentErrorText({ errorText: 'Указан несуществующий imt', additionalErrors: { error: 'Указан несуществующий imt' } }), 'Указан несуществующий imt');
 });
+
+test('карточки: копия для /content/v2/cards/upload — новый артикул и баркоды, остальное как у оригинала', () => {
+  const original = { ...fresh, nmID: 11, imtID: 5, subjectID: 7, photos: [{ big: 'https://x/1.webp' }], video: 'https://v/hls/1440p/index.m3u8', tags: [{ id: 3 }],
+    characteristics: [{ id: 1, name: 'Цвет', value: ['черный'] }, { id: 2, name: 'Вес', value: 320 }, { id: 3, name: 'Пусто', value: [] }],
+    documents: { items: [{ id: 'd1', type: 2, number: 'ЕАЭС 1', startDate: '2025-02-13T00:00:00Z', endDate: '2030-02-10T00:00:00Z', isEndless: false, verdict: { status: 1 } }], overallVerdict: { status: 1 }, excludeDocuments: false } };
+  const variant = cards.duplicateVariant(original, 'A1-2', ['901', '902'], new Map([['S', 1990], ['*', 1990], ['M', 2190]]));
+  assert.deepEqual(Object.keys(variant).sort(), ['brand', 'characteristics', 'description', 'dimensions', 'documents', 'kizMarked', 'sizes', 'title', 'vendorCode']);
+  assert.equal(variant.vendorCode, 'A1-2');
+  assert.deepEqual(variant.sizes, [{ techSize: 'S', wbSize: '42', price: 1990, skus: ['901'] }, { techSize: 'M', wbSize: '44', price: 2190, skus: ['902'] }]);
+  assert.deepEqual(variant.characteristics, [{ id: 1, value: ['черный'] }, { id: 2, value: 320 }]);
+  assert.deepEqual(variant.documents, { items: [{ type: 2, number: 'ЕАЭС 1', startDate: '2025-02-13T00:00:00Z', endDate: '2030-02-10T00:00:00Z', isEndless: false }], excludeDocuments: false });
+  // Товар без размера: techSize «0» не передаётся, только баркод (и цена).
+  const single = cards.duplicateVariant({ ...original, sizes: [{ chrtID: 1, techSize: '0', wbSize: '', skus: ['111'] }] }, 'B', ['903'], new Map([['*', 500]]));
+  assert.deepEqual(single.sizes, [{ price: 500, skus: ['903'] }]);
+});

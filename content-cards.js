@@ -10,8 +10,9 @@
 //   ярлыки           GET /content/v2/tags, POST /content/v2/tag, PATCH и DELETE /content/v2/tag/{id},
 //                    POST /content/v2/tag/nomenclature/link (полный список ярлыков карточки)
 //   объединение      POST /content/v2/cards/moveNm (с targetIMT — объединить, без — разъединить)
-//   баркоды          POST /content/v2/barcodes — для новых размеров
-// Создание карточек сайт не делает. Все изменения — только с confirm: true (подтверждение на странице).
+//   баркоды          POST /content/v2/barcodes — для новых размеров и копий
+//   копии карточек   POST /content/v2/cards/upload — «Дублировать» (см. раздел «Дублирование карточек» ниже)
+// Новые карточки с нуля сайт не создаёт — только копии существующих. Все изменения — только с confirm: true (подтверждение на странице).
 // В демо-кабинете данные хранятся в памяти сервера, изменения применяются к ним — так можно проверить сайт без WB.
 'use strict';
 
@@ -340,13 +341,17 @@ module.exports = function createContentCards({ wbRequest, tokenFor, cabinets, ca
     if (!size) throw apiError(400, 'Пустой файл');
     if (type.startsWith('image/') && size > 32 * 1024 * 1024) throw apiError(413, 'Фото больше 32 Мб');
     if (isDemo(id)) { const target = demoCards().find(item => item.nmID === nmId); if (type.startsWith('video/')) target.video = 'demo-video'; else target.photos.push({ big: '', tm: '' }); return { ok: true, demo: true }; }
-    const form = new FormData();
-    form.append('uploadfile', new Blob([Buffer.concat(chunks)], { type }), name);
-    const response = await fetch(`${CONTENT}/content/v3/media/file`, { method: 'POST', headers: { Authorization: tokenFor(id), 'X-Nm-Id': String(nmId), 'X-Photo-Number': String(number) }, body: form, signal: AbortSignal.timeout(120_000) });
-    const text = await response.text(); let data = text; try { data = JSON.parse(text); } catch {}
-    if (!response.ok || data?.error === true) throw apiError(response.ok ? 400 : response.status, typeof data === 'object' ? contentErrorText(data, `WB не принял файл (${response.status})`) : `WB не принял файл (${response.status}): ${String(text).slice(0, 200)}`);
+    await sendMediaFile(tokenFor(id), nmId, number, Buffer.concat(chunks), type, name);
     forgetCards(id);
     return { ok: true };
+  }
+  // POST /content/v3/media/file: один файл, multipart, поле uploadfile; X-Photo-Number у видео — всегда 1.
+  async function sendMediaFile(token, nmId, number, buffer, type, name) {
+    const form = new FormData();
+    form.append('uploadfile', new Blob([buffer], { type }), name);
+    const response = await fetch(`${CONTENT}/content/v3/media/file`, { method: 'POST', headers: { Authorization: token, 'X-Nm-Id': String(nmId), 'X-Photo-Number': String(number) }, body: form, signal: AbortSignal.timeout(120_000) });
+    const text = await response.text(); let data = text; try { data = JSON.parse(text); } catch {}
+    if (!response.ok || data?.error === true) throw apiError(response.ok ? 400 : response.status, typeof data === 'object' ? contentErrorText(data, `WB не принял файл (${response.status})`) : `WB не принял файл (${response.status}): ${String(text).slice(0, 200)}`);
   }
   async function setCardTags(body) {
     needConfirm(body);
@@ -434,20 +439,229 @@ module.exports = function createContentCards({ wbRequest, tokenFor, cabinets, ca
     return { barcodes: (await content(tokenFor(id), '/content/v2/barcodes', { method: 'POST', body: { count } }))?.data || [] };
   }
 
+  // --- Дублирование карточек ---
+  // Копия — новая отдельная карточка того же предмета: POST /content/v2/cards/upload (по одной карточке в variants;
+  // лимит метода — 10 запросов в минуту, поэтому запросы раз в 6,5 с). Копируется всё, кроме артикула продавца (его
+  // задаёт продавец), баркодов (новые — POST /content/v2/barcodes) и склейки: в одной склейке WB не принимает карточки
+  // с одинаковыми характеристиками. Цена размеров — из метода цен (GET /api/v2/list/goods/filter?filterNmID=), скидку WB
+  // при создании не принимает. Создаёт карточку WB асинхронно, до 30 минут; ошибки создания приходят в
+  // POST /content/v2/cards/error/list. Поэтому дальше сервер раз в 15 с ищет копию по её баркоду и, когда она появилась,
+  // загружает фото по ссылкам оригинала (POST /content/v3/media/save), видео файлом (POST /content/v3/media/file) и
+  // ставит ярлыки (POST /content/v2/tag/nomenclature/link). Видео WB отдаёт потоком HLS (m3u8), а принимает только MP4
+  // или MOV — его перепаковывает ffmpeg (без ffmpeg видео не копируется, остальное — да).
+  // Задания хранятся в памяти сервера: после перезапуска уже созданные копии останутся в WB, но без медиа и ярлыков.
+  const duplicateJobs = new Map();
+  const DUPLICATE_MAX = 100, DUPLICATE_WAIT = 40 * 60_000, VIDEO_MAX_BYTES = 50 * 1024 * 1024;
+  const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+
+  // Карточка для /content/v2/cards/upload из карточки списка WB: только поля схемы запроса.
+  function duplicateVariant(card, vendorCode, barcodes, prices) {
+    const sizes = (card.sizes?.length ? card.sizes : [{}]).map((size, index) => {
+      const techSize = String(size.techSize || ''), wbSize = String(size.wbSize || ''), sized = (techSize && techSize !== '0') || wbSize;
+      const price = prices.get(techSize) ?? prices.get('*');
+      return { ...(sized ? { techSize, wbSize } : {}), ...(price ? { price } : {}), skus: [barcodes[index]] };
+    });
+    const docs = card.documents || {};
+    const documents = {
+      items: (docs.items || []).filter(item => DOCUMENT_TYPES.includes(Number(item.type)) && item.number).map(item => {
+        const result = { type: Number(item.type), number: String(item.number) };
+        for (const key of ['productNumber', 'tradeName', 'applicant', 'startDate', 'endDate']) if (item[key]) result[key] = item[key];
+        result.isEndless = Boolean(item.isEndless); if (result.isEndless) delete result.endDate;
+        return result;
+      }),
+      excludeDocuments: Boolean(docs.excludeDocuments)
+    };
+    const characteristics = (card.characteristics || []).filter(item => Number.isInteger(Number(item?.id)) && item.value != null && item.value !== '' && !(Array.isArray(item.value) && !item.value.length))
+      .map(item => ({ id: Number(item.id), value: item.value }));
+    const dims = card.dimensions || {};
+    const variant = { vendorCode, title: card.title || '', description: card.description || '', brand: card.brand || '', kizMarked: Boolean(card.kizMarked),
+      dimensions: { length: Number(dims.length) || 0, width: Number(dims.width) || 0, height: Number(dims.height) || 0, weightBrutto: Number(dims.weightBrutto) || 0 }, characteristics, sizes, documents };
+    if (card.wholesale?.enabled) variant.wholesale = { enabled: true, ...(card.wholesale.quantum ? { quantum: card.wholesale.quantum } : {}) };
+    return variant;
+  }
+  // Цены размеров оригинала: techSizeName → цена; '*' — цена первого размера (для размеров, которых нет в ответе).
+  async function originalPrices(token, nmId) {
+    const response = await wbRequest(token, `https://discounts-prices-api.wildberries.ru/api/v2/list/goods/filter?limit=1&offset=0&filterNmID=${nmId}`);
+    const prices = new Map();
+    for (const size of response?.data?.listGoods?.[0]?.sizes || []) {
+      const price = Math.round(Number(size.price));
+      if (!(price > 0)) continue;
+      if (!prices.has('*')) prices.set('*', price);
+      prices.set(String(size.techSizeName ?? ''), price);
+    }
+    return prices;
+  }
+  // Видео оригинала (HLS) → MP4 до 50 Мб: сначала в исходном качестве, если не влезает — 1080p, 720p, 480p.
+  async function videoAsMp4(url) {
+    const { spawn } = require('child_process'), os = require('os'), fsp = require('fs/promises'), path = require('path');
+    const qualities = [null, '1080p', '720p', '480p'], tried = new Set();
+    let failure = null;
+    for (const quality of qualities) {
+      const source = quality ? url.replace(/\/hls\/\d+p\//, `/hls/${quality}/`) : url;
+      if (tried.has(source)) continue; tried.add(source);
+      const file = path.join(os.tmpdir(), `wb-video-${process.pid}-${Date.now()}.mp4`);
+      try {
+        await new Promise((resolve, reject) => {
+          const ffmpeg = spawn('ffmpeg', ['-y', '-loglevel', 'error', '-i', source, '-c', 'copy', '-bsf:a', 'aac_adtstoasc', '-movflags', '+faststart', file], { windowsHide: true });
+          let errors = ''; ffmpeg.stderr.on('data', chunk => { errors += chunk; });
+          const timer = setTimeout(() => ffmpeg.kill(), 180_000);
+          ffmpeg.on('error', error => { clearTimeout(timer); reject(error.code === 'ENOENT' ? new Error('на компьютере нет ffmpeg') : error); });
+          ffmpeg.on('close', code => { clearTimeout(timer); code === 0 ? resolve() : reject(new Error(`ffmpeg: ${errors.trim().split('\n').pop() || `код ${code}`}`)); });
+        });
+        const buffer = await fsp.readFile(file);
+        if (buffer.length && buffer.length <= VIDEO_MAX_BYTES) return buffer;
+        failure = new Error('видео больше 50 Мб');
+      } catch (error) { if (/нет ffmpeg/.test(error.message)) throw error; failure = error; }
+      finally { fsp.unlink(file).catch(() => {}); }
+    }
+    throw failure || new Error('видео не удалось перепаковать');
+  }
+  // Новая карточка по её баркоду: поиск по баркоду в списке карточек надёжен (см. freshCard).
+  async function cardByBarcode(token, barcode) {
+    const response = await content(token, '/content/v2/get/cards/list', { method: 'POST', body: { settings: { cursor: { limit: 100 }, filter: { textSearch: String(barcode), withPhoto: -1 } } } });
+    return (response?.cards || []).find(card => (card.sizes || []).some(size => (size.skus || []).includes(String(barcode)))) || null;
+  }
+  // Медиа и ярлыки — на найденную копию. Ошибки здесь не отменяют копию: они пишутся в предупреждения.
+  async function finishDuplicate(token, item) {
+    const source = item.source, nmId = item.newNmId;
+    const photos = (source.photos || []).map(photo => photo.big || photo.hq || photo.c516x688).filter(Boolean);
+    if (photos.length) {
+      try { await content(token, '/content/v3/media/save', { method: 'POST', body: { nmId, data: photos } }); }
+      catch (error) { item.warnings.push(`Фото не скопированы: ${error.message}`); }
+    }
+    if (source.video) {
+      item.status = 'video';
+      try { await sleep(3000); await sendMediaFile(token, nmId, 1, await videoAsMp4(source.video), 'video/mp4', 'video.mp4'); }
+      catch (error) { item.warnings.push(`Видео не скопировано: ${error.message}`); }
+    }
+    const tagIds = (source.tags || []).map(tag => Number(tag.id)).filter(Number.isInteger);
+    if (tagIds.length) {
+      try { await content(token, '/content/v2/tag/nomenclature/link', { method: 'POST', body: { nmID: nmId, tagsIDs: tagIds } }); }
+      catch (error) { item.warnings.push(`Ярлыки не поставлены: ${error.message}`); }
+    }
+  }
+  async function runDuplicate(job) {
+    const id = job.cabinet, demoMode = isDemo(id), token = demoMode ? null : tokenFor(id);
+    const fail = (item, text) => { item.status = 'error'; item.error = text; };
+    // 1. Оригиналы (свежие из WB) и их цены.
+    for (const item of job.items) {
+      item.status = 'preparing';
+      try {
+        const { card, trashed } = await freshCard(id, item.nmId);
+        if (trashed) throw new Error('оригинал в корзине');
+        item.source = card;
+        item.prices = new Map();
+        if (!demoMode) {
+          try { item.prices = await originalPrices(token, item.nmId); if (!item.prices.size) item.warnings.push('У оригинала нет цены — задайте цену копии сами'); }
+          catch (error) { item.warnings.push(`Цена не скопирована: ${error.message}`); }
+          await sleep(650);
+        }
+        item.status = 'queued';
+      } catch (error) { fail(item, error.message); }
+    }
+    const ready = job.items.filter(item => item.source);
+    if (demoMode) {
+      demoCards();
+      for (const item of ready) {
+        const copy = JSON.parse(JSON.stringify(item.source)), nmID = Math.max(...demo.cards.map(card => card.nmID)) + 1;
+        Object.assign(copy, { nmID, imtID: 9300000 + nmID % 100000, nmUUID: `demo-copy-${nmID}`, vendorCode: item.vendorCode, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
+          sizes: (copy.sizes || []).map((size, index) => ({ ...size, chrtID: nmID * 10 + index, skus: [`20${String(nmID).slice(-7)}${index}`] })) });
+        demo.cards.push(copy); item.newNmId = nmID; item.barcodes = copy.sizes.flatMap(size => size.skus); item.status = 'done';
+      }
+      job.finishedAt = new Date().toISOString(); return;
+    }
+    // 2. Баркоды для всех размеров всех копий одним запросом.
+    let barcodes = [];
+    const need = ready.reduce((sum, item) => sum + Math.max(1, (item.source.sizes || []).length), 0);
+    if (need) {
+      try { barcodes = (await content(token, '/content/v2/barcodes', { method: 'POST', body: { count: need } }))?.data || []; }
+      catch (error) { ready.forEach(item => fail(item, `Не удалось получить баркоды: ${error.message}`)); }
+      if (barcodes.length < need) ready.forEach(item => item.status !== 'error' && fail(item, 'WB выдал меньше баркодов, чем нужно'));
+    }
+    // 3. Создание — по одной карточке, раз в 6,5 с.
+    let sent = 0;
+    for (const item of ready) {
+      if (item.status === 'error') continue;
+      const count = Math.max(1, (item.source.sizes || []).length);
+      item.barcodes = barcodes.splice(0, count);
+      if (sent++) await sleep(6500);
+      item.status = 'creating';
+      try {
+        await content(token, '/content/v2/cards/upload', { method: 'POST', body: [{ subjectID: item.source.subjectID, variants: [duplicateVariant(item.source, item.vendorCode, item.barcodes, item.prices)] }] });
+        item.status = 'waiting'; item.sentAt = Date.now();
+      } catch (error) { fail(item, error.message); }
+    }
+    // 4. Ждём, пока WB создаст карточки: ищем по баркоду, проверяем список несозданных карточек.
+    const started = Date.now();
+    while (job.items.some(item => item.status === 'waiting') && Date.now() - started < DUPLICATE_WAIT) {
+      await sleep(15_000);
+      analyticsCache.delete(`content-errors:${id}`);
+      const errors = (await errorsList(id).catch(() => ({ items: [] }))).items || [];
+      for (const item of job.items.filter(entry => entry.status === 'waiting')) {
+        const failed = errors.find(entry => entry.vendorCode === item.vendorCode && (!entry.updatedAt || Date.parse(entry.updatedAt) >= item.sentAt - 60_000));
+        if (failed) { fail(item, `WB не создал карточку: ${failed.errors.join('; ') || 'причина не указана'}`); continue; }
+        let found = null;
+        try { found = await cardByBarcode(token, item.barcodes[0]); } catch {}
+        await sleep(700);
+        if (!found) continue;
+        item.newNmId = found.nmID; item.status = 'media';
+        await finishDuplicate(token, item);
+        item.status = 'done';
+        forgetCards(id);
+      }
+    }
+    job.items.filter(item => item.status === 'waiting').forEach(item => fail(item, 'WB не создал карточку за 40 минут — проверьте «Ошибки сохранения» и список карточек'));
+    job.finishedAt = new Date().toISOString();
+    forgetCards(id);
+  }
+  const jobView = job => ({ id: job.id, cabinet: job.cabinet, startedAt: job.startedAt, finishedAt: job.finishedAt || null,
+    items: job.items.map(item => ({ nmId: item.nmId, vendorCode: item.vendorCode, sourceVendorCode: item.sourceVendorCode, title: item.title, status: item.status, error: item.error || '', warnings: item.warnings, newNmId: item.newNmId || null, barcodes: item.barcodes || [] })) });
+  async function startDuplicate(body) {
+    needConfirm(body);
+    const id = String(body.cabinet || 'demo'), list = Array.isArray(body.items) ? body.items : [];
+    if (!list.length) throw apiError(400, 'Не выбраны карточки');
+    if (list.length > DUPLICATE_MAX) throw apiError(400, `За раз можно дублировать не больше ${DUPLICATE_MAX} карточек`);
+    if ([...duplicateJobs.values()].some(job => job.cabinet === id && !job.finishedAt && job.items.some(item => ['preparing', 'queued', 'creating'].includes(item.status)))) throw apiError(409, 'Копии этого кабинета ещё создаются — дождитесь окончания');
+    const cards = await allCards(id).catch(() => []), byNm = new Map(cards.map(card => [card.nmID, card])), used = new Set(cards.map(card => card.vendorCode)), mine = new Set();
+    const items = list.map(entry => {
+      const nmId = Number(entry.nmId), vendorCode = String(entry.vendorCode ?? '').trim();
+      if (!Number.isInteger(nmId) || nmId <= 0) throw apiError(400, 'Некорректный артикул WB');
+      if (!vendorCode) throw apiError(400, 'Укажите артикул продавца для каждой копии');
+      if (vendorCode.length > 72) throw apiError(400, `Артикул продавца длиннее 72 символов: ${vendorCode}`);
+      if (used.has(vendorCode)) throw apiError(400, `Артикул продавца уже есть в кабинете: ${vendorCode}`);
+      if (mine.has(vendorCode)) throw apiError(400, `Артикул продавца повторяется: ${vendorCode}`);
+      mine.add(vendorCode);
+      const card = byNm.get(nmId);
+      return { nmId, vendorCode, sourceVendorCode: card?.vendorCode || '', title: card?.title || '', status: 'queued', warnings: [] };
+    });
+    const job = { id: `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`, cabinet: id, startedAt: new Date().toISOString(), items };
+    duplicateJobs.set(job.id, job);
+    runDuplicate(job).catch(error => { job.items.filter(item => item.status !== 'done').forEach(item => { item.status = 'error'; item.error = item.error || error.message; }); job.finishedAt = new Date().toISOString(); });
+    return jobView(job);
+  }
+  // Ход задания; без job — последнее задание кабинета (страницу могли перезагрузить).
+  function duplicateStatus(id, jobId) {
+    const job = jobId ? duplicateJobs.get(jobId) : [...duplicateJobs.values()].filter(item => item.cabinet === id).pop();
+    if (!job || job.cabinet !== id) return { job: null };
+    return { job: jobView(job) };
+  }
+
   // Маршруты раздела. Возвращает true, если запрос обработан.
   async function handle(req, res, url) {
     const cabinet = () => url.searchParams.get('cabinet') || 'demo';
     if (req.method === 'GET' && url.pathname === '/api/cards') { send(res, 200, await cardsList(cabinet(), url.searchParams.get('force') === '1')); return true; }
     if (req.method === 'GET' && url.pathname === '/api/cards/trash') { send(res, 200, await trashList(cabinet())); return true; }
     if (req.method === 'GET' && url.pathname === '/api/cards/errors') { send(res, 200, await errorsList(cabinet())); return true; }
+    if (req.method === 'GET' && url.pathname === '/api/cards/duplicate') { send(res, 200, duplicateStatus(cabinet(), url.searchParams.get('job') || '')); return true; }
     if (req.method === 'GET' && url.pathname === '/api/card') { send(res, 200, await cardDetail(cabinet(), url.searchParams.get('nmId'))); return true; }
     if (req.method === 'POST' && url.pathname === '/api/card/media/file') { send(res, 200, await uploadMedia(req, url)); return true; }
     const routes = {
       '/api/card/update': updateCard, '/api/card/media': saveMedia, '/api/card/tags': setCardTags, '/api/cards/tag': changeTag,
-      '/api/cards/trash': body => moveToTrash(body, false), '/api/cards/recover': body => moveToTrash(body, true), '/api/cards/move': moveCards, '/api/cards/barcodes': barcodes
+      '/api/cards/trash': body => moveToTrash(body, false), '/api/cards/recover': body => moveToTrash(body, true), '/api/cards/move': moveCards, '/api/cards/barcodes': barcodes,
+      '/api/cards/duplicate': startDuplicate
     };
     if (req.method === 'POST' && routes[url.pathname]) { send(res, 200, await routes[url.pathname](await readJson(req))); return true; }
     return false;
   }
-  return { handle, updatePayload, contentErrorText };
+  return { handle, updatePayload, contentErrorText, duplicateVariant };
 };
