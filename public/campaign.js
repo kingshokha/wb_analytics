@@ -78,7 +78,14 @@
     [layout[index],layout[target]]=[layout[target],layout[index]];saveColumnLayout(table,layout);
   });
   function photoCell(row){const photo=row.photo?`<img class="product-photo" src="${esc(row.photo)}" alt="" loading="lazy">`:'<i class="product-photo-stub"></i>';return `<div class="product-cell" title="${esc(row.name||`Товар ${row.nmId}`)}">${photo}<span><b>${esc(row.name||`Товар ${row.nmId}`)}</b>${row.vendorCode?`<small>${esc(row.vendorCode)}</small>`:''}</span></div>`}
-  function bindPhotoPreview(image){image.addEventListener('mouseenter',()=>{const rect=image.getBoundingClientRect(),preview=document.createElement('img');preview.className='product-photo-preview';preview.src=image.currentSrc||image.src;preview.alt='';document.body.append(preview);const width=preview.offsetWidth,height=preview.offsetHeight;preview.style.left=`${Math.min(Math.max(8,rect.right+10),window.innerWidth-width-8)}px`;preview.style.top=`${Math.min(Math.max(8,rect.top+(rect.height-height)/2),window.innerHeight-height-8)}px`;image._preview=preview});image.addEventListener('mouseleave',()=>{image._preview?.remove();image._preview=null})}
+  // Увеличенное фото — одно окно на страницу, как в app.js: прячется и тогда, когда миниатюру убрали при перерисовке таблицы
+  // (автообновление раз в 2 минуты) — раньше окно в таком случае зависало.
+  const photoPreview={el:null,owner:null};
+  function hidePhotoPreview(){photoPreview.el?.remove();photoPreview.el=null;photoPreview.owner=null}
+  function bindPhotoPreview(image){image.addEventListener('mouseenter',()=>{hidePhotoPreview();const rect=image.getBoundingClientRect(),preview=document.createElement('img');preview.className='product-photo-preview';preview.src=image.currentSrc||image.src;preview.alt='';document.body.append(preview);const width=preview.offsetWidth,height=preview.offsetHeight;preview.style.left=`${Math.min(Math.max(8,rect.right+10),window.innerWidth-width-8)}px`;preview.style.top=`${Math.min(Math.max(8,rect.top+(rect.height-height)/2),window.innerHeight-height-8)}px`;photoPreview.el=preview;photoPreview.owner=image});image.addEventListener('mouseleave',()=>{if(photoPreview.owner===image)hidePhotoPreview()})}
+  document.addEventListener('mousemove',event=>{if(photoPreview.owner&&(event.target!==photoPreview.owner||!photoPreview.owner.isConnected))hidePhotoPreview()},{passive:true});
+  ['scroll','wheel','pointerdown'].forEach(type=>document.addEventListener(type,hidePhotoPreview,{capture:true,passive:true}));
+  window.addEventListener('blur',hidePhotoPreview);
   function bindPhotoPreviews(selector){document.querySelectorAll(`${selector} .product-photo`).forEach(image=>{if(image.dataset.previewBound)return;image.dataset.previewBound='1';bindPhotoPreview(image)})}
   // Дата создания берётся из строки WB (время московское), чтобы часовой пояс браузера не сдвигал день.
   const createdDate=value=>{const match=String(value||'').match(/^(\d{4})-(\d{2})-(\d{2})/);return match?`${match[3]}.${match[2]}.${match[1]}`:''};
