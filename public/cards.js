@@ -8,7 +8,7 @@ const CARD_PROBLEMS=[['','Все карточки'],['nophoto','Без фото'
 const CARD_TAG_COLORS=[['D1CFD7','серый'],['FEE0E0','красный'],['ECDAFF','фиолетовый'],['E4EAFF','синий'],['DEF1DD','зелёный'],['FFECC7','жёлтый']];
 // Цвет полосы у карточек одной склейки: соседние группы — разными цветами.
 const CARD_GLUE_COLORS=['#9d77ff','#318f68','#f0a04b','#277a70','#e76464','#5a7d9a'];
-const cardsView={data:null,key:'',error:'',tab:'cards',trash:null,trashKey:'',errors:null,errorsKey:'',search:'',subject:'',brand:'',tag:'',problem:'',doc:'',glue:'',sort:{key:'updatedAt',dir:'desc'},page:1,pageSize:pageSizeFor('cards'),request:0,poll:0,selected:new Set(),lastSelected:null,shiftSelect:false,glueMode:'title',glueFill:true};
+const cardsView={data:null,key:'',error:'',tab:'cards',trash:null,trashKey:'',errors:null,errorsKey:'',search:'',subject:'',brand:'',color:'',tag:'',problem:'',doc:'',glue:'',extras:{key:'',ratings:null,prices:null,ratingsError:'',pricesError:'',poll:0},sort:{key:'updatedAt',dir:'desc'},page:1,pageSize:pageSizeFor('cards'),request:0,poll:0,selected:new Set(),lastSelected:null,shiftSelect:false,glueMode:'title',glueFill:true};
 // Склейка по 30: в группе WB не больше 30 карточек (метод moveNm).
 const CARD_GLUE_LIMIT=30;
 
@@ -39,18 +39,61 @@ async function loadCards(force=false,silent=false){
   const key=state.cabinet,request=++cardsView.request;
   clearTimeout(cardsView.poll);
   if(!force&&!silent&&cardsView.key===key&&cardsView.data){renderCards();return}
-  if(cardsView.key!==key){Object.assign(cardsView,{data:null,trash:null,errors:null,subject:'',brand:'',tag:'',doc:'',glue:'',page:1});cardsView.selected.clear()}
+  if(cardsView.key!==key){Object.assign(cardsView,{data:null,trash:null,errors:null,subject:'',brand:'',color:'',tag:'',doc:'',glue:'',page:1});cardsView.selected.clear()}
   cardsView.key=key;cardsView.error='';if(!silent)renderCards();
   const btn=$('#refresh');if(!silent)btn.classList.add('loading');
   try{
     const data=await api(`/api/cards?${new URLSearchParams({cabinet:key,...(force?{force:'1'}:{})})}`);
     if(request!==cardsView.request)return;
-    cardsView.data=data;if(!data.loading)setNotices('cards','load',data.warnings);
+    cardsView.data=data;applyCardExtras();if(!data.loading){setNotices('cards','load',data.warnings);loadCardExtras(key,force)}
     if(force){cardsView.trash=null;cardsView.errors=null}
     if(!data.loading)loadCardErrors(false);
     if(data.refreshing)cardsView.poll=setTimeout(()=>{if(state.activePage==='cards'&&state.cabinet===key)loadCards(false,true)},data.loading?3000:10000);
   }catch(e){if(request!==cardsView.request)return;if(!silent){cardsView.error=e.message;addNotice('cards',`Карточки: ${e.message}`)}}
   finally{if(request===cardsView.request){btn.classList.remove('loading');renderCards()}}
+}
+// Оценка и цена — не из метода карточек: оценка — из «Оценок товаров» (/api/ratings, рейтинг по отзывам; WB отдаёт
+// 1000 товаров за запрос и не чаще 3 запросов в минуту, поэтому у большого кабинета — несколько минут, потом кэш 30 мин),
+// цена со скидкой — из «Цен и скидок» (/api/prices; у товара с разными ценами размеров — цена первого размера, как там).
+// Грузятся в фоне после списка карточек и подставляются по артикулу WB; ответ для другого кабинета отбрасывается.
+function applyCardExtras(){
+  const x=cardsView.extras,cards=cardsView.data?.cards;
+  if(!cards||x.key!==cardsView.key)return;
+  cards.forEach(card=>{
+    if(x.ratings){const value=x.ratings.get(card.nmID);card.rating=value>0?value:null}
+    if(x.prices){const value=x.prices.get(card.nmID);card.price=value>0?value:null}
+  });
+}
+function loadCardExtras(key,force=false){
+  const x=cardsView.extras;
+  if(x.key!==key){clearTimeout(x.poll);Object.assign(x,{key,ratings:null,prices:null,ratingsError:'',pricesError:''})}
+  const done=()=>{if(cardsView.key!==key||x.key!==key)return false;applyCardExtras();if(state.activePage==='cards')renderCards();return true};
+  if(force||(!x.ratings&&!x.ratingsLoading)){
+    x.ratingsLoading=true;
+    api(`/api/ratings?cabinet=${encodeURIComponent(key)}`)
+      .then(data=>{if(x.key!==key)return;x.ratings=new Map((data.items||[]).map(item=>[Number(item.nmId),item.feedbackRating]));x.ratingsError=''},error=>{if(x.key===key)x.ratingsError=error.message})
+      .finally(()=>{if(x.key===key)x.ratingsLoading=false;done()});
+  }
+  if(force||(!x.prices&&!x.pricesLoading))loadCardPrices(key,force);
+}
+// Цены сервер отдаёт по частям (partial): пока список не весь, переспрашиваем каждые 3 с. Если «Цены и скидки» уже
+// загружены для этого кабинета — берём оттуда.
+function loadCardPrices(key,force){
+  const x=cardsView.extras,ready=!force&&state.pricesKey===key&&state.prices&&!state.prices.partial;
+  const take=data=>{x.prices=new Map((data.rows||[]).map(row=>[Number(row.nmId),row.discountedPrice]));x.pricesError=''};
+  if(ready){take(state.prices);applyCardExtras();return}
+  x.pricesLoading=true;
+  api(`/api/prices?${new URLSearchParams({cabinet:key,...(force?{force:'1'}:{})})}`)
+    .then(data=>{if(x.key!==key)return;take(data);x.pricesLoading=Boolean(data.partial);if(data.partial)x.poll=setTimeout(()=>{if(x.key===key)loadCardPrices(key,false)},3000)},
+      error=>{if(x.key===key){x.pricesError=error.message;x.pricesLoading=false}})
+    .finally(()=>{if(x.key!==key||cardsView.key!==key)return;applyCardExtras();if(state.activePage==='cards')renderCards()});
+}
+// Ячейка оценки или цены: пока грузится — «…», ошибка — «—» с причиной в подсказке.
+function cardExtraCell(card,kind){
+  const x=cardsView.extras,map=kind==='rating'?x.ratings:x.prices,error=kind==='rating'?x.ratingsError:x.pricesError,value=card[kind];
+  if(!map)return error?`<td class="muted" title="${escapeHtml(error)}">—</td>`:'<td class="muted" title="Загружается…">…</td>';
+  if(value==null)return `<td class="muted"${kind==='rating'?' title="Нет отзывов или товара нет в отчёте WB «Оценки товаров»"':' title="Нет цены в «Ценах и скидках»"'}>—</td>`;
+  return kind==='rating'?`<td><strong class="card-rating">★ ${value.toLocaleString('ru-RU',{minimumFractionDigits:2,maximumFractionDigits:2})}</strong></td>`:`<td><strong class="card-price">${fmtRub(value)}</strong></td>`;
 }
 async function loadCardTrash(force=false){
   if(!force&&cardsView.trashKey===state.cabinet&&cardsView.trash)return renderCards();
@@ -74,13 +117,16 @@ function cardProblem(card,key){
 }
 // Строка поиска по карточке собирается один раз на загрузку — при тысячах карточек ввод в поиск не тормозит.
 const cardSearchText=new WeakMap();
+// Фильтр «Цвет»: карточка подходит, если среди её цветов есть выбранный; «none» — карточки без цвета.
+const cardColorMatch=(card,color)=>!color||(color==='none'?!(card.colors||[]).length:(card.colors||[]).includes(color));
 const cardHaystack=card=>{let text=cardSearchText.get(card);if(text==null){text=[card.title,card.vendorCode,card.nmID,card.brand,card.subjectName,...card.sizes.flatMap(size=>size.skus)].join(' ').toLowerCase();cardSearchText.set(card,text)}return text};
 function cardRows(){
   const v=cardsView,term=v.search.trim().toLowerCase();
-  const rows=(v.data?.cards||[]).filter(card=>(!v.subject||card.subjectName===v.subject)&&(!v.brand||card.brand===v.brand)&&(!v.tag||card.tags.some(tag=>String(tag.id)===v.tag))&&cardProblem(card,v.problem)&&(!v.doc||cardDocKeys(card).includes(v.doc))
+  const rows=(v.data?.cards||[]).filter(card=>(!v.subject||card.subjectName===v.subject)&&(!v.brand||card.brand===v.brand)&&cardColorMatch(card,v.color)&&(!v.tag||card.tags.some(tag=>String(tag.id)===v.tag))&&cardProblem(card,v.problem)&&(!v.doc||cardDocKeys(card).includes(v.doc))
     &&(!v.glue||(v.glue==='glued')===(card.groupSize>1))&&(!term||cardHaystack(card).includes(term)));
   const dir=v.sort.dir==='asc'?1:-1,key=v.sort.key;
-  rows.sort((a,b)=>{const av=a[key]??'',bv=b[key]??'';return dir*(typeof av==='number'&&typeof bv==='number'?av-bv:String(av).localeCompare(String(bv),'ru',{numeric:true}))});
+  // Пустые значения (нет оценки, нет цены) — всегда в конце, при любом направлении.
+  rows.sort((a,b)=>{const av=a[key]??'',bv=b[key]??'';if(av===''||bv==='')return (av==='')-(bv==='');return dir*(typeof av==='number'&&typeof bv==='number'?av-bv:String(av).localeCompare(String(bv),'ru',{numeric:true}))});
   if(v.glue!=='glued')return rows;
   // «Со склейкой»: карточки одной группы подряд. Группы — в порядке сортировки их первой карточки, внутри — тоже по сортировке.
   const groups=new Map();rows.forEach(card=>{if(!groups.has(card.imtID))groups.set(card.imtID,[]);groups.get(card.imtID).push(card)});
@@ -282,6 +328,11 @@ function renderCards(){
   const uniq=list=>[...new Set(list.filter(Boolean))].sort((a,b)=>a.localeCompare(b,'ru')).map(value=>[value,value]);
   options('#cardSubjectFilter','Все предметы',uniq(cards.map(card=>card.subjectName)),v.subject);
   options('#cardBrandFilter','Все бренды',uniq(cards.map(card=>card.brand)),v.brand);
+  // Цвета — со счётчиками; «Без цвета» — последним, если такие карточки есть.
+  const colorCounts=new Map();let noColor=0;
+  cards.forEach(card=>{const list=card.colors||[];if(!list.length)noColor++;list.forEach(color=>colorCounts.set(color,(colorCounts.get(color)||0)+1))});
+  if(v.color&&v.color!=='none'&&!colorCounts.has(v.color))colorCounts.set(v.color,0);
+  options('#cardColorFilter','Все цвета',[...[...colorCounts].sort((a,b)=>a[0].localeCompare(b[0],'ru')).map(([color,count])=>[color,`${color} · ${fmtNum(count)}`]),...(noColor||v.color==='none'?[['none',`Без цвета · ${fmtNum(noColor)}`]]:[])],v.color);
   options('#cardTagFilter','Все ярлыки',(data?.tags||[]).map(tag=>[String(tag.id),tag.name]),v.tag);
   options('#cardProblemFilter','Все карточки',CARD_PROBLEMS.slice(1),v.problem);
   options('#cardDocFilter','Документы: все',cardDocOptions(cards,v.doc),v.doc);
@@ -292,7 +343,7 @@ function renderCards(){
   v.page=Math.min(Math.max(1,v.page),Math.max(1,pageCount));
   const fresh=data.loading?` · загружаем из WB: пришло ${fmtNum(data.loaded||cards.length)}…`:`${data.demo?' · демо-данные':''} · обновлено ${cardDate(data.fetchedAt)}${data.refreshing?' · обновляется из WB…':''}`;
   $('#cardsCount').textContent=`${fmtNum(rows.length)} из ${fmtNum(cards.length)}${fresh}`;
-  const columns=[['title','Товар',360],['subjectName','Предмет',150],['brand','Бренд',120],['sizes','Размеры',140],['photos','Медиа',110],['tags','Ярлыки',150],['verdict','Проверка',170],['updatedAt','Изменена',120]];
+  const columns=[['title','Товар',360],['subjectName','Предмет',150],['brand','Бренд',120],['rating','Оценка',90],['price','Цена',110],['sizes','Размеры',140],['photos','Медиа',110],['tags','Ярлыки',150],['verdict','Проверка',170],['updatedAt','Изменена',120]];
   // Заголовки создаются один раз — так сохраняются ширины столбцов (column-widths.js); при сортировке меняется только стрелка.
   const head=$('#cardsHead');
   if(!head.children.length){head.innerHTML=columns.map(([key,label,width])=>`<th data-card-sort="${key}" data-col-key="${key}" data-col-width="${width}">${key==='title'?'<input type="checkbox" class="card-select" id="cardSelectAll" aria-label="Выбрать все карточки по фильтрам">':''}${label} <span class="rating-sort-arrow"></span></th>`).join('')}
@@ -321,7 +372,7 @@ function renderCards(){
       head=`<tr class="card-glue-head" style="--glue:${CARD_GLUE_COLORS[groupIndex%CARD_GLUE_COLORS.length]}"><td colspan="${columns.length}">Склейка · ${fmtNum(card.groupSize)} ${cardWord(card.groupSize)}${continued?' (продолжение)':''}<small>${escapeHtml(card.subjectName||'')} · imtID ${escapeHtml(card.imtID)}${count<card.groupSize?` · по фильтрам видно ${fmtNum(count)}`:''}</small></td></tr>`;
     }
     return `${head}<tr${glued?` class="card-glued" style="--glue:${CARD_GLUE_COLORS[groupIndex%CARD_GLUE_COLORS.length]}"`:''}><td><div class="card-cell"><input type="checkbox" class="card-select" data-card-select="${escapeHtml(card.nmID)}"${v.selected.has(card.nmID)?' checked':''} aria-label="Выбрать ${escapeHtml(card.vendorCode||card.nmID)}">${card.photo?`<img class="stock-product-photo" src="${escapeHtml(card.photo)}" alt="" loading="lazy">`:'<span class="card-nophoto" title="Нет фото">нет фото</span>'}<span><a class="card-title-link" href="${escapeHtml(cardLink(card.nmID))}" target="_blank" rel="noopener noreferrer" title="Открыть карточку: ${escapeHtml(card.title)}">${escapeHtml(card.title||'Без названия')}</a><small>${escapeHtml(card.vendorCode||'—')} · <button type="button" class="copy-article" data-copy="${escapeHtml(card.nmID)}" title="Скопировать артикул WB">${escapeHtml(card.nmID)}</button>${card.groupSize>1&&!glued?` · <span class="card-glue-chip" title="Объединена с другими карточками">склейка · ${card.groupSize}</span>`:''}</small></span></div></td>`+
-      `<td>${escapeHtml(card.subjectName||'—')}</td><td>${escapeHtml(card.brand||'—')}</td>`+
+      `<td>${escapeHtml(card.subjectName||'—')}</td><td>${escapeHtml(card.brand||'—')}</td>${cardExtraCell(card,'rating')}${cardExtraCell(card,'price')}`+
       `<td>${sizes.length?escapeHtml(sizes.slice(0,5).join(', '))+(sizes.length>5?` +${sizes.length-5}`:''):'без размера'}<small>${fmtNum(barcodes.length)} ${barcodes.length===1?'баркод':barcodes.length<5&&barcodes.length?'баркода':'баркодов'}</small></td>`+
       `<td class="${card.photos<3?'card-warn':''}">${fmtNum(card.photos)} фото${card.video?' · видео':''}</td>`+
       `<td>${card.tags.map(cardTagChip).join(' ')||'<span class="muted">—</span>'}</td>`+
@@ -419,7 +470,7 @@ document.addEventListener('submit',event=>{
 document.addEventListener('input',event=>{if(event.target.id!=='cardDupSuffix')return;const suffix=event.target.value.trim();if(suffix)$$('.card-dup-code[data-dup-base]').forEach(input=>{input.value=`${input.dataset.dupBase}${suffix}`.slice(0,72)})});
 document.addEventListener('input',event=>{if(event.target.id!=='cardSearch')return;cardsView.search=event.target.value;cardsView.page=1;if(cardsView.data)renderCards()});
 document.addEventListener('change',event=>{
-  const map={cardSubjectFilter:'subject',cardBrandFilter:'brand',cardTagFilter:'tag',cardProblemFilter:'problem',cardDocFilter:'doc',cardGlueFilter:'glue'},key=map[event.target.id];
+  const map={cardSubjectFilter:'subject',cardBrandFilter:'brand',cardColorFilter:'color',cardTagFilter:'tag',cardProblemFilter:'problem',cardDocFilter:'doc',cardGlueFilter:'glue'},key=map[event.target.id];
   if(key){cardsView[key]=event.target.value;cardsView.page=1;if(key==='subject'){cardsView.selected.clear();cardsView.lastSelected=null}renderCards();return}
   const one=event.target.closest('[data-card-select]');
   if(one){

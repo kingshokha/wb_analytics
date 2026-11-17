@@ -113,6 +113,13 @@ module.exports = function createContentCards({ wbRequest, tokenFor, cabinets, ca
     return [...new Set(checks.filter(check => check?.status === 2 && check.reason).map(check => check.reason))];
   }
   const missingDocsOf = card => [...new Set((card.documents?.issues || []).filter(issue => issue.code === 'document_missing').flatMap(issue => issue.documentTypes || []))];
+  // Цвета — характеристика «Цвет» (id 14177449); значение — массив строк, у части карточек — одна строка.
+  const COLOR_CHARC = 14177449;
+  function colorsOf(card) {
+    const charc = (card.characteristics || []).find(item => Number(item?.id) === COLOR_CHARC || item?.name === 'Цвет');
+    const values = Array.isArray(charc?.value) ? charc.value : charc?.value != null ? [charc.value] : [];
+    return [...new Set(values.map(value => String(value).trim().toLowerCase()).filter(Boolean))];
+  }
   function listItem(card, groupSizes) {
     const photo = card.photos?.[0] || {};
     return {
@@ -121,7 +128,7 @@ module.exports = function createContentCards({ wbRequest, tokenFor, cabinets, ca
       sizes: (card.sizes || []).map(size => ({ techSize: size.techSize || '', wbSize: size.wbSize || '', skus: size.skus || [] })),
       tags: card.tags || [], needKiz: Boolean(card.needKiz), kizMarked: Boolean(card.kizMarked), dimensions: card.dimensions || null,
       documents: (card.documents?.items || []).length, verdict: verdictOf(card), docErrors: docErrorsOf(card), missingDocs: missingDocsOf(card), descriptionLength: String(card.description || '').length,
-      characteristics: (card.characteristics || []).length, groupSize: groupSizes.get(card.imtID) || 1, createdAt: card.createdAt || '', updatedAt: card.updatedAt || '', trashedAt: card.trashedAt || ''
+      characteristics: (card.characteristics || []).length, colors: colorsOf(card), groupSize: groupSizes.get(card.imtID) || 1, createdAt: card.createdAt || '', updatedAt: card.updatedAt || '', trashedAt: card.trashedAt || ''
     };
   }
   // refreshing — из WB как раз грузится свежий список: страница спросит ещё раз и покажет его. loading — самой первой
