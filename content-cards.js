@@ -11,12 +11,14 @@
 //                    POST /content/v2/tag/nomenclature/link (полный список ярлыков карточки)
 //   объединение      POST /content/v2/cards/moveNm (с targetIMT — объединить, без — разъединить)
 //   баркоды          POST /content/v2/barcodes — для новых размеров и копий
-//   копии карточек   POST /content/v2/cards/upload — «Дублировать» (см. раздел «Дублирование карточек» ниже)
-// Новые карточки с нуля сайт не создаёт — только копии существующих. Все изменения — только с confirm: true (подтверждение на странице).
+//   новые карточки   POST /content/v2/cards/upload — «Дублировать» (копии своих) и «Парсер WB» (по ссылкам на чужие товары витрины)
+//   ТН ВЭД предмета  GET /content/v2/directory/tnved?subjectID= — подсказка для карточек из парсера
+// Новые карточки с нуля (без образца) сайт не создаёт. Все изменения — только с confirm: true (подтверждение на странице).
 // В демо-кабинете данные хранятся в памяти сервера, изменения применяются к ним — так можно проверить сайт без WB.
 'use strict';
 
-const CONTENT = 'https://content-api.wildberries.ru';
+const donorParser = require('./wb-donor');
+const CONTENT ='https://content-api.wildberries.ru';
 const NAMED_DIRECTORIES = ['colors', 'kinds', 'countries', 'seasons', 'vat'];
 const TAG_COLORS = ['D1CFD7', 'FEE0E0', 'ECDAFF', 'E4EAFF', 'DEF1DD', 'FFECC7'];
 const DOCUMENT_TYPES = [1, 2, 3, 4, 5, 7, 8, 9];
@@ -528,30 +530,43 @@ module.exports = function createContentCards({ wbRequest, tokenFor, cabinets, ca
     const response = await content(token, '/content/v2/get/cards/list', { method: 'POST', body: { settings: { cursor: { limit: 100 }, filter: { textSearch: String(barcode), withPhoto: -1 } } } });
     return (response?.cards || []).find(card => (card.sizes || []).some(size => (size.skus || []).includes(String(barcode)))) || null;
   }
+  // Новая карточка появляется в списке карточек раньше, чем о ней узнаёт сервис медиа: на деле (кабинет 1, 17.11.2026)
+  // карточка нашлась по баркоду через 15 с после создания, а media/save сразу после этого ответил «Ошибка сохранения
+  // товара: товар не найден nm_id = …». Поэтому на «не найден» повторяем: раз в 30 с, до 10 минут.
+  const MEDIA_RETRY = 30_000, MEDIA_RETRY_FOR = 10 * 60_000;
+  async function whenCardKnown(action) {
+    const started = Date.now();
+    for (;;) {
+      try { return await action(); }
+      catch (error) { if (!/не найден|not found/i.test(error.message) || Date.now() - started >= MEDIA_RETRY_FOR) throw error; }
+      await sleep(MEDIA_RETRY);
+    }
+  }
   // Медиа и ярлыки — на найденную копию. Ошибки здесь не отменяют копию: они пишутся в предупреждения.
   async function finishDuplicate(token, item) {
     const source = item.source, nmId = item.newNmId;
     const photos = (source.photos || []).map(photo => photo.big || photo.hq || photo.c516x688).filter(Boolean);
     if (photos.length) {
-      try { await content(token, '/content/v3/media/save', { method: 'POST', body: { nmId, data: photos } }); }
+      try { await whenCardKnown(() => content(token, '/content/v3/media/save', { method: 'POST', body: { nmId, data: photos } })); }
       catch (error) { item.warnings.push(`Фото не скопированы: ${error.message}`); }
     }
     if (source.video) {
       item.status = 'video';
-      try { await sleep(3000); await sendMediaFile(token, nmId, 1, await videoAsMp4(source.video), 'video/mp4', 'video.mp4'); }
+      try { await sleep(3000); const video = await videoAsMp4(source.video); await whenCardKnown(() => sendMediaFile(token, nmId, 1, video, 'video/mp4', 'video.mp4')); }
       catch (error) { item.warnings.push(`Видео не скопировано: ${error.message}`); }
     }
     const tagIds = (source.tags || []).map(tag => Number(tag.id)).filter(Number.isInteger);
     if (tagIds.length) {
-      try { await content(token, '/content/v2/tag/nomenclature/link', { method: 'POST', body: { nmID: nmId, tagsIDs: tagIds } }); }
+      try { await whenCardKnown(() => content(token, '/content/v2/tag/nomenclature/link', { method: 'POST', body: { nmID: nmId, tagsIDs: tagIds } })); }
       catch (error) { item.warnings.push(`Ярлыки не поставлены: ${error.message}`); }
     }
   }
   async function runDuplicate(job) {
     const id = job.cabinet, demoMode = isDemo(id), token = demoMode ? null : tokenFor(id);
     const fail = (item, text) => { item.status = 'error'; item.error = text; };
-    // 1. Оригиналы (свежие из WB) и их цены.
+    // 1. Оригиналы (свежие из WB) и их цены. У карточек из парсера витрины черновик и цена уже готовы.
     for (const item of job.items) {
+      if (item.source) continue;
       item.status = 'preparing';
       try {
         const { card, trashed } = await freshCard(id, item.nmId);
@@ -621,30 +636,111 @@ module.exports = function createContentCards({ wbRequest, tokenFor, cabinets, ca
     job.finishedAt = new Date().toISOString();
     forgetCards(id);
   }
-  const jobView = job => ({ id: job.id, cabinet: job.cabinet, startedAt: job.startedAt, finishedAt: job.finishedAt || null,
+  const jobView = job => ({ id: job.id, kind: job.kind || 'duplicate', cabinet: job.cabinet, startedAt: job.startedAt, finishedAt: job.finishedAt || null,
     items: job.items.map(item => ({ nmId: item.nmId, vendorCode: item.vendorCode, sourceVendorCode: item.sourceVendorCode, title: item.title, status: item.status, error: item.error || '', warnings: item.warnings, newNmId: item.newNmId || null, barcodes: item.barcodes || [] })) });
   async function startDuplicate(body) {
     needConfirm(body);
     const id = String(body.cabinet || 'demo'), list = Array.isArray(body.items) ? body.items : [];
     if (!list.length) throw apiError(400, 'Не выбраны карточки');
     if (list.length > DUPLICATE_MAX) throw apiError(400, `За раз можно дублировать не больше ${DUPLICATE_MAX} карточек`);
-    if ([...duplicateJobs.values()].some(job => job.cabinet === id && !job.finishedAt && job.items.some(item => ['preparing', 'queued', 'creating'].includes(item.status)))) throw apiError(409, 'Копии этого кабинета ещё создаются — дождитесь окончания');
-    const cards = await allCards(id).catch(() => []), byNm = new Map(cards.map(card => [card.nmID, card])), used = new Set(cards.map(card => card.vendorCode)), mine = new Set();
+    jobsIdle(id);
+    const cards = await allCards(id).catch(() => []), byNm = new Map(cards.map(card => [card.nmID, card])), check = vendorCodeCheck(cards);
     const items = list.map(entry => {
-      const nmId = Number(entry.nmId), vendorCode = String(entry.vendorCode ?? '').trim();
+      const nmId = Number(entry.nmId), vendorCode = check(entry.vendorCode);
       if (!Number.isInteger(nmId) || nmId <= 0) throw apiError(400, 'Некорректный артикул WB');
-      if (!vendorCode) throw apiError(400, 'Укажите артикул продавца для каждой копии');
+      const card = byNm.get(nmId);
+      return { nmId, vendorCode, sourceVendorCode: card?.vendorCode || '', title: card?.title || '', status: 'queued', warnings: [] };
+    });
+    return launchJob(id, 'duplicate', items);
+  }
+  // Новое задание не запускается, пока у кабинета идёт отправка карточек в WB (лимит создания — 10 запросов в минуту).
+  function jobsIdle(id) {
+    if ([...duplicateJobs.values()].some(job => job.cabinet === id && !job.finishedAt && job.items.some(item => ['preparing', 'queued', 'creating'].includes(item.status)))) throw apiError(409, 'Карточки этого кабинета ещё создаются — дождитесь окончания');
+  }
+  // Проверка артикула продавца новой карточки: не пустой, до 72 символов, свободен в кабинете и не повторяется в запросе.
+  function vendorCodeCheck(cards) {
+    const used = new Set(cards.map(card => card.vendorCode)), mine = new Set();
+    return input => {
+      const vendorCode = String(input ?? '').trim();
+      if (!vendorCode) throw apiError(400, 'Укажите артикул продавца для каждой карточки');
       if (vendorCode.length > 72) throw apiError(400, `Артикул продавца длиннее 72 символов: ${vendorCode}`);
       if (used.has(vendorCode)) throw apiError(400, `Артикул продавца уже есть в кабинете: ${vendorCode}`);
       if (mine.has(vendorCode)) throw apiError(400, `Артикул продавца повторяется: ${vendorCode}`);
       mine.add(vendorCode);
-      const card = byNm.get(nmId);
-      return { nmId, vendorCode, sourceVendorCode: card?.vendorCode || '', title: card?.title || '', status: 'queued', warnings: [] };
-    });
-    const job = { id: `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`, cabinet: id, startedAt: new Date().toISOString(), items };
+      return vendorCode;
+    };
+  }
+  function launchJob(id, kind, items) {
+    const job = { id: `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`, kind, cabinet: id, startedAt: new Date().toISOString(), items };
     duplicateJobs.set(job.id, job);
     runDuplicate(job).catch(error => { job.items.filter(item => item.status !== 'done').forEach(item => { item.status = 'error'; item.error = item.error || error.message; }); job.finishedAt = new Date().toISOString(); });
     return jobView(job);
+  }
+
+  // --- Парсер витрины: новые карточки по ссылкам на чужие товары WB (разбор — wb-donor.js) ---
+  // 1. POST /api/cards/parse { cabinet, text } — разбор ссылок и артикулов: черновики запоминаются на час, страница
+  //    получает предпросмотр — что перенесётся, что нет, подсказки ТН ВЭД и НДС (на витрине их нет).
+  // 2. POST /api/cards/parse/create { cabinet, confirm, items: [{ nmId, vendorCode, price, brand, title, tnved, vat,
+  //    dimensions }] } — то, что задал продавец, накладывается на черновик, и дальше всё как у «Дублировать»:
+  //    создание по одной карточке, ожидание WB, фото по ссылкам витрины, видео через ffmpeg.
+  const PARSE_MAX = 20, PARSE_KEEP = 60 * 60_000;
+  const parsedDonors = new Map();
+  const charcValue = (card, charcId) => { const value = (card.characteristics || []).find(item => Number(item.id) === charcId)?.value; return Array.isArray(value) ? String(value[0] ?? '') : value == null ? '' : String(value); };
+  const mostCommon = values => { const counts = new Map(); values.filter(Boolean).forEach(value => counts.set(value, (counts.get(value) || 0) + 1)); return [...counts].sort((a, b) => b[1] - a[1])[0]?.[0] || ''; };
+  async function parseDonors(body) {
+    const id = String(body.cabinet || 'demo'), list = donorParser.donorArticles(body.text);
+    if (!list.length) throw apiError(400, 'Вставьте ссылку на товар WB или его артикул');
+    if (list.length > PARSE_MAX) throw apiError(400, `За раз — не больше ${PARSE_MAX} товаров, а вставлено ${list.length}`);
+    const [cards, dicts] = await Promise.all([allCards(id).catch(() => []), dictionaries(id).catch(() => ({}))]);
+    const now = Date.now();
+    for (const [key, value] of parsedDonors) if (now - value.at > PARSE_KEEP) parsedDonors.delete(key);
+    const vatSuggested = mostCommon(cards.map(card => charcValue(card, donorParser.VAT_ID)));
+    const items = [];
+    for (const nmId of list) {
+      try {
+        const donor = await donorParser.fetchDonor(nmId), subjectID = Number(donor.card?.data?.subject_id);
+        const charcs = subjectID > 0 ? await charcsOf(id, subjectID) : [];
+        const { source, report } = donorParser.draftFromDonor(donor, charcs);
+        // ТН ВЭД: самый частый у карточек кабинета того же предмета, иначе — единственный код предмета из справочника WB.
+        let tnvedOptions = [];
+        if (!isDemo(id)) tnvedOptions = await cachedAnalytics(`content-tnved:${subjectID}`, async () => ((await content(tokenFor(id), `/content/v2/directory/tnved?subjectID=${subjectID}`))?.data || []).map(item => ({ tnved: String(item.tnved || ''), isKiz: Boolean(item.isKiz) })).filter(item => item.tnved), 24 * 60 * 60_000).catch(() => []);
+        const tnvedSuggested = mostCommon(cards.filter(card => card.subjectID === subjectID).map(card => charcValue(card, donorParser.TNVED_ID))) || (tnvedOptions.length === 1 ? tnvedOptions[0].tnved : '');
+        const hasCharc = charcId => charcs.some(item => item.charcID === charcId);
+        parsedDonors.set(`${id}:${nmId}`, { source, report, at: now });
+        items.push({ ...report, tnved: hasCharc(donorParser.TNVED_ID) ? { options: tnvedOptions, suggested: tnvedSuggested } : null, vat: hasCharc(donorParser.VAT_ID) ? { options: dicts.vat || [], suggested: vatSuggested } : null });
+      } catch (error) { items.push({ nmId, error: error.message }); }
+    }
+    return { items };
+  }
+  async function createFromDonors(body) {
+    needConfirm(body);
+    const id = String(body.cabinet || 'demo'), list = Array.isArray(body.items) ? body.items : [];
+    if (!list.length) throw apiError(400, 'Нет товаров для создания');
+    if (list.length > PARSE_MAX) throw apiError(400, `За раз — не больше ${PARSE_MAX} карточек`);
+    jobsIdle(id);
+    const check = vendorCodeCheck(await allCards(id).catch(() => []));
+    const items = list.map(entry => {
+      const nmId = Number(entry.nmId), parsed = parsedDonors.get(`${id}:${nmId}`);
+      if (!parsed) throw apiError(400, `Товар ${nmId} разобран больше часа назад или в другом кабинете — разберите ссылки заново`);
+      const vendorCode = check(entry.vendorCode), price = Math.round(Number(entry.price));
+      if (!(price > 0)) throw apiError(400, `Укажите цену для ${vendorCode}`);
+      const source = JSON.parse(JSON.stringify(parsed.source));
+      const title = String(entry.title ?? '').trim(); if (title) source.title = title.slice(0, 60);
+      source.brand = String(entry.brand ?? '').trim().slice(0, 100);
+      const dims = entry.dimensions || {};
+      for (const key of ['length', 'width', 'height', 'weightBrutto']) {
+        const value = Number(dims[key] ?? source.dimensions[key]);
+        if (!(value > 0)) throw apiError(400, `Укажите габариты упаковки и вес для ${vendorCode}`);
+        source.dimensions[key] = Number(value.toFixed(key === 'weightBrutto' ? 3 : 1));
+      }
+      const setCharc = (charcId, value) => { source.characteristics = source.characteristics.filter(item => item.id !== charcId); if (value) source.characteristics.push({ id: charcId, value: [value] }); };
+      const tnved = String(entry.tnved ?? '').trim();
+      if (tnved && !/^\d{4,10}$/.test(tnved)) throw apiError(400, `ТН ВЭД — от 4 до 10 цифр: ${tnved}`);
+      setCharc(donorParser.TNVED_ID, tnved);
+      setCharc(donorParser.VAT_ID, String(entry.vat ?? '').trim());
+      return { nmId, vendorCode, sourceVendorCode: parsed.report.donorVendorCode || '', title: source.title, status: 'queued', warnings: [...parsed.report.warnings.filter(text => /размер/.test(text))], source, prices: new Map([['*', price]]) };
+    });
+    return launchJob(id, 'parse', items);
   }
   // Ход задания; без job — последнее задание кабинета (страницу могли перезагрузить).
   function duplicateStatus(id, jobId) {
@@ -665,7 +761,7 @@ module.exports = function createContentCards({ wbRequest, tokenFor, cabinets, ca
     const routes = {
       '/api/card/update': updateCard, '/api/card/media': saveMedia, '/api/card/tags': setCardTags, '/api/cards/tag': changeTag,
       '/api/cards/trash': body => moveToTrash(body, false), '/api/cards/recover': body => moveToTrash(body, true), '/api/cards/move': moveCards, '/api/cards/barcodes': barcodes,
-      '/api/cards/duplicate': startDuplicate
+      '/api/cards/duplicate': startDuplicate, '/api/cards/parse': parseDonors, '/api/cards/parse/create': createFromDonors
     };
     if (req.method === 'POST' && routes[url.pathname]) { send(res, 200, await routes[url.pathname](await readJson(req))); return true; }
     return false;

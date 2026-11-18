@@ -475,6 +475,27 @@ tr.rating-row-attention td:first-child{box-shadow:inset 3px 0 0 var(--red)}
 .card-dup-list td small{display:block;color:var(--muted);font-size:11px;white-space:normal}
 .card-dup-list td small.card-warn{color:#c24141}
 .card-dup-code{width:100%;min-width:180px}
+/* «Парсер WB» */
+.card-parse textarea{width:100%;min-height:72px;resize:vertical;margin-top:10px;padding:10px 12px;border:1px solid var(--line);border-radius:9px;font:inherit;font-size:13px;background:var(--panel,#fff);color:inherit}
+.card-parse .card-parse-run{margin-top:8px}
+.card-parse-list{display:grid;gap:10px;max-height:min(56vh,620px);overflow:auto;margin-top:12px;padding-right:2px}
+.card-parse-item{border:1px solid var(--line);border-radius:10px;padding:12px;display:grid;gap:10px;min-width:0}
+.card-parse-failed{color:#b84949;font-size:13px}
+.card-parse-head{display:grid;grid-template-columns:auto 1fr;gap:12px;align-items:start;min-width:0}
+.card-parse-head>div{min-width:0}
+.card-parse-head small{display:block;color:var(--muted);font-size:11.5px;margin-top:3px;overflow-wrap:anywhere}
+.card-parse-title{width:100%;font-weight:700}
+.card-parse-fields{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px}
+.card-parse-fields label{display:grid;gap:4px;font-size:11.5px;font-weight:700;color:var(--muted);min-width:0}
+.card-parse-fields input,.card-parse-fields select{width:100%;min-width:0;height:38px;margin:0}
+.card-parse-missing{border-color:#e0a0a0!important;background:#fff6f6}
+.card-parse-charcs summary{cursor:pointer;font-size:12px;font-weight:700}
+.card-parse-charcs ul{margin:8px 0;padding-left:18px;font-size:12px;columns:2;column-gap:24px}
+.card-parse-charcs p{font-size:12px;margin:6px 0 0}
+.card-parse-item>small{font-size:11.5px}
+.card-parse-footer{margin-top:10px}
+.card-parse-footer>.muted{font-size:12px;margin:6px 0 0}
+@media (max-width:640px){.card-parse-charcs ul{columns:1}}
 .cards-select-bar .ghost{height:33px;padding:0 12px;border:1px solid var(--line);border-radius:8px;background:white;font:700 12px Manrope;cursor:pointer}
 .card-glue-options{display:flex;flex-wrap:wrap;gap:6px 16px;margin:12px 0 4px;font-size:12px;font-weight:700}
 .card-glue-options label{display:flex;align-items:center;gap:6px;cursor:pointer}
