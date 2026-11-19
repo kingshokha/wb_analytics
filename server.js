@@ -442,28 +442,52 @@ async function loadProductCards(token) {
 // По документации следующая страница — по cursor { updatedAt, nmID } из ответа. На деле, когда у сотен карточек одинаковое
 // updatedAt (изменены одной пачкой), WB на стыке страниц присылает часть из них ещё раз — с другим порядком характеристик.
 // Из-за повторов карточка выглядела «в склейке сама с собой», поэтому повтор по nmID не добавляется.
-async function loadProductCardPages(token, cards) {
-  let cursor = { limit: 100 };
-  const seen = new Set();
-  for (let page = 0; page < PRODUCT_CARDS_MAX_PAGES; page++) {
-    let response;
-    for (let retry = 0; ; retry++) {
-      try {
-        response = await wbRequest(token, 'https://content-api.wildberries.ru/content/v2/get/cards/list', {
-          method: 'POST',
-          body: { settings: { sort: { ascending: false }, cursor, filter: { withPhoto: -1 } } }
-        });
-        break;
-      } catch (error) {
-        if (error.status !== 429 || retry >= 3) throw error;
-        await wait(Math.max(1000, (error.retryAfter || 0) * 1000));
-      }
+// Список идёт от недавно изменённых к давним. Карточка, которую изменили, пока он грузится (склейка, правка), перескакивает
+// в уже пройденное начало и в этот проход не попадает: 19.11.2026 у кабинета ИП Шамсиддинов так выпали 172 карточки,
+// склеенные во время загрузки (14 780 вместо 14 961, хотя ни одна не удалена). Поэтому после полного прохода начало списка
+// читается ещё раз — до карточек, изменённых раньше начала загрузки (с запасом CATCH_UP_MARGIN на разницу часов), — и
+// изменённые за это время заменяют или дополняют загруженные.
+const CATCH_UP_MARGIN = 5 * 60_000, CATCH_UP_MAX_PAGES = 100;
+async function cardsListPage(token, cursor) {
+  for (let retry = 0; ; retry++) {
+    try {
+      return await wbRequest(token, 'https://content-api.wildberries.ru/content/v2/get/cards/list', {
+        method: 'POST',
+        body: { settings: { sort: { ascending: false }, cursor, filter: { withPhoto: -1 } } }
+      });
+    } catch (error) {
+      if (error.status !== 429 || retry >= 3) throw error;
+      await wait(Math.max(1000, (error.retryAfter || 0) * 1000));
     }
+  }
+}
+async function loadProductCardPages(token, cards) {
+  const startedAt = Date.now();
+  let cursor = { limit: 100 };
+  const index = new Map();
+  for (let page = 0; page < PRODUCT_CARDS_MAX_PAGES; page++) {
+    const response = await cardsListPage(token, cursor);
     const batch = Array.isArray(response?.cards) ? response.cards : [];
-    for (const card of batch) if (!seen.has(card.nmID)) { seen.add(card.nmID); cards.push(card); }
+    for (const card of batch) if (!index.has(card.nmID)) { index.set(card.nmID, cards.length); cards.push(card); }
     if (batch.length < 100 || !response?.cursor?.updatedAt || !response?.cursor?.nmID) break;
     cursor = { limit: 100, updatedAt: response.cursor.updatedAt, nmID: response.cursor.nmID };
     if ((page + 1) % 5 === 0) await wait(650);
+  }
+  // Добор изменённых за время загрузки.
+  cursor = { limit: 100 };
+  const since = startedAt - CATCH_UP_MARGIN;
+  for (let page = 0; page < CATCH_UP_MAX_PAGES; page++) {
+    if (page && page % 5 === 0) await wait(650);
+    const response = await cardsListPage(token, cursor);
+    const batch = Array.isArray(response?.cards) ? response.cards : [];
+    let older = false;
+    for (const card of batch) {
+      if (Date.parse(card.updatedAt) < since) { older = true; continue; }
+      if (index.has(card.nmID)) cards[index.get(card.nmID)] = card;
+      else { index.set(card.nmID, cards.length); cards.push(card); }
+    }
+    if (older || batch.length < 100 || !response?.cursor?.updatedAt || !response?.cursor?.nmID) break;
+    cursor = { limit: 100, updatedAt: response.cursor.updatedAt, nmID: response.cursor.nmID };
   }
   return cards;
 }

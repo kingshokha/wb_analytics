@@ -161,6 +161,18 @@
     if (data.trashed) list.push(`<div class="banner"><b>Карточка в корзине.</b> Она продаётся, пока есть остатки; без остатков WB удалит её через 30 дней. Чтобы менять данные, восстановите её.<br><button type="button" class="btn small" data-action="recover">Восстановить из корзины</button></div>`);
     if (data.errors?.length) list.push(`<div class="banner error"><b>WB не принял последние изменения этой карточки</b> (${fmtDate(data.errors[0].updatedAt)}):<ul>${data.errors.flatMap(item => item.errors).map(text => `<li>${esc(text)}</li>`).join('')}</ul>Исправьте и сохраните ещё раз — ошибка уйдёт из списка.</div>`);
     if (card.dimensions?.isValid === false) list.push('<div class="banner"><b>Габариты под вопросом:</b> WB считает, что они сильно отличаются от средних по предмету или не заполнены. Проверьте, что размеры упаковки указаны в сантиметрах, а вес — в килограммах.</div>');
+    // ТН ВЭД — характеристика «ТНВЭД» (id 15000001): по ней WB проверяет код (без неё не принимает остатки — ошибка
+    // TnvedRequired в документации). «Код ТН ВЭД» (id 15004139) — другая характеристика с похожим названием: у части
+    // карточек заполнена только она. Тогда предупреждение объясняет разницу и предлагает перенести код в «ТНВЭД»
+    // (в черновик — сохраняет продавец).
+    const charText = id => { const value = view.draft.chars[id] ?? (card.characteristics || []).find(item => Number(item.id) === id)?.value; return Array.isArray(value) ? String(value.find(item => String(item ?? '').trim()) ?? '').trim() : String(value ?? '').trim(); };
+    const tnvedSaved = (() => { const value = (card.characteristics || []).find(item => Number(item.id) === 15000001)?.value; return Array.isArray(value) ? value.some(item => String(item ?? '').trim()) : Boolean(String(value ?? '').trim()); })();
+    const tnvedDraft = charText(15000001), otherCode = charText(15004139);
+    if (!data.trashed && !tnvedSaved) {
+      if (tnvedDraft) list.push(`<div class="banner"><b>Код ${esc(tnvedDraft)} записан в «ТНВЭД».</b> Сохраните карточку, чтобы он ушёл в WB.</div>`);
+      else if (otherCode) list.push(`<div class="banner"><b>Не заполнено поле «ТНВЭД».</b> В карточке есть только «Код ТН ВЭД» (${esc(otherCode)}) — это другая характеристика WB с похожим названием; код товара WB проверяет по «ТНВЭД»: без него не принимает остатки, может не пройти проверка документов и маркировки.<br><button type="button" class="btn small" data-action="tnved-copy">Перенести ${esc(otherCode)} в «ТНВЭД»</button></div>`);
+      else list.push('<div class="banner"><b>Не указан код ТН ВЭД.</b> Без него WB не принимает остатки, может не пройти проверка документов и маркировки. Укажите код в «Характеристиках» (поле «ТНВЭД» — среди незаполненных) и сохраните.</div>');
+    }
     if (card.needKiz && !card.kizMarked) list.push('<div class="banner"><b>Нужна маркировка Честного знака.</b> Карточка не пройдёт проверку, пока вы не подтвердите, что код маркировки нанесён на товар (галочка в «Основном»).</div>');
     $('#banners').innerHTML = list.join('');
   }
@@ -453,6 +465,11 @@
     const action = target.closest('[data-action]')?.dataset.action; if (!action) return;
     const card = view.data?.card;
     if (action === 'toggle-charcs') { view.showAll = !view.showAll; render(); }
+    // Код из «Код ТН ВЭД» — в «ТНВЭД» (только черновик: в WB уйдёт после «Сохранить»).
+    if (action === 'tnved-copy') {
+      const value = [].concat(d.chars[15004139] ?? (card.characteristics || []).find(item => Number(item.id) === 15004139)?.value ?? []).map(item => String(item ?? '').trim()).find(Boolean);
+      if (value) { d.chars[15000001] = [value]; render(); }
+    }
     if (action === 'add-size') { d.sizes.push({ techSize: '', wbSize: '', price: '', skus: [] }); render(); }
     if (action === 'add-doc') { d.documents.items.push({ type: '', number: '', productNumber: '', tradeName: '', applicant: '', startDate: '', endDate: '', isEndless: false }); render(); }
     if (action === 'media-url') {

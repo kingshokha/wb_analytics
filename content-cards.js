@@ -120,10 +120,13 @@ module.exports = function createContentCards({ wbRequest, tokenFor, cabinets, ca
   // ТН ВЭД — характеристика «ТНВЭД» (id 15000001). Фильтра по ней в методе списка карточек нет, поэтому «Без ТН ВЭД»
   // отбирается на сайте: характеристики нет или она пустая. Пометку WB tnved_missing в проверке документов не берём —
   // на деле (19.11.2026, все кабинеты) её нет ни у одной карточки, хотя карточек без кода сотни.
-  const noTnvedOf = card => {
-    const value = (card.characteristics || []).find(item => Number(item?.id) === donorParser.TNVED_ID)?.value;
-    return !(Array.isArray(value) ? value.some(item => String(item ?? '').trim()) : String(value ?? '').trim());
+  // «Код ТН ВЭД» (id 15004139) — другая характеристика с похожим названием; у части карточек заполнена только она.
+  const charcFilled = (card, charcId) => {
+    const value = (card.characteristics || []).find(item => Number(item?.id) === charcId)?.value;
+    return Array.isArray(value) ? value.some(item => String(item ?? '').trim()) : Boolean(String(value ?? '').trim());
   };
+  const noTnvedOf = card => !charcFilled(card, donorParser.TNVED_ID);
+  const TNVED_OTHER_ID = 15004139;
   function colorsOf(card) {
     const charc = (card.characteristics || []).find(item => Number(item?.id) === COLOR_CHARC || item?.name === 'Цвет');
     const values = Array.isArray(charc?.value) ? charc.value : charc?.value != null ? [charc.value] : [];
@@ -145,7 +148,7 @@ module.exports = function createContentCards({ wbRequest, tokenFor, cabinets, ca
       sizes: (card.sizes || []).map(size => ({ techSize: size.techSize || '', wbSize: size.wbSize || '', skus: size.skus || [] })),
       tags: card.tags || [], needKiz: Boolean(card.needKiz), kizMarked: Boolean(card.kizMarked), dimensions: card.dimensions || null,
       documents: (card.documents?.items || []).length, verdict: verdictOf(card), docErrors: docErrorsOf(card), missingDocs: missingDocsOf(card), descriptionLength: String(card.description || '').length,
-      characteristics: (card.characteristics || []).length, colors: colorsOf(card), noTnved: noTnvedOf(card), groupSize: groupSizes.get(card.imtID) || 1, createdAt: card.createdAt || '', updatedAt: card.updatedAt || '', trashedAt: card.trashedAt || ''
+      characteristics: (card.characteristics || []).length, colors: colorsOf(card), noTnved: noTnvedOf(card), tnvedCodeOnly: noTnvedOf(card) && charcFilled(card, TNVED_OTHER_ID), groupSize: groupSizes.get(card.imtID) || 1, createdAt: card.createdAt || '', updatedAt: card.updatedAt || '', trashedAt: card.trashedAt || ''
     };
   }
   // refreshing — из WB как раз грузится свежий список: страница спросит ещё раз и покажет его. loading — самой первой

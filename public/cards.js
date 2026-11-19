@@ -493,11 +493,7 @@ async function createCardParse(){
 function renderCards(){
   const v=cardsView,data=v.data,cards=data?.cards||[];
   if(!$('#page-cards'))return;
-  // Счётчики и вкладки
-  const groups=new Set(cards.filter(card=>card.groupSize>1).map(card=>card.imtID)).size;
-  const metrics=[['Карточек',fmtNum(cards.length),'в продаже и черновиках','#7651e5'],['Без фото и с 1–2 фото',fmtNum(cards.filter(card=>card.photos<3).length),'покупатели видят мало','#e76464'],
-    ['Документы',fmtNum(cards.filter(card=>card.verdict==='fail').length),`не прошли проверку · на проверке ${fmtNum(cards.filter(card=>card.verdict==='pending').length)}`,'#f0a04b'],['Объединённых карточек',fmtNum(groups),'групп из 2 и больше карточек','#318f68']];
-  $('#cardMetrics').innerHTML=data?metrics.map(x=>`<article class="metric" style="--accent:${x[3]}"><div class="metric-label">${x[0]}</div><div class="metric-value">${x[1]}</div><div class="metric-note">${escapeHtml(x[2])}</div></article>`).join(''):'';
+  // Вкладки (плиток-счётчиков над таблицей нет — убраны по просьбе продавца, те же числа дают фильтры)
   $$('[data-cards-tab]').forEach(button=>button.classList.toggle('active',button.dataset.cardsTab===v.tab));
   $('#cardsTabCount').textContent=data?fmtNum(cards.length):'';
   $('#trashTabCount').textContent=v.trash?.cards?fmtNum(v.trash.cards.length):'';
@@ -566,7 +562,7 @@ function renderCards(){
       `<td>${sizes.length?escapeHtml(sizes.slice(0,5).join(', '))+(sizes.length>5?` +${sizes.length-5}`:''):'без размера'}<small>${fmtNum(barcodes.length)} ${barcodes.length===1?'баркод':barcodes.length<5&&barcodes.length?'баркода':'баркодов'}</small></td>`+
       `<td class="${card.photos<3?'card-warn':''}">${fmtNum(card.photos)} фото${card.video?' · видео':''}</td>`+
       `<td>${card.tags.map(cardTagChip).join(' ')||'<span class="muted">—</span>'}</td>`+
-      `<td>${card.verdict?verdict[card.verdict]:'<span class="muted">нет документов</span>'}${card.verdict==='fail'&&card.docErrors.length?`<small>${escapeHtml(card.docErrors.map(cardDocError).join(', '))}</small>`:''}${card.needKiz?`<small>${card.kizMarked?'маркировка подтверждена':'<b class="card-warn">маркировка не подтверждена</b>'}</small>`:''}${card.dimensions?.isValid===false?'<small class="card-warn">габариты под вопросом</small>':''}</td>`+
+      `<td>${card.verdict?verdict[card.verdict]:'<span class="muted">нет документов</span>'}${card.verdict==='fail'&&card.docErrors.length?`<small>${escapeHtml(card.docErrors.map(cardDocError).join(', '))}</small>`:''}${card.needKiz?`<small>${card.kizMarked?'маркировка подтверждена':'<b class="card-warn">маркировка не подтверждена</b>'}</small>`:''}${card.noTnved?`<small><b class="card-warn" title="${card.tnvedCodeOnly?'Поле «ТНВЭД» пустое, заполнен только «Код ТН ВЭД» — другая характеристика WB. На странице карточки код можно перенести в «ТНВЭД» одной кнопкой':'В карточке нет характеристики «ТНВЭД» — укажите код на странице карточки'}">нет ТН ВЭД</b>${card.tnvedCodeOnly?' · есть только «Код ТН ВЭД»':''}</small>`:''}${card.dimensions?.isValid===false?'<small class="card-warn">габариты под вопросом</small>':''}</td>`+
       `<td>${cardDate(card.updatedAt)}</td></tr>`;
   }).join('');
   $$('#cardsBody .stock-product-photo').forEach(image=>{if(image.dataset.previewBound)return;image.dataset.previewBound='1';bindPhotoPreview(image)});
