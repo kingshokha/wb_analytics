@@ -1568,7 +1568,7 @@ test('окно цены товара: история — с появления �
   const vm = require('node:vm'),
     context = vm.createContext({ document: { addEventListener() {} } });
   vm.runInContext(
-    require('node:fs').readFileSync(require('node:path').join(__dirname, '..', 'public', 'price-product.js'), 'utf8'),
+    require('node:fs').readFileSync(require('node:path').join(__dirname, '..', 'public', 'js', 'prices', 'price-product.js'), 'utf8'),
     context
   );
   const plain = value => JSON.parse(JSON.stringify(value));
@@ -1642,7 +1642,7 @@ test('карточка истории цены: значение в момент
     path = require('node:path');
   const context = vm.createContext({ document: { addEventListener() {} } });
   for (const file of ['price-product.js', 'price-metric.js'])
-    vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'public', file), 'utf8'), context);
+    vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'public', 'js', 'prices', file), 'utf8'), context);
   const point = (takenAt, kind, discountedPrice, absent = false) => ({
     takenAt,
     kind,
