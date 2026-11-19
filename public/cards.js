@@ -4,409 +4,978 @@
 // (создать, переименовать, удалить), восстановление карточек из корзины, склейка по 30 и копии выбранных карточек
 // («Дублировать»). Новые карточки с нуля сайт не создаёт — так задумано.
 // Файл подключается до app.js: $, state, api, escapeHtml и прочее из app.js используются только внутри функций.
-const CARD_PROBLEMS=[['','Все карточки'],['nophoto','Без фото'],['fewphoto','Меньше 3 фото'],['desc','Описание короче 1000 символов'],['dims','Габариты под вопросом']];
-const CARD_TAG_COLORS=[['D1CFD7','серый'],['FEE0E0','красный'],['ECDAFF','фиолетовый'],['E4EAFF','синий'],['DEF1DD','зелёный'],['FFECC7','жёлтый']];
+const CARD_PROBLEMS = [
+  ['', 'Все карточки'],
+  ['nophoto', 'Без фото'],
+  ['fewphoto', 'Меньше 3 фото'],
+  ['desc', 'Описание короче 1000 символов'],
+  ['dims', 'Габариты под вопросом']
+];
+const CARD_TAG_COLORS = [
+  ['D1CFD7', 'серый'],
+  ['FEE0E0', 'красный'],
+  ['ECDAFF', 'фиолетовый'],
+  ['E4EAFF', 'синий'],
+  ['DEF1DD', 'зелёный'],
+  ['FFECC7', 'жёлтый']
+];
 // Цвет полосы у карточек одной склейки: соседние группы — разными цветами.
-const CARD_GLUE_COLORS=['#9d77ff','#318f68','#f0a04b','#277a70','#e76464','#5a7d9a'];
-const cardsView={data:null,key:'',error:'',tab:'cards',trash:null,trashKey:'',errors:null,errorsKey:'',search:'',subject:'',brand:'',color:'',tag:'',problem:'',doc:'',glue:'',extras:{key:'',ratings:null,prices:null,ratingsError:'',pricesError:'',poll:0},sort:{key:'updatedAt',dir:'desc'},page:1,pageSize:pageSizeFor('cards'),request:0,poll:0,selected:new Set(),lastSelected:null,shiftSelect:false,glueMode:'title',glueFill:true};
+const CARD_GLUE_COLORS = ['#9d77ff', '#318f68', '#f0a04b', '#277a70', '#e76464', '#5a7d9a'];
+const cardsView = {
+  data: null,
+  key: '',
+  error: '',
+  tab: 'cards',
+  trash: null,
+  trashKey: '',
+  errors: null,
+  errorsKey: '',
+  search: '',
+  subject: '',
+  brand: '',
+  color: '',
+  tag: '',
+  problem: '',
+  doc: '',
+  glue: '',
+  extras: { key: '', ratings: null, prices: null, ratingsError: '', pricesError: '', poll: 0 },
+  sort: { key: 'updatedAt', dir: 'desc' },
+  page: 1,
+  pageSize: pageSizeFor('cards'),
+  request: 0,
+  poll: 0,
+  selected: new Set(),
+  lastSelected: null,
+  shiftSelect: false,
+  glueMode: 'title',
+  glueFill: true
+};
 // Склейка по 30: в группе WB не больше 30 карточек (метод moveNm).
-const CARD_GLUE_LIMIT=30;
+const CARD_GLUE_LIMIT = 30;
 
-const cardDate=iso=>iso?new Date(iso).toLocaleString('ru-RU',{day:'2-digit',month:'2-digit',year:'2-digit',hour:'2-digit',minute:'2-digit'}).replace(',',''):'—';
-const cardLink=nmId=>`/card.html?${new URLSearchParams({cabinet:state.cabinet,nmId})}`;
+const cardDate = iso =>
+  iso
+    ? new Date(iso)
+        .toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' })
+        .replace(',', '')
+    : '—';
+const cardLink = nmId => `/card.html?${new URLSearchParams({ cabinet: state.cabinet, nmId })}`;
 // Причины, по которым WB не принял карточку или документ: известные — по-русски, остальные — как есть.
-const CARD_DOC_ERRORS={documents_missing:'нет нужных документов',documents_invalid:'документ недействителен',document_missing:'документ не загружен',document_not_found:'документ не найден в реестре',document_inactive:'у документа нет юридической силы',document_expired:'истёк срок документа',document_type_mismatch:'номер не соответствует типу документа',document_dates_mismatch:'неверные даты в документе',applicant_mismatch:'заявитель в документе и карточке различается',trade_name_mismatch:'торговое наименование отличается от документа',tnved_missing:'не указан код ТН ВЭД',supplier_inn_missing:'не указан ИНН',supplier_not_registered:'поставщик не найден в реестре',supplier_inactive:'ошибка в статусе поставщика',product_group_not_registered:'неверная товарная группа в маркировке',kiz_required:'нельзя продавать без кода Честного знака',kiz_certificate_missing:'нет подтверждения нанесения маркировки',unknown:'проверка не пройдена'};
-const cardDocError=code=>CARD_DOC_ERRORS[code]||code;
-const CARD_DOC_TYPES={1:'сертификат соответствия',2:'декларация о соответствии',3:'свидетельство о госрегистрации',4:'РУ на медизделия',5:'РУ Республики Беларусь',7:'данные о регистрации пестицида',8:'данные о регистрации агрохимиката',9:'РУ на лекарства'};
+const CARD_DOC_ERRORS = {
+  documents_missing: 'нет нужных документов',
+  documents_invalid: 'документ недействителен',
+  document_missing: 'документ не загружен',
+  document_not_found: 'документ не найден в реестре',
+  document_inactive: 'у документа нет юридической силы',
+  document_expired: 'истёк срок документа',
+  document_type_mismatch: 'номер не соответствует типу документа',
+  document_dates_mismatch: 'неверные даты в документе',
+  applicant_mismatch: 'заявитель в документе и карточке различается',
+  trade_name_mismatch: 'торговое наименование отличается от документа',
+  tnved_missing: 'не указан код ТН ВЭД',
+  supplier_inn_missing: 'не указан ИНН',
+  supplier_not_registered: 'поставщик не найден в реестре',
+  supplier_inactive: 'ошибка в статусе поставщика',
+  product_group_not_registered: 'неверная товарная группа в маркировке',
+  kiz_required: 'нельзя продавать без кода Честного знака',
+  kiz_certificate_missing: 'нет подтверждения нанесения маркировки',
+  unknown: 'проверка не пройдена'
+};
+const cardDocError = code => CARD_DOC_ERRORS[code] || code;
+const CARD_DOC_TYPES = {
+  1: 'сертификат соответствия',
+  2: 'декларация о соответствии',
+  3: 'свидетельство о госрегистрации',
+  4: 'РУ на медизделия',
+  5: 'РУ Республики Беларусь',
+  7: 'данные о регистрации пестицида',
+  8: 'данные о регистрации агрохимиката',
+  9: 'РУ на лекарства'
+};
 // «Без КИЗ»: WB требует код Честного знака (needKiz), а продавец не подтвердил его нанесение (kizMarked), или проверка отклонила карточку по маркировке.
-const cardNoKiz=card=>(card.needKiz&&!card.kizMarked)||card.docErrors.some(code=>code==='kiz_required'||code==='kiz_certificate_missing');
-const cardDocKeys=card=>[...(cardNoKiz(card)?['kiz']:[]),...(card.noTnved?['tnved']:[]),...(card.verdict==='fail'?['fail']:[]),...(card.verdict==='pending'?['pending']:[]),...card.missingDocs.map(type=>`missing:${type}`),...card.docErrors.map(code=>`error:${code}`)];
-const cardDocLabel=key=>key==='kiz'?'Без КИЗ (Честный знак)':key==='tnved'?'Без ТН ВЭД':key==='fail'?'Проверка не пройдена':key==='pending'?'На проверке':key.startsWith('missing:')?`Нет: ${CARD_DOC_TYPES[key.slice(8)]||`документ типа ${key.slice(8)}`}`:`Ошибка: ${cardDocError(key.slice(6))}`;
+const cardNoKiz = card =>
+  (card.needKiz && !card.kizMarked) || card.docErrors.some(code => code === 'kiz_required' || code === 'kiz_certificate_missing');
+const cardDocKeys = card => [
+  ...(cardNoKiz(card) ? ['kiz'] : []),
+  ...(card.noTnved ? ['tnved'] : []),
+  ...(card.verdict === 'fail' ? ['fail'] : []),
+  ...(card.verdict === 'pending' ? ['pending'] : []),
+  ...card.missingDocs.map(type => `missing:${type}`),
+  ...card.docErrors.map(code => `error:${code}`)
+];
+const cardDocLabel = key =>
+  key === 'kiz'
+    ? 'Без КИЗ (Честный знак)'
+    : key === 'tnved'
+      ? 'Без ТН ВЭД'
+      : key === 'fail'
+        ? 'Проверка не пройдена'
+        : key === 'pending'
+          ? 'На проверке'
+          : key.startsWith('missing:')
+            ? `Нет: ${CARD_DOC_TYPES[key.slice(8)] || `документ типа ${key.slice(8)}`}`
+            : `Ошибка: ${cardDocError(key.slice(6))}`;
 // Пункты фильтра «Документы»: «Без КИЗ» и «Без ТН ВЭД» — всегда первыми, дальше — только то, что есть в кабинете;
 // выбранный пункт остаётся в списке.
-function cardDocOptions(cards,selected){
-  const counts=new Map([['kiz',0],['tnved',0],['fail',0],['pending',0]]);
-  cards.forEach(card=>cardDocKeys(card).forEach(key=>counts.set(key,(counts.get(key)||0)+1)));
-  const fixed=['kiz','tnved','fail','pending'],group=key=>fixed.includes(key)?0:key.startsWith('missing:')?1:2;
-  return [...counts].filter(([key,count])=>key==='kiz'||key==='tnved'||count>0||key===selected).sort((a,b)=>group(a[0])-group(b[0])||(group(a[0])?b[1]-a[1]:fixed.indexOf(a[0])-fixed.indexOf(b[0]))).map(([key,count])=>[key,`${cardDocLabel(key)} · ${fmtNum(count)}`]);
+function cardDocOptions(cards, selected) {
+  const counts = new Map([
+    ['kiz', 0],
+    ['tnved', 0],
+    ['fail', 0],
+    ['pending', 0]
+  ]);
+  cards.forEach(card => cardDocKeys(card).forEach(key => counts.set(key, (counts.get(key) || 0) + 1)));
+  const fixed = ['kiz', 'tnved', 'fail', 'pending'],
+    group = key => (fixed.includes(key) ? 0 : key.startsWith('missing:') ? 1 : 2);
+  return [...counts]
+    .filter(([key, count]) => key === 'kiz' || key === 'tnved' || count > 0 || key === selected)
+    .sort((a, b) => group(a[0]) - group(b[0]) || (group(a[0]) ? b[1] - a[1] : fixed.indexOf(a[0]) - fixed.indexOf(b[0])))
+    .map(([key, count]) => [key, `${cardDocLabel(key)} · ${fmtNum(count)}`]);
 }
-const cardWord=n=>{const a=n%100,b=n%10;return a>10&&a<20?'карточек':b===1?'карточка':b>1&&b<5?'карточки':'карточек'};
-const cardTagChip=tag=>`<span class="card-tag" style="--tag:#${escapeHtml(tag.color||'D1CFD7')}">${escapeHtml(tag.name)}</span>`;
+const cardWord = n => {
+  const a = n % 100,
+    b = n % 10;
+  return a > 10 && a < 20 ? 'карточек' : b === 1 ? 'карточка' : b > 1 && b < 5 ? 'карточки' : 'карточек';
+};
+const cardTagChip = tag => `<span class="card-tag" style="--tag:#${escapeHtml(tag.color || 'D1CFD7')}">${escapeHtml(tag.name)}</span>`;
 
 // Сервер отдаёт сохранённый список сразу, а свежий из WB грузит в фоне (у кабинета с тысячами карточек — минута-две).
 // Пока он грузится (refreshing), страница переспрашивает: при самой первой загрузке — каждые 3 с и показывает
 // карточки по ходу, потом — раз в 10 с, и подменяет список, когда свежий готов. Фильтры и страница остаются.
-async function loadCards(force=false,silent=false){
-  const key=state.cabinet,request=++cardsView.request;
+async function loadCards(force = false, silent = false) {
+  const key = state.cabinet,
+    request = ++cardsView.request;
   clearTimeout(cardsView.poll);
-  if(!force&&!silent&&cardsView.key===key&&cardsView.data){renderCards();return}
-  if(cardsView.key!==key){Object.assign(cardsView,{data:null,trash:null,errors:null,subject:'',brand:'',color:'',tag:'',doc:'',glue:'',page:1});cardsView.selected.clear()}
-  cardsView.key=key;cardsView.error='';if(!silent)renderCards();
-  const btn=$('#refresh');if(!silent)btn.classList.add('loading');
-  try{
-    const data=await api(`/api/cards?${new URLSearchParams({cabinet:key,...(force?{force:'1'}:{}),...cardsFilterQuery()})}`);
-    if(request!==cardsView.request)return;
-    cardsView.data=data;applyCardExtras();if(!data.loading){setNotices('cards','load',data.warnings);loadCardExtras(key,force)}
-    if(force){cardsView.trash=null;cardsView.errors=null}
-    if(!data.loading)loadCardErrors(false);
+  if (!force && !silent && cardsView.key === key && cardsView.data) {
+    renderCards();
+    return;
+  }
+  if (cardsView.key !== key) {
+    Object.assign(cardsView, {
+      data: null,
+      trash: null,
+      errors: null,
+      subject: '',
+      brand: '',
+      color: '',
+      tag: '',
+      doc: '',
+      glue: '',
+      page: 1
+    });
+    cardsView.selected.clear();
+  }
+  cardsView.key = key;
+  cardsView.error = '';
+  if (!silent) renderCards();
+  const btn = $('#refresh');
+  if (!silent) btn.classList.add('loading');
+  try {
+    const data = await api(`/api/cards?${new URLSearchParams({ cabinet: key, ...(force ? { force: '1' } : {}), ...cardsFilterQuery() })}`);
+    if (request !== cardsView.request) return;
+    cardsView.data = data;
+    applyCardExtras();
+    if (!data.loading) {
+      setNotices('cards', 'load', data.warnings);
+      loadCardExtras(key, force);
+    }
+    if (force) {
+      cardsView.trash = null;
+      cardsView.errors = null;
+    }
+    if (!data.loading) loadCardErrors(false);
     // Карточки по фильтру грузятся отдельно и быстро — пока они идут, спрашиваем чаще.
     // Пока с WB грузятся оценки склеек — тоже переспрашиваем, раз в 10 с.
-    if(data.refreshing||data.feedbacks?.loading)cardsView.poll=setTimeout(()=>{if(state.activePage==='cards'&&state.cabinet===key)loadCards(false,true)},data.loading||data.priority?.state==='loading'?3000:10000);
-  }catch(e){if(request!==cardsView.request)return;if(!silent){cardsView.error=e.message;addNotice('cards',`Карточки: ${e.message}`)}}
-  finally{if(request===cardsView.request){btn.classList.remove('loading');renderCards()}}
+    if (data.refreshing || data.feedbacks?.loading)
+      cardsView.poll = setTimeout(
+        () => {
+          if (state.activePage === 'cards' && state.cabinet === key) loadCards(false, true);
+        },
+        data.loading || data.priority?.state === 'loading' ? 3000 : 10000
+      );
+  } catch (e) {
+    if (request !== cardsView.request) return;
+    if (!silent) {
+      cardsView.error = e.message;
+      addNotice('cards', `Карточки: ${e.message}`);
+    }
+  } finally {
+    if (request === cardsView.request) {
+      btn.classList.remove('loading');
+      renderCards();
+    }
+  }
 }
 // Оценка и цена — не из метода карточек: оценка — из «Оценок товаров» (/api/ratings, рейтинг по отзывам; WB отдаёт
 // 1000 товаров за запрос и не чаще 3 запросов в минуту, поэтому у большого кабинета — несколько минут, потом кэш 30 мин),
 // цена со скидкой — из «Цен и скидок» (/api/prices; у товара с разными ценами размеров — цена первого размера, как там).
 // Грузятся в фоне после списка карточек и подставляются по артикулу WB; ответ для другого кабинета отбрасывается.
-function applyCardExtras(){
-  const x=cardsView.extras,cards=cardsView.data?.cards;
-  if(!cards||x.key!==cardsView.key)return;
-  cards.forEach(card=>{
-    if(x.ratings){const value=x.ratings.get(card.nmID);card.rating=value>0?value:null}
-    if(x.prices){const value=x.prices.get(card.nmID);card.price=value>0?value:null}
+function applyCardExtras() {
+  const x = cardsView.extras,
+    cards = cardsView.data?.cards;
+  if (!cards || x.key !== cardsView.key) return;
+  cards.forEach(card => {
+    if (x.ratings) {
+      const value = x.ratings.get(card.nmID);
+      card.rating = value > 0 ? value : null;
+    }
+    if (x.prices) {
+      const value = x.prices.get(card.nmID);
+      card.price = value > 0 ? value : null;
+    }
   });
 }
-function loadCardExtras(key,force=false){
-  const x=cardsView.extras;
-  if(x.key!==key){clearTimeout(x.poll);Object.assign(x,{key,ratings:null,prices:null,ratingsError:'',pricesError:''})}
-  const done=()=>{if(cardsView.key!==key||x.key!==key)return false;applyCardExtras();if(state.activePage==='cards')renderCards();return true};
-  if(force||(!x.ratings&&!x.ratingsLoading)){
-    x.ratingsLoading=true;
-    api(`/api/ratings?cabinet=${encodeURIComponent(key)}`)
-      .then(data=>{if(x.key!==key)return;x.ratings=new Map((data.items||[]).map(item=>[Number(item.nmId),item.feedbackRating]));x.ratingsError=''},error=>{if(x.key===key)x.ratingsError=error.message})
-      .finally(()=>{if(x.key===key)x.ratingsLoading=false;done()});
+function loadCardExtras(key, force = false) {
+  const x = cardsView.extras;
+  if (x.key !== key) {
+    clearTimeout(x.poll);
+    Object.assign(x, { key, ratings: null, prices: null, ratingsError: '', pricesError: '' });
   }
-  if(force||(!x.prices&&!x.pricesLoading))loadCardPrices(key,force);
+  const done = () => {
+    if (cardsView.key !== key || x.key !== key) return false;
+    applyCardExtras();
+    if (state.activePage === 'cards') renderCards();
+    return true;
+  };
+  if (force || (!x.ratings && !x.ratingsLoading)) {
+    x.ratingsLoading = true;
+    api(`/api/ratings?cabinet=${encodeURIComponent(key)}`)
+      .then(
+        data => {
+          if (x.key !== key) return;
+          x.ratings = new Map((data.items || []).map(item => [Number(item.nmId), item.feedbackRating]));
+          x.ratingsError = '';
+        },
+        error => {
+          if (x.key === key) x.ratingsError = error.message;
+        }
+      )
+      .finally(() => {
+        if (x.key === key) x.ratingsLoading = false;
+        done();
+      });
+  }
+  if (force || (!x.prices && !x.pricesLoading)) loadCardPrices(key, force);
 }
 // Цены сервер отдаёт по частям (partial): пока список не весь, переспрашиваем каждые 3 с. Если «Цены и скидки» уже
 // загружены для этого кабинета — берём оттуда.
-function loadCardPrices(key,force){
-  const x=cardsView.extras,ready=!force&&state.pricesKey===key&&state.prices&&!state.prices.partial;
-  const take=data=>{x.prices=new Map((data.rows||[]).map(row=>[Number(row.nmId),row.discountedPrice]));x.pricesError=''};
-  if(ready){take(state.prices);applyCardExtras();return}
-  x.pricesLoading=true;
-  api(`/api/prices?${new URLSearchParams({cabinet:key,...(force?{force:'1'}:{})})}`)
-    .then(data=>{if(x.key!==key)return;take(data);x.pricesLoading=Boolean(data.partial);if(data.partial)x.poll=setTimeout(()=>{if(x.key===key)loadCardPrices(key,false)},3000)},
-      error=>{if(x.key===key){x.pricesError=error.message;x.pricesLoading=false}})
-    .finally(()=>{if(x.key!==key||cardsView.key!==key)return;applyCardExtras();if(state.activePage==='cards')renderCards()});
+function loadCardPrices(key, force) {
+  const x = cardsView.extras,
+    ready = !force && state.pricesKey === key && state.prices && !state.prices.partial;
+  const take = data => {
+    x.prices = new Map((data.rows || []).map(row => [Number(row.nmId), row.discountedPrice]));
+    x.pricesError = '';
+  };
+  if (ready) {
+    take(state.prices);
+    applyCardExtras();
+    return;
+  }
+  x.pricesLoading = true;
+  api(`/api/prices?${new URLSearchParams({ cabinet: key, ...(force ? { force: '1' } : {}) })}`)
+    .then(
+      data => {
+        if (x.key !== key) return;
+        take(data);
+        x.pricesLoading = Boolean(data.partial);
+        if (data.partial)
+          x.poll = setTimeout(() => {
+            if (x.key === key) loadCardPrices(key, false);
+          }, 3000);
+      },
+      error => {
+        if (x.key === key) {
+          x.pricesError = error.message;
+          x.pricesLoading = false;
+        }
+      }
+    )
+    .finally(() => {
+      if (x.key !== key || cardsView.key !== key) return;
+      applyCardExtras();
+      if (state.activePage === 'cards') renderCards();
+    });
 }
 // Оценки с витрины WB (сервер: glue-ratings.js) — число оценок товара, разбивка по звёздам, оценка склейки.
-const cardStarsTitle=stars=>{const total=stars.reduce((sum,value)=>sum+value,0);return total?[5,4,3,2,1].map(star=>`${star}★ — ${fmtNum(stars[star-1])} (${Math.round(stars[star-1]/total*100)}%)`).join('\n'):''};
-const cardRatingWord=count=>pluralRu(count,['оценка','оценки','оценок']);
-const cardRatingNum=value=>Number(value).toLocaleString('ru-RU',{minimumFractionDigits:value>=10?0:1,maximumFractionDigits:2});
+const cardStarsTitle = stars => {
+  const total = stars.reduce((sum, value) => sum + value, 0);
+  return total
+    ? [5, 4, 3, 2, 1].map(star => `${star}★ — ${fmtNum(stars[star - 1])} (${Math.round((stars[star - 1] / total) * 100)}%)`).join('\n')
+    : '';
+};
+const cardRatingWord = count => pluralRu(count, ['оценка', 'оценки', 'оценок']);
+const cardRatingNum = value =>
+  Number(value).toLocaleString('ru-RU', { minimumFractionDigits: value >= 10 ? 0 : 1, maximumFractionDigits: 2 });
 // «Оценка»: рейтинг товара из отчёта WB «Оценки товаров», под ним — сколько всего оценок; при наведении — по звёздам.
 // Рейтинга в отчёте нет, а оценки на витрине есть — средняя по ним.
-function cardRatingCell(card){
-  const x=cardsView.extras,loading=cardsView.data?.feedbacks?.loading;
-  const value=card.rating??(card.feedbacks?card.fbAvg:null);
-  const top=value!=null?`<strong class="card-rating"${card.rating==null?' title="Средняя по оценкам на WB — в отчёте «Оценки товаров» товара нет"':''}>★ ${value.toLocaleString('ru-RU',{minimumFractionDigits:2,maximumFractionDigits:2})}</strong>`
-    :!x.ratings&&!x.ratingsError&&card.feedbacks==null?'<span class="muted">…</span>':'<span class="muted">—</span>';
-  const count=card.feedbacks==null?(loading?'<small class="card-rating-count muted">оценки грузятся…</small>':''):`<small class="card-rating-count">${card.feedbacks?`${fmtNum(card.feedbacks)} ${cardRatingWord(card.feedbacks)}`:'нет оценок'}</small>`;
-  const stars=card.fbStars?cardStarsTitle(card.fbStars):'';
-  return `<td${stars?` title="${escapeHtml(`Оценки товара по звёздам:\n${stars}`)}"`:''}>${top}${count}</td>`;
+function cardRatingCell(card) {
+  const x = cardsView.extras,
+    loading = cardsView.data?.feedbacks?.loading;
+  const value = card.rating ?? (card.feedbacks ? card.fbAvg : null);
+  const top =
+    value != null
+      ? `<strong class="card-rating"${card.rating == null ? ' title="Средняя по оценкам на WB — в отчёте «Оценки товаров» товара нет"' : ''}>★ ${value.toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>`
+      : !x.ratings && !x.ratingsError && card.feedbacks == null
+        ? '<span class="muted">…</span>'
+        : '<span class="muted">—</span>';
+  const count =
+    card.feedbacks == null
+      ? loading
+        ? '<small class="card-rating-count muted">оценки грузятся…</small>'
+        : ''
+      : `<small class="card-rating-count">${card.feedbacks ? `${fmtNum(card.feedbacks)} ${cardRatingWord(card.feedbacks)}` : 'нет оценок'}</small>`;
+  const stars = card.fbStars ? cardStarsTitle(card.fbStars) : '';
+  return `<td${stars ? ` title="${escapeHtml(`Оценки товара по звёздам:\n${stars}`)}"` : ''}>${top}${count}</td>`;
 }
 // Оценка склейки: «★ 4,1 · 32 262 оценки» — как на WB у покупателя.
-const cardGlueRating=(card,withCount)=>card.glueRating==null?'':` · ★ ${cardRatingNum(card.glueRating)}${withCount&&card.glueCount!=null?` · ${fmtNum(card.glueCount)} ${cardRatingWord(card.glueCount)}`:''}`;
+const cardGlueRating = (card, withCount) =>
+  card.glueRating == null
+    ? ''
+    : ` · ★ ${cardRatingNum(card.glueRating)}${withCount && card.glueCount != null ? ` · ${fmtNum(card.glueCount)} ${cardRatingWord(card.glueCount)}` : ''}`;
 // Ячейка оценки или цены: пока грузится — «…», ошибка — «—» с причиной в подсказке.
-function cardExtraCell(card,kind){
-  if(kind==='rating')return cardRatingCell(card);
-  const x=cardsView.extras,map=kind==='rating'?x.ratings:x.prices,error=kind==='rating'?x.ratingsError:x.pricesError,value=card[kind];
-  if(!map)return error?`<td class="muted" title="${escapeHtml(error)}">—</td>`:'<td class="muted" title="Загружается…">…</td>';
-  if(value==null)return `<td class="muted"${kind==='rating'?' title="Нет отзывов или товара нет в отчёте WB «Оценки товаров»"':' title="Нет цены в «Ценах и скидках»"'}>—</td>`;
-  return kind==='rating'?`<td><strong class="card-rating">★ ${value.toLocaleString('ru-RU',{minimumFractionDigits:2,maximumFractionDigits:2})}</strong></td>`:`<td><strong class="card-price">${fmtRub(value)}</strong></td>`;
+function cardExtraCell(card, kind) {
+  if (kind === 'rating') return cardRatingCell(card);
+  const x = cardsView.extras,
+    map = kind === 'rating' ? x.ratings : x.prices,
+    error = kind === 'rating' ? x.ratingsError : x.pricesError,
+    value = card[kind];
+  if (!map) return error ? `<td class="muted" title="${escapeHtml(error)}">—</td>` : '<td class="muted" title="Загружается…">…</td>';
+  if (value == null)
+    return `<td class="muted"${kind === 'rating' ? ' title="Нет отзывов или товара нет в отчёте WB «Оценки товаров»"' : ' title="Нет цены в «Ценах и скидках»"'}>—</td>`;
+  return kind === 'rating'
+    ? `<td><strong class="card-rating">★ ${value.toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></td>`
+    : `<td><strong class="card-price">${fmtRub(value)}</strong></td>`;
 }
 // Фильтры страницы для сервера: пока весь список грузится из WB, карточки по ним он грузит отдельно и отдаёт первыми.
 // Предмет на странице выбран по названию — серверу нужен его номер (subjectID).
-function cardsFilterQuery(){
-  const v=cardsView,query={};
-  const subjectID=v.subject&&(v.data?.cards||[]).find(card=>card.subjectName===v.subject)?.subjectID;
-  if(subjectID)query.subjectID=String(subjectID);
-  if(v.brand)query.brand=v.brand;
-  if(v.tag)query.tagID=v.tag;
+function cardsFilterQuery() {
+  const v = cardsView,
+    query = {};
+  const subjectID = v.subject && (v.data?.cards || []).find(card => card.subjectName === v.subject)?.subjectID;
+  if (subjectID) query.subjectID = String(subjectID);
+  if (v.brand) query.brand = v.brand;
+  if (v.tag) query.tagID = v.tag;
   // Склейки страницы, которую сейчас видно: их оценки сервер загрузит первыми.
-  if(v.pageImts)query.imts=v.pageImts;
+  if (v.pageImts) query.imts = v.pageImts;
   return query;
 }
-async function loadCardTrash(force=false){
-  if(!force&&cardsView.trashKey===state.cabinet&&cardsView.trash)return renderCards();
-  cardsView.trashKey=state.cabinet;cardsView.trash=null;renderCards();
-  try{cardsView.trash=await api(`/api/cards/trash?cabinet=${encodeURIComponent(state.cabinet)}`)}catch(e){cardsView.trash={error:e.message,cards:[]}}
+async function loadCardTrash(force = false) {
+  if (!force && cardsView.trashKey === state.cabinet && cardsView.trash) return renderCards();
+  cardsView.trashKey = state.cabinet;
+  cardsView.trash = null;
+  renderCards();
+  try {
+    cardsView.trash = await api(`/api/cards/trash?cabinet=${encodeURIComponent(state.cabinet)}`);
+  } catch (e) {
+    cardsView.trash = { error: e.message, cards: [] };
+  }
   renderCards();
 }
-async function loadCardErrors(force=false){
-  if(!force&&cardsView.errorsKey===state.cabinet&&cardsView.errors)return;
-  cardsView.errorsKey=state.cabinet;
-  try{cardsView.errors=await api(`/api/cards/errors?cabinet=${encodeURIComponent(state.cabinet)}`)}catch(e){cardsView.errors={error:e.message,items:[]}}
+async function loadCardErrors(force = false) {
+  if (!force && cardsView.errorsKey === state.cabinet && cardsView.errors) return;
+  cardsView.errorsKey = state.cabinet;
+  try {
+    cardsView.errors = await api(`/api/cards/errors?cabinet=${encodeURIComponent(state.cabinet)}`);
+  } catch (e) {
+    cardsView.errors = { error: e.message, items: [] };
+  }
   renderCards();
 }
 
-function cardProblem(card,key){
-  if(key==='nophoto')return !card.photos;
-  if(key==='fewphoto')return card.photos<3;
-  if(key==='desc')return card.descriptionLength<1000;
-  if(key==='dims')return card.dimensions?.isValid===false;
+function cardProblem(card, key) {
+  if (key === 'nophoto') return !card.photos;
+  if (key === 'fewphoto') return card.photos < 3;
+  if (key === 'desc') return card.descriptionLength < 1000;
+  if (key === 'dims') return card.dimensions?.isValid === false;
   return true;
 }
 // Строка поиска по карточке собирается один раз на загрузку — при тысячах карточек ввод в поиск не тормозит.
-const cardSearchText=new WeakMap();
+const cardSearchText = new WeakMap();
 // Фильтр «Цвет»: карточка подходит, если среди её цветов есть выбранный; «none» — карточки без цвета.
-const cardColorMatch=(card,color)=>!color||(color==='none'?!(card.colors||[]).length:(card.colors||[]).includes(color));
-const cardHaystack=card=>{let text=cardSearchText.get(card);if(text==null){text=[card.title,card.vendorCode,card.nmID,card.brand,card.subjectName,...card.sizes.flatMap(size=>size.skus)].join(' ').toLowerCase();cardSearchText.set(card,text)}return text};
-function cardRows(){
-  const v=cardsView,term=v.search.trim().toLowerCase();
-  const rows=(v.data?.cards||[]).filter(card=>(!v.subject||card.subjectName===v.subject)&&(!v.brand||card.brand===v.brand)&&cardColorMatch(card,v.color)&&(!v.tag||card.tags.some(tag=>String(tag.id)===v.tag))&&cardProblem(card,v.problem)&&(!v.doc||cardDocKeys(card).includes(v.doc))
-    &&(!v.glue||(v.glue==='glued')===(card.groupSize>1))&&(!term||cardHaystack(card).includes(term)));
-  const dir=v.sort.dir==='asc'?1:-1,key=v.sort.key;
+const cardColorMatch = (card, color) => !color || (color === 'none' ? !(card.colors || []).length : (card.colors || []).includes(color));
+const cardHaystack = card => {
+  let text = cardSearchText.get(card);
+  if (text == null) {
+    text = [card.title, card.vendorCode, card.nmID, card.brand, card.subjectName, ...card.sizes.flatMap(size => size.skus)]
+      .join(' ')
+      .toLowerCase();
+    cardSearchText.set(card, text);
+  }
+  return text;
+};
+function cardRows() {
+  const v = cardsView,
+    term = v.search.trim().toLowerCase();
+  const rows = (v.data?.cards || []).filter(
+    card =>
+      (!v.subject || card.subjectName === v.subject) &&
+      (!v.brand || card.brand === v.brand) &&
+      cardColorMatch(card, v.color) &&
+      (!v.tag || card.tags.some(tag => String(tag.id) === v.tag)) &&
+      cardProblem(card, v.problem) &&
+      (!v.doc || cardDocKeys(card).includes(v.doc)) &&
+      (!v.glue || (v.glue === 'glued') === card.groupSize > 1) &&
+      (!term || cardHaystack(card).includes(term))
+  );
+  const dir = v.sort.dir === 'asc' ? 1 : -1,
+    key = v.sort.key;
   // Пустые значения (нет оценки, нет цены) — всегда в конце, при любом направлении.
-  rows.sort((a,b)=>{const av=a[key]??'',bv=b[key]??'';if(av===''||bv==='')return (av==='')-(bv==='');return dir*(typeof av==='number'&&typeof bv==='number'?av-bv:String(av).localeCompare(String(bv),'ru',{numeric:true}))});
-  if(v.glue!=='glued')return rows;
+  rows.sort((a, b) => {
+    const av = a[key] ?? '',
+      bv = b[key] ?? '';
+    if (av === '' || bv === '') return (av === '') - (bv === '');
+    return (
+      dir * (typeof av === 'number' && typeof bv === 'number' ? av - bv : String(av).localeCompare(String(bv), 'ru', { numeric: true }))
+    );
+  });
+  if (v.glue !== 'glued') return rows;
   // «Со склейкой»: карточки одной группы подряд. Группы — в порядке сортировки их первой карточки, внутри — тоже по сортировке.
-  const groups=new Map();rows.forEach(card=>{if(!groups.has(card.imtID))groups.set(card.imtID,[]);groups.get(card.imtID).push(card)});
+  const groups = new Map();
+  rows.forEach(card => {
+    if (!groups.has(card.imtID)) groups.set(card.imtID, []);
+    groups.get(card.imtID).push(card);
+  });
   return [...groups.values()].flat();
 }
 // Галочки — у всех карточек: выбранные можно дублировать. «Объединить по 30 шт» — только когда выбран предмет (склеить
 // можно лишь карточки одного предмета) и только для выбранных без склейки: склейки уже склеенных не меняются.
 // Выбранные — из строк по текущим фильтрам, в порядке таблицы.
-const cardSelectable=card=>card.groupSize<=1;
-const cardPicked=rows=>rows.filter(card=>cardsView.selected.has(card.nmID));
-const cardChosen=rows=>rows.filter(card=>cardSelectable(card)&&cardsView.selected.has(card.nmID));
-function cardGlueChunks(list){const chunks=[];for(let i=0;i<list.length;i+=CARD_GLUE_LIMIT)chunks.push(list.slice(i,i+CARD_GLUE_LIMIT));return chunks}
+const cardSelectable = card => card.groupSize <= 1;
+const cardPicked = rows => rows.filter(card => cardsView.selected.has(card.nmID));
+const cardChosen = rows => rows.filter(card => cardSelectable(card) && cardsView.selected.has(card.nmID));
+function cardGlueChunks(list) {
+  const chunks = [];
+  for (let i = 0; i < list.length; i += CARD_GLUE_LIMIT) chunks.push(list.slice(i, i + CARD_GLUE_LIMIT));
+  return chunks;
+}
 // Название для «похожих по названию»: регистр, ё/е, кавычки и знаки препинания не важны.
-const cardTitleKey=title=>String(title||'').toLowerCase().replace(/ё/g,'е').replace(/[^\p{L}\p{N}]+/gu,' ').trim();
+const cardTitleKey = title =>
+  String(title || '')
+    .toLowerCase()
+    .replace(/ё/g, 'е')
+    .replace(/[^\p{L}\p{N}]+/gu, ' ')
+    .trim();
 // План склейки. list — карточки без склейки в порядке таблицы; склеиваются только карточки одного предмета (так требует WB).
 // mode 'title' — карточки с одинаковым названием (карточка без пары остаётся одна), 'order' — подряд по таблице.
 // fill — сначала дополнить до 30 неполные склейки того же предмета (в режиме 'title' — где есть карточка с тем же названием),
 // самые большие — первыми. Шаг: before > 0 — карточки добавляются к склейке target, иначе новая склейка с основой cards[0].
-function cardGluePlan(list,mode,fill){
-  const buckets=new Map(),groups=[];let alone=0;
-  list.forEach(card=>{const title=cardTitleKey(card.title);if(mode==='title'&&!title){alone++;return}const key=mode==='title'?`${card.subjectID}|${title}`:String(card.subjectID);if(!buckets.has(key))buckets.set(key,[]);buckets.get(key).push(card)});
-  if(fill){const byImt=new Map();(cardsView.data?.cards||[]).forEach(card=>{if(card.groupSize<2||card.groupSize>=CARD_GLUE_LIMIT)return;let group=byImt.get(card.imtID);if(!group){byImt.set(card.imtID,group={imtID:card.imtID,subjectID:card.subjectID,size:card.groupSize,titles:new Set()});groups.push(group)}group.titles.add(cardTitleKey(card.title))});groups.sort((a,b)=>b.size-a.size)}
-  const steps=[];
-  for(let rest of buckets.values()){
-    const {subjectID,subjectName}=rest[0],title=cardTitleKey(rest[0].title);
-    for(const group of groups){
-      if(!rest.length)break;
-      if(group.subjectID!==subjectID||group.size>=CARD_GLUE_LIMIT||(mode==='title'&&!group.titles.has(title)))continue;
-      const take=rest.slice(0,CARD_GLUE_LIMIT-group.size);rest=rest.slice(take.length);
-      steps.push({target:group.imtID,before:group.size,cards:take,subject:subjectName});group.size+=take.length;
+function cardGluePlan(list, mode, fill) {
+  const buckets = new Map(),
+    groups = [];
+  let alone = 0;
+  list.forEach(card => {
+    const title = cardTitleKey(card.title);
+    if (mode === 'title' && !title) {
+      alone++;
+      return;
     }
-    cardGlueChunks(rest).forEach(chunk=>{if(chunk.length>1)steps.push({target:chunk[0].imtID,before:0,cards:chunk,subject:subjectName});else alone++});
+    const key = mode === 'title' ? `${card.subjectID}|${title}` : String(card.subjectID);
+    if (!buckets.has(key)) buckets.set(key, []);
+    buckets.get(key).push(card);
+  });
+  if (fill) {
+    const byImt = new Map();
+    (cardsView.data?.cards || []).forEach(card => {
+      if (card.groupSize < 2 || card.groupSize >= CARD_GLUE_LIMIT) return;
+      let group = byImt.get(card.imtID);
+      if (!group) {
+        byImt.set(card.imtID, (group = { imtID: card.imtID, subjectID: card.subjectID, size: card.groupSize, titles: new Set() }));
+        groups.push(group);
+      }
+      group.titles.add(cardTitleKey(card.title));
+    });
+    groups.sort((a, b) => b.size - a.size);
   }
-  return {steps,alone};
+  const steps = [];
+  for (let rest of buckets.values()) {
+    const { subjectID, subjectName } = rest[0],
+      title = cardTitleKey(rest[0].title);
+    for (const group of groups) {
+      if (!rest.length) break;
+      if (group.subjectID !== subjectID || group.size >= CARD_GLUE_LIMIT || (mode === 'title' && !group.titles.has(title))) continue;
+      const take = rest.slice(0, CARD_GLUE_LIMIT - group.size);
+      rest = rest.slice(take.length);
+      steps.push({ target: group.imtID, before: group.size, cards: take, subject: subjectName });
+      group.size += take.length;
+    }
+    cardGlueChunks(rest).forEach(chunk => {
+      if (chunk.length > 1) steps.push({ target: chunk[0].imtID, before: 0, cards: chunk, subject: subjectName });
+      else alone++;
+    });
+  }
+  return { steps, alone };
 }
-function cardGlueSummary({steps,alone}){
-  const created=steps.filter(step=>!step.before).length,filled=steps.length-created,count=steps.reduce((sum,step)=>sum+step.cards.length,0);
-  const parts=[created&&`${fmtNum(created)} ${pluralRu(created,['новая склейка','новые склейки','новых склеек'])}`,filled&&`дополнится ${fmtNum(filled)} ${pluralRu(filled,['склейка','склейки','склеек'])}`,count&&`склеится ${fmtNum(count)} ${cardWord(count)}`,alone&&`без пары останется ${fmtNum(alone)}`].filter(Boolean);
-  return parts.join(' · ')||'склеить нечего';
+function cardGlueSummary({ steps, alone }) {
+  const created = steps.filter(step => !step.before).length,
+    filled = steps.length - created,
+    count = steps.reduce((sum, step) => sum + step.cards.length, 0);
+  const parts = [
+    created && `${fmtNum(created)} ${pluralRu(created, ['новая склейка', 'новые склейки', 'новых склеек'])}`,
+    filled && `дополнится ${fmtNum(filled)} ${pluralRu(filled, ['склейка', 'склейки', 'склеек'])}`,
+    count && `склеится ${fmtNum(count)} ${cardWord(count)}`,
+    alone && `без пары останется ${fmtNum(alone)}`
+  ].filter(Boolean);
+  return parts.join(' · ') || 'склеить нечего';
 }
-const CARD_GLUE_MODES={title:'похожие по названию',order:'подряд по таблице'};
+const CARD_GLUE_MODES = { title: 'похожие по названию', order: 'подряд по таблице' };
 // Плавающая панель внизу по центру, как в «Ценах и скидках»: «Дублировать», «Склеить» выбранные в одну склейку и, когда
 // выбран предмет, — «Объединить по 30 шт» для выбранных без склейки (подробности плана — в подсказке кнопки).
-function renderCardSelectBar(rows,selecting){
-  const bar=$('#cardsSelectBar'),picked=cardPicked(rows),chosen=selecting?cardChosen(rows):[],free=rows.filter(cardSelectable).length;
-  bar.classList.toggle('hidden',!picked.length);
-  if(!picked.length){bar.innerHTML='';return}
-  const plan=chosen.length?cardGluePlan(chosen,cardsView.glueMode,cardsView.glueFill):null;
-  const glueTitle=chosen.length?`Без склейки ${fmtNum(chosen.length)} из ${fmtNum(free)} · ${CARD_GLUE_MODES[cardsView.glueMode]}: ${cardGlueSummary(plan)}`:'';
-  bar.innerHTML=`<strong>Выбрано: ${fmtNum(picked.length)}</strong><button type="button" class="primary" id="cardDuplicateRun">Дублировать</button>`+
-    `<button type="button" class="secondary" id="cardMergeRun" title="Объединить выбранные карточки в одну склейку">Склеить</button>`+
-    `${plan?.steps.length?`<button type="button" class="primary" id="cardGlueRun" title="${escapeHtml(glueTitle)}">Объединить по ${CARD_GLUE_LIMIT} шт</button>`:''}<button type="button" class="stock-clear" id="cardSelectClear">Сбросить</button>`;
+function renderCardSelectBar(rows, selecting) {
+  const bar = $('#cardsSelectBar'),
+    picked = cardPicked(rows),
+    chosen = selecting ? cardChosen(rows) : [],
+    free = rows.filter(cardSelectable).length;
+  bar.classList.toggle('hidden', !picked.length);
+  if (!picked.length) {
+    bar.innerHTML = '';
+    return;
+  }
+  const plan = chosen.length ? cardGluePlan(chosen, cardsView.glueMode, cardsView.glueFill) : null;
+  const glueTitle = chosen.length
+    ? `Без склейки ${fmtNum(chosen.length)} из ${fmtNum(free)} · ${CARD_GLUE_MODES[cardsView.glueMode]}: ${cardGlueSummary(plan)}`
+    : '';
+  bar.innerHTML =
+    `<strong>Выбрано: ${fmtNum(picked.length)}</strong><button type="button" class="primary" id="cardDuplicateRun">Дублировать</button>` +
+    `<button type="button" class="secondary" id="cardMergeRun" title="Объединить выбранные карточки в одну склейку">Склеить</button>` +
+    `${plan?.steps.length ? `<button type="button" class="primary" id="cardGlueRun" title="${escapeHtml(glueTitle)}">Объединить по ${CARD_GLUE_LIMIT} шт</button>` : ''}<button type="button" class="stock-clear" id="cardSelectClear">Сбросить</button>`;
 }
 // «Склеить» — выбранные карточки в одну склейку (POST /api/cards/move, метод WB moveNm). Склеить можно только карточки
 // одного предмета, в склейке — не больше 30. Основа — склейка, которую выбрали целиком (все её карточки отмечены): из
 // склеек, выбранных частично, отмеченные карточки переходят в неё. Целиком выбранных несколько — самая большая из них;
 // ни одной — самая большая склейка среди выбранных. Карточки из других склеек уходят из них — окно об этом предупреждает.
-function cardMergePlan(picked){
-  const all=cardsView.data?.cards||[],subjects=[...new Set(picked.map(card=>card.subjectName||'—'))];
-  const groupOf=imt=>all.filter(card=>card.imtID===imt),pickedIds=new Set(picked.map(card=>card.nmID));
-  const glued=picked.filter(card=>card.groupSize>1);
-  const groups=[...new Set(glued.map(card=>card.imtID))].map(imt=>({imt,cards:groupOf(imt)})).map(group=>({...group,whole:group.cards.every(card=>pickedIds.has(card.nmID))}));
-  const bySize=(a,b)=>b.cards.length-a.cards.length,whole=groups.filter(group=>group.whole).sort(bySize);
-  const chosen=whole[0]||[...groups].sort(bySize)[0]||null;
-  const target=chosen?chosen.imt:picked[0]?.imtID??null;
-  const base=target==null?[]:groupOf(target),move=picked.filter(card=>card.imtID!==target);
-  const leaving=move.filter(card=>card.groupSize>1);
-  return {subjects,target,base,move,leaving,glued,whole:Boolean(chosen?.whole),total:new Set([...base,...move].map(card=>card.nmID)).size};
+function cardMergePlan(picked) {
+  const all = cardsView.data?.cards || [],
+    subjects = [...new Set(picked.map(card => card.subjectName || '—'))];
+  const groupOf = imt => all.filter(card => card.imtID === imt),
+    pickedIds = new Set(picked.map(card => card.nmID));
+  const glued = picked.filter(card => card.groupSize > 1);
+  const groups = [...new Set(glued.map(card => card.imtID))]
+    .map(imt => ({ imt, cards: groupOf(imt) }))
+    .map(group => ({ ...group, whole: group.cards.every(card => pickedIds.has(card.nmID)) }));
+  const bySize = (a, b) => b.cards.length - a.cards.length,
+    whole = groups.filter(group => group.whole).sort(bySize);
+  const chosen = whole[0] || [...groups].sort(bySize)[0] || null;
+  const target = chosen ? chosen.imt : (picked[0]?.imtID ?? null);
+  const base = target == null ? [] : groupOf(target),
+    move = picked.filter(card => card.imtID !== target);
+  const leaving = move.filter(card => card.groupSize > 1);
+  return {
+    subjects,
+    target,
+    base,
+    move,
+    leaving,
+    glued,
+    whole: Boolean(chosen?.whole),
+    total: new Set([...base, ...move].map(card => card.nmID)).size
+  };
 }
 // Прогноз оценки склейки после объединения. На WB отзывы склеенных карточек общие: к оценкам склейки-основы по звёздам
 // добавляются оценки переносимых карточек. Оценку WB считает по своей формуле, поэтому прогноз — сдвиг её текущей оценки
 // на столько, на сколько меняется простая средняя по звёздам.
-function cardMergeRatings(plan){
-  const target=(cardsView.data?.cards||[]).find(card=>card.imtID===plan.target);
-  if(!target?.glueStars)return '<p class="muted card-merge-note">Оценки склеек ещё не загружены с WB — прогноза оценки пока нет.</p>';
-  const sum=stars=>stars.reduce((total,value)=>total+value,0),avg=stars=>{const count=sum(stars);return count?stars.reduce((total,value,index)=>total+value*(index+1),0)/count:null};
-  const add=[0,0,0,0,0];let missing=0;
-  plan.move.forEach(card=>{if(!card.fbStars){missing++;return}card.fbStars.forEach((value,index)=>{add[index]+=value})});
-  const base=target.glueStars,after=base.map((value,index)=>value+add[index]);
-  const now=target.glueRating??avg(base),shift=avg(base)!=null&&avg(after)!=null?avg(after)-avg(base):0,estimate=now!=null?now+shift:avg(after);
-  const nowCount=target.glueCount??sum(base),addCount=sum(add),fmt=value=>value==null?'—':`★ ${value.toLocaleString('ru-RU',{minimumFractionDigits:2,maximumFractionDigits:2})}`;
-  const tone=Math.abs(shift)<0.005?'':shift<0?' down':' up';
-  return `<div class="card-merge-rating"><div><span>Склейка-основа сейчас</span><b>${fmt(now)}</b><small>${fmtNum(nowCount)} ${cardRatingWord(nowCount)}</small></div>`+
-    `<div><span>Добавятся оценки</span><b>${addCount?fmt(avg(add)):'—'}</b><small>${addCount?`${fmtNum(addCount)} ${cardRatingWord(addCount)}`:'у переносимых карточек оценок нет'}</small></div>`+
-    `<div><span>После объединения, примерно</span><b class="card-merge-estimate${tone}">${fmt(estimate)}</b><small>${fmtNum(nowCount+addCount)} ${cardRatingWord(nowCount+addCount)}${tone?` · ${shift>0?'+':'−'}${Math.abs(shift).toLocaleString('ru-RU',{maximumFractionDigits:2})}`:''}</small></div></div>`+
-    `<p class="muted card-merge-note">На WB отзывы склеенных карточек общие. Прогноз — по оценкам по звёздам; WB считает оценку по своей формуле, поэтому итог может немного отличаться.${plan.leaving.length?' Склейки, из которых уходят карточки, потеряют их оценки.':''}${missing?` У ${fmtNum(missing)} ${cardWord(missing)} оценки ещё не загружены — в прогнозе их нет.`:''}</p>`;
+function cardMergeRatings(plan) {
+  const target = (cardsView.data?.cards || []).find(card => card.imtID === plan.target);
+  if (!target?.glueStars) return '<p class="muted card-merge-note">Оценки склеек ещё не загружены с WB — прогноза оценки пока нет.</p>';
+  const sum = stars => stars.reduce((total, value) => total + value, 0),
+    avg = stars => {
+      const count = sum(stars);
+      return count ? stars.reduce((total, value, index) => total + value * (index + 1), 0) / count : null;
+    };
+  const add = [0, 0, 0, 0, 0];
+  let missing = 0;
+  plan.move.forEach(card => {
+    if (!card.fbStars) {
+      missing++;
+      return;
+    }
+    card.fbStars.forEach((value, index) => {
+      add[index] += value;
+    });
+  });
+  const base = target.glueStars,
+    after = base.map((value, index) => value + add[index]);
+  const now = target.glueRating ?? avg(base),
+    shift = avg(base) != null && avg(after) != null ? avg(after) - avg(base) : 0,
+    estimate = now != null ? now + shift : avg(after);
+  const nowCount = target.glueCount ?? sum(base),
+    addCount = sum(add),
+    fmt = value => (value == null ? '—' : `★ ${value.toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
+  const tone = Math.abs(shift) < 0.005 ? '' : shift < 0 ? ' down' : ' up';
+  return (
+    `<div class="card-merge-rating"><div><span>Склейка-основа сейчас</span><b>${fmt(now)}</b><small>${fmtNum(nowCount)} ${cardRatingWord(nowCount)}</small></div>` +
+    `<div><span>Добавятся оценки</span><b>${addCount ? fmt(avg(add)) : '—'}</b><small>${addCount ? `${fmtNum(addCount)} ${cardRatingWord(addCount)}` : 'у переносимых карточек оценок нет'}</small></div>` +
+    `<div><span>После объединения, примерно</span><b class="card-merge-estimate${tone}">${fmt(estimate)}</b><small>${fmtNum(nowCount + addCount)} ${cardRatingWord(nowCount + addCount)}${tone ? ` · ${shift > 0 ? '+' : '−'}${Math.abs(shift).toLocaleString('ru-RU', { maximumFractionDigits: 2 })}` : ''}</small></div></div>` +
+    `<p class="muted card-merge-note">На WB отзывы склеенных карточек общие. Прогноз — по оценкам по звёздам; WB считает оценку по своей формуле, поэтому итог может немного отличаться.${plan.leaving.length ? ' Склейки, из которых уходят карточки, потеряют их оценки.' : ''}${missing ? ` У ${fmtNum(missing)} ${cardWord(missing)} оценки ещё не загружены — в прогнозе их нет.` : ''}</p>`
+  );
 }
-function openCardMerge(){
-  const picked=cardPicked(cardRows());
-  if(picked.length<2)return toast('Выберите хотя бы две карточки');
-  const plan=cardMergePlan(picked),name=card=>`${escapeHtml(card.vendorCode||card.nmID)} <small>${escapeHtml(card.nmID)}</small>`;
-  let problem='';
-  if(plan.subjects.length>1)problem=`Склеить можно только карточки одного предмета, а выбраны: ${plan.subjects.map(escapeHtml).join(', ')}.`;
-  else if(!plan.move.length)problem='Выбранные карточки уже в одной склейке.';
-  else if(plan.total>CARD_GLUE_LIMIT)problem=`В склейке будет ${fmtNum(plan.total)} карточек, а WB разрешает не больше ${CARD_GLUE_LIMIT}.`;
-  const warn=plan.glued.length?`<div class="card-merge-warn"><b>Уже в склейке: ${fmtNum(plan.glued.length)} ${cardWord(plan.glued.length)}.</b> ${plan.base.length>1?`Основа — склейка из ${fmtNum(plan.base.length)} ${pluralRu(plan.base.length,['карточки','карточек','карточек'])}${plan.whole?', выбранная целиком':' — самая большая среди выбранных'}, в неё перейдут остальные выбранные.`:''}${plan.leaving.length?` Эти карточки уйдут из своих склеек: ${plan.leaving.slice(0,20).map(card=>`${escapeHtml(card.vendorCode||card.nmID)} (склейка из ${fmtNum(card.groupSize)})`).join(', ')}${plan.leaving.length>20?` и ещё ${fmtNum(plan.leaving.length-20)}`:''}.`:''}</div>`:'';
+function openCardMerge() {
+  const picked = cardPicked(cardRows());
+  if (picked.length < 2) return toast('Выберите хотя бы две карточки');
+  const plan = cardMergePlan(picked),
+    name = card => `${escapeHtml(card.vendorCode || card.nmID)} <small>${escapeHtml(card.nmID)}</small>`;
+  let problem = '';
+  if (plan.subjects.length > 1)
+    problem = `Склеить можно только карточки одного предмета, а выбраны: ${plan.subjects.map(escapeHtml).join(', ')}.`;
+  else if (!plan.move.length) problem = 'Выбранные карточки уже в одной склейке.';
+  else if (plan.total > CARD_GLUE_LIMIT)
+    problem = `В склейке будет ${fmtNum(plan.total)} карточек, а WB разрешает не больше ${CARD_GLUE_LIMIT}.`;
+  const warn = plan.glued.length
+    ? `<div class="card-merge-warn"><b>Уже в склейке: ${fmtNum(plan.glued.length)} ${cardWord(plan.glued.length)}.</b> ${plan.base.length > 1 ? `Основа — склейка из ${fmtNum(plan.base.length)} ${pluralRu(plan.base.length, ['карточки', 'карточек', 'карточек'])}${plan.whole ? ', выбранная целиком' : ' — самая большая среди выбранных'}, в неё перейдут остальные выбранные.` : ''}${
+        plan.leaving.length
+          ? ` Эти карточки уйдут из своих склеек: ${plan.leaving
+              .slice(0, 20)
+              .map(card => `${escapeHtml(card.vendorCode || card.nmID)} (склейка из ${fmtNum(card.groupSize)})`)
+              .join(', ')}${plan.leaving.length > 20 ? ` и ещё ${fmtNum(plan.leaving.length - 20)}` : ''}.`
+          : ''
+      }</div>`
+    : '';
   openModal(`<div class="card-merge"><p class="eyebrow">Карточки товаров</p><h2>Склеить ${fmtNum(picked.length)} ${cardWord(picked.length)}</h2>
-    <p class="muted">Выбранные карточки станут одной склейкой — на WB это один товар с выбором вариантов. Изменение сразу уйдёт в WB.${plan.subjects.length===1?` Предмет: ${escapeHtml(plan.subjects[0])}.`:''}${!problem?` В склейке будет ${fmtNum(plan.total)} ${cardWord(plan.total)}.`:''}</p>
-    ${warn}${problem?`<p class="card-merge-problem">${problem}</p>`:cardMergeRatings(plan)}
-    <ul class="card-merge-list">${picked.slice(0,30).map(card=>`<li>${name(card)} — ${escapeHtml((card.title||'').slice(0,60))}${card.groupSize>1?` <span class="card-glue-chip">склейка · ${fmtNum(card.groupSize)}</span>`:''}</li>`).join('')}${picked.length>30?`<li class="muted">…и ещё ${fmtNum(picked.length-30)}</li>`:''}</ul>
+    <p class="muted">Выбранные карточки станут одной склейкой — на WB это один товар с выбором вариантов. Изменение сразу уйдёт в WB.${plan.subjects.length === 1 ? ` Предмет: ${escapeHtml(plan.subjects[0])}.` : ''}${!problem ? ` В склейке будет ${fmtNum(plan.total)} ${cardWord(plan.total)}.` : ''}</p>
+    ${warn}${problem ? `<p class="card-merge-problem">${problem}</p>` : cardMergeRatings(plan)}
+    <ul class="card-merge-list">${picked
+      .slice(0, 30)
+      .map(
+        card =>
+          `<li>${name(card)} — ${escapeHtml((card.title || '').slice(0, 60))}${card.groupSize > 1 ? ` <span class="card-glue-chip">склейка · ${fmtNum(card.groupSize)}</span>` : ''}</li>`
+      )
+      .join('')}${picked.length > 30 ? `<li class="muted">…и ещё ${fmtNum(picked.length - 30)}</li>` : ''}</ul>
     <p class="card-tag-note" id="cardMergeNote" role="status"></p>
-    <div class="modal-actions"><button type="button" data-modal-close-inline>Отмена</button><button type="button" class="primary" id="cardMergeConfirm"${problem?' disabled':''}>${plan.leaving.length?'Склеить всё равно':'Склеить'}</button></div></div>`);
-  if(problem)return;
-  $('#cardMergeConfirm').onclick=async()=>{
-    const button=$('#cardMergeConfirm'),note=$('#cardMergeNote'),cabinet=state.cabinet;
-    button.disabled=true;button.textContent='Склеиваем…';note.classList.remove('error');note.textContent='';
-    try{
-      await api('/api/cards/move',{method:'POST',body:JSON.stringify({cabinet,confirm:true,nmIds:plan.move.map(card=>card.nmID),targetIMT:plan.target})});
-      if(cardsView.key===cabinet&&cardsView.data){
-        const list=cardsView.data.cards,ids=new Set(plan.move.map(card=>card.nmID)),touched=new Set([plan.target,...plan.move.map(card=>card.imtID)]);
-        list.forEach(card=>{if(ids.has(card.nmID))card.imtID=plan.target});
-        touched.forEach(imt=>{const size=list.filter(card=>card.imtID===imt).length;list.forEach(card=>{if(card.imtID===imt)card.groupSize=size})});
-        picked.forEach(card=>cardsView.selected.delete(card.nmID));
+    <div class="modal-actions"><button type="button" data-modal-close-inline>Отмена</button><button type="button" class="primary" id="cardMergeConfirm"${problem ? ' disabled' : ''}>${plan.leaving.length ? 'Склеить всё равно' : 'Склеить'}</button></div></div>`);
+  if (problem) return;
+  $('#cardMergeConfirm').onclick = async () => {
+    const button = $('#cardMergeConfirm'),
+      note = $('#cardMergeNote'),
+      cabinet = state.cabinet;
+    button.disabled = true;
+    button.textContent = 'Склеиваем…';
+    note.classList.remove('error');
+    note.textContent = '';
+    try {
+      await api('/api/cards/move', {
+        method: 'POST',
+        body: JSON.stringify({ cabinet, confirm: true, nmIds: plan.move.map(card => card.nmID), targetIMT: plan.target })
+      });
+      if (cardsView.key === cabinet && cardsView.data) {
+        const list = cardsView.data.cards,
+          ids = new Set(plan.move.map(card => card.nmID)),
+          touched = new Set([plan.target, ...plan.move.map(card => card.imtID)]);
+        list.forEach(card => {
+          if (ids.has(card.nmID)) card.imtID = plan.target;
+        });
+        touched.forEach(imt => {
+          const size = list.filter(card => card.imtID === imt).length;
+          list.forEach(card => {
+            if (card.imtID === imt) card.groupSize = size;
+          });
+        });
+        picked.forEach(card => cardsView.selected.delete(card.nmID));
       }
-      closeModal();toast(`Склеено: ${fmtNum(plan.total)} ${cardWord(plan.total)} в одной склейке`);
-      if(state.cabinet===cabinet){renderCards();loadCards(false,true)}
-    }catch(e){button.disabled=false;button.textContent='Склеить';note.textContent=`Не удалось: ${e.message}`;note.classList.add('error')}
+      closeModal();
+      toast(`Склеено: ${fmtNum(plan.total)} ${cardWord(plan.total)} в одной склейке`);
+      if (state.cabinet === cabinet) {
+        renderCards();
+        loadCards(false, true);
+      }
+    } catch (e) {
+      button.disabled = false;
+      button.textContent = 'Склеить';
+      note.textContent = `Не удалось: ${e.message}`;
+      note.classList.add('error');
+    }
   };
 }
 // Окно склейки: scope 'selected' — выбранные карточки предмета, 'all' — все карточки без склейки по фильтрам, по всем предметам.
-const cardGlue={scope:'selected',plan:null,run:null};
-function cardGlueList(){const rows=cardRows();return cardGlue.scope==='all'?rows.filter(cardSelectable):cardChosen(rows)}
-function openCardGlueBatch(scope){
-  if(cardGlue.run)return toast('Склейка ещё идёт — дождитесь окончания');
-  cardGlue.scope=scope;
-  openModal(`<div class="card-glue-batch"><p class="eyebrow">Карточки товаров</p><h2>Объединить по ${CARD_GLUE_LIMIT} шт</h2><p class="muted" id="cardGlueScope"></p>
+const cardGlue = { scope: 'selected', plan: null, run: null };
+function cardGlueList() {
+  const rows = cardRows();
+  return cardGlue.scope === 'all' ? rows.filter(cardSelectable) : cardChosen(rows);
+}
+function openCardGlueBatch(scope) {
+  if (cardGlue.run) return toast('Склейка ещё идёт — дождитесь окончания');
+  cardGlue.scope = scope;
+  openModal(
+    `<div class="card-glue-batch"><p class="eyebrow">Карточки товаров</p><h2>Объединить по ${CARD_GLUE_LIMIT} шт</h2><p class="muted" id="cardGlueScope"></p>
     <div class="card-glue-options"><label><input type="radio" name="cardGlueMode" value="title"> Похожие по названию</label><label><input type="radio" name="cardGlueMode" value="order"> Подряд по таблице</label><label><input type="checkbox" id="cardGlueFill"> Дополнять неполные склейки до ${CARD_GLUE_LIMIT}</label></div>
     <p class="muted card-glue-hint" id="cardGlueHint"></p><p class="card-glue-total" id="cardGlueTotal"></p><ol class="card-glue-plan" id="cardGluePlan"></ol>
-    <p class="card-tag-note" id="cardGlueNote" role="status"></p><div class="modal-actions"><button type="button" data-modal-close-inline id="cardGlueCancel">Отмена</button><button type="button" class="primary" id="cardGlueConfirm">Объединить</button></div></div>`,true);
-  $('#cardGlueConfirm').onclick=runCardGlueBatch;
+    <p class="card-tag-note" id="cardGlueNote" role="status"></p><div class="modal-actions"><button type="button" data-modal-close-inline id="cardGlueCancel">Отмена</button><button type="button" class="primary" id="cardGlueConfirm">Объединить</button></div></div>`,
+    true
+  );
+  $('#cardGlueConfirm').onclick = runCardGlueBatch;
   renderCardGluePlan();
 }
-function renderCardGluePlan(){
-  if(!$('.card-glue-batch')||cardGlue.run)return;
-  const v=cardsView,list=cardGlueList(),plan=cardGluePlan(list,v.glueMode,v.glueFill),all=cardGlue.scope==='all',subjects=new Set(list.map(card=>card.subjectID)).size;
-  cardGlue.plan=plan;
-  $$('[name=cardGlueMode]').forEach(input=>{input.checked=input.value===v.glueMode});$('#cardGlueFill').checked=v.glueFill;
-  $('#cardGlueScope').textContent=all?`Все предметы по текущим фильтрам: ${fmtNum(list.length)} ${cardWord(list.length)} без склейки в ${fmtNum(subjects)} ${pluralRu(subjects,['предмете','предметах','предметах'])}. Каждый предмет склеивается отдельно — WB не склеивает разные предметы. Изменения сразу уйдут в WB.`
-    :`Предмет «${v.subject}»: выбрано ${fmtNum(list.length)} ${cardWord(list.length)} без склейки. Изменения сразу уйдут в WB.`;
-  $('#cardGlueHint').textContent=(v.glueMode==='title'?'Вместе — карточки одного предмета с одинаковым названием (регистр и знаки препинания не важны), в порядке таблицы. Карточка с уникальным названием остаётся одна.':'Вместе — подряд в порядке таблицы, по 30.')
-    +(v.glueFill?(v.glueMode==='title'?' Сначала карточки добавляются в неполные склейки, где есть товар с тем же названием.':' Сначала карточки добавляются в неполные склейки того же предмета.'):'');
-  $('#cardGlueTotal').textContent=cardGlueSummary(plan);
-  const short=text=>text.length>60?`${text.slice(0,59)}…`:text,name=card=>escapeHtml(card.vendorCode||card.nmID),SHOWN=300;
-  $('#cardGluePlan').innerHTML=plan.steps.slice(0,SHOWN).map(step=>{const count=step.cards.length,first=step.cards[0];
-    return `<li>${all?`<b>${escapeHtml(step.subject)}</b> · `:''}${step.before?`дополнить склейку ${fmtNum(step.before)} → ${fmtNum(step.before+count)}: +${fmtNum(count)}`:`новая · ${fmtNum(count)} ${cardWord(count)}`} — «${escapeHtml(short(first.title||'Без названия'))}» <small>${name(first)}${count>1?` … ${name(step.cards.at(-1))}`:''}</small></li>`}).join('')
-    +(plan.steps.length>SHOWN?`<li class="muted">…и ещё ${fmtNum(plan.steps.length-SHOWN)}</li>`:'');
-  $('#cardGlueConfirm').disabled=!plan.steps.length;
-  $('#cardGlueConfirm').textContent=plan.steps.length>1?`Объединить: ${fmtNum(plan.steps.length)} ${pluralRu(plan.steps.length,['шаг','шага','шагов'])}`:'Объединить';
+function renderCardGluePlan() {
+  if (!$('.card-glue-batch') || cardGlue.run) return;
+  const v = cardsView,
+    list = cardGlueList(),
+    plan = cardGluePlan(list, v.glueMode, v.glueFill),
+    all = cardGlue.scope === 'all',
+    subjects = new Set(list.map(card => card.subjectID)).size;
+  cardGlue.plan = plan;
+  $$('[name=cardGlueMode]').forEach(input => {
+    input.checked = input.value === v.glueMode;
+  });
+  $('#cardGlueFill').checked = v.glueFill;
+  $('#cardGlueScope').textContent = all
+    ? `Все предметы по текущим фильтрам: ${fmtNum(list.length)} ${cardWord(list.length)} без склейки в ${fmtNum(subjects)} ${pluralRu(subjects, ['предмете', 'предметах', 'предметах'])}. Каждый предмет склеивается отдельно — WB не склеивает разные предметы. Изменения сразу уйдут в WB.`
+    : `Предмет «${v.subject}»: выбрано ${fmtNum(list.length)} ${cardWord(list.length)} без склейки. Изменения сразу уйдут в WB.`;
+  $('#cardGlueHint').textContent =
+    (v.glueMode === 'title'
+      ? 'Вместе — карточки одного предмета с одинаковым названием (регистр и знаки препинания не важны), в порядке таблицы. Карточка с уникальным названием остаётся одна.'
+      : 'Вместе — подряд в порядке таблицы, по 30.') +
+    (v.glueFill
+      ? v.glueMode === 'title'
+        ? ' Сначала карточки добавляются в неполные склейки, где есть товар с тем же названием.'
+        : ' Сначала карточки добавляются в неполные склейки того же предмета.'
+      : '');
+  $('#cardGlueTotal').textContent = cardGlueSummary(plan);
+  const short = text => (text.length > 60 ? `${text.slice(0, 59)}…` : text),
+    name = card => escapeHtml(card.vendorCode || card.nmID),
+    SHOWN = 300;
+  $('#cardGluePlan').innerHTML =
+    plan.steps
+      .slice(0, SHOWN)
+      .map(step => {
+        const count = step.cards.length,
+          first = step.cards[0];
+        return `<li>${all ? `<b>${escapeHtml(step.subject)}</b> · ` : ''}${step.before ? `дополнить склейку ${fmtNum(step.before)} → ${fmtNum(step.before + count)}: +${fmtNum(count)}` : `новая · ${fmtNum(count)} ${cardWord(count)}`} — «${escapeHtml(short(first.title || 'Без названия'))}» <small>${name(first)}${count > 1 ? ` … ${name(step.cards.at(-1))}` : ''}</small></li>`;
+      })
+      .join('') + (plan.steps.length > SHOWN ? `<li class="muted">…и ещё ${fmtNum(plan.steps.length - SHOWN)}</li>` : '');
+  $('#cardGlueConfirm').disabled = !plan.steps.length;
+  $('#cardGlueConfirm').textContent =
+    plan.steps.length > 1
+      ? `Объединить: ${fmtNum(plan.steps.length)} ${pluralRu(plan.steps.length, ['шаг', 'шага', 'шагов'])}`
+      : 'Объединить';
 }
 // Шаги уходят в WB по очереди. Лимит Контента WB — 100 запросов в минуту, всплеск 5: первые 5 — сразу, дальше раз в 650 мс
 // (на 429 сервер сам подождёт и повторит). Ошибка одного шага не останавливает остальные; три ошибки подряд — остановка.
-async function runCardGlueBatch(){
-  const steps=cardGlue.plan?.steps||[];if(!steps.length||cardGlue.run)return;
-  const cabinet=state.cabinet,run={stop:false},button=$('#cardGlueConfirm'),note=$('#cardGlueNote'),errors=[];
-  cardGlue.run=run;
-  $$('.card-glue-options input').forEach(input=>{input.disabled=true});
-  $('#cardGlueCancel').textContent='Скрыть окно';note.classList.remove('error');
-  button.textContent='Остановить';button.onclick=()=>{run.stop=true;button.disabled=true;button.textContent='Останавливаем…'};
-  let done=0,streak=0;
-  for(const [index,step] of steps.entries()){
-    if(run.stop)break;
-    note.textContent=`Отправляем ${fmtNum(index+1)} из ${fmtNum(steps.length)}…${errors.length?` · не прошло: ${errors.length}`:''}`;
-    if(index>=5)await new Promise(resolve=>setTimeout(resolve,650));
-    try{
-      await api('/api/cards/move',{method:'POST',body:JSON.stringify({cabinet,confirm:true,nmIds:(step.before?step.cards:step.cards.slice(1)).map(card=>card.nmID),targetIMT:step.target})});
-      done++;streak=0;
-      if(cardsView.key===cabinet&&cardsView.data){
-        const ids=new Set(step.cards.map(card=>card.nmID)),list=cardsView.data.cards;
-        list.forEach(card=>{if(ids.has(card.nmID)){card.imtID=step.target;cardsView.selected.delete(card.nmID)}});
-        const size=list.filter(card=>card.imtID===step.target).length;list.forEach(card=>{if(card.imtID===step.target)card.groupSize=size});
+async function runCardGlueBatch() {
+  const steps = cardGlue.plan?.steps || [];
+  if (!steps.length || cardGlue.run) return;
+  const cabinet = state.cabinet,
+    run = { stop: false },
+    button = $('#cardGlueConfirm'),
+    note = $('#cardGlueNote'),
+    errors = [];
+  cardGlue.run = run;
+  $$('.card-glue-options input').forEach(input => {
+    input.disabled = true;
+  });
+  $('#cardGlueCancel').textContent = 'Скрыть окно';
+  note.classList.remove('error');
+  button.textContent = 'Остановить';
+  button.onclick = () => {
+    run.stop = true;
+    button.disabled = true;
+    button.textContent = 'Останавливаем…';
+  };
+  let done = 0,
+    streak = 0;
+  for (const [index, step] of steps.entries()) {
+    if (run.stop) break;
+    note.textContent = `Отправляем ${fmtNum(index + 1)} из ${fmtNum(steps.length)}…${errors.length ? ` · не прошло: ${errors.length}` : ''}`;
+    if (index >= 5) await new Promise(resolve => setTimeout(resolve, 650));
+    try {
+      await api('/api/cards/move', {
+        method: 'POST',
+        body: JSON.stringify({
+          cabinet,
+          confirm: true,
+          nmIds: (step.before ? step.cards : step.cards.slice(1)).map(card => card.nmID),
+          targetIMT: step.target
+        })
+      });
+      done++;
+      streak = 0;
+      if (cardsView.key === cabinet && cardsView.data) {
+        const ids = new Set(step.cards.map(card => card.nmID)),
+          list = cardsView.data.cards;
+        list.forEach(card => {
+          if (ids.has(card.nmID)) {
+            card.imtID = step.target;
+            cardsView.selected.delete(card.nmID);
+          }
+        });
+        const size = list.filter(card => card.imtID === step.target).length;
+        list.forEach(card => {
+          if (card.imtID === step.target) card.groupSize = size;
+        });
       }
-    }catch(e){errors.push(`${step.subject} · ${step.cards[0].vendorCode||step.cards[0].nmID}: ${e.message}`);if(++streak>=3)break}
+    } catch (e) {
+      errors.push(`${step.subject} · ${step.cards[0].vendorCode || step.cards[0].nmID}: ${e.message}`);
+      if (++streak >= 3) break;
+    }
   }
-  cardGlue.run=null;
-  const rest=steps.length-done-errors.length,word=n=>pluralRu(n,['шаг','шага','шагов']);
+  cardGlue.run = null;
+  const rest = steps.length - done - errors.length,
+    word = n => pluralRu(n, ['шаг', 'шага', 'шагов']);
   toast(`Склейка: готово ${fmtNum(done)} из ${fmtNum(steps.length)}`);
-  if(note.isConnected){
-    if(!errors.length&&!rest)closeModal();
-    else{note.innerHTML=`Готово ${fmtNum(done)} из ${fmtNum(steps.length)}${rest?` · не отправлено ${fmtNum(rest)} ${word(rest)}${run.stop?' (остановлено)':' (три ошибки подряд — остановлено)'}`:''}${errors.length?`<br>Не прошло ${fmtNum(errors.length)}:<br>${errors.slice(0,10).map(escapeHtml).join('<br>')}`:''}`;
-      note.classList.toggle('error',errors.length>0);button.disabled=false;button.textContent='Закрыть';button.onclick=closeModal;$('#cardGlueCancel').classList.add('hidden')}
+  if (note.isConnected) {
+    if (!errors.length && !rest) closeModal();
+    else {
+      note.innerHTML = `Готово ${fmtNum(done)} из ${fmtNum(steps.length)}${rest ? ` · не отправлено ${fmtNum(rest)} ${word(rest)}${run.stop ? ' (остановлено)' : ' (три ошибки подряд — остановлено)'}` : ''}${errors.length ? `<br>Не прошло ${fmtNum(errors.length)}:<br>${errors.slice(0, 10).map(escapeHtml).join('<br>')}` : ''}`;
+      note.classList.toggle('error', errors.length > 0);
+      button.disabled = false;
+      button.textContent = 'Закрыть';
+      button.onclick = closeModal;
+      $('#cardGlueCancel').classList.add('hidden');
+    }
   }
-  if(state.cabinet===cabinet){renderCards();if(done)loadCards(false,true)}
+  if (state.cabinet === cabinet) {
+    renderCards();
+    if (done) loadCards(false, true);
+  }
 }
 
 // --- «Дублировать»: копии выбранных карточек с новым артикулом продавца и новыми баркодами ---
 // Сервер (POST /api/cards/duplicate) создаёт копии по одной и сам ждёт, пока WB их создаст (до 30 минут), затем копирует
 // фото, видео и ярлыки. Страница раз в 4 с спрашивает ход (GET /api/cards/duplicate) — окно можно закрыть и открыть снова.
-const CARD_DUP_MAX=100;
-const cardDup={job:null,cabinet:'',poll:0};
-const CARD_DUP_STATUS={preparing:'готовим',queued:'в очереди',creating:'отправляем в WB',waiting:'WB создаёт карточку…',media:'копируем фото и ярлыки',video:'копируем видео',done:'готово',error:'ошибка'};
+const CARD_DUP_MAX = 100;
+const cardDup = { job: null, cabinet: '', poll: 0 };
+const CARD_DUP_STATUS = {
+  preparing: 'готовим',
+  queued: 'в очереди',
+  creating: 'отправляем в WB',
+  waiting: 'WB создаёт карточку…',
+  media: 'копируем фото и ярлыки',
+  video: 'копируем видео',
+  done: 'готово',
+  error: 'ошибка'
+};
 // Свободный артикул продавца: «артикул-2», «артикул-3»… — которого нет ни в кабинете, ни среди других копий.
-function cardDupVendorCode(base,taken){for(let n=2;;n++){const code=`${base}-${n}`.slice(-72);if(!taken.has(code)){taken.add(code);return code}}}
-function openCardDuplicate(){
-  if(cardDup.job&&!cardDup.job.finishedAt&&cardDup.cabinet===state.cabinet)return renderCardDupModal(true);
-  const picked=cardPicked(cardRows());
-  if(!picked.length)return toast('Выберите карточки');
-  if(picked.length>CARD_DUP_MAX)return toast(`За раз можно дублировать не больше ${CARD_DUP_MAX} карточек — выбрано ${fmtNum(picked.length)}`);
-  const taken=new Set((cardsView.data?.cards||[]).map(card=>card.vendorCode));
-  openModal(`<div class="card-dup"><p class="eyebrow">Карточки товаров</p><h2>Дублировать ${fmtNum(picked.length)} ${cardWord(picked.length)}</h2>
+function cardDupVendorCode(base, taken) {
+  for (let n = 2; ; n++) {
+    const code = `${base}-${n}`.slice(-72);
+    if (!taken.has(code)) {
+      taken.add(code);
+      return code;
+    }
+  }
+}
+function openCardDuplicate() {
+  if (cardDup.job && !cardDup.job.finishedAt && cardDup.cabinet === state.cabinet) return renderCardDupModal(true);
+  const picked = cardPicked(cardRows());
+  if (!picked.length) return toast('Выберите карточки');
+  if (picked.length > CARD_DUP_MAX)
+    return toast(`За раз можно дублировать не больше ${CARD_DUP_MAX} карточек — выбрано ${fmtNum(picked.length)}`);
+  const taken = new Set((cardsView.data?.cards || []).map(card => card.vendorCode));
+  openModal(
+    `<div class="card-dup"><p class="eyebrow">Карточки товаров</p><h2>Дублировать ${fmtNum(picked.length)} ${cardWord(picked.length)}</h2>
     <p class="muted">Копия — новая карточка того же предмета. Скопируются наименование, описание, бренд, характеристики, габариты, документы, размеры и цена, фото, видео и ярлыки. Новыми будут артикул продавца (задайте ниже), баркоды (выдаст WB) и артикул WB. В склейку копия не попадает — WB не склеивает карточки с одинаковыми характеристиками. Скидку и остатки задайте после: WB создаёт карточку до 30 минут.</p>
     <label class="card-dup-suffix">Окончание артикула для всех <input id="cardDupSuffix" maxlength="20" placeholder="-2" aria-label="Окончание артикула для всех копий"></label>
-    <div class="card-dup-list"><table class="stock-table" data-no-resize><thead><tr><th>Оригинал</th><th>Артикул продавца копии</th><th>Ход</th></tr></thead><tbody>${picked.map(card=>`<tr data-dup-nm="${escapeHtml(card.nmID)}"><td><b>${escapeHtml(card.vendorCode||'—')}</b><small>${escapeHtml(card.nmID)} · ${escapeHtml((card.title||'').slice(0,50))}</small></td><td><input class="card-dup-code" data-dup-base="${escapeHtml(card.vendorCode||card.nmID)}" maxlength="72" value="${escapeHtml(cardDupVendorCode(card.vendorCode||String(card.nmID),taken))}" aria-label="Артикул продавца копии ${escapeHtml(card.vendorCode||card.nmID)}"></td><td class="card-dup-state muted">—</td></tr>`).join('')}</tbody></table></div>
-    <p class="card-tag-note" id="cardDupNote" role="status"></p><div class="modal-actions"><button type="button" data-modal-close-inline id="cardDupCancel">Отмена</button><button type="button" class="primary" id="cardDupConfirm">Создать копии</button></div></div>`,true);
-  $('#cardDupConfirm').onclick=startCardDuplicate;
+    <div class="card-dup-list"><table class="stock-table" data-no-resize><thead><tr><th>Оригинал</th><th>Артикул продавца копии</th><th>Ход</th></tr></thead><tbody>${picked.map(card => `<tr data-dup-nm="${escapeHtml(card.nmID)}"><td><b>${escapeHtml(card.vendorCode || '—')}</b><small>${escapeHtml(card.nmID)} · ${escapeHtml((card.title || '').slice(0, 50))}</small></td><td><input class="card-dup-code" data-dup-base="${escapeHtml(card.vendorCode || card.nmID)}" maxlength="72" value="${escapeHtml(cardDupVendorCode(card.vendorCode || String(card.nmID), taken))}" aria-label="Артикул продавца копии ${escapeHtml(card.vendorCode || card.nmID)}"></td><td class="card-dup-state muted">—</td></tr>`).join('')}</tbody></table></div>
+    <p class="card-tag-note" id="cardDupNote" role="status"></p><div class="modal-actions"><button type="button" data-modal-close-inline id="cardDupCancel">Отмена</button><button type="button" class="primary" id="cardDupConfirm">Создать копии</button></div></div>`,
+    true
+  );
+  $('#cardDupConfirm').onclick = startCardDuplicate;
 }
-async function startCardDuplicate(){
-  const rows=$$('.card-dup [data-dup-nm]'),note=$('#cardDupNote'),button=$('#cardDupConfirm');
-  const items=rows.map(row=>({nmId:Number(row.dataset.dupNm),vendorCode:row.querySelector('.card-dup-code').value.trim()}));
-  const empty=items.find(item=>!item.vendorCode);if(empty){note.textContent='Укажите артикул продавца у каждой копии';note.classList.add('error');return}
-  const seen=new Set(),twice=items.find(item=>seen.has(item.vendorCode)||!seen.add(item.vendorCode));if(twice){note.textContent=`Артикул повторяется: ${twice.vendorCode}`;note.classList.add('error');return}
-  button.disabled=true;button.textContent='Отправляем…';note.classList.remove('error');note.textContent='';
-  try{
-    const job=await api('/api/cards/duplicate',{method:'POST',body:JSON.stringify({cabinet:state.cabinet,confirm:true,items})});
-    cardDup.job=job;cardDup.cabinet=job.cabinet;renderCardDupModal(false);pollCardDuplicate();
-  }catch(e){button.disabled=false;button.textContent='Создать копии';note.textContent=`Не удалось: ${e.message}`;note.classList.add('error')}
+async function startCardDuplicate() {
+  const rows = $$('.card-dup [data-dup-nm]'),
+    note = $('#cardDupNote'),
+    button = $('#cardDupConfirm');
+  const items = rows.map(row => ({ nmId: Number(row.dataset.dupNm), vendorCode: row.querySelector('.card-dup-code').value.trim() }));
+  const empty = items.find(item => !item.vendorCode);
+  if (empty) {
+    note.textContent = 'Укажите артикул продавца у каждой копии';
+    note.classList.add('error');
+    return;
+  }
+  const seen = new Set(),
+    twice = items.find(item => seen.has(item.vendorCode) || !seen.add(item.vendorCode));
+  if (twice) {
+    note.textContent = `Артикул повторяется: ${twice.vendorCode}`;
+    note.classList.add('error');
+    return;
+  }
+  button.disabled = true;
+  button.textContent = 'Отправляем…';
+  note.classList.remove('error');
+  note.textContent = '';
+  try {
+    const job = await api('/api/cards/duplicate', {
+      method: 'POST',
+      body: JSON.stringify({ cabinet: state.cabinet, confirm: true, items })
+    });
+    cardDup.job = job;
+    cardDup.cabinet = job.cabinet;
+    renderCardDupModal(false);
+    pollCardDuplicate();
+  } catch (e) {
+    button.disabled = false;
+    button.textContent = 'Создать копии';
+    note.textContent = `Не удалось: ${e.message}`;
+    note.classList.add('error');
+  }
 }
 // Окно с ходом задания. reopen — окно открыто заново (задание шло, пока окно было закрыто).
-function renderCardDupModal(reopen){
-  const job=cardDup.job;if(!job)return;
-  if(reopen||!$('.card-dup')){
-    const parse=job.kind==='parse';
-    openModal(`<div class="card-dup"><p class="eyebrow">Карточки товаров</p><h2>${parse?'Карточки по ссылкам WB':'Копии карточек'}</h2><p class="muted">WB создаёт карточку до 30 минут. Окно можно закрыть — карточки создадутся, а ход можно посмотреть, снова нажав «${parse?'Парсер WB':'Дублировать'}».</p>
-      <div class="card-dup-list"><table class="stock-table" data-no-resize><thead><tr><th>${parse?'Товар на WB':'Оригинал'}</th><th>Артикул продавца${parse?'':' копии'}</th><th>Ход</th></tr></thead><tbody>${job.items.map(item=>`<tr data-dup-nm="${escapeHtml(item.nmId)}"><td><b>${escapeHtml(parse?item.title||'—':item.sourceVendorCode||'—')}</b><small>${escapeHtml(item.nmId)}${parse?'':` · ${escapeHtml((item.title||'').slice(0,50))}`}</small></td><td><input class="card-dup-code" value="${escapeHtml(item.vendorCode)}" disabled></td><td class="card-dup-state muted">—</td></tr>`).join('')}</tbody></table></div>
-      <p class="card-tag-note" id="cardDupNote" role="status"></p><div class="modal-actions"><button type="button" class="primary" data-modal-close-inline>Закрыть</button></div></div>`,true);
-  }else{$('#cardDupSuffix')?.closest('label')?.remove();$$('.card-dup-code').forEach(input=>{input.disabled=true});$('#cardDupCancel')?.remove();const button=$('#cardDupConfirm');if(button){button.disabled=false;button.textContent='Закрыть';button.onclick=closeModal}}
-  job.items.forEach(item=>{
-    const cell=$(`.card-dup [data-dup-nm="${CSS.escape(String(item.nmId))}"] .card-dup-state`);if(!cell)return;
-    const done=item.status==='done',failed=item.status==='error';
-    cell.className=`card-dup-state${failed?' card-warn':done?'':' muted'}`;
-    cell.innerHTML=`${done&&item.newNmId?`готово · <a class="card-title-link" href="${escapeHtml(cardLink(item.newNmId))}" target="_blank" rel="noopener noreferrer">${escapeHtml(item.newNmId)}</a>`:escapeHtml(CARD_DUP_STATUS[item.status]||item.status)}${failed?`<small>${escapeHtml(item.error)}</small>`:''}${(item.warnings||[]).map(text=>`<small class="card-warn">${escapeHtml(text)}</small>`).join('')}`;
+function renderCardDupModal(reopen) {
+  const job = cardDup.job;
+  if (!job) return;
+  if (reopen || !$('.card-dup')) {
+    const parse = job.kind === 'parse';
+    openModal(
+      `<div class="card-dup"><p class="eyebrow">Карточки товаров</p><h2>${parse ? 'Карточки по ссылкам WB' : 'Копии карточек'}</h2><p class="muted">WB создаёт карточку до 30 минут. Окно можно закрыть — карточки создадутся, а ход можно посмотреть, снова нажав «${parse ? 'Парсер WB' : 'Дублировать'}».</p>
+      <div class="card-dup-list"><table class="stock-table" data-no-resize><thead><tr><th>${parse ? 'Товар на WB' : 'Оригинал'}</th><th>Артикул продавца${parse ? '' : ' копии'}</th><th>Ход</th></tr></thead><tbody>${job.items.map(item => `<tr data-dup-nm="${escapeHtml(item.nmId)}"><td><b>${escapeHtml(parse ? item.title || '—' : item.sourceVendorCode || '—')}</b><small>${escapeHtml(item.nmId)}${parse ? '' : ` · ${escapeHtml((item.title || '').slice(0, 50))}`}</small></td><td><input class="card-dup-code" value="${escapeHtml(item.vendorCode)}" disabled></td><td class="card-dup-state muted">—</td></tr>`).join('')}</tbody></table></div>
+      <p class="card-tag-note" id="cardDupNote" role="status"></p><div class="modal-actions"><button type="button" class="primary" data-modal-close-inline>Закрыть</button></div></div>`,
+      true
+    );
+  } else {
+    $('#cardDupSuffix')?.closest('label')?.remove();
+    $$('.card-dup-code').forEach(input => {
+      input.disabled = true;
+    });
+    $('#cardDupCancel')?.remove();
+    const button = $('#cardDupConfirm');
+    if (button) {
+      button.disabled = false;
+      button.textContent = 'Закрыть';
+      button.onclick = closeModal;
+    }
+  }
+  job.items.forEach(item => {
+    const cell = $(`.card-dup [data-dup-nm="${CSS.escape(String(item.nmId))}"] .card-dup-state`);
+    if (!cell) return;
+    const done = item.status === 'done',
+      failed = item.status === 'error';
+    cell.className = `card-dup-state${failed ? ' card-warn' : done ? '' : ' muted'}`;
+    cell.innerHTML = `${done && item.newNmId ? `готово · <a class="card-title-link" href="${escapeHtml(cardLink(item.newNmId))}" target="_blank" rel="noopener noreferrer">${escapeHtml(item.newNmId)}</a>` : escapeHtml(CARD_DUP_STATUS[item.status] || item.status)}${failed ? `<small>${escapeHtml(item.error)}</small>` : ''}${(item.warnings || []).map(text => `<small class="card-warn">${escapeHtml(text)}</small>`).join('')}`;
   });
-  const count=status=>job.items.filter(item=>item.status===status).length;
-  const note=$('#cardDupNote');if(note)note.textContent=job.finishedAt?`Готово ${fmtNum(count('done'))} из ${fmtNum(job.items.length)}${count('error')?` · с ошибкой ${fmtNum(count('error'))}`:''}`:`Создано ${fmtNum(count('done'))} из ${fmtNum(job.items.length)} · ждём WB…`;
+  const count = status => job.items.filter(item => item.status === status).length;
+  const note = $('#cardDupNote');
+  if (note)
+    note.textContent = job.finishedAt
+      ? `Готово ${fmtNum(count('done'))} из ${fmtNum(job.items.length)}${count('error') ? ` · с ошибкой ${fmtNum(count('error'))}` : ''}`
+      : `Создано ${fmtNum(count('done'))} из ${fmtNum(job.items.length)} · ждём WB…`;
 }
-async function pollCardDuplicate(){
+async function pollCardDuplicate() {
   clearTimeout(cardDup.poll);
-  const job=cardDup.job;if(!job||job.finishedAt)return;
-  cardDup.poll=setTimeout(async()=>{
-    try{const {job:fresh}=await api(`/api/cards/duplicate?${new URLSearchParams({cabinet:cardDup.cabinet,job:job.id})}`);
-      if(!fresh){cardDup.job=null;return}
-      const before=job.items.filter(item=>item.status==='done').length;cardDup.job=fresh;
-      if($('.card-dup'))renderCardDupModal(false);
-      if(fresh.items.filter(item=>item.status==='done').length>before&&state.cabinet===fresh.cabinet&&state.activePage==='cards')loadCards(false,true);
-      if(fresh.finishedAt){const done=fresh.items.filter(item=>item.status==='done').length;toast(`${fresh.kind==='parse'?'Карточки по ссылкам WB':'Копии карточек'}: готово ${fmtNum(done)} из ${fmtNum(fresh.items.length)}`);return}
-    }catch{}
+  const job = cardDup.job;
+  if (!job || job.finishedAt) return;
+  cardDup.poll = setTimeout(async () => {
+    try {
+      const { job: fresh } = await api(`/api/cards/duplicate?${new URLSearchParams({ cabinet: cardDup.cabinet, job: job.id })}`);
+      if (!fresh) {
+        cardDup.job = null;
+        return;
+      }
+      const before = job.items.filter(item => item.status === 'done').length;
+      cardDup.job = fresh;
+      if ($('.card-dup')) renderCardDupModal(false);
+      if (
+        fresh.items.filter(item => item.status === 'done').length > before &&
+        state.cabinet === fresh.cabinet &&
+        state.activePage === 'cards'
+      )
+        loadCards(false, true);
+      if (fresh.finishedAt) {
+        const done = fresh.items.filter(item => item.status === 'done').length;
+        toast(
+          `${fresh.kind === 'parse' ? 'Карточки по ссылкам WB' : 'Копии карточек'}: готово ${fmtNum(done)} из ${fmtNum(fresh.items.length)}`
+        );
+        return;
+      }
+    } catch {}
     pollCardDuplicate();
-  },4000);
+  }, 4000);
 }
 
 // --- «Парсер WB»: новые карточки по ссылкам на чужие товары витрины WB ---
@@ -414,271 +983,614 @@ async function pollCardDuplicate(){
 // описание, характеристики (по справочнику предмета), габариты, размеры, фото и видео. Продавец задаёт артикул, цену,
 // бренд, ТН ВЭД и НДС, и сервер создаёт карточки так же, как копии в «Дублировать» (POST /api/cards/parse/create;
 // ход — то же окно и GET /api/cards/duplicate).
-const CARD_PARSE_DIMS=[['length','Длина, см'],['width','Ширина, см'],['height','Высота, см'],['weightBrutto','Вес с упак., кг']];
-const cardParse={items:[],cabinet:''};
-function openCardParse(){
-  if(cardDup.job&&!cardDup.job.finishedAt&&cardDup.cabinet===state.cabinet)return renderCardDupModal(true);
-  openModal(`<div class="card-parse"><p class="eyebrow">Карточки товаров</p><h2>Парсер WB</h2>
+const CARD_PARSE_DIMS = [
+  ['length', 'Длина, см'],
+  ['width', 'Ширина, см'],
+  ['height', 'Высота, см'],
+  ['weightBrutto', 'Вес с упак., кг']
+];
+const cardParse = { items: [], cabinet: '' };
+function openCardParse() {
+  if (cardDup.job && !cardDup.job.finishedAt && cardDup.cabinet === state.cabinet) return renderCardDupModal(true);
+  openModal(
+    `<div class="card-parse"><p class="eyebrow">Карточки товаров</p><h2>Парсер WB</h2>
     <p class="muted">Вставьте ссылки на товары Wildberries или их артикулы — до 20, через пробел или с новой строки. Сайт разберёт карточку товара на витрине WB и покажет, что перенесётся в новую карточку вашего кабинета: наименование, описание, предмет, характеристики, габариты, размеры, фото и видео. Документы чужого продавца не переносятся. Фото и описания других продавцов — их собственность: по жалобе WB может заблокировать карточку.</p>
     <textarea id="cardParseText" rows="3" placeholder="https://www.wildberries.ru/catalog/123456789/detail.aspx" aria-label="Ссылки на товары WB или артикулы"></textarea>
     <div class="modal-actions card-parse-run"><button type="button" class="primary" id="cardParseRun">Разобрать</button></div>
-    <div id="cardParseResult"></div><p class="card-tag-note" id="cardParseNote" role="status"></p></div>`,true);
-  setTimeout(()=>$('#cardParseText')?.focus(),0);
+    <div id="cardParseResult"></div><p class="card-tag-note" id="cardParseNote" role="status"></p></div>`,
+    true
+  );
+  setTimeout(() => $('#cardParseText')?.focus(), 0);
 }
-async function runCardParse(){
-  const text=$('#cardParseText').value.trim(),note=$('#cardParseNote'),button=$('#cardParseRun'),cabinet=state.cabinet;
-  if(!text){note.textContent='Вставьте ссылку или артикул';note.classList.add('error');return}
-  button.disabled=true;button.textContent='Разбираем…';note.classList.remove('error');note.textContent='Читаем витрину WB…';$('#cardParseResult').innerHTML='';
-  try{
-    const {items}=await api('/api/cards/parse',{method:'POST',body:JSON.stringify({cabinet,text})});
-    if(state.cabinet!==cabinet||!$('.card-parse'))return;
-    Object.assign(cardParse,{items,cabinet});note.textContent='';renderCardParse();
-  }catch(e){note.textContent=`Не удалось: ${e.message}`;note.classList.add('error')}
-  finally{button.disabled=false;button.textContent='Разобрать'}
+async function runCardParse() {
+  const text = $('#cardParseText').value.trim(),
+    note = $('#cardParseNote'),
+    button = $('#cardParseRun'),
+    cabinet = state.cabinet;
+  if (!text) {
+    note.textContent = 'Вставьте ссылку или артикул';
+    note.classList.add('error');
+    return;
+  }
+  button.disabled = true;
+  button.textContent = 'Разбираем…';
+  note.classList.remove('error');
+  note.textContent = 'Читаем витрину WB…';
+  $('#cardParseResult').innerHTML = '';
+  try {
+    const { items } = await api('/api/cards/parse', { method: 'POST', body: JSON.stringify({ cabinet, text }) });
+    if (state.cabinet !== cabinet || !$('.card-parse')) return;
+    Object.assign(cardParse, { items, cabinet });
+    note.textContent = '';
+    renderCardParse();
+  } catch (e) {
+    note.textContent = `Не удалось: ${e.message}`;
+    note.classList.add('error');
+  } finally {
+    button.disabled = false;
+    button.textContent = 'Разобрать';
+  }
 }
-function renderCardParse(){
-  const items=cardParse.items,ok=items.filter(item=>!item.error),cards=cardsView.data?.cards||[];
-  const taken=new Set(cards.map(card=>card.vendorCode));
-  const brands=[...new Set(cards.map(card=>card.brand).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'ru'));
-  const num=value=>value>0?String(value):'';
-  const block=item=>{
-    if(item.error)return `<section class="card-parse-item card-parse-failed"><b>${escapeHtml(item.nmId)}</b> — ${escapeHtml(item.error)}</section>`;
-    const code=taken.has(`wb-${item.nmId}`)?cardDupVendorCode(`wb-${item.nmId}`,taken):(taken.add(`wb-${item.nmId}`),`wb-${item.nmId}`);
-    const sizes=item.sizes.length?item.sizes.map(size=>size.wbSize&&size.wbSize!==size.techSize?`${size.techSize} (${size.wbSize})`:size.techSize).join(', '):'без размеров';
-    const brandOptions=`<option value="">Без бренда</option>${brands.map(brand=>`<option value="${escapeHtml(brand)}">${escapeHtml(brand)}</option>`).join('')}${item.donorBrand&&!brands.includes(item.donorBrand)?`<option value="${escapeHtml(item.donorBrand)}">${escapeHtml(item.donorBrand)} — как у товара (нужны права на бренд)</option>`:''}`;
-    const tnved=item.tnved?`<label>ТН ВЭД<input class="card-parse-tnved" inputmode="numeric" maxlength="10" list="cardParseTnved${item.nmId}" value="${escapeHtml(item.tnved.suggested||'')}" placeholder="${item.tnved.options.length?'выберите код':'10 цифр'}"><datalist id="cardParseTnved${item.nmId}">${item.tnved.options.map(option=>`<option value="${escapeHtml(option.tnved)}">${option.isKiz?'нужна маркировка Честного знака':''}</option>`).join('')}</datalist></label>`:'';
-    const vat=item.vat?`<label>НДС<select class="card-parse-vat"><option value="">не указывать</option>${item.vat.options.map(value=>`<option value="${escapeHtml(value)}"${value===item.vat.suggested?' selected':''}>${escapeHtml(value)}</option>`).join('')}</select></label>`:'';
+function renderCardParse() {
+  const items = cardParse.items,
+    ok = items.filter(item => !item.error),
+    cards = cardsView.data?.cards || [];
+  const taken = new Set(cards.map(card => card.vendorCode));
+  const brands = [...new Set(cards.map(card => card.brand).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'ru'));
+  const num = value => (value > 0 ? String(value) : '');
+  const block = item => {
+    if (item.error)
+      return `<section class="card-parse-item card-parse-failed"><b>${escapeHtml(item.nmId)}</b> — ${escapeHtml(item.error)}</section>`;
+    const code = taken.has(`wb-${item.nmId}`)
+      ? cardDupVendorCode(`wb-${item.nmId}`, taken)
+      : (taken.add(`wb-${item.nmId}`), `wb-${item.nmId}`);
+    const sizes = item.sizes.length
+      ? item.sizes
+          .map(size => (size.wbSize && size.wbSize !== size.techSize ? `${size.techSize} (${size.wbSize})` : size.techSize))
+          .join(', ')
+      : 'без размеров';
+    const brandOptions = `<option value="">Без бренда</option>${brands.map(brand => `<option value="${escapeHtml(brand)}">${escapeHtml(brand)}</option>`).join('')}${item.donorBrand && !brands.includes(item.donorBrand) ? `<option value="${escapeHtml(item.donorBrand)}">${escapeHtml(item.donorBrand)} — как у товара (нужны права на бренд)</option>` : ''}`;
+    const tnved = item.tnved
+      ? `<label>ТН ВЭД<input class="card-parse-tnved" inputmode="numeric" maxlength="10" list="cardParseTnved${item.nmId}" value="${escapeHtml(item.tnved.suggested || '')}" placeholder="${item.tnved.options.length ? 'выберите код' : '10 цифр'}"><datalist id="cardParseTnved${item.nmId}">${item.tnved.options.map(option => `<option value="${escapeHtml(option.tnved)}">${option.isKiz ? 'нужна маркировка Честного знака' : ''}</option>`).join('')}</datalist></label>`
+      : '';
+    const vat = item.vat
+      ? `<label>НДС<select class="card-parse-vat"><option value="">не указывать</option>${item.vat.options.map(value => `<option value="${escapeHtml(value)}"${value === item.vat.suggested ? ' selected' : ''}>${escapeHtml(value)}</option>`).join('')}</select></label>`
+      : '';
     return `<section class="card-parse-item" data-parse-nm="${escapeHtml(item.nmId)}">
-      <div class="card-parse-head">${item.photo?`<img class="stock-product-photo" src="${escapeHtml(item.photo)}" alt="" loading="lazy">`:'<span class="card-nophoto">нет фото</span>'}
-        <div><input class="card-parse-title" maxlength="60" value="${escapeHtml(item.title)}" aria-label="Наименование"><small>${escapeHtml(item.subjectName)} · <a href="${escapeHtml(item.link)}" target="_blank" rel="noopener noreferrer">${escapeHtml(item.nmId)} на WB</a>${item.donorBrand?` · бренд ${escapeHtml(item.donorBrand)}`:''}</small>
-        <small>${fmtNum(item.photos)} фото${item.video?' · видео':''} · ${escapeHtml(sizes)} · описание ${fmtNum(item.descriptionLength)} симв.${item.titleCut?' · наименование обрезано до 60 символов':''}${item.needKiz?' · <b class="card-warn">нужна маркировка Честного знака</b>':''}</small></div></div>
+      <div class="card-parse-head">${item.photo ? `<img class="stock-product-photo" src="${escapeHtml(item.photo)}" alt="" loading="lazy">` : '<span class="card-nophoto">нет фото</span>'}
+        <div><input class="card-parse-title" maxlength="60" value="${escapeHtml(item.title)}" aria-label="Наименование"><small>${escapeHtml(item.subjectName)} · <a href="${escapeHtml(item.link)}" target="_blank" rel="noopener noreferrer">${escapeHtml(item.nmId)} на WB</a>${item.donorBrand ? ` · бренд ${escapeHtml(item.donorBrand)}` : ''}</small>
+        <small>${fmtNum(item.photos)} фото${item.video ? ' · видео' : ''} · ${escapeHtml(sizes)} · описание ${fmtNum(item.descriptionLength)} симв.${item.titleCut ? ' · наименование обрезано до 60 символов' : ''}${item.needKiz ? ' · <b class="card-warn">нужна маркировка Честного знака</b>' : ''}</small></div></div>
       <div class="card-parse-fields">
         <label>Артикул продавца<input class="card-parse-code" maxlength="72" value="${escapeHtml(code)}"></label>
-        <label>Цена до скидки, ₽<input class="card-parse-price" type="number" min="1" step="1" inputmode="numeric" placeholder="${item.buyerPrice?`у товара ≈ ${escapeHtml(fmtNum(item.buyerPrice))}`:''}"></label>
+        <label>Цена до скидки, ₽<input class="card-parse-price" type="number" min="1" step="1" inputmode="numeric" placeholder="${item.buyerPrice ? `у товара ≈ ${escapeHtml(fmtNum(item.buyerPrice))}` : ''}"></label>
         <label>Бренд<select class="card-parse-brand">${brandOptions}</select></label>${tnved}${vat}
-        ${CARD_PARSE_DIMS.map(([key,label])=>`<label>${label}<input class="card-parse-dim${item.missingDims.includes(key)?' card-parse-missing':''}" data-dim="${key}" type="number" min="0" step="${key==='weightBrutto'?'0.001':'0.1'}" value="${num(item.dimensions[key])}"></label>`).join('')}
+        ${CARD_PARSE_DIMS.map(([key, label]) => `<label>${label}<input class="card-parse-dim${item.missingDims.includes(key) ? ' card-parse-missing' : ''}" data-dim="${key}" type="number" min="0" step="${key === 'weightBrutto' ? '0.001' : '0.1'}" value="${num(item.dimensions[key])}"></label>`).join('')}
       </div>
-      <details class="card-parse-charcs"><summary>Характеристики: перенесётся ${fmtNum(item.matched.length)}${item.unmatched.length?` · нет в справочнике предмета ${fmtNum(item.unmatched.length)}`:''}${item.requiredMissing.length?` · <span class="card-warn">обязательных без значения ${fmtNum(item.requiredMissing.length)}</span>`:''}</summary>
-        <ul>${item.matched.map(row=>`<li><b>${escapeHtml(row.name)}</b>: ${escapeHtml(row.value)}</li>`).join('')}</ul>
-        ${item.unmatched.length?`<p class="muted">Не перенесётся (в предмете нет такой характеристики или значение не подходит): ${escapeHtml(item.unmatched.map(row=>`${row.name}: ${row.value}`).join('; '))}</p>`:''}
-        ${item.requiredMissing.length?`<p class="card-warn">Обязательные без значения — WB может не создать карточку, заполните после: ${escapeHtml(item.requiredMissing.join(', '))}</p>`:''}</details>
-      ${item.warnings.map(text=>`<small class="card-warn">${escapeHtml(text)}</small>`).join('')}
+      <details class="card-parse-charcs"><summary>Характеристики: перенесётся ${fmtNum(item.matched.length)}${item.unmatched.length ? ` · нет в справочнике предмета ${fmtNum(item.unmatched.length)}` : ''}${item.requiredMissing.length ? ` · <span class="card-warn">обязательных без значения ${fmtNum(item.requiredMissing.length)}</span>` : ''}</summary>
+        <ul>${item.matched.map(row => `<li><b>${escapeHtml(row.name)}</b>: ${escapeHtml(row.value)}</li>`).join('')}</ul>
+        ${item.unmatched.length ? `<p class="muted">Не перенесётся (в предмете нет такой характеристики или значение не подходит): ${escapeHtml(item.unmatched.map(row => `${row.name}: ${row.value}`).join('; '))}</p>` : ''}
+        ${item.requiredMissing.length ? `<p class="card-warn">Обязательные без значения — WB может не создать карточку, заполните после: ${escapeHtml(item.requiredMissing.join(', '))}</p>` : ''}</details>
+      ${item.warnings.map(text => `<small class="card-warn">${escapeHtml(text)}</small>`).join('')}
     </section>`;
   };
-  $('#cardParseResult').innerHTML=`<div class="card-parse-list">${items.map(block).join('')}</div>${ok.length?`<div class="card-parse-footer"><label class="card-dup-suffix">Цена для всех, ₽<input id="cardParsePriceAll" type="number" min="1" step="1" inputmode="numeric" aria-label="Цена до скидки для всех карточек"></label>
+  $('#cardParseResult').innerHTML = `<div class="card-parse-list">${items.map(block).join('')}</div>${
+    ok.length
+      ? `<div class="card-parse-footer"><label class="card-dup-suffix">Цена для всех, ₽<input id="cardParsePriceAll" type="number" min="1" step="1" inputmode="numeric" aria-label="Цена до скидки для всех карточек"></label>
     <p class="muted">Цена — до скидки продавца; скидку и остатки задайте после создания. Подсказка «у товара ≈» — сколько платит покупатель на витрине, уже со скидками WB. WB создаёт карточку до 30 минут.</p>
-    <div class="modal-actions"><button type="button" data-modal-close-inline>Отмена</button><button type="button" class="primary" id="cardParseCreate">Создать ${fmtNum(ok.length)} ${cardWord(ok.length)}</button></div></div>`:''}`;
-  $$('#cardParseResult .stock-product-photo').forEach(image=>bindPhotoPreview(image));
+    <div class="modal-actions"><button type="button" data-modal-close-inline>Отмена</button><button type="button" class="primary" id="cardParseCreate">Создать ${fmtNum(ok.length)} ${cardWord(ok.length)}</button></div></div>`
+      : ''
+  }`;
+  $$('#cardParseResult .stock-product-photo').forEach(image => bindPhotoPreview(image));
 }
-async function createCardParse(){
-  const note=$('#cardParseNote'),button=$('#cardParseCreate'),fail=text=>{note.textContent=text;note.classList.add('error')};
-  const items=$$('.card-parse-item[data-parse-nm]').map(section=>{
-    const value=selector=>section.querySelector(selector)?.value.trim()??'';
-    return {nmId:Number(section.dataset.parseNm),vendorCode:value('.card-parse-code'),title:value('.card-parse-title'),price:Number(value('.card-parse-price')),brand:value('.card-parse-brand'),tnved:value('.card-parse-tnved'),vat:value('.card-parse-vat'),
-      dimensions:Object.fromEntries([...section.querySelectorAll('.card-parse-dim')].map(input=>[input.dataset.dim,Number(input.value)]))};
+async function createCardParse() {
+  const note = $('#cardParseNote'),
+    button = $('#cardParseCreate'),
+    fail = text => {
+      note.textContent = text;
+      note.classList.add('error');
+    };
+  const items = $$('.card-parse-item[data-parse-nm]').map(section => {
+    const value = selector => section.querySelector(selector)?.value.trim() ?? '';
+    return {
+      nmId: Number(section.dataset.parseNm),
+      vendorCode: value('.card-parse-code'),
+      title: value('.card-parse-title'),
+      price: Number(value('.card-parse-price')),
+      brand: value('.card-parse-brand'),
+      tnved: value('.card-parse-tnved'),
+      vat: value('.card-parse-vat'),
+      dimensions: Object.fromEntries(
+        [...section.querySelectorAll('.card-parse-dim')].map(input => [input.dataset.dim, Number(input.value)])
+      )
+    };
   });
-  if(!items.length)return;
-  const bad=items.find(item=>!item.vendorCode);if(bad)return fail(`Укажите артикул продавца для ${bad.nmId}`);
-  const seen=new Set(),twice=items.find(item=>seen.has(item.vendorCode)||!seen.add(item.vendorCode));if(twice)return fail(`Артикул повторяется: ${twice.vendorCode}`);
-  const noPrice=items.find(item=>!(item.price>0));if(noPrice)return fail(`Укажите цену для ${noPrice.vendorCode}`);
-  const noDims=items.find(item=>Object.values(item.dimensions).some(value=>!(value>0)));if(noDims)return fail(`Укажите габариты упаковки и вес для ${noDims.vendorCode}`);
-  const noTnved=items.find(item=>$(`.card-parse-item[data-parse-nm="${item.nmId}"] .card-parse-tnved`)&&!item.tnved);if(noTnved)return fail(`Укажите ТН ВЭД для ${noTnved.vendorCode} — без него WB не пропустит карточку на продажу`);
-  button.disabled=true;button.textContent='Отправляем…';note.classList.remove('error');note.textContent='';
-  try{
-    const job=await api('/api/cards/parse/create',{method:'POST',body:JSON.stringify({cabinet:cardParse.cabinet,confirm:true,items})});
-    cardDup.job=job;cardDup.cabinet=job.cabinet;renderCardDupModal(true);pollCardDuplicate();
-  }catch(e){button.disabled=false;button.textContent=`Создать ${fmtNum(items.length)} ${cardWord(items.length)}`;fail(`Не удалось: ${e.message}`)}
+  if (!items.length) return;
+  const bad = items.find(item => !item.vendorCode);
+  if (bad) return fail(`Укажите артикул продавца для ${bad.nmId}`);
+  const seen = new Set(),
+    twice = items.find(item => seen.has(item.vendorCode) || !seen.add(item.vendorCode));
+  if (twice) return fail(`Артикул повторяется: ${twice.vendorCode}`);
+  const noPrice = items.find(item => !(item.price > 0));
+  if (noPrice) return fail(`Укажите цену для ${noPrice.vendorCode}`);
+  const noDims = items.find(item => Object.values(item.dimensions).some(value => !(value > 0)));
+  if (noDims) return fail(`Укажите габариты упаковки и вес для ${noDims.vendorCode}`);
+  const noTnved = items.find(item => $(`.card-parse-item[data-parse-nm="${item.nmId}"] .card-parse-tnved`) && !item.tnved);
+  if (noTnved) return fail(`Укажите ТН ВЭД для ${noTnved.vendorCode} — без него WB не пропустит карточку на продажу`);
+  button.disabled = true;
+  button.textContent = 'Отправляем…';
+  note.classList.remove('error');
+  note.textContent = '';
+  try {
+    const job = await api('/api/cards/parse/create', {
+      method: 'POST',
+      body: JSON.stringify({ cabinet: cardParse.cabinet, confirm: true, items })
+    });
+    cardDup.job = job;
+    cardDup.cabinet = job.cabinet;
+    renderCardDupModal(true);
+    pollCardDuplicate();
+  } catch (e) {
+    button.disabled = false;
+    button.textContent = `Создать ${fmtNum(items.length)} ${cardWord(items.length)}`;
+    fail(`Не удалось: ${e.message}`);
+  }
 }
 
-function renderCards(){
-  const v=cardsView,data=v.data,cards=data?.cards||[];
-  if(!$('#page-cards'))return;
+function renderCards() {
+  const v = cardsView,
+    data = v.data,
+    cards = data?.cards || [];
+  if (!$('#page-cards')) return;
   // Вкладки (плиток-счётчиков над таблицей нет — убраны по просьбе продавца, те же числа дают фильтры)
-  $$('[data-cards-tab]').forEach(button=>button.classList.toggle('active',button.dataset.cardsTab===v.tab));
-  $('#cardsTabCount').textContent=data?fmtNum(cards.length):'';
-  $('#trashTabCount').textContent=v.trash?.cards?fmtNum(v.trash.cards.length):'';
-  const errorCount=v.errors?.items?.length||0;$('#errorsTabCount').textContent=errorCount?fmtNum(errorCount):'';$('#errorsTabCount').classList.toggle('alert',errorCount>0);
-  $('#cardsFilters').classList.toggle('hidden',v.tab!=='cards');
+  $$('[data-cards-tab]').forEach(button => button.classList.toggle('active', button.dataset.cardsTab === v.tab));
+  $('#cardsTabCount').textContent = data ? fmtNum(cards.length) : '';
+  $('#trashTabCount').textContent = v.trash?.cards ? fmtNum(v.trash.cards.length) : '';
+  const errorCount = v.errors?.items?.length || 0;
+  $('#errorsTabCount').textContent = errorCount ? fmtNum(errorCount) : '';
+  $('#errorsTabCount').classList.toggle('alert', errorCount > 0);
+  $('#cardsFilters').classList.toggle('hidden', v.tab !== 'cards');
   // Корзина и ошибки — в своей таблице (#cardsAlt): у основной таблицы запомненные ширины столбцов по ключам.
-  $('#cardsMain').classList.toggle('hidden',v.tab!=='cards');$('#cardsAlt').classList.toggle('hidden',v.tab==='cards');$('#cardsSelectBar').classList.add('hidden');
-  if(v.tab==='trash')return renderCardTrash();
-  if(v.tab==='errors')return renderCardErrors();
-  $('#emptyCardsTitle').textContent='Карточек не найдено';
+  $('#cardsMain').classList.toggle('hidden', v.tab !== 'cards');
+  $('#cardsAlt').classList.toggle('hidden', v.tab === 'cards');
+  $('#cardsSelectBar').classList.add('hidden');
+  if (v.tab === 'trash') return renderCardTrash();
+  if (v.tab === 'errors') return renderCardErrors();
+  $('#emptyCardsTitle').textContent = 'Карточек не найдено';
   // Фильтры: предметы, бренды, ярлыки — из данных; выбранное значение остаётся в списке.
-  const options=(id,label,values,selected)=>{$(id).innerHTML=`<option value="">${label}</option>${values.map(([value,text])=>`<option value="${escapeHtml(value)}"${String(value)===selected?' selected':''}>${escapeHtml(text)}</option>`).join('')}`};
-  const uniq=list=>[...new Set(list.filter(Boolean))].sort((a,b)=>a.localeCompare(b,'ru')).map(value=>[value,value]);
-  options('#cardSubjectFilter','Все предметы',uniq(cards.map(card=>card.subjectName)),v.subject);
-  options('#cardBrandFilter','Все бренды',uniq(cards.map(card=>card.brand)),v.brand);
+  const options = (id, label, values, selected) => {
+    $(id).innerHTML =
+      `<option value="">${label}</option>${values.map(([value, text]) => `<option value="${escapeHtml(value)}"${String(value) === selected ? ' selected' : ''}>${escapeHtml(text)}</option>`).join('')}`;
+  };
+  const uniq = list => [...new Set(list.filter(Boolean))].sort((a, b) => a.localeCompare(b, 'ru')).map(value => [value, value]);
+  options('#cardSubjectFilter', 'Все предметы', uniq(cards.map(card => card.subjectName)), v.subject);
+  options('#cardBrandFilter', 'Все бренды', uniq(cards.map(card => card.brand)), v.brand);
   // Цвета — со счётчиками; «Без цвета» — последним, если такие карточки есть.
-  const colorCounts=new Map();let noColor=0;
-  cards.forEach(card=>{const list=card.colors||[];if(!list.length)noColor++;list.forEach(color=>colorCounts.set(color,(colorCounts.get(color)||0)+1))});
-  if(v.color&&v.color!=='none'&&!colorCounts.has(v.color))colorCounts.set(v.color,0);
-  options('#cardColorFilter','Все цвета',[...[...colorCounts].sort((a,b)=>a[0].localeCompare(b[0],'ru')).map(([color,count])=>[color,`${color} · ${fmtNum(count)}`]),...(noColor||v.color==='none'?[['none',`Без цвета · ${fmtNum(noColor)}`]]:[])],v.color);
-  options('#cardTagFilter','Все ярлыки',(data?.tags||[]).map(tag=>[String(tag.id),tag.name]),v.tag);
-  options('#cardProblemFilter','Все карточки',CARD_PROBLEMS.slice(1),v.problem);
-  options('#cardDocFilter','Документы: все',cardDocOptions(cards,v.doc),v.doc);
-  $('#cardGlueFilter').value=v.glue;
-  $('#cardsTitle').textContent='Карточки товаров';
-  if(!data){$('#cardsCount').textContent=v.error?`Не удалось загрузить: ${v.error}`:'Загрузка карточек…';$('#cardsBody').innerHTML='';$('#emptyCards').classList.add('hidden');$('#cardsPagination').classList.add('hidden');return}
-  const rows=cardRows(),pageCount=Math.ceil(rows.length/v.pageSize);
-  v.page=Math.min(Math.max(1,v.page),Math.max(1,pageCount));
-  const first=data.priority,firstNote=!first?'':first.state==='loading'?' · сначала грузим карточки по фильтру…':first.state==='done'?` · по фильтру уже свежие: ${fmtNum(first.count)}`:` · карточки по фильтру не загрузились: ${first.error}`;
-  const fresh=data.loading?` · загружаем из WB: пришло ${fmtNum(data.loaded||cards.length)}…${firstNote}`:`${data.demo?' · демо-данные':''} · обновлено ${cardDate(data.fetchedAt)}${data.refreshing?` · обновляется из WB…${firstNote}`:''}`;
-  const fb=data.feedbacks,fbNote=fb?.loading?` · оценки с WB: ${fmtNum(fb.done||0)} из ${fmtNum(fb.total||0)} склеек…`:'';
-  $('#cardsCount').textContent=`${fmtNum(rows.length)} из ${fmtNum(cards.length)}${fresh}${fbNote}`;
-  const columns=[['title','Товар',360],['subjectName','Предмет',150],['brand','Бренд',120],['rating','Оценка',90],['price','Цена',110],['sizes','Размеры',140],['photos','Медиа',110],['tags','Ярлыки',150],['verdict','Проверка',170],['updatedAt','Изменена',120]];
+  const colorCounts = new Map();
+  let noColor = 0;
+  cards.forEach(card => {
+    const list = card.colors || [];
+    if (!list.length) noColor++;
+    list.forEach(color => colorCounts.set(color, (colorCounts.get(color) || 0) + 1));
+  });
+  if (v.color && v.color !== 'none' && !colorCounts.has(v.color)) colorCounts.set(v.color, 0);
+  options(
+    '#cardColorFilter',
+    'Все цвета',
+    [
+      ...[...colorCounts].sort((a, b) => a[0].localeCompare(b[0], 'ru')).map(([color, count]) => [color, `${color} · ${fmtNum(count)}`]),
+      ...(noColor || v.color === 'none' ? [['none', `Без цвета · ${fmtNum(noColor)}`]] : [])
+    ],
+    v.color
+  );
+  options(
+    '#cardTagFilter',
+    'Все ярлыки',
+    (data?.tags || []).map(tag => [String(tag.id), tag.name]),
+    v.tag
+  );
+  options('#cardProblemFilter', 'Все карточки', CARD_PROBLEMS.slice(1), v.problem);
+  options('#cardDocFilter', 'Документы: все', cardDocOptions(cards, v.doc), v.doc);
+  $('#cardGlueFilter').value = v.glue;
+  $('#cardsTitle').textContent = 'Карточки товаров';
+  if (!data) {
+    $('#cardsCount').textContent = v.error ? `Не удалось загрузить: ${v.error}` : 'Загрузка карточек…';
+    $('#cardsBody').innerHTML = '';
+    $('#emptyCards').classList.add('hidden');
+    $('#cardsPagination').classList.add('hidden');
+    return;
+  }
+  const rows = cardRows(),
+    pageCount = Math.ceil(rows.length / v.pageSize);
+  v.page = Math.min(Math.max(1, v.page), Math.max(1, pageCount));
+  const first = data.priority,
+    firstNote = !first
+      ? ''
+      : first.state === 'loading'
+        ? ' · сначала грузим карточки по фильтру…'
+        : first.state === 'done'
+          ? ` · по фильтру уже свежие: ${fmtNum(first.count)}`
+          : ` · карточки по фильтру не загрузились: ${first.error}`;
+  const fresh = data.loading
+    ? ` · загружаем из WB: пришло ${fmtNum(data.loaded || cards.length)}…${firstNote}`
+    : `${data.demo ? ' · демо-данные' : ''} · обновлено ${cardDate(data.fetchedAt)}${data.refreshing ? ` · обновляется из WB…${firstNote}` : ''}`;
+  const fb = data.feedbacks,
+    fbNote = fb?.loading ? ` · оценки с WB: ${fmtNum(fb.done || 0)} из ${fmtNum(fb.total || 0)} склеек…` : '';
+  $('#cardsCount').textContent = `${fmtNum(rows.length)} из ${fmtNum(cards.length)}${fresh}${fbNote}`;
+  const columns = [
+    ['title', 'Товар', 360],
+    ['subjectName', 'Предмет', 150],
+    ['brand', 'Бренд', 120],
+    ['rating', 'Оценка', 90],
+    ['price', 'Цена', 110],
+    ['sizes', 'Размеры', 140],
+    ['photos', 'Медиа', 110],
+    ['tags', 'Ярлыки', 150],
+    ['verdict', 'Проверка', 170],
+    ['updatedAt', 'Изменена', 120]
+  ];
   // Заголовки создаются один раз — так сохраняются ширины столбцов (column-widths.js); при сортировке меняется только стрелка.
-  const head=$('#cardsHead');
+  const head = $('#cardsHead');
   // У «Оценки» две сортировки: по рейтингу (заголовок) и по числу оценок (кнопка «кол-во»).
-  if(!head.children.length){head.innerHTML=columns.map(([key,label,width])=>`<th data-card-sort="${key}" data-col-key="${key}" data-col-width="${width}">${key==='title'?'<input type="checkbox" class="card-select" id="cardSelectAll" aria-label="Выбрать все карточки по фильтрам">':''}${label} <span class="rating-sort-arrow"></span>${key==='rating'?'<button type="button" class="card-sort-alt" data-card-sort-alt="feedbacks" title="Сортировать по числу оценок">кол-во <span class="card-sort-alt-arrow"></span></button>':''}</th>`).join('')}
-  head.querySelectorAll('[data-card-sort]').forEach(th=>{th.querySelector('.rating-sort-arrow').textContent=v.sort.key===th.dataset.cardSort?(v.sort.dir==='asc'?'↑':'↓'):'↕'});
-  head.querySelectorAll('[data-card-sort-alt]').forEach(button=>{button.classList.toggle('active',v.sort.key===button.dataset.cardSortAlt);button.querySelector('.card-sort-alt-arrow').textContent=v.sort.key===button.dataset.cardSortAlt?(v.sort.dir==='asc'?'↑':'↓'):'↕'});
+  if (!head.children.length) {
+    head.innerHTML = columns
+      .map(
+        ([key, label, width]) =>
+          `<th data-card-sort="${key}" data-col-key="${key}" data-col-width="${width}">${key === 'title' ? '<input type="checkbox" class="card-select" id="cardSelectAll" aria-label="Выбрать все карточки по фильтрам">' : ''}${label} <span class="rating-sort-arrow"></span>${key === 'rating' ? '<button type="button" class="card-sort-alt" data-card-sort-alt="feedbacks" title="Сортировать по числу оценок">кол-во <span class="card-sort-alt-arrow"></span></button>' : ''}</th>`
+      )
+      .join('');
+  }
+  head.querySelectorAll('[data-card-sort]').forEach(th => {
+    th.querySelector('.rating-sort-arrow').textContent = v.sort.key === th.dataset.cardSort ? (v.sort.dir === 'asc' ? '↑' : '↓') : '↕';
+  });
+  head.querySelectorAll('[data-card-sort-alt]').forEach(button => {
+    button.classList.toggle('active', v.sort.key === button.dataset.cardSortAlt);
+    button.querySelector('.card-sort-alt-arrow').textContent =
+      v.sort.key === button.dataset.cardSortAlt ? (v.sort.dir === 'asc' ? '↑' : '↓') : '↕';
+  });
   // Галочки — у всех карточек. «Выбрать все» — все карточки по фильтрам, на всех страницах. selecting — выбран предмет:
   // тогда выбранные без склейки можно склеить.
-  const selecting=Boolean(v.subject),free=rows.filter(cardSelectable).length,picked=cardPicked(rows).length,all=$('#cardSelectAll');
-  all.checked=rows.length>0&&picked===rows.length;all.indeterminate=picked>0&&picked<rows.length;all.disabled=!rows.length;
-  all.title=rows.length?`Выбрать все по фильтрам: ${fmtNum(rows.length)}`:'Карточек нет';
+  const selecting = Boolean(v.subject),
+    free = rows.filter(cardSelectable).length,
+    picked = cardPicked(rows).length,
+    all = $('#cardSelectAll');
+  all.checked = rows.length > 0 && picked === rows.length;
+  all.indeterminate = picked > 0 && picked < rows.length;
+  all.disabled = !rows.length;
+  all.title = rows.length ? `Выбрать все по фильтрам: ${fmtNum(rows.length)}` : 'Карточек нет';
   // Без предмета — «Склеить по 30…» сразу по всем предметам (каждый отдельно).
-  const glueAll=$('#cardGlueAll');glueAll.classList.toggle('hidden',selecting);glueAll.disabled=!free;
-  glueAll.title=free?`Карточек без склейки по фильтрам: ${fmtNum(free)} — склеить по предметам`:'Карточек без склейки нет';
-  renderCardSelectBar(rows,selecting);
-  const verdict={ok:'<span class="status status-complete">пройдена</span>',fail:'<span class="status status-cancel">не пройдена</span>',pending:'<span class="status status-confirm">на проверке</span>'};
+  const glueAll = $('#cardGlueAll');
+  glueAll.classList.toggle('hidden', selecting);
+  glueAll.disabled = !free;
+  glueAll.title = free ? `Карточек без склейки по фильтрам: ${fmtNum(free)} — склеить по предметам` : 'Карточек без склейки нет';
+  renderCardSelectBar(rows, selecting);
+  const verdict = {
+    ok: '<span class="status status-complete">пройдена</span>',
+    fail: '<span class="status status-cancel">не пройдена</span>',
+    pending: '<span class="status status-confirm">на проверке</span>'
+  };
   // В режиме «Со склейкой» над каждой группой — строка группы (и в начале страницы, если группа продолжается с прошлой).
-  const pageRows=rows.slice((v.page-1)*v.pageSize,v.page*v.pageSize),glued=v.glue==='glued',shown=new Map();
-  v.pageImts=[...new Set(pageRows.map(card=>card.imtID))].join(',');
-  if(glued)rows.forEach(card=>shown.set(card.imtID,(shown.get(card.imtID)||0)+1));
-  let lastImt=null,groupIndex=0;
-  $('#cardsBody').innerHTML=pageRows.map((card,index)=>{
-    const sizes=card.sizes.map(size=>size.techSize&&size.techSize!=='0'?size.techSize:'').filter(Boolean);
-    const barcodes=card.sizes.flatMap(size=>size.skus);
-    let head='';
-    if(glued&&card.imtID!==lastImt){
-      if(lastImt!==null)groupIndex++;lastImt=card.imtID;
-      const count=shown.get(card.imtID),continued=index===0&&v.page>1&&rows[(v.page-1)*v.pageSize-1]?.imtID===card.imtID;
-      head=`<tr class="card-glue-head" style="--glue:${CARD_GLUE_COLORS[groupIndex%CARD_GLUE_COLORS.length]}"><td colspan="${columns.length}"${card.glueStars?` title="${escapeHtml(`Оценки склейки по звёздам:\n${cardStarsTitle(card.glueStars)}`)}"`:''}>Склейка · ${fmtNum(card.groupSize)} ${cardWord(card.groupSize)}${cardGlueRating(card,true)}${continued?' (продолжение)':''}<small>${escapeHtml(card.subjectName||'')}${count<card.groupSize?` · по фильтрам видно ${fmtNum(count)}`:''}</small></td></tr>`;
+  const pageRows = rows.slice((v.page - 1) * v.pageSize, v.page * v.pageSize),
+    glued = v.glue === 'glued',
+    shown = new Map();
+  v.pageImts = [...new Set(pageRows.map(card => card.imtID))].join(',');
+  if (glued) rows.forEach(card => shown.set(card.imtID, (shown.get(card.imtID) || 0) + 1));
+  let lastImt = null,
+    groupIndex = 0;
+  $('#cardsBody').innerHTML = pageRows
+    .map((card, index) => {
+      const sizes = card.sizes.map(size => (size.techSize && size.techSize !== '0' ? size.techSize : '')).filter(Boolean);
+      const barcodes = card.sizes.flatMap(size => size.skus);
+      let head = '';
+      if (glued && card.imtID !== lastImt) {
+        if (lastImt !== null) groupIndex++;
+        lastImt = card.imtID;
+        const count = shown.get(card.imtID),
+          continued = index === 0 && v.page > 1 && rows[(v.page - 1) * v.pageSize - 1]?.imtID === card.imtID;
+        head = `<tr class="card-glue-head" style="--glue:${CARD_GLUE_COLORS[groupIndex % CARD_GLUE_COLORS.length]}"><td colspan="${columns.length}"${card.glueStars ? ` title="${escapeHtml(`Оценки склейки по звёздам:\n${cardStarsTitle(card.glueStars)}`)}"` : ''}>Склейка · ${fmtNum(card.groupSize)} ${cardWord(card.groupSize)}${cardGlueRating(card, true)}${continued ? ' (продолжение)' : ''}<small>${escapeHtml(card.subjectName || '')}${count < card.groupSize ? ` · по фильтрам видно ${fmtNum(count)}` : ''}</small></td></tr>`;
+      }
+      return (
+        `${head}<tr${glued ? ` class="card-glued" style="--glue:${CARD_GLUE_COLORS[groupIndex % CARD_GLUE_COLORS.length]}"` : ''}><td><div class="card-cell"><input type="checkbox" class="card-select" data-card-select="${escapeHtml(card.nmID)}"${v.selected.has(card.nmID) ? ' checked' : ''} aria-label="Выбрать ${escapeHtml(card.vendorCode || card.nmID)}">${card.photo ? `<img class="stock-product-photo" src="${escapeHtml(card.photo)}" alt="" loading="lazy">` : '<span class="card-nophoto" title="Нет фото">нет фото</span>'}<span><a class="card-title-link" href="${escapeHtml(cardLink(card.nmID))}" target="_blank" rel="noopener noreferrer" title="Открыть карточку: ${escapeHtml(card.title)}">${escapeHtml(card.title || 'Без названия')}</a><small>${escapeHtml(card.vendorCode || '—')} · <button type="button" class="copy-article" data-copy="${escapeHtml(card.nmID)}" title="Скопировать артикул WB">${escapeHtml(card.nmID)}</button>${card.groupSize > 1 && !glued ? ` · <span class="card-glue-chip" title="Объединена с другими карточками${card.glueRating != null ? ` · оценка склейки на WB ${cardRatingNum(card.glueRating)}${card.glueCount != null ? `, ${fmtNum(card.glueCount)} ${cardRatingWord(card.glueCount)}` : ''}` : ''}">склейка · ${card.groupSize}${cardGlueRating(card, false)}</span>` : ''}</small></span></div></td>` +
+        `<td>${escapeHtml(card.subjectName || '—')}</td><td>${escapeHtml(card.brand || '—')}</td>${cardExtraCell(card, 'rating')}${cardExtraCell(card, 'price')}` +
+        `<td>${sizes.length ? escapeHtml(sizes.slice(0, 5).join(', ')) + (sizes.length > 5 ? ` +${sizes.length - 5}` : '') : 'без размера'}<small>${fmtNum(barcodes.length)} ${barcodes.length === 1 ? 'баркод' : barcodes.length < 5 && barcodes.length ? 'баркода' : 'баркодов'}</small></td>` +
+        `<td class="${card.photos < 3 ? 'card-warn' : ''}">${fmtNum(card.photos)} фото${card.video ? ' · видео' : ''}</td>` +
+        `<td>${card.tags.map(cardTagChip).join(' ') || '<span class="muted">—</span>'}</td>` +
+        `<td>${card.verdict ? verdict[card.verdict] : '<span class="muted">нет документов</span>'}${card.verdict === 'fail' && card.docErrors.length ? `<small>${escapeHtml(card.docErrors.map(cardDocError).join(', '))}</small>` : ''}${card.needKiz ? `<small>${card.kizMarked ? 'маркировка подтверждена' : '<b class="card-warn">маркировка не подтверждена</b>'}</small>` : ''}${card.noTnved ? `<small><b class="card-warn" title="${card.tnvedCodeOnly ? 'Поле «ТНВЭД» пустое, заполнен только «Код ТН ВЭД» — другая характеристика WB. На странице карточки код можно перенести в «ТНВЭД» одной кнопкой' : 'В карточке нет характеристики «ТНВЭД» — укажите код на странице карточки'}">нет ТН ВЭД</b>${card.tnvedCodeOnly ? ' · есть только «Код ТН ВЭД»' : ''}</small>` : ''}${card.dimensions?.isValid === false ? '<small class="card-warn">габариты под вопросом</small>' : ''}</td>` +
+        `<td>${cardDate(card.updatedAt)}</td></tr>`
+      );
+    })
+    .join('');
+  $$('#cardsBody .stock-product-photo').forEach(image => {
+    if (image.dataset.previewBound) return;
+    image.dataset.previewBound = '1';
+    bindPhotoPreview(image);
+  });
+  $('#emptyCards').classList.toggle('hidden', rows.length > 0);
+  renderPager($('#cardsPagination'), {
+    page: v.page,
+    pageCount,
+    total: rows.length,
+    sizeKey: 'cards',
+    onPage: page => {
+      v.page = page;
+      renderCards();
+      $('#page-cards .stock-panel').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    },
+    onSize: size => {
+      v.pageSize = size;
+      v.page = 1;
+      renderCards();
     }
-    return `${head}<tr${glued?` class="card-glued" style="--glue:${CARD_GLUE_COLORS[groupIndex%CARD_GLUE_COLORS.length]}"`:''}><td><div class="card-cell"><input type="checkbox" class="card-select" data-card-select="${escapeHtml(card.nmID)}"${v.selected.has(card.nmID)?' checked':''} aria-label="Выбрать ${escapeHtml(card.vendorCode||card.nmID)}">${card.photo?`<img class="stock-product-photo" src="${escapeHtml(card.photo)}" alt="" loading="lazy">`:'<span class="card-nophoto" title="Нет фото">нет фото</span>'}<span><a class="card-title-link" href="${escapeHtml(cardLink(card.nmID))}" target="_blank" rel="noopener noreferrer" title="Открыть карточку: ${escapeHtml(card.title)}">${escapeHtml(card.title||'Без названия')}</a><small>${escapeHtml(card.vendorCode||'—')} · <button type="button" class="copy-article" data-copy="${escapeHtml(card.nmID)}" title="Скопировать артикул WB">${escapeHtml(card.nmID)}</button>${card.groupSize>1&&!glued?` · <span class="card-glue-chip" title="Объединена с другими карточками${card.glueRating!=null?` · оценка склейки на WB ${cardRatingNum(card.glueRating)}${card.glueCount!=null?`, ${fmtNum(card.glueCount)} ${cardRatingWord(card.glueCount)}`:''}`:''}">склейка · ${card.groupSize}${cardGlueRating(card,false)}</span>`:''}</small></span></div></td>`+
-      `<td>${escapeHtml(card.subjectName||'—')}</td><td>${escapeHtml(card.brand||'—')}</td>${cardExtraCell(card,'rating')}${cardExtraCell(card,'price')}`+
-      `<td>${sizes.length?escapeHtml(sizes.slice(0,5).join(', '))+(sizes.length>5?` +${sizes.length-5}`:''):'без размера'}<small>${fmtNum(barcodes.length)} ${barcodes.length===1?'баркод':barcodes.length<5&&barcodes.length?'баркода':'баркодов'}</small></td>`+
-      `<td class="${card.photos<3?'card-warn':''}">${fmtNum(card.photos)} фото${card.video?' · видео':''}</td>`+
-      `<td>${card.tags.map(cardTagChip).join(' ')||'<span class="muted">—</span>'}</td>`+
-      `<td>${card.verdict?verdict[card.verdict]:'<span class="muted">нет документов</span>'}${card.verdict==='fail'&&card.docErrors.length?`<small>${escapeHtml(card.docErrors.map(cardDocError).join(', '))}</small>`:''}${card.needKiz?`<small>${card.kizMarked?'маркировка подтверждена':'<b class="card-warn">маркировка не подтверждена</b>'}</small>`:''}${card.noTnved?`<small><b class="card-warn" title="${card.tnvedCodeOnly?'Поле «ТНВЭД» пустое, заполнен только «Код ТН ВЭД» — другая характеристика WB. На странице карточки код можно перенести в «ТНВЭД» одной кнопкой':'В карточке нет характеристики «ТНВЭД» — укажите код на странице карточки'}">нет ТН ВЭД</b>${card.tnvedCodeOnly?' · есть только «Код ТН ВЭД»':''}</small>`:''}${card.dimensions?.isValid===false?'<small class="card-warn">габариты под вопросом</small>':''}</td>`+
-      `<td>${cardDate(card.updatedAt)}</td></tr>`;
-  }).join('');
-  $$('#cardsBody .stock-product-photo').forEach(image=>{if(image.dataset.previewBound)return;image.dataset.previewBound='1';bindPhotoPreview(image)});
-  $('#emptyCards').classList.toggle('hidden',rows.length>0);
-  renderPager($('#cardsPagination'),{page:v.page,pageCount,total:rows.length,sizeKey:'cards',onPage:page=>{v.page=page;renderCards();$('#page-cards .stock-panel').scrollIntoView({behavior:'smooth',block:'start'})},onSize:size=>{v.pageSize=size;v.page=1;renderCards()}});
+  });
 }
 // Корзина: карточка продаётся, пока есть остатки; без остатков WB удаляет её через 30 дней.
-function renderCardTrash(){
-  const trash=cardsView.trash;
-  $('#cardsTitle').textContent='Корзина';
+function renderCardTrash() {
+  const trash = cardsView.trash;
+  $('#cardsTitle').textContent = 'Корзина';
   $('#cardsPagination').classList.add('hidden');
-  if(!trash){$('#cardsCount').textContent='Загрузка корзины…';$('#cardsAlt').innerHTML='';$('#emptyCards').classList.add('hidden');return}
-  $('#cardsCount').textContent=trash.error?`Не удалось загрузить: ${trash.error}`:`${fmtNum(trash.cards.length)} карточек · без остатков WB удаляет их через 30 дней в корзине`;
-  $('#cardsAlt').innerHTML='<table class="stock-table cards-alt-table" data-no-resize><thead><tr><th>Товар</th><th>Предмет</th><th>В корзине с</th><th>Удалится</th><th></th></tr></thead><tbody>'+trash.cards.map(card=>{const removeAt=card.trashedAt?new Date(Date.parse(card.trashedAt)+30*86_400_000).toISOString():'';
-    return `<tr><td><div class="card-cell"><span><a class="card-title-link" href="${escapeHtml(cardLink(card.nmID))}" target="_blank" rel="noopener noreferrer">${escapeHtml(card.title||card.vendorCode||'Без названия')}</a><small>${escapeHtml(card.vendorCode||'—')} · ${escapeHtml(card.nmID)}</small></span></div></td><td>${escapeHtml(card.subjectName||'—')}</td><td>${cardDate(card.trashedAt)}</td><td>${removeAt?`${cardDate(removeAt).slice(0,8)}<small>если нет остатков</small>`:'—'}</td>`+
-      `<td><button type="button" class="ghost card-recover" data-card-recover="${escapeHtml(card.nmID)}" data-card-name="${escapeHtml(card.vendorCode||card.nmID)}">Восстановить</button></td></tr>`}).join('')+'</tbody></table>';
-  $('#emptyCards').classList.toggle('hidden',trash.cards.length>0||Boolean(trash.error));
-  $('#emptyCardsTitle').textContent='Корзина пуста';
+  if (!trash) {
+    $('#cardsCount').textContent = 'Загрузка корзины…';
+    $('#cardsAlt').innerHTML = '';
+    $('#emptyCards').classList.add('hidden');
+    return;
+  }
+  $('#cardsCount').textContent = trash.error
+    ? `Не удалось загрузить: ${trash.error}`
+    : `${fmtNum(trash.cards.length)} карточек · без остатков WB удаляет их через 30 дней в корзине`;
+  $('#cardsAlt').innerHTML =
+    '<table class="stock-table cards-alt-table" data-no-resize><thead><tr><th>Товар</th><th>Предмет</th><th>В корзине с</th><th>Удалится</th><th></th></tr></thead><tbody>' +
+    trash.cards
+      .map(card => {
+        const removeAt = card.trashedAt ? new Date(Date.parse(card.trashedAt) + 30 * 86_400_000).toISOString() : '';
+        return (
+          `<tr><td><div class="card-cell"><span><a class="card-title-link" href="${escapeHtml(cardLink(card.nmID))}" target="_blank" rel="noopener noreferrer">${escapeHtml(card.title || card.vendorCode || 'Без названия')}</a><small>${escapeHtml(card.vendorCode || '—')} · ${escapeHtml(card.nmID)}</small></span></div></td><td>${escapeHtml(card.subjectName || '—')}</td><td>${cardDate(card.trashedAt)}</td><td>${removeAt ? `${cardDate(removeAt).slice(0, 8)}<small>если нет остатков</small>` : '—'}</td>` +
+          `<td><button type="button" class="ghost card-recover" data-card-recover="${escapeHtml(card.nmID)}" data-card-name="${escapeHtml(card.vendorCode || card.nmID)}">Восстановить</button></td></tr>`
+        );
+      })
+      .join('') +
+    '</tbody></table>';
+  $('#emptyCards').classList.toggle('hidden', trash.cards.length > 0 || Boolean(trash.error));
+  $('#emptyCardsTitle').textContent = 'Корзина пуста';
 }
 // Ошибки сохранения: WB проверяет изменения после ответа «успешно» — отклонённые попадают сюда.
-function renderCardErrors(){
-  const errors=cardsView.errors;
-  $('#cardsTitle').textContent='Ошибки сохранения';
+function renderCardErrors() {
+  const errors = cardsView.errors;
+  $('#cardsTitle').textContent = 'Ошибки сохранения';
   $('#cardsPagination').classList.add('hidden');
-  if(!errors){$('#cardsCount').textContent='Загрузка…';$('#cardsAlt').innerHTML='';loadCardErrors();return}
-  $('#cardsCount').textContent=errors.error?`Не удалось загрузить: ${errors.error}`:'Изменения, которые WB не принял после проверки. Чтобы ошибка ушла, сохраните карточку ещё раз с исправлениями.';
-  const byVendor=new Map((cardsView.data?.cards||[]).map(card=>[card.vendorCode,card]));
-  $('#cardsAlt').innerHTML=(errors.items||[]).length?'<table class="stock-table cards-alt-table" data-no-resize><thead><tr><th>Артикул продавца</th><th>Предмет</th><th>Что не так</th><th>Когда</th></tr></thead><tbody>'+errors.items.map(item=>{const card=byVendor.get(item.vendorCode);
-    return `<tr><td>${card?`<a class="card-title-link" href="${escapeHtml(cardLink(card.nmID))}" target="_blank" rel="noopener noreferrer">${escapeHtml(item.vendorCode)}</a>`:escapeHtml(item.vendorCode)}</td><td>${escapeHtml(item.subject||'—')}</td><td class="card-errors">${item.errors.map(text=>`<div>${escapeHtml(text)}</div>`).join('')}</td><td>${cardDate(item.updatedAt)}</td></tr>`}).join('')+'</tbody></table>':'';
-  $('#emptyCards').classList.toggle('hidden',(errors.items||[]).length>0||Boolean(errors.error));
-  $('#emptyCardsTitle').textContent='Ошибок нет';
+  if (!errors) {
+    $('#cardsCount').textContent = 'Загрузка…';
+    $('#cardsAlt').innerHTML = '';
+    loadCardErrors();
+    return;
+  }
+  $('#cardsCount').textContent = errors.error
+    ? `Не удалось загрузить: ${errors.error}`
+    : 'Изменения, которые WB не принял после проверки. Чтобы ошибка ушла, сохраните карточку ещё раз с исправлениями.';
+  const byVendor = new Map((cardsView.data?.cards || []).map(card => [card.vendorCode, card]));
+  $('#cardsAlt').innerHTML = (errors.items || []).length
+    ? '<table class="stock-table cards-alt-table" data-no-resize><thead><tr><th>Артикул продавца</th><th>Предмет</th><th>Что не так</th><th>Когда</th></tr></thead><tbody>' +
+      errors.items
+        .map(item => {
+          const card = byVendor.get(item.vendorCode);
+          return `<tr><td>${card ? `<a class="card-title-link" href="${escapeHtml(cardLink(card.nmID))}" target="_blank" rel="noopener noreferrer">${escapeHtml(item.vendorCode)}</a>` : escapeHtml(item.vendorCode)}</td><td>${escapeHtml(item.subject || '—')}</td><td class="card-errors">${item.errors.map(text => `<div>${escapeHtml(text)}</div>`).join('')}</td><td>${cardDate(item.updatedAt)}</td></tr>`;
+        })
+        .join('') +
+      '</tbody></table>'
+    : '';
+  $('#emptyCards').classList.toggle('hidden', (errors.items || []).length > 0 || Boolean(errors.error));
+  $('#emptyCardsTitle').textContent = 'Ошибок нет';
 }
 
 // --- Ярлыки продавца: до 15, имя до 15 символов, цвет из шести ---
-function openCardTags(){
-  const tags=cardsView.data?.tags||[];
+function openCardTags() {
+  const tags = cardsView.data?.tags || [];
   openModal(`<div class="card-tags-modal"><p class="eyebrow">Карточки товаров</p><h2>Ярлыки</h2><p class="muted">Ярлыки видны только вам — для группировки и поиска карточек. До 15 ярлыков, название до 15 символов. Изменения сразу уходят в WB.</p>
-    <div class="card-tag-list">${tags.map(tag=>cardTagRow(tag)).join('')||'<p class="muted">Ярлыков пока нет.</p>'}</div>
-    ${tags.length<15?`<form class="card-tag-row new" data-card-tag-form="create">${cardTagFields({name:'',color:'D1CFD7'})}<button type="submit" class="primary">Создать</button></form>`:'<p class="muted">Создано 15 ярлыков — это максимум.</p>'}
+    <div class="card-tag-list">${tags.map(tag => cardTagRow(tag)).join('') || '<p class="muted">Ярлыков пока нет.</p>'}</div>
+    ${tags.length < 15 ? `<form class="card-tag-row new" data-card-tag-form="create">${cardTagFields({ name: '', color: 'D1CFD7' })}<button type="submit" class="primary">Создать</button></form>` : '<p class="muted">Создано 15 ярлыков — это максимум.</p>'}
     <p class="card-tag-note" id="cardTagNote" role="status"></p></div>`);
 }
-const cardTagFields=tag=>`<input name="name" maxlength="15" value="${escapeHtml(tag.name)}" placeholder="Название" required aria-label="Название ярлыка"><select name="color" aria-label="Цвет">${CARD_TAG_COLORS.map(([value,label])=>`<option value="${value}"${value===String(tag.color||'').toUpperCase()?' selected':''}>${label}</option>`).join('')}</select>`;
-const cardTagRow=tag=>`<form class="card-tag-row" data-card-tag-form="update" data-tag-id="${escapeHtml(tag.id)}">${cardTagChip(tag)}${cardTagFields(tag)}<button type="submit">Сохранить</button><button type="button" class="danger-link" data-card-tag-delete="${escapeHtml(tag.id)}" data-tag-name="${escapeHtml(tag.name)}">Удалить</button></form>`;
-async function sendCardTag(body){
-  const note=$('#cardTagNote');note.textContent='Отправляем в WB…';note.classList.remove('error');
-  try{const result=await api('/api/cards/tag',{method:'POST',body:JSON.stringify({cabinet:state.cabinet,confirm:true,...body})});
-    if(cardsView.data)cardsView.data.tags=result.tags||cardsView.data.tags;
-    if(body.action==='delete'&&cardsView.data)cardsView.data.cards.forEach(card=>{card.tags=card.tags.filter(tag=>String(tag.id)!==String(body.id))});
-    openCardTags();renderCards();toast('Ярлыки обновлены')}
-  catch(e){note.textContent=`Не удалось: ${e.message}`;note.classList.add('error')}
+const cardTagFields = tag =>
+  `<input name="name" maxlength="15" value="${escapeHtml(tag.name)}" placeholder="Название" required aria-label="Название ярлыка"><select name="color" aria-label="Цвет">${CARD_TAG_COLORS.map(([value, label]) => `<option value="${value}"${value === String(tag.color || '').toUpperCase() ? ' selected' : ''}>${label}</option>`).join('')}</select>`;
+const cardTagRow = tag =>
+  `<form class="card-tag-row" data-card-tag-form="update" data-tag-id="${escapeHtml(tag.id)}">${cardTagChip(tag)}${cardTagFields(tag)}<button type="submit">Сохранить</button><button type="button" class="danger-link" data-card-tag-delete="${escapeHtml(tag.id)}" data-tag-name="${escapeHtml(tag.name)}">Удалить</button></form>`;
+async function sendCardTag(body) {
+  const note = $('#cardTagNote');
+  note.textContent = 'Отправляем в WB…';
+  note.classList.remove('error');
+  try {
+    const result = await api('/api/cards/tag', {
+      method: 'POST',
+      body: JSON.stringify({ cabinet: state.cabinet, confirm: true, ...body })
+    });
+    if (cardsView.data) cardsView.data.tags = result.tags || cardsView.data.tags;
+    if (body.action === 'delete' && cardsView.data)
+      cardsView.data.cards.forEach(card => {
+        card.tags = card.tags.filter(tag => String(tag.id) !== String(body.id));
+      });
+    openCardTags();
+    renderCards();
+    toast('Ярлыки обновлены');
+  } catch (e) {
+    note.textContent = `Не удалось: ${e.message}`;
+    note.classList.add('error');
+  }
 }
 
-document.addEventListener('click',event=>{
-  if(!event.target.closest('#page-cards')&&!event.target.closest('.card-tags-modal')&&!event.target.closest('.card-recover-confirm')&&!event.target.closest('.card-glue-batch')&&!event.target.closest('.card-dup')&&!event.target.closest('.card-parse')&&!event.target.closest('.card-merge'))return;
-  const tab=event.target.closest('[data-cards-tab]');
-  if(tab){cardsView.tab=tab.dataset.cardsTab;if(cardsView.tab==='trash')loadCardTrash();if(cardsView.tab==='errors')loadCardErrors(true);renderCards();return}
-  if(event.target.closest('#cardDuplicateRun'))return openCardDuplicate();
-  if(event.target.closest('#cardMergeRun'))return openCardMerge();
-  if(event.target.closest('#cardGlueRun'))return openCardGlueBatch('selected');
-  if(event.target.closest('#cardGlueAll'))return openCardGlueBatch('all');
-  // Shift+клик по галочке отмечает (или снимает) все карточки между ней и прошлой нажатой — сам выбор в обработчике change.
-  if(event.target.closest('[data-card-select]'))cardsView.shiftSelect=event.shiftKey;
-  if(event.target.closest('#cardSelectClear')){cardsView.selected.clear();renderCards();return}
-  const alt=event.target.closest('[data-card-sort-alt]');
-  if(alt){const key=alt.dataset.cardSortAlt;cardsView.sort=cardsView.sort.key===key?{key,dir:cardsView.sort.dir==='asc'?'desc':'asc'}:{key,dir:'desc'};renderCards();return}
-  const sort=event.target.closest('[data-card-sort]');
-  if(sort&&!event.target.closest('.column-resizer')&&!event.target.closest('.card-select')){const key=sort.dataset.cardSort;cardsView.sort=cardsView.sort.key===key?{key,dir:cardsView.sort.dir==='asc'?'desc':'asc'}:{key,dir:['title','subjectName','brand'].includes(key)?'asc':'desc'};renderCards();return}
-  if(event.target.closest('#cardTagsButton'))return openCardTags();
-  if(event.target.closest('#cardParseButton'))return openCardParse();
-  if(event.target.closest('#cardParseRun'))return runCardParse();
-  if(event.target.closest('#cardParseCreate'))return createCardParse();
-  const remove=event.target.closest('[data-card-tag-delete]');
-  if(remove){
-    if(remove.dataset.confirming){sendCardTag({action:'delete',id:Number(remove.dataset.cardTagDelete)});return}
-    remove.dataset.confirming='1';remove.textContent=`Удалить «${remove.dataset.tagName}» из всех карточек?`;return;
-  }
-  const recover=event.target.closest('[data-card-recover]');
-  if(recover){
-    openModal(`<div class="card-recover-confirm"><h2>Восстановить карточку?</h2><p class="muted">Карточка ${escapeHtml(recover.dataset.cardName)} вернётся из корзины в список карточек WB. Метод WB: не чаще 3 раз в минуту.</p><div class="modal-actions"><button type="button" data-modal-close-inline>Отмена</button><button type="button" class="primary" data-card-recover-confirm="${escapeHtml(recover.dataset.cardRecover)}">Восстановить</button></div></div>`);return;
-  }
-  const confirmRecover=event.target.closest('[data-card-recover-confirm]');
-  if(confirmRecover){
-    confirmRecover.disabled=true;confirmRecover.textContent='Отправляем…';
-    api('/api/cards/recover',{method:'POST',body:JSON.stringify({cabinet:state.cabinet,confirm:true,nmIds:[Number(confirmRecover.dataset.cardRecoverConfirm)]})})
-      .then(()=>{closeModal();toast('Карточка восстановлена');cardsView.trash=null;loadCardTrash(true);loadCards(true)})
-      .catch(e=>{confirmRecover.disabled=false;confirmRecover.textContent='Восстановить';toast(e.message)});
+document.addEventListener('click', event => {
+  if (
+    !event.target.closest('#page-cards') &&
+    !event.target.closest('.card-tags-modal') &&
+    !event.target.closest('.card-recover-confirm') &&
+    !event.target.closest('.card-glue-batch') &&
+    !event.target.closest('.card-dup') &&
+    !event.target.closest('.card-parse') &&
+    !event.target.closest('.card-merge')
+  )
+    return;
+  const tab = event.target.closest('[data-cards-tab]');
+  if (tab) {
+    cardsView.tab = tab.dataset.cardsTab;
+    if (cardsView.tab === 'trash') loadCardTrash();
+    if (cardsView.tab === 'errors') loadCardErrors(true);
+    renderCards();
     return;
   }
-  if(event.target.closest('[data-modal-close-inline]'))closeModal();
+  if (event.target.closest('#cardDuplicateRun')) return openCardDuplicate();
+  if (event.target.closest('#cardMergeRun')) return openCardMerge();
+  if (event.target.closest('#cardGlueRun')) return openCardGlueBatch('selected');
+  if (event.target.closest('#cardGlueAll')) return openCardGlueBatch('all');
+  // Shift+клик по галочке отмечает (или снимает) все карточки между ней и прошлой нажатой — сам выбор в обработчике change.
+  if (event.target.closest('[data-card-select]')) cardsView.shiftSelect = event.shiftKey;
+  if (event.target.closest('#cardSelectClear')) {
+    cardsView.selected.clear();
+    renderCards();
+    return;
+  }
+  const alt = event.target.closest('[data-card-sort-alt]');
+  if (alt) {
+    const key = alt.dataset.cardSortAlt;
+    cardsView.sort = cardsView.sort.key === key ? { key, dir: cardsView.sort.dir === 'asc' ? 'desc' : 'asc' } : { key, dir: 'desc' };
+    renderCards();
+    return;
+  }
+  const sort = event.target.closest('[data-card-sort]');
+  if (sort && !event.target.closest('.column-resizer') && !event.target.closest('.card-select')) {
+    const key = sort.dataset.cardSort;
+    cardsView.sort =
+      cardsView.sort.key === key
+        ? { key, dir: cardsView.sort.dir === 'asc' ? 'desc' : 'asc' }
+        : { key, dir: ['title', 'subjectName', 'brand'].includes(key) ? 'asc' : 'desc' };
+    renderCards();
+    return;
+  }
+  if (event.target.closest('#cardTagsButton')) return openCardTags();
+  if (event.target.closest('#cardParseButton')) return openCardParse();
+  if (event.target.closest('#cardParseRun')) return runCardParse();
+  if (event.target.closest('#cardParseCreate')) return createCardParse();
+  const remove = event.target.closest('[data-card-tag-delete]');
+  if (remove) {
+    if (remove.dataset.confirming) {
+      sendCardTag({ action: 'delete', id: Number(remove.dataset.cardTagDelete) });
+      return;
+    }
+    remove.dataset.confirming = '1';
+    remove.textContent = `Удалить «${remove.dataset.tagName}» из всех карточек?`;
+    return;
+  }
+  const recover = event.target.closest('[data-card-recover]');
+  if (recover) {
+    openModal(
+      `<div class="card-recover-confirm"><h2>Восстановить карточку?</h2><p class="muted">Карточка ${escapeHtml(recover.dataset.cardName)} вернётся из корзины в список карточек WB. Метод WB: не чаще 3 раз в минуту.</p><div class="modal-actions"><button type="button" data-modal-close-inline>Отмена</button><button type="button" class="primary" data-card-recover-confirm="${escapeHtml(recover.dataset.cardRecover)}">Восстановить</button></div></div>`
+    );
+    return;
+  }
+  const confirmRecover = event.target.closest('[data-card-recover-confirm]');
+  if (confirmRecover) {
+    confirmRecover.disabled = true;
+    confirmRecover.textContent = 'Отправляем…';
+    api('/api/cards/recover', {
+      method: 'POST',
+      body: JSON.stringify({ cabinet: state.cabinet, confirm: true, nmIds: [Number(confirmRecover.dataset.cardRecoverConfirm)] })
+    })
+      .then(() => {
+        closeModal();
+        toast('Карточка восстановлена');
+        cardsView.trash = null;
+        loadCardTrash(true);
+        loadCards(true);
+      })
+      .catch(e => {
+        confirmRecover.disabled = false;
+        confirmRecover.textContent = 'Восстановить';
+        toast(e.message);
+      });
+    return;
+  }
+  if (event.target.closest('[data-modal-close-inline]')) closeModal();
 });
-document.addEventListener('submit',event=>{
-  const form=event.target.closest('[data-card-tag-form]');if(!form)return;
+document.addEventListener('submit', event => {
+  const form = event.target.closest('[data-card-tag-form]');
+  if (!form) return;
   event.preventDefault();
-  sendCardTag({action:form.dataset.cardTagForm,id:Number(form.dataset.tagId)||undefined,name:form.elements.name.value.trim(),color:form.elements.color.value});
+  sendCardTag({
+    action: form.dataset.cardTagForm,
+    id: Number(form.dataset.tagId) || undefined,
+    name: form.elements.name.value.trim(),
+    color: form.elements.color.value
+  });
 });
 // «Окончание артикула для всех»: артикул копии = артикул оригинала + окончание.
-document.addEventListener('input',event=>{if(event.target.id==='cardParsePriceAll'&&event.target.value)$$('.card-parse-price').forEach(input=>{input.value=event.target.value})});
-document.addEventListener('keydown',event=>{if(event.target.id==='cardParseText'&&event.key==='Enter'&&(event.ctrlKey||event.metaKey)){event.preventDefault();runCardParse()}});
-document.addEventListener('input',event=>{if(event.target.id!=='cardDupSuffix')return;const suffix=event.target.value.trim();if(suffix)$$('.card-dup-code[data-dup-base]').forEach(input=>{input.value=`${input.dataset.dupBase}${suffix}`.slice(0,72)})});
-document.addEventListener('input',event=>{if(event.target.id!=='cardSearch')return;cardsView.search=event.target.value;cardsView.page=1;if(cardsView.data)renderCards()});
-document.addEventListener('change',event=>{
-  const map={cardSubjectFilter:'subject',cardBrandFilter:'brand',cardColorFilter:'color',cardTagFilter:'tag',cardProblemFilter:'problem',cardDocFilter:'doc',cardGlueFilter:'glue'},key=map[event.target.id];
-  if(key){cardsView[key]=event.target.value;cardsView.page=1;if(key==='subject'){cardsView.selected.clear();cardsView.lastSelected=null}renderCards();
+document.addEventListener('input', event => {
+  if (event.target.id === 'cardParsePriceAll' && event.target.value)
+    $$('.card-parse-price').forEach(input => {
+      input.value = event.target.value;
+    });
+});
+document.addEventListener('keydown', event => {
+  if (event.target.id === 'cardParseText' && event.key === 'Enter' && (event.ctrlKey || event.metaKey)) {
+    event.preventDefault();
+    runCardParse();
+  }
+});
+document.addEventListener('input', event => {
+  if (event.target.id !== 'cardDupSuffix') return;
+  const suffix = event.target.value.trim();
+  if (suffix)
+    $$('.card-dup-code[data-dup-base]').forEach(input => {
+      input.value = `${input.dataset.dupBase}${suffix}`.slice(0, 72);
+    });
+});
+document.addEventListener('input', event => {
+  if (event.target.id !== 'cardSearch') return;
+  cardsView.search = event.target.value;
+  cardsView.page = 1;
+  if (cardsView.data) renderCards();
+});
+document.addEventListener('change', event => {
+  const map = {
+      cardSubjectFilter: 'subject',
+      cardBrandFilter: 'brand',
+      cardColorFilter: 'color',
+      cardTagFilter: 'tag',
+      cardProblemFilter: 'problem',
+      cardDocFilter: 'doc',
+      cardGlueFilter: 'glue'
+    },
+    key = map[event.target.id];
+  if (key) {
+    cardsView[key] = event.target.value;
+    cardsView.page = 1;
+    if (key === 'subject') {
+      cardsView.selected.clear();
+      cardsView.lastSelected = null;
+    }
+    renderCards();
     // Список ещё грузится из WB — сразу попросить карточки по новому фильтру.
-    if(cardsView.data?.refreshing&&['subject','brand','tag'].includes(key))loadCards(false,true);
-    return}
-  const one=event.target.closest('[data-card-select]');
-  if(one){
-    const v=cardsView,nmId=Number(one.dataset.cardSelect),rows=cardRows(),from=rows.findIndex(card=>card.nmID===v.lastSelected),to=rows.findIndex(card=>card.nmID===nmId);
-    const range=v.shiftSelect&&from>=0&&to>=0?rows.slice(Math.min(from,to),Math.max(from,to)+1):[{nmID:nmId}];
-    range.forEach(card=>one.checked?v.selected.add(card.nmID):v.selected.delete(card.nmID));
-    v.lastSelected=nmId;v.shiftSelect=false;renderCards();return;
+    if (cardsView.data?.refreshing && ['subject', 'brand', 'tag'].includes(key)) loadCards(false, true);
+    return;
   }
-  if(event.target.name==='cardGlueMode'||event.target.id==='cardGlueFill'){
-    if(event.target.name==='cardGlueMode')cardsView.glueMode=event.target.value;else cardsView.glueFill=event.target.checked;
-    renderCardGluePlan();renderCards();return;
+  const one = event.target.closest('[data-card-select]');
+  if (one) {
+    const v = cardsView,
+      nmId = Number(one.dataset.cardSelect),
+      rows = cardRows(),
+      from = rows.findIndex(card => card.nmID === v.lastSelected),
+      to = rows.findIndex(card => card.nmID === nmId);
+    const range = v.shiftSelect && from >= 0 && to >= 0 ? rows.slice(Math.min(from, to), Math.max(from, to) + 1) : [{ nmID: nmId }];
+    range.forEach(card => (one.checked ? v.selected.add(card.nmID) : v.selected.delete(card.nmID)));
+    v.lastSelected = nmId;
+    v.shiftSelect = false;
+    renderCards();
+    return;
   }
-  if(event.target.id==='cardSelectAll'){cardRows().forEach(card=>event.target.checked?cardsView.selected.add(card.nmID):cardsView.selected.delete(card.nmID));renderCards()}
+  if (event.target.name === 'cardGlueMode' || event.target.id === 'cardGlueFill') {
+    if (event.target.name === 'cardGlueMode') cardsView.glueMode = event.target.value;
+    else cardsView.glueFill = event.target.checked;
+    renderCardGluePlan();
+    renderCards();
+    return;
+  }
+  if (event.target.id === 'cardSelectAll') {
+    cardRows().forEach(card => (event.target.checked ? cardsView.selected.add(card.nmID) : cardsView.selected.delete(card.nmID)));
+    renderCards();
+  }
 });

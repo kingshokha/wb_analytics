@@ -17,15 +17,26 @@
 const fs = require('node:fs');
 const path = require('node:path');
 
-const RATINGS_TTL = 6 * 60 * 60_000, ERROR_RETRY = 60 * 60_000, CONCURRENCY = 4, SAVE_EVERY = 40, TIMEOUT = 15_000;
+const RATINGS_TTL = 6 * 60 * 60_000,
+  ERROR_RETRY = 60 * 60_000,
+  CONCURRENCY = 4,
+  SAVE_EVERY = 40,
+  TIMEOUT = 15_000;
 const FILE = 'Оценки склеек.json';
 const HOSTS = ['feedbacks1.wb.ru', 'feedbacks2.wb.ru'];
-const HEADERS = { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36', Accept: 'application/json' };
+const HEADERS = {
+  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36',
+  Accept: 'application/json'
+};
 
 // [1★, 2★, 3★, 4★, 5★] из { "1": n, … }.
-const starsOf = distribution => [1, 2, 3, 4, 5].map(star => Math.max(0, Math.round(Number(distribution?.[star] ?? distribution?.[String(star)]) || 0)));
+const starsOf = distribution =>
+  [1, 2, 3, 4, 5].map(star => Math.max(0, Math.round(Number(distribution?.[star] ?? distribution?.[String(star)]) || 0)));
 const countOf = stars => stars.reduce((sum, value) => sum + value, 0);
-const averageOf = stars => { const count = countOf(stars); return count ? Math.round(stars.reduce((sum, value, index) => sum + value * (index + 1), 0) / count * 100) / 100 : null; };
+const averageOf = stars => {
+  const count = countOf(stars);
+  return count ? Math.round((stars.reduce((sum, value, index) => sum + value * (index + 1), 0) / count) * 100) / 100 : null;
+};
 
 // Ответ витрины → { rating, count, stars, items: { nmId: stars }, at }.
 function parseGlue(data, at = Date.now()) {
@@ -46,7 +57,9 @@ async function fetchGlue(imtID) {
       const response = await fetch(`https://${host}/feedbacks/v2/${imtID}`, { headers: HEADERS, signal: AbortSignal.timeout(TIMEOUT) });
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       return parseGlue(await response.json());
-    } catch (error) { failure = error; }
+    } catch (error) {
+      failure = error;
+    }
   }
   throw failure || new Error('нет ответа');
 }
@@ -57,32 +70,44 @@ module.exports = function createGlueRatings({ dirFor }) {
     let entry = stores.get(id);
     if (!entry) {
       let groups = {};
-      try { groups = JSON.parse(fs.readFileSync(path.join(dirFor(id), FILE), 'utf8')).groups || {}; } catch { /* файла ещё нет */ }
+      try {
+        groups = JSON.parse(fs.readFileSync(path.join(dirFor(id), FILE), 'utf8')).groups || {};
+      } catch {
+        /* файла ещё нет */
+      }
       entry = { groups, job: null, dirty: 0 };
       stores.set(id, entry);
     }
     return entry;
   }
   function save(id) {
-    const entry = store(id), dir = dirFor(id), target = path.join(dir, FILE);
+    const entry = store(id),
+      dir = dirFor(id),
+      target = path.join(dir, FILE);
     try {
       fs.mkdirSync(dir, { recursive: true });
       fs.writeFileSync(`${target}.tmp`, JSON.stringify({ cabinet: id, savedAt: new Date().toISOString(), groups: entry.groups }));
       fs.renameSync(`${target}.tmp`, target);
       entry.dirty = 0;
-    } catch (error) { console.error(`Не удалось сохранить оценки склеек кабинета ${id}: ${error.message}`); }
+    } catch (error) {
+      console.error(`Не удалось сохранить оценки склеек кабинета ${id}: ${error.message}`);
+    }
   }
   const fresh = group => group && Date.now() - group.at < (group.error ? ERROR_RETRY : RATINGS_TTL);
   async function loadOne(id, imtID) {
     const entry = store(id);
-    try { entry.groups[imtID] = await fetchGlue(imtID); }
-    catch (error) { entry.groups[imtID] = { ...(entry.groups[imtID] || {}), error: error.message, at: Date.now() }; }
+    try {
+      entry.groups[imtID] = await fetchGlue(imtID);
+    } catch (error) {
+      entry.groups[imtID] = { ...(entry.groups[imtID] || {}), error: error.message, at: Date.now() };
+    }
     if (++entry.dirty >= SAVE_EVERY) save(id);
     return entry.groups[imtID];
   }
   // Фоновое обновление: устаревшие и новые склейки; priority — номера склеек, которые нужны странице сейчас.
   function refresh(id, imtIDs, priority = []) {
-    const entry = store(id), wanted = [...new Set([...priority, ...imtIDs].map(Number).filter(imt => Number.isInteger(imt) && imt > 0))];
+    const entry = store(id),
+      wanted = [...new Set([...priority, ...imtIDs].map(Number).filter(imt => Number.isInteger(imt) && imt > 0))];
     const queue = wanted.filter(imt => !fresh(entry.groups[imt]));
     if (entry.job) {
       // Уже идёт — нужное странице переставляем в начало очереди.
@@ -94,8 +119,8 @@ module.exports = function createGlueRatings({ dirFor }) {
     // Сначала — то, чего нет совсем, потом — самые старые.
     const order = imt => entry.groups[imt]?.at || 0;
     const prioritySet = new Set(priority.map(Number));
-    queue.sort((a, b) => (prioritySet.has(b) - prioritySet.has(a)) || order(a) - order(b));
-    const job = entry.job = { queue, taken: new Set(), total: queue.length, done: 0 };
+    queue.sort((a, b) => prioritySet.has(b) - prioritySet.has(a) || order(a) - order(b));
+    const job = (entry.job = { queue, taken: new Set(), total: queue.length, done: 0 });
     const worker = async () => {
       for (let imt = job.queue.shift(); imt != null; imt = job.queue.shift()) {
         if (job.taken.has(imt)) continue;
@@ -104,7 +129,10 @@ module.exports = function createGlueRatings({ dirFor }) {
         job.done++;
       }
     };
-    Promise.all(Array.from({ length: CONCURRENCY }, worker)).finally(() => { entry.job = null; if (entry.dirty) save(id); });
+    Promise.all(Array.from({ length: CONCURRENCY }, worker)).finally(() => {
+      entry.job = null;
+      if (entry.dirty) save(id);
+    });
   }
   // После склейки и отсоединения оценки затронутых склеек перечитываются сразу, а не через RATINGS_TTL, и ещё раз через
   // RECHECK_LATER: WB переносит отзывы между склейками с задержкой (19.11.2026: новая склейка из 9 карточек сразу после
@@ -114,7 +142,11 @@ module.exports = function createGlueRatings({ dirFor }) {
   function recheck(id, imtIDs) {
     const list = [...new Set(imtIDs.map(Number).filter(imt => Number.isInteger(imt) && imt > 0))];
     if (!list.length) return;
-    const mark = () => { const entry = store(id); for (const imt of list) if (entry.groups[imt]) entry.groups[imt].at = 0; refresh(id, [], list); };
+    const mark = () => {
+      const entry = store(id);
+      for (const imt of list) if (entry.groups[imt]) entry.groups[imt].at = 0;
+      refresh(id, [], list);
+    };
     mark();
     for (const delay of RECHECK_LATER) setTimeout(mark, delay).unref?.();
   }
@@ -122,14 +154,18 @@ module.exports = function createGlueRatings({ dirFor }) {
     recheck,
     // Склейка сейчас (страница карточки): из файла, а если её нет или она устарела — загрузить и подождать.
     async glueNow(id, imtID) {
-      const entry = store(id), group = entry.groups[imtID];
+      const entry = store(id),
+        group = entry.groups[imtID];
       if (fresh(group) && !group.error) return group;
       const loaded = await loadOne(id, imtID);
       if (entry.dirty) save(id);
       return loaded.error && group?.stars ? group : loaded;
     },
     refresh,
-    glue: (id, imtID) => { const group = store(id).groups[imtID]; return group?.stars ? group : null; },
+    glue: (id, imtID) => {
+      const group = store(id).groups[imtID];
+      return group?.stars ? group : null;
+    },
     // Товар: { count, avg, stars } — из склейки, где он сейчас; null — данных ещё нет.
     item(id, imtID, nmId) {
       const group = store(id).groups[imtID];
@@ -137,7 +173,10 @@ module.exports = function createGlueRatings({ dirFor }) {
       const stars = group.items?.[nmId] || [0, 0, 0, 0, 0];
       return { count: countOf(stars), avg: averageOf(stars), stars };
     },
-    status(id) { const job = store(id).job; return job ? { loading: true, done: job.done, total: job.total } : { loading: false }; }
+    status(id) {
+      const job = store(id).job;
+      return job ? { loading: true, done: job.done, total: job.total } : { loading: false };
+    }
   };
 };
 module.exports.parseGlue = parseGlue;

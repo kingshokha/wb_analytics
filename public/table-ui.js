@@ -2,11 +2,12 @@
   'use strict';
 
   const FILTER_OPTIONS = '.multi-filter > div[id]';
-  const NON_TEXT_COLUMNS = /^(?:дата|date|сумма|цена|скидка|остаток|показы|клики|ctr|cpc|заказы|выкупы|ддр|roas|status|статус|id|sku|шт|руб|%)/i;
+  const NON_TEXT_COLUMNS =
+    /^(?:дата|date|сумма|цена|скидка|остаток|показы|клики|ctr|cpc|заказы|выкупы|ддр|roas|status|статус|id|sku|шт|руб|%)/i;
 
   function visibleLabels(options, query) {
     const normalized = query.trim().toLocaleLowerCase('ru-RU');
-    return [...options.querySelectorAll('label')].filter((label) => {
+    return [...options.querySelectorAll('label')].filter(label => {
       const visible = !normalized || label.textContent.toLocaleLowerCase('ru-RU').includes(normalized);
       label.hidden = !visible;
       return visible;
@@ -18,11 +19,11 @@
     const selectAll = filter.querySelector('.filter-select-all');
     if (!options || !selectAll) return;
     const checks = [...options.querySelectorAll('label')]
-      .filter((label) => !label.hidden)
-      .map((label) => label.querySelector('input[type="checkbox"]'))
+      .filter(label => !label.hidden)
+      .map(label => label.querySelector('input[type="checkbox"]'))
       .filter(Boolean);
-    selectAll.checked = checks.length > 0 && checks.every((input) => input.checked);
-    selectAll.indeterminate = checks.some((input) => input.checked) && !selectAll.checked;
+    selectAll.checked = checks.length > 0 && checks.every(input => input.checked);
+    selectAll.indeterminate = checks.some(input => input.checked) && !selectAll.checked;
   }
 
   function enhanceFilter(filter) {
@@ -31,17 +32,24 @@
     filter.dataset.filterEnhanced = '1';
     const tools = document.createElement('div');
     tools.className = 'filter-tools';
-    tools.innerHTML = '<input class="filter-search" type="search" placeholder="Поиск по пунктам" aria-label="Поиск по пунктам"><label class="filter-select-all"><input type="checkbox"> Выбрать все</label>';
+    tools.innerHTML =
+      '<input class="filter-search" type="search" placeholder="Поиск по пунктам" aria-label="Поиск по пунктам"><label class="filter-select-all"><input type="checkbox"> Выбрать все</label>';
     filter.insertBefore(tools, options);
     const search = tools.querySelector('.filter-search');
     const selectAll = tools.querySelector('.filter-select-all input');
-    search.addEventListener('input', () => { visibleLabels(options, search.value); syncSelectAll(filter); });
+    search.addEventListener('input', () => {
+      visibleLabels(options, search.value);
+      syncSelectAll(filter);
+    });
     selectAll.addEventListener('change', () => {
       [...options.querySelectorAll('label')]
-        .filter((label) => !label.hidden)
-        .map((label) => label.querySelector('input[type="checkbox"]'))
+        .filter(label => !label.hidden)
+        .map(label => label.querySelector('input[type="checkbox"]'))
         .filter(Boolean)
-        .forEach((input) => { input.checked = selectAll.checked; input.dispatchEvent(new Event('change', { bubbles: true })); });
+        .forEach(input => {
+          input.checked = selectAll.checked;
+          input.dispatchEvent(new Event('change', { bubbles: true }));
+        });
       syncSelectAll(filter);
     });
     options.addEventListener('change', () => syncSelectAll(filter));
@@ -68,8 +76,8 @@
   }
 
   function decorateTable(table) {
-    const headers = [...table.querySelectorAll('thead th')].map((header) => header.textContent);
-    table.querySelectorAll('tbody tr').forEach((row) => {
+    const headers = [...table.querySelectorAll('thead th')].map(header => header.textContent);
+    table.querySelectorAll('tbody tr').forEach(row => {
       [...row.cells].forEach((cell, index) => decorateCell(cell, headers[index] || ''));
     });
   }
@@ -102,13 +110,19 @@
       const node = record.target.nodeType === 1 ? record.target : record.target.parentElement;
       const table = node && node.closest('table');
       if (table) pendingTables.add(table);
-      else if (node) record.addedNodes.forEach((added) => { if (added.nodeType === 1) (added.matches('table') ? [added] : added.querySelectorAll('table')).forEach((item) => pendingTables.add(item)); });
+      else if (node)
+        record.addedNodes.forEach(added => {
+          if (added.nodeType === 1)
+            (added.matches('table') ? [added] : added.querySelectorAll('table')).forEach(item => pendingTables.add(item));
+        });
     }
     if (pendingFrame) return;
     pendingFrame = requestAnimationFrame(() => {
       pendingFrame = 0;
       initFilters();
-      pendingTables.forEach((table) => { if (table.isConnected) decorateTable(table); });
+      pendingTables.forEach(table => {
+        if (table.isConnected) decorateTable(table);
+      });
       pendingTables.clear();
     });
   }

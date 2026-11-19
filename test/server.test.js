@@ -1,22 +1,114 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { wbErrorText, loadProductCards, readBackFbsStocks, depositCampaignBudget, mergeCampaignZones, campaignZones, setCampaignStatus, setCampaignPlacements, slimFunnelProduct, funnelTableFresh, productCampaignTimeline,mergeSheetRows, saveSheetRows, saveSheetCurrent, readSheetHistory, sheetCabinetSince, sheetSiteCabinet, sheetCabinetFilter, withoutClubPriceRepeats,minusPlan, archivedPresetsFromError, productAdDays, productDetailPeriod, todoNmId, todoFields, funnelOrdersByNmId, summarizeHourlyOrders, orderFeedPeriod, itemRatingPeriods, normalizeItemRatings, itemReturnsPeriod, normalizeItemReturns, returnStatusGroup, campaignActivePeriod, mergeMinusList, summarizeKeywordDaily, summarizePositionDaily, normalizeOrders, normalizeOrderFeed, enrichOrders, extractFunnel, summarizeAdStats, campaignProductDaily, withAdBudgets, summarizeKeywords, normalizeStockPreset, normalizePricePreset, adCampaignMayHaveStats, validAdPeriod, historyPeriod, historyChunks, planAdFetch, datesBetween, safeFolderName, funnelDaysToFetch, pairFunnelDays, funnelPeriods, funnelRangeBuckets, funnelRecordCounts, funnelRangeValues, funnelSalesMatrix, summaryTopProducts, summaryDrops, summaryProducts, normalizeFbsStocks, normalizeFbwStocks, normalizePrices, summarizeStockTotals, normalizeNewOrders, summarizeSupplies, normalizeTrbxes, chunkOrders, stickerType, localPhoto, WB_HOSTS } = require('../server');
+const {
+  wbErrorText,
+  loadProductCards,
+  readBackFbsStocks,
+  depositCampaignBudget,
+  mergeCampaignZones,
+  campaignZones,
+  setCampaignStatus,
+  setCampaignPlacements,
+  slimFunnelProduct,
+  funnelTableFresh,
+  productCampaignTimeline,
+  mergeSheetRows,
+  saveSheetRows,
+  saveSheetCurrent,
+  readSheetHistory,
+  sheetCabinetSince,
+  sheetSiteCabinet,
+  sheetCabinetFilter,
+  withoutClubPriceRepeats,
+  minusPlan,
+  archivedPresetsFromError,
+  productAdDays,
+  productDetailPeriod,
+  todoNmId,
+  todoFields,
+  funnelOrdersByNmId,
+  summarizeHourlyOrders,
+  orderFeedPeriod,
+  itemRatingPeriods,
+  normalizeItemRatings,
+  itemReturnsPeriod,
+  normalizeItemReturns,
+  returnStatusGroup,
+  campaignActivePeriod,
+  mergeMinusList,
+  summarizeKeywordDaily,
+  summarizePositionDaily,
+  normalizeOrders,
+  normalizeOrderFeed,
+  enrichOrders,
+  extractFunnel,
+  summarizeAdStats,
+  campaignProductDaily,
+  withAdBudgets,
+  summarizeKeywords,
+  normalizeStockPreset,
+  normalizePricePreset,
+  adCampaignMayHaveStats,
+  validAdPeriod,
+  historyPeriod,
+  historyChunks,
+  planAdFetch,
+  datesBetween,
+  safeFolderName,
+  funnelDaysToFetch,
+  pairFunnelDays,
+  funnelPeriods,
+  funnelRangeBuckets,
+  funnelRecordCounts,
+  funnelRangeValues,
+  funnelSalesMatrix,
+  summaryTopProducts,
+  summaryDrops,
+  summaryProducts,
+  normalizeFbsStocks,
+  normalizeFbwStocks,
+  normalizePrices,
+  summarizeStockTotals,
+  normalizeNewOrders,
+  summarizeSupplies,
+  normalizeTrbxes,
+  chunkOrders,
+  stickerType,
+  localPhoto,
+  WB_HOSTS
+} = require('../server');
 
 test('текст ошибки WB у запуска, паузы и мест показа: JSON { error }, { detail } и простой текст 422', () => {
-  assert.equal(wbErrorText({ details: { error: 'AdvertChangeStatus: Low Budget: not enough budget' } }), 'AdvertChangeStatus: Low Budget: not enough budget');
-  assert.equal(wbErrorText({ details: { detail: 'advert 12345 has payment type cpc, placements cannot be changed', status: 400 } }), 'advert 12345 has payment type cpc, placements cannot be changed');
+  assert.equal(
+    wbErrorText({ details: { error: 'AdvertChangeStatus: Low Budget: not enough budget' } }),
+    'AdvertChangeStatus: Low Budget: not enough budget'
+  );
+  assert.equal(
+    wbErrorText({ details: { detail: 'advert 12345 has payment type cpc, placements cannot be changed', status: 400 } }),
+    'advert 12345 has payment type cpc, placements cannot be changed'
+  );
   assert.equal(wbErrorText({ details: ' Статус кампании не изменен ' }), 'Статус кампании не изменен');
   assert.equal(wbErrorText({}), '');
 });
 
 test('зоны показов от расширения: присланные дни заменяются, остальные остаются, каталог без fullstat не теряется', () => {
   const m = (views, spend) => ({ views, clicks: 1, atbs: 0, orders: 0, shks: 0, sum_price: 0, spend });
-  const first = mergeCampaignZones(null, {
-    from: '2026-11-01', to: '2026-11-02',
-    byNm: { all: { 11: { '2026-11-01': m(100, 10), '2026-11-02': m(50, 5) }, '': { '2026-11-01': m(1, 1) } }, searchCatalog: { 11: { '2026-11-01': m(40, 4) } }, shelves: { 11: { '2026-11-01': m(60, 6) } } },
-    catalogDaily: { '2026-11-01': m(5, 1) }, catalogNm: { 11: { metrics: m(5, 1), name: 'Товар' } }
-  }, 't1');
+  const first = mergeCampaignZones(
+    null,
+    {
+      from: '2026-11-01',
+      to: '2026-11-02',
+      byNm: {
+        all: { 11: { '2026-11-01': m(100, 10), '2026-11-02': m(50, 5) }, '': { '2026-11-01': m(1, 1) } },
+        searchCatalog: { 11: { '2026-11-01': m(40, 4) } },
+        shelves: { 11: { '2026-11-01': m(60, 6) } }
+      },
+      catalogDaily: { '2026-11-01': m(5, 1) },
+      catalogNm: { 11: { metrics: m(5, 1), name: 'Товар' } }
+    },
+    't1'
+  );
   assert.deepEqual(Object.keys(first.days), ['2026-11-01', '2026-11-02']);
   assert.deepEqual(Object.keys(first.days['2026-11-01'].all), ['11']);
   assert.equal(first.days['2026-11-01'].catalog.views, 5);
@@ -24,7 +116,11 @@ test('зоны показов от расширения: присланные д
   assert.equal(first.catalogByNm['2026-11-01_2026-11-02'].items[11].views, 5);
   assert.equal(first.names[11], 'Товар');
   // Второй раз — только 02.11 и без fullstat: 01.11 не тронут, у 02.11 цифры новые, каталог прежний.
-  const second = mergeCampaignZones(first, { from: '2026-11-02', to: '2026-11-02', byNm: { all: { 11: { '2026-11-02': m(70, 7) } } }, catalogDaily: null }, 't2');
+  const second = mergeCampaignZones(
+    first,
+    { from: '2026-11-02', to: '2026-11-02', byNm: { all: { 11: { '2026-11-02': m(70, 7) } } }, catalogDaily: null },
+    't2'
+  );
   assert.equal(second.days['2026-11-01'].all[11].views, 100);
   assert.equal(second.days['2026-11-01'].receivedAt, 't1');
   assert.equal(second.days['2026-11-02'].all[11].views, 70);
@@ -36,37 +132,74 @@ test('зоны показов от расширения: присланные д
 });
 
 test('список карточек: повтор карточки на стыке страниц WB не добавляется второй раз', async () => {
-  const realFetch = global.fetch, at = '2026-11-02T13:12:31.175828Z';
+  const realFetch = global.fetch,
+    at = '2026-11-02T13:12:31.175828Z';
   const page = from => Array.from({ length: 100 }, (_, i) => ({ nmID: from + i, imtID: from + i, updatedAt: at }));
   // Вторая страница начинается с двух карточек, которые уже были в конце первой (так WB делает при одинаковом updatedAt).
   const pages = [page(1), [...page(99).slice(0, 2), ...page(101).slice(0, 50)]];
   let call = 0;
-  global.fetch = async () => new Response(JSON.stringify({ cards: pages[call++] || [], cursor: { updatedAt: at, nmID: 1, total: 100 } }), { status: 200, headers: { 'content-type': 'application/json' } });
+  global.fetch = async () =>
+    new Response(JSON.stringify({ cards: pages[call++] || [], cursor: { updatedAt: at, nmID: 1, total: 100 } }), {
+      status: 200,
+      headers: { 'content-type': 'application/json' }
+    });
   try {
     const cards = await loadProductCards('token');
     assert.equal(cards.length, 150);
     assert.equal(new Set(cards.map(card => card.nmID)).size, 150);
-  } finally { global.fetch = realFetch; }
+  } finally {
+    global.fetch = realFetch;
+  }
 });
 
 test('после изменения остатков перечитываются только изменённые позиции на своих складах', async () => {
-  const realFetch = global.fetch, calls = [];
+  const realFetch = global.fetch,
+    calls = [];
   global.fetch = async (url, options) => {
-    const body = JSON.parse(options.body); calls.push({ url: String(url), method: options.method, chrtIds: body.chrtIds });
+    const body = JSON.parse(options.body);
+    calls.push({ url: String(url), method: options.method, chrtIds: body.chrtIds });
     if (String(url).endsWith('/stocks/2')) return new Response('{"code":"NotFound","message":"Not found"}', { status: 404 });
-    return new Response(JSON.stringify({ stocks: [{ chrtId: 11, amount: 5 }, { chrtId: 12, amount: 7 }] }), { status: 200, headers: { 'content-type': 'application/json' } });
+    return new Response(
+      JSON.stringify({
+        stocks: [
+          { chrtId: 11, amount: 5 },
+          { chrtId: 12, amount: 7 }
+        ]
+      }),
+      { status: 200, headers: { 'content-type': 'application/json' } }
+    );
   };
   try {
-    const grouped = new Map([['1', [{ chrtId: 11, amount: 5 }, { chrtId: 12, amount: 9 }]], ['2', [{ chrtId: 11, amount: 3 }]]]);
+    const grouped = new Map([
+      [
+        '1',
+        [
+          { chrtId: 11, amount: 5 },
+          { chrtId: 12, amount: 9 }
+        ]
+      ],
+      ['2', [{ chrtId: 11, amount: 3 }]]
+    ]);
     const result = await readBackFbsStocks('token', grouped);
-    assert.deepEqual(calls.map(call => [call.url.replace('https://marketplace-api.wildberries.ru', ''), call.method, call.chrtIds]),
-      [['/api/v3/stocks/1', 'POST', [11, 12]], ['/api/v3/stocks/2', 'POST', [11]]]);
+    assert.deepEqual(
+      calls.map(call => [call.url.replace('https://marketplace-api.wildberries.ru', ''), call.method, call.chrtIds]),
+      [
+        ['/api/v3/stocks/1', 'POST', [11, 12]],
+        ['/api/v3/stocks/2', 'POST', [11]]
+      ]
+    );
     // Склад 1 — остатки из WB (у 12 WB показывает 7, а не 9), склад 2 перечитать не удалось — отправленное значение.
-    assert.deepEqual(result.stocks, [{ warehouseId: '1', chrtId: 11, amount: 5 }, { warehouseId: '1', chrtId: 12, amount: 7 }, { warehouseId: '2', chrtId: 11, amount: 3 }]);
+    assert.deepEqual(result.stocks, [
+      { warehouseId: '1', chrtId: 11, amount: 5 },
+      { warehouseId: '1', chrtId: 12, amount: 7 },
+      { warehouseId: '2', chrtId: 11, amount: 3 }
+    ]);
     assert.equal(result.warnings.length, 2);
     assert.match(result.warnings[0], /другой остаток у 1 поз/);
     assert.match(result.warnings[1], /перечитать их у WB не удалось/);
-  } finally { global.fetch = realFetch; }
+  } finally {
+    global.fetch = realFetch;
+  }
 });
 
 test('запуск, пауза и места показа: в демо-режиме и с неверными данными запрос в WB не уходит', async () => {
@@ -82,10 +215,32 @@ test('возвраты: группы статусов, даты WB с пробе
   assert.equal(returnStatusGroup('Выдано', false), 'done');
   assert.equal(returnStatusGroup('Истек срок хранения на пвз', false), 'expired');
   assert.equal(returnStatusGroup('Отмена по задержке', false), 'cancel');
-  const [item] = normalizeItemReturns([{ sku: '2049388499349', brand: '', completedDt: null, dstOfficeAddress: ' Барнаул, улица Сергея Семёнова 25/1 ', dstOfficeId: 50149517,
-    expiredDt: null, kiz: null, nmId: 859747686, orderDt: '2026-10-08', orderId: 0, readyToReturnDt: '2026-10-14 08:09:39', returnType: 'Возврат брака',
-    shkId: 52201342022, srid: '86aee7dfaa', returnStatus: 'Готов к выдаче', stickerId: '51268173993', subjectName: 'Чехлы для телефонов', techSize: '0' }],
-  [{ nmID: 859747686, title: 'Чехол для iPhone 17', vendorCode: 'CASE-17', photos: [{ c246x328: 'https://basket.example/1.webp' }] }], true);
+  const [item] = normalizeItemReturns(
+    [
+      {
+        sku: '2049388499349',
+        brand: '',
+        completedDt: null,
+        dstOfficeAddress: ' Барнаул, улица Сергея Семёнова 25/1 ',
+        dstOfficeId: 50149517,
+        expiredDt: null,
+        kiz: null,
+        nmId: 859747686,
+        orderDt: '2026-10-08',
+        orderId: 0,
+        readyToReturnDt: '2026-10-14 08:09:39',
+        returnType: 'Возврат брака',
+        shkId: 52201342022,
+        srid: '86aee7dfaa',
+        returnStatus: 'Готов к выдаче',
+        stickerId: '51268173993',
+        subjectName: 'Чехлы для телефонов',
+        techSize: '0'
+      }
+    ],
+    [{ nmID: 859747686, title: 'Чехол для iPhone 17', vendorCode: 'CASE-17', photos: [{ c246x328: 'https://basket.example/1.webp' }] }],
+    true
+  );
   assert.equal(item.title, 'Чехол для iPhone 17');
   assert.equal(item.vendorCode, 'CASE-17');
   assert.equal(item.readyAt, '2026-10-14T08:09:39');
@@ -105,11 +260,14 @@ test('возвраты: период — не позже сегодня и не 
 });
 
 test('заказы из воронки по артикулам: статистика выбранного периода, ответ v3 и старый формат', () => {
-  assert.deepEqual(funnelOrdersByNmId([
-    { product: { nmId: 101 }, statistic: { selected: { orderCount: 12 }, past: { orderCount: 99 } } },
-    { product: { nmId: 102 }, statistic: { selected: { orderCount: 0 } } },
-    { nmID: 103, orderCount: 5 }
-  ]), { 101: 12, 102: 0, 103: 5 });
+  assert.deepEqual(
+    funnelOrdersByNmId([
+      { product: { nmId: 101 }, statistic: { selected: { orderCount: 12 }, past: { orderCount: 99 } } },
+      { product: { nmId: 102 }, statistic: { selected: { orderCount: 0 } } },
+      { nmID: 103, orderCount: 5 }
+    ]),
+    { 101: 12, 102: 0, 103: 5 }
+  );
 });
 
 test('оценки товаров: период не позже вчера, прошлый период той же длины перед ним', () => {
@@ -125,11 +283,36 @@ test('оценки товаров: период не позже вчера, пр
 });
 
 test('оценки товаров: dynamics — разница с прошлым периодом, звёзды и фото из карточек', () => {
-  const result = normalizeItemRatings([{ sellerRating: { current: 4.31, dynamics: 0 },
-    feedbackIncrease: { current: 22, total: 100, dynamics: 18, fiveStar: { current: 17, total: 80 }, oneStar: { current: 2, total: 5 } },
-    items: [{ nmId: 1261663339, title: 'MagSafe', vendorCode: 'MS', rating: 10, feedbackRating: { current: 4.51, dynamics: -0.49, percentile: 44.4 },
-      feedbackCount: { current: 22, dynamics: 18 }, fiveStar: { current: 17, dynamics: 13 }, oneStar: { current: 2, dynamics: 2 }, disqualified: 0, pinnedFeedback: false, isShadowed: true }] }],
-    [{ nmID: 1261663339, photos: [{ tm: 'https://basket-01.wbbasket.ru/x.webp' }] }]);
+  const result = normalizeItemRatings(
+    [
+      {
+        sellerRating: { current: 4.31, dynamics: 0 },
+        feedbackIncrease: {
+          current: 22,
+          total: 100,
+          dynamics: 18,
+          fiveStar: { current: 17, total: 80 },
+          oneStar: { current: 2, total: 5 }
+        },
+        items: [
+          {
+            nmId: 1261663339,
+            title: 'MagSafe',
+            vendorCode: 'MS',
+            rating: 10,
+            feedbackRating: { current: 4.51, dynamics: -0.49, percentile: 44.4 },
+            feedbackCount: { current: 22, dynamics: 18 },
+            fiveStar: { current: 17, dynamics: 13 },
+            oneStar: { current: 2, dynamics: 2 },
+            disqualified: 0,
+            pinnedFeedback: false,
+            isShadowed: true
+          }
+        ]
+      }
+    ],
+    [{ nmID: 1261663339, photos: [{ tm: 'https://basket-01.wbbasket.ru/x.webp' }] }]
+  );
   const item = result.items[0];
   assert.equal(item.feedbackRatingDelta, -0.49);
   assert.equal(item.newFeedbacks, 22);
@@ -142,28 +325,42 @@ test('оценки товаров: dynamics — разница с прошлым
 });
 
 test('из общей ленты за 31 день список берёт события по времени текущего статуса в выбранном периоде', () => {
-  const feed = { data: { currency: 'RUB', orders: [
-    { srid: 'old', createdAt: '2026-09-20T10:00:00Z', updatedAt: '2026-10-03T10:00:00Z' },
-    { srid: 'in', createdAt: '2026-10-05T10:00:00Z' },
-    { srid: 'out', createdAt: '2026-09-25T10:00:00Z' }
-  ] } };
+  const feed = {
+    data: {
+      currency: 'RUB',
+      orders: [
+        { srid: 'old', createdAt: '2026-09-20T10:00:00Z', updatedAt: '2026-10-03T10:00:00Z' },
+        { srid: 'in', createdAt: '2026-10-05T10:00:00Z' },
+        { srid: 'out', createdAt: '2026-09-25T10:00:00Z' }
+      ]
+    }
+  };
   const result = orderFeedPeriod(feed, '2026-10-02', '2026-10-08');
-  assert.deepEqual(result.data.orders.map(order => order.srid), ['old', 'in']);
+  assert.deepEqual(
+    result.data.orders.map(order => order.srid),
+    ['old', 'in']
+  );
   assert.equal(result.data.currency, 'RUB');
 });
 
 test('заказы по часам — по московскому времени, каждый заказ один раз, «к этому часу» по времени суток', () => {
-  const days = summarizeHourlyOrders([
-    { id: 'a', orderedAt: '2026-10-08T06:30:00Z', price: 100000 },   // 09:30 МСК сегодня
-    { id: 'a', orderedAt: '2026-10-08T06:30:00Z', price: 100000 },   // тот же заказ — не считается дважды
-    { id: 'b', orderedAt: '2026-10-07T20:59:00Z', price: 50000 },    // 23:59 МСК 07.10 — вчера
-    { id: 'c', orderedAt: '2026-10-07T21:10:00Z', price: 20000 },    // 00:10 МСК 08.10 — уже сегодня
-    { id: 'd', orderedAt: '2026-10-07T06:00:00Z', price: 30000 },    // 09:00 МСК вчера — до «сейчас» (10:00)
-    { id: 'e', orderedAt: '2026-09-20T06:00:00Z', price: 30000 }     // за пределами 8 дней
-  ], '2026-10-08', 10 * 60, 3);
+  const days = summarizeHourlyOrders(
+    [
+      { id: 'a', orderedAt: '2026-10-08T06:30:00Z', price: 100000 }, // 09:30 МСК сегодня
+      { id: 'a', orderedAt: '2026-10-08T06:30:00Z', price: 100000 }, // тот же заказ — не считается дважды
+      { id: 'b', orderedAt: '2026-10-07T20:59:00Z', price: 50000 }, // 23:59 МСК 07.10 — вчера
+      { id: 'c', orderedAt: '2026-10-07T21:10:00Z', price: 20000 }, // 00:10 МСК 08.10 — уже сегодня
+      { id: 'd', orderedAt: '2026-10-07T06:00:00Z', price: 30000 }, // 09:00 МСК вчера — до «сейчас» (10:00)
+      { id: 'e', orderedAt: '2026-09-20T06:00:00Z', price: 30000 } // за пределами 8 дней
+    ],
+    '2026-10-08',
+    10 * 60,
+    3
+  );
   assert.equal(days.length, 8);
   assert.equal(days[0].date, '2026-10-01');
-  const today = days[7], yesterday = days[6];
+  const today = days[7],
+    yesterday = days[6];
   assert.equal(today.date, '2026-10-08');
   assert.deepEqual(today.hours[9], { count: 1, sum: 1000, buyoutCount: 0, buyoutSum: 0 });
   assert.equal(today.hours[0].count, 1);
@@ -173,10 +370,14 @@ test('заказы по часам — по московскому времен�
 });
 
 test('заказы по часам по умолчанию — по времени Душанбе (UTC+5): и час, и граница суток', () => {
-  const days = summarizeHourlyOrders([
-    { id: 'a', orderedAt: '2026-10-08T06:30:00Z', price: 100000 },   // 11:30 по Душанбе (09:30 МСК)
-    { id: 'b', orderedAt: '2026-10-07T19:30:00Z', price: 50000 }     // 00:30 по Душанбе 08.10 (22:30 МСК 07.10) — уже сегодня
-  ], '2026-10-08', 12 * 60);
+  const days = summarizeHourlyOrders(
+    [
+      { id: 'a', orderedAt: '2026-10-08T06:30:00Z', price: 100000 }, // 11:30 по Душанбе (09:30 МСК)
+      { id: 'b', orderedAt: '2026-10-07T19:30:00Z', price: 50000 } // 00:30 по Душанбе 08.10 (22:30 МСК 07.10) — уже сегодня
+    ],
+    '2026-10-08',
+    12 * 60
+  );
   const today = days[7];
   assert.equal(today.hours[11].count, 1);
   assert.equal(today.hours[9].count, 0);
@@ -186,15 +387,21 @@ test('заказы по часам по умолчанию — по времен
 });
 
 test('выкупы по часам — по времени статуса «выкуплен», заказ — по времени оформления', () => {
-  const days = summarizeHourlyOrders([
-    // Заказан 05.10 в 12:00 МСК, выкуплен сегодня в 09:15 МСК.
-    { id: 'x', orderedAt: '2026-10-05T09:00:00Z', createdAt: '2026-10-08T06:15:00Z', rawStatus: 'buyout', price: 150000 },
-    // Заказан и выкуплен вчера; выкуп в 18:00 МСК — позже «сейчас» (10:00), в byNow не входит.
-    { id: 'y', orderedAt: '2026-10-07T05:00:00Z', createdAt: '2026-10-07T15:00:00Z', rawStatus: 'buyout', price: 50000 },
-    // Отменённый заказ — только заказ, не выкуп.
-    { id: 'z', orderedAt: '2026-10-08T05:00:00Z', createdAt: '2026-10-08T06:00:00Z', rawStatus: 'cancel', price: 40000 }
-  ], '2026-10-08', 10 * 60, 3);
-  const today = days[7], yesterday = days[6];
+  const days = summarizeHourlyOrders(
+    [
+      // Заказан 05.10 в 12:00 МСК, выкуплен сегодня в 09:15 МСК.
+      { id: 'x', orderedAt: '2026-10-05T09:00:00Z', createdAt: '2026-10-08T06:15:00Z', rawStatus: 'buyout', price: 150000 },
+      // Заказан и выкуплен вчера; выкуп в 18:00 МСК — позже «сейчас» (10:00), в byNow не входит.
+      { id: 'y', orderedAt: '2026-10-07T05:00:00Z', createdAt: '2026-10-07T15:00:00Z', rawStatus: 'buyout', price: 50000 },
+      // Отменённый заказ — только заказ, не выкуп.
+      { id: 'z', orderedAt: '2026-10-08T05:00:00Z', createdAt: '2026-10-08T06:00:00Z', rawStatus: 'cancel', price: 40000 }
+    ],
+    '2026-10-08',
+    10 * 60,
+    3
+  );
+  const today = days[7],
+    yesterday = days[6];
   assert.equal(today.hours[9].buyoutCount, 1);
   assert.equal(today.hours[9].buyoutSum, 1500);
   assert.deepEqual(today.byNow, { count: 1, sum: 400, buyoutCount: 1, buyoutSum: 1500 });
@@ -207,25 +414,76 @@ test('выкупы по часам — по времени статуса «вы
 test('лента заказов строится только из событий WB, отсортированных по времени', () => {
   const result = normalizeOrders(
     { orders: [{ id: 1, rid: 'not-in-feed', nmId: 11, createdAt: '2026-08-12T10:00:00Z', price: 5000 }] },
-    { data: { currency: 'RUB', orders: [
-      { srid: 's1', nmId: 12, createdAt: '2026-08-10T10:00:00Z', status: 'created', sellerPrice: 50 },
-      { srid: 's2', nmId: 12, chrtId: 22, createdAt: '2026-08-11T10:00:00Z', updatedAt: '2026-08-13T10:00:00Z', status: 'buyout', sellerPrice: 100 }
-    ] } }
+    {
+      data: {
+        currency: 'RUB',
+        orders: [
+          { srid: 's1', nmId: 12, createdAt: '2026-08-10T10:00:00Z', status: 'created', sellerPrice: 50 },
+          {
+            srid: 's2',
+            nmId: 12,
+            chrtId: 22,
+            createdAt: '2026-08-11T10:00:00Z',
+            updatedAt: '2026-08-13T10:00:00Z',
+            status: 'buyout',
+            sellerPrice: 100
+          }
+        ]
+      }
+    }
   );
-  assert.deepEqual(result.map(order => order.id), ['s2', 's1']);
+  assert.deepEqual(
+    result.map(order => order.id),
+    ['s2', 's1']
+  );
   assert.ok(result.every(order => order.source === 'Лента WB'));
 });
 
 test('новое FBS-задание не дублирует строку ленты, а добавляет к ней сумму покупателя с СПП (rid = srid)', () => {
   const result = normalizeOrders(
-    { orders: [
-      { id: 5985992160, rid: 'eBG.re86.1.0', nmId: 221609260, createdAt: '2026-10-08T13:43:00Z', salePrice: 570400, finalPrice: 468800, convertedFinalPrice: 468800, currencyCode: 643, convertedCurrencyCode: 643, warehouseId: 2155961 },
-      { id: 7, rid: 'other-currency', nmId: 1, createdAt: '2026-10-08T12:00:00Z', convertedFinalPrice: 9000, currencyCode: 933, convertedCurrencyCode: 933 }
-    ] },
-    { data: { currency: 'RUB', orders: [
-      { srid: 'eBG.re86.1.0', nmId: 221609260, createdAt: '2026-10-08T13:43:00Z', status: 'created', sellerPrice: 5704, warehouseName: 'склад продавца Коледино', destinationCity: 'Минск', destinationDistrict: 'Беларусь' },
-      { srid: 'other-currency', nmId: 1, createdAt: '2026-10-08T12:00:00Z', status: 'created', sellerPrice: 100 }
-    ] } }
+    {
+      orders: [
+        {
+          id: 5985992160,
+          rid: 'eBG.re86.1.0',
+          nmId: 221609260,
+          createdAt: '2026-10-08T13:43:00Z',
+          salePrice: 570400,
+          finalPrice: 468800,
+          convertedFinalPrice: 468800,
+          currencyCode: 643,
+          convertedCurrencyCode: 643,
+          warehouseId: 2155961
+        },
+        {
+          id: 7,
+          rid: 'other-currency',
+          nmId: 1,
+          createdAt: '2026-10-08T12:00:00Z',
+          convertedFinalPrice: 9000,
+          currencyCode: 933,
+          convertedCurrencyCode: 933
+        }
+      ]
+    },
+    {
+      data: {
+        currency: 'RUB',
+        orders: [
+          {
+            srid: 'eBG.re86.1.0',
+            nmId: 221609260,
+            createdAt: '2026-10-08T13:43:00Z',
+            status: 'created',
+            sellerPrice: 5704,
+            warehouseName: 'склад продавца Коледино',
+            destinationCity: 'Минск',
+            destinationDistrict: 'Беларусь'
+          },
+          { srid: 'other-currency', nmId: 1, createdAt: '2026-10-08T12:00:00Z', status: 'created', sellerPrice: 100 }
+        ]
+      }
+    }
   );
   assert.equal(result.length, 2);
   const order = result.find(item => item.id === 'eBG.re86.1.0');
@@ -239,12 +497,29 @@ test('новое FBS-задание не дублирует строку лен�
 });
 
 test('преобразует актуальный ответ order-feed и использует время обновления события', () => {
-  const result = normalizeOrderFeed({ data: { currency: 'RUB', orders: [{
-    nmId: 938594007, chrtId: 1413756489, srid: 'order.1', createdAt: '2026-08-06T08:37:34Z',
-    updatedAt: '2026-08-12T16:02:24Z', status: 'cancel', cancelType: 'receipt',
-    warehouseName: 'Коледино', warehouseRegion: 'Центральный', destinationCity: 'Санкт-Петербург',
-    destinationDistrict: 'Северо-Западный', sellerPrice: 970.09, isMp: false, isB2b: false
-  }] } });
+  const result = normalizeOrderFeed({
+    data: {
+      currency: 'RUB',
+      orders: [
+        {
+          nmId: 938594007,
+          chrtId: 1413756489,
+          srid: 'order.1',
+          createdAt: '2026-08-06T08:37:34Z',
+          updatedAt: '2026-08-12T16:02:24Z',
+          status: 'cancel',
+          cancelType: 'receipt',
+          warehouseName: 'Коледино',
+          warehouseRegion: 'Центральный',
+          destinationCity: 'Санкт-Петербург',
+          destinationDistrict: 'Северо-Западный',
+          sellerPrice: 970.09,
+          isMp: false,
+          isB2b: false
+        }
+      ]
+    }
+  });
   assert.equal(result[0].id, 'order.1');
   assert.equal(result[0].createdAt, '2026-08-12T16:02:24Z');
   assert.equal(result[0].orderedAt, '2026-08-06T08:37:34Z');
@@ -254,10 +529,19 @@ test('преобразует актуальный ответ order-feed и ис�
 });
 
 test('добавляет к заказу название, бренд, артикул и главное фото карточки', () => {
-  const result = enrichOrders([{ nmId: 123, name: 'Товар WB 123', article: 'chrtID 1' }], [{
-    nmID: 123, title: 'Кроссовки Urban', vendorCode: 'URBAN-01', brand: 'Example', subjectName: 'Кроссовки',
-    photos: [{ c246x328: 'https://basket.example/card.webp', big: 'https://basket.example/big.webp' }]
-  }]);
+  const result = enrichOrders(
+    [{ nmId: 123, name: 'Товар WB 123', article: 'chrtID 1' }],
+    [
+      {
+        nmID: 123,
+        title: 'Кроссовки Urban',
+        vendorCode: 'URBAN-01',
+        brand: 'Example',
+        subjectName: 'Кроссовки',
+        photos: [{ c246x328: 'https://basket.example/card.webp', big: 'https://basket.example/big.webp' }]
+      }
+    ]
+  );
   assert.equal(result[0].name, 'Кроссовки Urban');
   assert.equal(result[0].article, 'URBAN-01');
   assert.equal(result[0].brand, 'Example');
@@ -265,8 +549,10 @@ test('добавляет к заказу название, бренд, арти�
 });
 
 test('фото с CDN WB отдаются через локальный кэш, остальные ссылки не меняются', () => {
-  assert.equal(localPhoto('https://basket-47.wbbasket.ru/vol14523/part1452346/1452346227/images/c246x328/1.webp'),
-    '/api/photo/basket-47.wbbasket.ru/vol14523/part1452346/1452346227/images/c246x328/1.webp');
+  assert.equal(
+    localPhoto('https://basket-47.wbbasket.ru/vol14523/part1452346/1452346227/images/c246x328/1.webp'),
+    '/api/photo/basket-47.wbbasket.ru/vol14523/part1452346/1452346227/images/c246x328/1.webp'
+  );
   assert.equal(localPhoto('https://basket.example/card.webp'), 'https://basket.example/card.webp');
   assert.equal(localPhoto('https://evil.wbbasket.ru.example.com/a.webp'), 'https://evil.wbbasket.ru.example.com/a.webp');
   assert.equal(localPhoto('http://basket-1.wbbasket.ru/a.webp'), 'http://basket-1.wbbasket.ru/a.webp');
@@ -274,18 +560,27 @@ test('фото с CDN WB отдаются через локальный кэш, 
 });
 
 test('суммирует показатели воронки разных товаров', () => {
-  const result = extractFunnel({ data: { products: [
-    { statistic: { selected: { openCardCount: 100, addToCartCount: 20, ordersCount: 5, buyoutsCount: 4, buyoutsSumRub: 2000 } } },
-    { statistic: { selected: { openCardCount: 50, addToCartCount: 10, ordersCount: 3, buyoutsCount: 2, buyoutsSumRub: 1000 } } }
-  ] } });
+  const result = extractFunnel({
+    data: {
+      products: [
+        { statistic: { selected: { openCardCount: 100, addToCartCount: 20, ordersCount: 5, buyoutsCount: 4, buyoutsSumRub: 2000 } } },
+        { statistic: { selected: { openCardCount: 50, addToCartCount: 10, ordersCount: 3, buyoutsCount: 2, buyoutsSumRub: 1000 } } }
+      ]
+    }
+  });
   assert.deepEqual(result, { views: 150, cart: 30, orders: 8, sales: 6, revenue: 3000, currency: 'RUB' });
 });
 
 test('понимает актуальные поля воронки WB API v3', () => {
-  const result = extractFunnel({ data: { currency: 'RUB', products: [
-    { statistic: { selected: { openCount: 120, cartCount: 24, orderCount: 9, buyoutCount: 7, buyoutSum: 4900 } } },
-    { statistic: { selected: { openCount: 30, cartCount: 6, orderCount: 2, buyoutCount: 1, buyoutSum: 700 } } }
-  ] } });
+  const result = extractFunnel({
+    data: {
+      currency: 'RUB',
+      products: [
+        { statistic: { selected: { openCount: 120, cartCount: 24, orderCount: 9, buyoutCount: 7, buyoutSum: 4900 } } },
+        { statistic: { selected: { openCount: 30, cartCount: 6, orderCount: 2, buyoutCount: 1, buyoutSum: 700 } } }
+      ]
+    }
+  });
   assert.deepEqual(result, { views: 150, cart: 30, orders: 11, sales: 8, revenue: 5600, currency: 'RUB' });
 });
 
@@ -295,12 +590,44 @@ test('разрешает только известные официальные 
 });
 
 test('собирает рекламные метрики и рассчитывает CTR, CPC, ДРР и ROAS', () => {
-  const result = summarizeAdStats([{ id: 77, status: 9, bid_type: 'manual', settings: { name: 'Поиск', payment_type: 'cpm' } }], [{
-    advertId: 77, views: 1000, clicks: 40, sum: 800, orders: 8, sum_price: 8000, atbs: 12, shks: 6,
-    days: [{ date: '2026-08-10T00:00:00Z', views: 1000, clicks: 40, sum: 800, orders: 8, sum_price: 8000,
-      apps: [{ appType: 32, views: 1000, clicks: 40, sum: 800, orders: 8, sum_price: 8000,
-        nms: [{ nmId: 123, name: 'Товар', views: 1000, clicks: 40, sum: 800, orders: 8, sum_price: 8000 }] }] }]
-  }], '2026-08-10', '2026-08-11');
+  const result = summarizeAdStats(
+    [{ id: 77, status: 9, bid_type: 'manual', settings: { name: 'Поиск', payment_type: 'cpm' } }],
+    [
+      {
+        advertId: 77,
+        views: 1000,
+        clicks: 40,
+        sum: 800,
+        orders: 8,
+        sum_price: 8000,
+        atbs: 12,
+        shks: 6,
+        days: [
+          {
+            date: '2026-08-10T00:00:00Z',
+            views: 1000,
+            clicks: 40,
+            sum: 800,
+            orders: 8,
+            sum_price: 8000,
+            apps: [
+              {
+                appType: 32,
+                views: 1000,
+                clicks: 40,
+                sum: 800,
+                orders: 8,
+                sum_price: 8000,
+                nms: [{ nmId: 123, name: 'Товар', views: 1000, clicks: 40, sum: 800, orders: 8, sum_price: 8000 }]
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    '2026-08-10',
+    '2026-08-11'
+  );
   assert.equal(result.totals.ctr, 4);
   assert.equal(result.totals.cpc, 20);
   assert.equal(result.totals.drr, 10);
@@ -323,7 +650,15 @@ test('объединяет остатки FBS с карточками и сох�
   const result = normalizeFbsStocks(
     [{ id: 10, name: 'Коледино', officeId: 15 }],
     [{ warehouse: { id: 10, name: 'Коледино', officeId: 15 }, stocks: [{ chrtId: 501, sku: '460000000001', amount: 12 }] }],
-    [{ nmID: 123456, vendorCode: 'VENDOR-1', title: 'Товар', subjectName: 'Категория', sizes: [{ chrtID: 501, techSize: 'M', skus: ['460000000001'] }] }]
+    [
+      {
+        nmID: 123456,
+        vendorCode: 'VENDOR-1',
+        title: 'Товар',
+        subjectName: 'Категория',
+        sizes: [{ chrtID: 501, techSize: 'M', skus: ['460000000001'] }]
+      }
+    ]
   );
   assert.equal(result.rows[0].vendorCode, 'VENDOR-1');
   assert.equal(result.rows[0].nmId, 123456);
@@ -334,9 +669,29 @@ test('объединяет остатки FBS с карточками и сох�
 });
 
 test('нормализует остатки FBW по складу и размеру', () => {
-  const result = normalizeFbwStocks([
-    { nmId: 123456, chrtId: 501, warehouseId: 507, warehouseName: 'Коледино', regionName: 'Центральный', quantity: 14, inWayToClient: 2, inWayFromClient: 1 }
-  ], [{ nmID: 123456, vendorCode: 'VENDOR-1', title: 'Товар', subjectName: 'Категория', sizes: [{ chrtID: 501, techSize: 'M', skus: ['460000000001'] }] }]);
+  const result = normalizeFbwStocks(
+    [
+      {
+        nmId: 123456,
+        chrtId: 501,
+        warehouseId: 507,
+        warehouseName: 'Коледино',
+        regionName: 'Центральный',
+        quantity: 14,
+        inWayToClient: 2,
+        inWayFromClient: 1
+      }
+    ],
+    [
+      {
+        nmID: 123456,
+        vendorCode: 'VENDOR-1',
+        title: 'Товар',
+        subjectName: 'Категория',
+        sizes: [{ chrtID: 501, techSize: 'M', skus: ['460000000001'] }]
+      }
+    ]
+  );
   assert.equal(result.rows[0].warehouseName, 'Коледино');
   assert.equal(result.rows[0].regionName, 'Центральный');
   assert.equal(result.rows[0].amount, 14);
@@ -344,20 +699,51 @@ test('нормализует остатки FBW по складу и разме�
   assert.equal(result.totals.warehouses, 1);
 });
 test('объединяет цены с названиями, категориями и артикулами карточек', () => {
-  const result = normalizePrices([{ nmID: 123, discount: 20, clubDiscount: 5, currencyIsoCode4217: 'RUB', sizes: [{ price: 1000, discountedPrice: 800, clubDiscountedPrice: 760 }] }], [{ nmID: 123, vendorCode: 'SELLER-1', title: 'Тестовый товар', subjectName: 'Категория', brand: 'Бренд' }]);
+  const result = normalizePrices(
+    [
+      {
+        nmID: 123,
+        discount: 20,
+        clubDiscount: 5,
+        currencyIsoCode4217: 'RUB',
+        sizes: [{ price: 1000, discountedPrice: 800, clubDiscountedPrice: 760 }]
+      }
+    ],
+    [{ nmID: 123, vendorCode: 'SELLER-1', title: 'Тестовый товар', subjectName: 'Категория', brand: 'Бренд' }]
+  );
   assert.equal(result.rows[0].vendorCode, 'SELLER-1');
   assert.equal(result.rows[0].price, 1000);
   assert.equal(result.rows[0].discount, 20);
   assert.deepEqual(result.categories, ['Категория']);
 });
 
-
 test('связывает новые сборочные задания FBS с карточками и считает сборку', () => {
-  const cards = [{ nmID: 100001, vendorCode: 'TSHIRT', title: 'Футболка', subjectName: 'Одежда', sizes: [{ chrtID: 501, techSize: 'M', skus: ['4600001'] }] }];
-  const result = normalizeNewOrders([
-    { id: 11, nmId: 100001, chrtId: 501, skus: ['4600001'], warehouseId: 7, createdAt: '2026-09-01T10:00:00Z', convertedPrice: 129900, convertedCurrencyCode: 643, cargoType: 1 },
-    { id: 12, nmId: 100001, chrtId: 501, warehouseId: 7, createdAt: '2026-09-02T10:00:00Z', price: 100000, supplyId: 'WB-GI-1' }
-  ], cards);
+  const cards = [
+    {
+      nmID: 100001,
+      vendorCode: 'TSHIRT',
+      title: 'Футболка',
+      subjectName: 'Одежда',
+      sizes: [{ chrtID: 501, techSize: 'M', skus: ['4600001'] }]
+    }
+  ];
+  const result = normalizeNewOrders(
+    [
+      {
+        id: 11,
+        nmId: 100001,
+        chrtId: 501,
+        skus: ['4600001'],
+        warehouseId: 7,
+        createdAt: '2026-09-01T10:00:00Z',
+        convertedPrice: 129900,
+        convertedCurrencyCode: 643,
+        cargoType: 1
+      },
+      { id: 12, nmId: 100001, chrtId: 501, warehouseId: 7, createdAt: '2026-09-02T10:00:00Z', price: 100000, supplyId: 'WB-GI-1' }
+    ],
+    cards
+  );
   assert.equal(result.rows[0].id, 12, 'свежие задания идут первыми');
   assert.equal(result.rows[1].name, 'Футболка');
   assert.equal(result.rows[1].vendorCode, 'TSHIRT');
@@ -384,7 +770,10 @@ test('показывает открытые поставки раньше зак
 
 test('нормализует грузоместа и их состав', () => {
   const result = normalizeTrbxes([{ id: 'WB-TRBX-2', orderIds: [5, 'x'] }, { id: 'WB-TRBX-1' }]);
-  assert.deepEqual(result.map(item => item.id), ['WB-TRBX-1', 'WB-TRBX-2']);
+  assert.deepEqual(
+    result.map(item => item.id),
+    ['WB-TRBX-1', 'WB-TRBX-2']
+  );
   assert.deepEqual(result[1].orderIds, [5]);
   assert.deepEqual(result[0].orderIds, []);
 });
@@ -405,11 +794,34 @@ test('разрешает только поддерживаемые формат�
 });
 
 test('делит статистику по артикулам между кампаниями', () => {
-  const campaigns = [{ id: 77, status: 9, type: 9, bid_type: 'manual', settings: { name: 'Поиск', payment_type: 'cpm' } },
-    { id: 88, status: 11, type: 8, bid_type: 'unified', settings: { name: 'Авто', payment_type: 'cpc' } }];
-  const day = (advertId, views) => ({ advertId, days: [{ date: '2026-08-10T00:00:00Z', views, clicks: 10, sum: 100, orders: 1, sum_price: 1000,
-    apps: [{ appType: 32, views, clicks: 10, sum: 100, orders: 1, sum_price: 1000,
-      nms: [{ nmId: 123, name: 'Товар', views, clicks: 10, sum: 100, orders: 1, sum_price: 1000 }] }] }] });
+  const campaigns = [
+    { id: 77, status: 9, type: 9, bid_type: 'manual', settings: { name: 'Поиск', payment_type: 'cpm' } },
+    { id: 88, status: 11, type: 8, bid_type: 'unified', settings: { name: 'Авто', payment_type: 'cpc' } }
+  ];
+  const day = (advertId, views) => ({
+    advertId,
+    days: [
+      {
+        date: '2026-08-10T00:00:00Z',
+        views,
+        clicks: 10,
+        sum: 100,
+        orders: 1,
+        sum_price: 1000,
+        apps: [
+          {
+            appType: 32,
+            views,
+            clicks: 10,
+            sum: 100,
+            orders: 1,
+            sum_price: 1000,
+            nms: [{ nmId: 123, name: 'Товар', views, clicks: 10, sum: 100, orders: 1, sum_price: 1000 }]
+          }
+        ]
+      }
+    ]
+  });
   const result = summarizeAdStats(campaigns, [day(77, 500), day(88, 300)], '2026-08-10', '2026-08-10');
   assert.equal(result.productDaily.length, 2);
   assert.equal(result.campaigns.find(row => row.id === 77).type, 9);
@@ -425,9 +837,16 @@ test('подставляет остаток бюджета к кампаниям
 });
 
 test('проверяет шаблон остатков и отбрасывает некорректные позиции', () => {
-  const preset = normalizeStockPreset({ name: '  Утренние остатки  ', warehouseIds: ['12', '12', ''],
-    items: [{ chrtId: 501, amount: '5', nmId: 100001, name: 'Футболка', vendorCode: 'TSHIRT', size: 'M', sku: '460000000001' },
-      { chrtId: 502, amount: -1 }, { chrtId: 'нет', amount: 3 }, { chrtId: 503, amount: 0 }] });
+  const preset = normalizeStockPreset({
+    name: '  Утренние остатки  ',
+    warehouseIds: ['12', '12', ''],
+    items: [
+      { chrtId: 501, amount: '5', nmId: 100001, name: 'Футболка', vendorCode: 'TSHIRT', size: 'M', sku: '460000000001' },
+      { chrtId: 502, amount: -1 },
+      { chrtId: 'нет', amount: 3 },
+      { chrtId: 503, amount: 0 }
+    ]
+  });
   assert.equal(preset.name, 'Утренние остатки');
   assert.deepEqual(preset.warehouseIds, ['12']);
   assert.equal(preset.items.length, 2);
@@ -443,11 +862,15 @@ test('не сохраняет шаблон остатков без назван�
 });
 
 test('проверяет шаблон цен и отбрасывает некорректные позиции', () => {
-  const preset = normalizePricePreset({ name: 'Распродажа', items: [
-    { nmId: 100001, price: '1990', discount: '20', name: 'Футболка', vendorCode: 'TSHIRT' },
-    { nmId: 100002, price: 0, discount: 10 },
-    { nmId: 100003, price: 1290, discount: 120 },
-    { nmId: 100004, price: 500, discount: 0 }] });
+  const preset = normalizePricePreset({
+    name: 'Распродажа',
+    items: [
+      { nmId: 100001, price: '1990', discount: '20', name: 'Футболка', vendorCode: 'TSHIRT' },
+      { nmId: 100002, price: 0, discount: 10 },
+      { nmId: 100003, price: 1290, discount: 120 },
+      { nmId: 100004, price: 500, discount: 0 }
+    ]
+  });
   assert.equal(preset.items.length, 2);
   assert.equal(preset.items[0].price, 1990);
   assert.equal(preset.items[0].discount, 20);
@@ -476,8 +899,13 @@ test('проверяет даты выгрузки кампании и огра�
 
 test('суммирует общие остатки товара по складам продавца и WB', () => {
   const totals = summarizeStockTotals(
-    [{ nmId: 100, quantity: 5 }, { nmId: 100, quantity: 2 }, { nmId: 300, quantity: 0 }],
-    [{ nmId: 100, quantity: 10 }, { nmId: 200, quantity: 4 }, { quantity: 99 }]);
+    [
+      { nmId: 100, quantity: 5 },
+      { nmId: 100, quantity: 2 },
+      { nmId: 300, quantity: 0 }
+    ],
+    [{ nmId: 100, quantity: 10 }, { nmId: 200, quantity: 4 }, { quantity: 99 }]
+  );
   assert.deepEqual(totals['100'], { fbs: 10, fbw: 7, total: 17 });
   assert.deepEqual(totals['200'], { fbs: 4, fbw: 0, total: 4 });
   assert.equal(totals['300'].total, 0);
@@ -523,7 +951,12 @@ test('перекачивает дни воронки, пока они не ст�
     ['2026-09-13', record('2026-09-14T11:30:00Z')],
     ['2026-09-12', record('2026-09-14T09:00:00Z')]
   ]);
-  const days = funnelDaysToFetch(['2026-09-01', '2026-09-02', '2026-09-05', '2026-09-12', '2026-09-13', '2026-09-14', '2026-09-15', '2025-01-01'], fetched, now, '2026-09-14');
+  const days = funnelDaysToFetch(
+    ['2026-09-01', '2026-09-02', '2026-09-05', '2026-09-12', '2026-09-13', '2026-09-14', '2026-09-15', '2025-01-01'],
+    fetched,
+    now,
+    '2026-09-14'
+  );
   assert.deepEqual(days, ['2026-09-02', '2026-09-05', '2026-09-12', '2026-09-14']);
 });
 
@@ -541,11 +974,29 @@ test('автообновление воронки: сегодняшний ден
 
 test('детализация товара: реклама только этого товара по дням, кампания включена в дни с 50 показами и больше', () => {
   const stats = [
-    { advertId: 1, days: [
-      { date: '2026-10-01T00:00:00Z', apps: [{ nms: [{ nmId: 7, views: 100, clicks: 5, sum: 50, atbs: 2, orders: 1, sum_price: 990 }, { nmId: 8, views: 900, clicks: 40, sum: 400 }] }] },
-      { date: '2026-10-02T00:00:00Z', apps: [{ nms: [{ nmId: 7, views: 0, clicks: 0, sum: 0, orders: 1 }] }] }
-    ] },
-    { advertId: 2, days: [{ date: '2026-10-01T00:00:00Z', apps: [{ nms: [{ nmId: 7, views: 40, clicks: 1, sum: 10 }] }, { nms: [{ nmId: 7, views: 10 }] }] }] },
+    {
+      advertId: 1,
+      days: [
+        {
+          date: '2026-10-01T00:00:00Z',
+          apps: [
+            {
+              nms: [
+                { nmId: 7, views: 100, clicks: 5, sum: 50, atbs: 2, orders: 1, sum_price: 990 },
+                { nmId: 8, views: 900, clicks: 40, sum: 400 }
+              ]
+            }
+          ]
+        },
+        { date: '2026-10-02T00:00:00Z', apps: [{ nms: [{ nmId: 7, views: 0, clicks: 0, sum: 0, orders: 1 }] }] }
+      ]
+    },
+    {
+      advertId: 2,
+      days: [
+        { date: '2026-10-01T00:00:00Z', apps: [{ nms: [{ nmId: 7, views: 40, clicks: 1, sum: 10 }] }, { nms: [{ nmId: 7, views: 10 }] }] }
+      ]
+    },
     // 49 показов с кликами и расходом — меньше порога, кампания в этот день не «включена».
     { advertId: 3, days: [{ date: '2026-10-01T00:00:00Z', apps: [{ nms: [{ nmId: 7, views: 49, clicks: 3, sum: 30 }] }] }] }
   ];
@@ -576,17 +1027,34 @@ test('детализация товара: включена ли кампани�
     // Кампания 4: появилась на паузе, без товара в составе — никогда не включена для товара.
     row('2026-10-22T05:45:00.000Z', '4', 'Появилось в списке', '—', 'На паузе')
   ];
-  const current = new Map([['1', { status: true, member: true }], ['2', { status: true, member: false }], ['3', { status: true, member: true }]]);
+  const current = new Map([
+    ['1', { status: true, member: true }],
+    ['2', { status: true, member: false }],
+    ['3', { status: true, member: true }]
+  ]);
   const timeline = productCampaignTimeline('7000007', rows, current);
-  assert.deepEqual(timeline.get('1'), { initial: true, changes: [
-    { at: '2026-10-18T08:45:00.000Z', on: false, reason: 'статус: Активна → На паузе' }, { at: '2026-10-18T11:45:00.000Z', on: true, reason: 'статус: На паузе → Активна' }] });
-  assert.deepEqual(timeline.get('2'), { initial: false, changes: [
-    { at: '2026-10-19T08:45:00.000Z', on: true, reason: 'товар добавлен в кампанию' }, { at: '2026-10-21T11:45:00.000Z', on: false, reason: 'товар убран из кампании' }] });
+  assert.deepEqual(timeline.get('1'), {
+    initial: true,
+    changes: [
+      { at: '2026-10-18T08:45:00.000Z', on: false, reason: 'статус: Активна → На паузе' },
+      { at: '2026-10-18T11:45:00.000Z', on: true, reason: 'статус: На паузе → Активна' }
+    ]
+  });
+  assert.deepEqual(timeline.get('2'), {
+    initial: false,
+    changes: [
+      { at: '2026-10-19T08:45:00.000Z', on: true, reason: 'товар добавлен в кампанию' },
+      { at: '2026-10-21T11:45:00.000Z', on: false, reason: 'товар убран из кампании' }
+    ]
+  });
   assert.deepEqual(timeline.get('3'), { initial: true, changes: [] });
   assert.deepEqual(timeline.get('4'), { initial: false, changes: [] });
   // Старый формат с этим артикулом: был в кампании, убран.
   const old = productCampaignTimeline('5555555', rows, new Map([['3', { status: true, member: false }]]));
-  assert.deepEqual(old.get('3'), { initial: true, changes: [{ at: '2026-10-18T11:45:00.000Z', on: false, reason: 'товар убран из кампании' }] });
+  assert.deepEqual(old.get('3'), {
+    initial: true,
+    changes: [{ at: '2026-10-18T11:45:00.000Z', on: false, reason: 'товар убран из кампании' }]
+  });
 });
 
 test('детализация товара: период не позже сегодняшнего дня и не длиннее 93 дней', () => {
@@ -601,20 +1069,37 @@ test('список дел: артикул числом или ссылкой н�
   assert.equal(todoNmId(' https://www.wildberries.ru/catalog/123456789/detail.aspx?targetUrl=XS '), 123456789);
   assert.equal(todoNmId(''), null);
   assert.throws(() => todoNmId('abc'), /Артикул WB/);
-  assert.deepEqual(todoFields({ text: '  Обжаловать отзыв  ', type: 'review', priority: 'urgent' }),
-    { text: 'Обжаловать отзыв', type: 'review', priority: 'urgent', cabinet: '', nmId: null });
-  assert.deepEqual(todoFields({ text: 'x', type: 'нет такого', priority: '?' }), { text: 'x', type: 'other', priority: 'normal', cabinet: '', nmId: null });
+  assert.deepEqual(todoFields({ text: '  Обжаловать отзыв  ', type: 'review', priority: 'urgent' }), {
+    text: 'Обжаловать отзыв',
+    type: 'review',
+    priority: 'urgent',
+    cabinet: '',
+    nmId: null
+  });
+  assert.deepEqual(todoFields({ text: 'x', type: 'нет такого', priority: '?' }), {
+    text: 'x',
+    type: 'other',
+    priority: 'normal',
+    cabinet: '',
+    nmId: null
+  });
   assert.deepEqual(todoFields({ priority: 'high' }, false), { priority: 'high' });
   assert.throws(() => todoFields({ text: '   ' }), /Пустая задача/);
 });
 
 test('собирает дни воронки в пары для запроса, свежие первыми', () => {
-  assert.deepEqual(pairFunnelDays(['2026-09-01', '2026-09-03', '2026-09-02']), [{ selected: '2026-09-03', past: '2026-09-02' }, { selected: '2026-09-01', past: '' }]);
+  assert.deepEqual(pairFunnelDays(['2026-09-01', '2026-09-03', '2026-09-02']), [
+    { selected: '2026-09-03', past: '2026-09-02' },
+    { selected: '2026-09-01', past: '' }
+  ]);
   assert.deepEqual(pairFunnelDays([]), []);
 });
 
 test('считает прошлый период воронки той же длины перед текущим', () => {
-  assert.deepEqual(funnelPeriods('2026-09-08', '2026-09-14'), { current: { from: '2026-09-08', to: '2026-09-14' }, previous: { from: '2026-09-01', to: '2026-09-07' } });
+  assert.deepEqual(funnelPeriods('2026-09-08', '2026-09-14'), {
+    current: { from: '2026-09-08', to: '2026-09-14' },
+    previous: { from: '2026-09-01', to: '2026-09-07' }
+  });
   assert.deepEqual(funnelPeriods('2026-08-01', '2026-08-31').previous, { from: '2026-07-01', to: '2026-07-31' });
   assert.notEqual(funnelPeriods('2026-09-01', '2099-01-01').current.to, '2099-01-01');
   assert.throws(() => funnelPeriods('2026-09-10', '2026-09-01'), /раньше окончания/);
@@ -622,7 +1107,10 @@ test('считает прошлый период воронки той же дл
 
 test('понимает грузоместа с заданиями в поле orders из нового ответа WB', () => {
   const result = normalizeTrbxes([{ id: 'WB-MP-2', orders: [5758997110, { id: 7 }, 'x'] }, { id: 'WB-MP-1' }]);
-  assert.deepEqual(result.map(item => item.id), ['WB-MP-1', 'WB-MP-2']);
+  assert.deepEqual(
+    result.map(item => item.id),
+    ['WB-MP-1', 'WB-MP-2']
+  );
   assert.deepEqual(result[1].orderIds, [5758997110, 7]);
   assert.deepEqual(result[0].orderIds, []);
 });
@@ -635,32 +1123,69 @@ test('делит период воронки на недели и месяцы �
   assert.deepEqual([weeks[7].from, weeks[7].to], ['2026-09-14', '2026-09-14']);
   assert.deepEqual(weeks[1].previous, { from: '2026-06-19', to: '2026-06-25' });
   const months = funnelRangeBuckets({ from: '2026-08-01', to: '2026-09-14' }, 'month');
-  assert.deepEqual(months.map(bucket => [bucket.from, bucket.to]), [['2026-08-01', '2026-08-31'], ['2026-09-01', '2026-09-14']]);
+  assert.deepEqual(
+    months.map(bucket => [bucket.from, bucket.to]),
+    [
+      ['2026-08-01', '2026-08-31'],
+      ['2026-09-01', '2026-09-14']
+    ]
+  );
 });
 
 test('считает воронку только по выбранным артикулам', () => {
-  const day = { openCount: 30, cartCount: 6, orderCount: 2, orderSum: 3000, buyoutCount: 1, buyoutSum: 1500, addToWishlistCount: 4,
-    products: { '100': [20, 4, 2, 3000, 1, 1500, 3], '200': [10, 2, 0, 0, 0, 0, 1] } };
+  const day = {
+    openCount: 30,
+    cartCount: 6,
+    orderCount: 2,
+    orderSum: 3000,
+    buyoutCount: 1,
+    buyoutSum: 1500,
+    addToWishlistCount: 4,
+    products: { 100: [20, 4, 2, 3000, 1, 1500, 3], 200: [10, 2, 0, 0, 0, 0, 1] }
+  };
   assert.equal(funnelRecordCounts(day).openCount, 30);
   // Записи до появления отмен (7 чисел на артикул): отмены неизвестны — NaN, а не 0, чтобы выкуп не вышел 100%.
-  assert.deepEqual(funnelRecordCounts(day, ['200']), { openCount: 10, cartCount: 2, orderCount: 0, orderSum: 0, buyoutCount: 0, buyoutSum: 0, addToWishlistCount: 1, cancelCount: NaN });
+  assert.deepEqual(funnelRecordCounts(day, ['200']), {
+    openCount: 10,
+    cartCount: 2,
+    orderCount: 0,
+    orderSum: 0,
+    buyoutCount: 0,
+    buyoutSum: 0,
+    addToWishlistCount: 1,
+    cancelCount: NaN
+  });
   assert.ok(Number.isNaN(funnelRecordCounts(day).cancelCount));
   // Ни один выбранный артикул не продавался — сумма нулевая, отмены тоже 0.
-  assert.deepEqual(funnelRecordCounts(day, ['300']), { openCount: 0, cartCount: 0, orderCount: 0, orderSum: 0, buyoutCount: 0, buyoutSum: 0, addToWishlistCount: 0, cancelCount: 0 });
+  assert.deepEqual(funnelRecordCounts(day, ['300']), {
+    openCount: 0,
+    cartCount: 0,
+    orderCount: 0,
+    orderSum: 0,
+    buyoutCount: 0,
+    buyoutSum: 0,
+    addToWishlistCount: 0,
+    cancelCount: 0
+  });
   assert.equal(funnelRecordCounts({ openCount: 5 }, ['100']), null);
   // Новые записи: отмены — восьмым числом и в итоге дня; если хоть у одного артикула их нет — сумма неизвестна.
-  const fresh = { ...day, cancelCount: 2, products: { '100': [20, 4, 2, 3000, 1, 1500, 3, 2], '200': [10, 2, 0, 0, 0, 0, 1, 0] } };
+  const fresh = { ...day, cancelCount: 2, products: { 100: [20, 4, 2, 3000, 1, 1500, 3, 2], 200: [10, 2, 0, 0, 0, 0, 1, 0] } };
   assert.equal(funnelRecordCounts(fresh).cancelCount, 2);
   assert.equal(funnelRecordCounts(fresh, ['100', '200']).cancelCount, 2);
-  assert.ok(Number.isNaN(funnelRecordCounts({ ...fresh, products: { ...fresh.products, '200': [10, 2, 0, 0, 0, 0, 1] } }, ['100', '200']).cancelCount));
+  assert.ok(
+    Number.isNaN(funnelRecordCounts({ ...fresh, products: { ...fresh.products, 200: [10, 2, 0, 0, 0, 0, 1] } }, ['100', '200']).cancelCount)
+  );
   // Ответ уходит через JSON: неизвестные отмены там — null.
   assert.equal(JSON.parse(JSON.stringify(funnelRecordCounts(day))).cancelCount, null);
 });
 
 test('складывает отрезок воронки из дней с учётом фильтра артикулов', () => {
   const days = new Map([
-    ['2026-09-01', { fetchedAt: '2026-09-10T00:00:00Z', openCount: 5, products: { '100': [3, 1, 0, 0, 0, 0, 0], '200': [2, 0, 0, 0, 0, 0, 0] } }],
-    ['2026-09-02', { fetchedAt: '2026-09-10T00:00:00Z', openCount: 4, products: { '100': [4, 0, 1, 900, 0, 0, 0] } }]
+    [
+      '2026-09-01',
+      { fetchedAt: '2026-09-10T00:00:00Z', openCount: 5, products: { 100: [3, 1, 0, 0, 0, 0, 0], 200: [2, 0, 0, 0, 0, 0, 0] } }
+    ],
+    ['2026-09-02', { fetchedAt: '2026-09-10T00:00:00Z', openCount: 4, products: { 100: [4, 0, 1, 900, 0, 0, 0] } }]
   ]);
   const result = funnelRangeValues({ from: '2026-09-01', to: '2026-09-02' }, days, {}, ['100'], Date.parse('2026-09-15T00:00:00Z'));
   assert.equal(result.fresh, true);
@@ -669,30 +1194,67 @@ test('складывает отрезок воронки из дней с учё
 });
 
 test('не запрашивает статистику кампаний, закончившихся до периода или созданных после него', () => {
-  const campaign = (created, deleted, extra = {}) => ({ status: extra.status ?? 9, timestamps: { created, deleted, started: extra.started ?? null, updated: extra.updated ?? created } });
-  assert.equal(adCampaignMayHaveStats(campaign('2023-05-06T17:01:19+03:00', '2023-06-24T06:12:49+03:00'), '2026-09-10', '2026-09-16'), false);
-  assert.equal(adCampaignMayHaveStats(campaign('2026-08-01T10:00:00+03:00', '2100-01-01T00:00:00+03:00'), '2026-09-10', '2026-09-16'), true);
+  const campaign = (created, deleted, extra = {}) => ({
+    status: extra.status ?? 9,
+    timestamps: { created, deleted, started: extra.started ?? null, updated: extra.updated ?? created }
+  });
+  assert.equal(
+    adCampaignMayHaveStats(campaign('2023-05-06T17:01:19+03:00', '2023-06-24T06:12:49+03:00'), '2026-09-10', '2026-09-16'),
+    false
+  );
+  assert.equal(
+    adCampaignMayHaveStats(campaign('2026-08-01T10:00:00+03:00', '2100-01-01T00:00:00+03:00'), '2026-09-10', '2026-09-16'),
+    true
+  );
   assert.equal(adCampaignMayHaveStats(campaign(null, '2100-01-01T00:00:00+03:00'), '2026-09-10', '2026-09-16'), true);
-  assert.equal(adCampaignMayHaveStats(campaign('2026-08-01T10:00:00+03:00', '2026-09-12T09:00:00+03:00'), '2026-09-10', '2026-09-16'), true);
-  assert.equal(adCampaignMayHaveStats(campaign('2026-09-20T10:00:00+03:00', '2100-01-01T00:00:00+03:00'), '2026-09-10', '2026-09-16'), false);
+  assert.equal(
+    adCampaignMayHaveStats(campaign('2026-08-01T10:00:00+03:00', '2026-09-12T09:00:00+03:00'), '2026-09-10', '2026-09-16'),
+    true
+  );
+  assert.equal(
+    adCampaignMayHaveStats(campaign('2026-09-20T10:00:00+03:00', '2100-01-01T00:00:00+03:00'), '2026-09-10', '2026-09-16'),
+    false
+  );
   assert.equal(adCampaignMayHaveStats({}, '2026-09-10', '2026-09-16'), true);
   // Перезапуск после конца периода не отменяет показы внутри периода: started — последний запуск.
-  assert.equal(adCampaignMayHaveStats(campaign('2026-08-01T10:00:00+03:00', '2100-01-01T00:00:00+03:00', { started: '2026-09-20T10:00:00+03:00' }), '2026-09-10', '2026-09-16'), true);
+  assert.equal(
+    adCampaignMayHaveStats(
+      campaign('2026-08-01T10:00:00+03:00', '2100-01-01T00:00:00+03:00', { started: '2026-09-20T10:00:00+03:00' }),
+      '2026-09-10',
+      '2026-09-16'
+    ),
+    true
+  );
   // Завершённая кампания с заглушкой в deleted заканчивается датой последнего изменения.
   const finished = updated => campaign('2025-05-02T08:23:29+03:00', '2100-01-01T00:00:00+03:00', { status: 7, updated });
   assert.equal(adCampaignMayHaveStats(finished('2026-01-28T08:48:34+03:00'), '2026-09-10', '2026-09-16'), false);
   assert.equal(adCampaignMayHaveStats(finished('2026-09-12T08:48:34+03:00'), '2026-09-10', '2026-09-16'), true);
   // У действующей кампании updated меняется от любой правки и концом не считается.
-  assert.equal(adCampaignMayHaveStats(campaign('2025-05-02T08:23:29+03:00', '2100-01-01T00:00:00+03:00', { updated: '2026-01-28T08:48:34+03:00' }), '2026-09-10', '2026-09-16'), true);
+  assert.equal(
+    adCampaignMayHaveStats(
+      campaign('2025-05-02T08:23:29+03:00', '2100-01-01T00:00:00+03:00', { updated: '2026-01-28T08:48:34+03:00' }),
+      '2026-09-10',
+      '2026-09-16'
+    ),
+    true
+  );
 });
 
 test('складывает поисковые запросы кампании по всем артикулам и по каждому отдельно', () => {
   const result = summarizeKeywords([
-    { nm_id: 100, stats: [{ norm_query: 'чехол magsafe', views: 1000, clicks: 40, spend: 200, atbs: 8, orders: 4, shks: 2, avg_pos: 4 },
-      { norm_query: 'чехол', views: 500, clicks: 10, spend: 90, atbs: 2, orders: 1, shks: 0, avg_pos: 10 }] },
+    {
+      nm_id: 100,
+      stats: [
+        { norm_query: 'чехол magsafe', views: 1000, clicks: 40, spend: 200, atbs: 8, orders: 4, shks: 2, avg_pos: 4 },
+        { norm_query: 'чехол', views: 500, clicks: 10, spend: 90, atbs: 2, orders: 1, shks: 0, avg_pos: 10 }
+      ]
+    },
     { nm_id: 200, stats: [{ norm_query: 'чехол magsafe', views: 1000, clicks: 60, spend: 300, atbs: 12, orders: 6, shks: 4, avg_pos: 6 }] }
   ]);
-  assert.deepEqual(result.total.map(row => row.query), ['чехол magsafe', 'чехол']);
+  assert.deepEqual(
+    result.total.map(row => row.query),
+    ['чехол magsafe', 'чехол']
+  );
   const top = result.total[0];
   assert.equal(top.views, 2000);
   assert.equal(top.clicks, 100);
@@ -705,7 +1267,14 @@ test('складывает поисковые запросы кампании п
 
 test('отмечает неактивные, частично исключённые и архивные поисковые запросы', () => {
   const groups = [
-    { nm_id: 100, stats: [{ norm_query: 'чехол', views: 100 }, { norm_query: 'чехол magsafe', views: 50 }, { norm_query: 'чехол кожаный', views: 10 }] },
+    {
+      nm_id: 100,
+      stats: [
+        { norm_query: 'чехол', views: 100 },
+        { norm_query: 'чехол magsafe', views: 50 },
+        { norm_query: 'чехол кожаный', views: 10 }
+      ]
+    },
     { nm_id: 200, stats: [{ norm_query: 'чехол', views: 80 }] }
   ];
   const statuses = new Map([
@@ -726,7 +1295,9 @@ test('отмечает неактивные, частично исключённ
 
 test('добавляет выключенные кластеры без показов отдельными строками', () => {
   const groups = [{ nm_id: 100, stats: [{ norm_query: 'чехол', views: 120, clicks: 5 }] }];
-  const statuses = new Map([['100', { active: new Set(['чехол']), excluded: new Set(['чехол кожаный']), archived: new Set(['чехол старый']) }]]);
+  const statuses = new Map([
+    ['100', { active: new Set(['чехол']), excluded: new Set(['чехол кожаный']), archived: new Set(['чехол старый']) }]
+  ]);
   const result = summarizeKeywords(groups, statuses);
   assert.equal(result.total.length, 3);
   const off = result.total.find(row => row.query === 'чехол кожаный');
@@ -753,27 +1324,38 @@ test('по CPC-кампаниям показы, CTR и CPM ключевых за
 
 test('строит матрицу продаж по дням и артикулам', () => {
   const days = [
-    { date: '2026-09-01', products: { '100': [10, 2, 3, 4500, 1, 1500, 0], '200': [5, 1, 1, 1500, 0, 0, 0] } },
-    { date: '2026-09-02', products: { '100': [8, 1, 1, 1500, 1, 1500, 0] } }
+    { date: '2026-09-01', products: { 100: [10, 2, 3, 4500, 1, 1500, 0], 200: [5, 1, 1, 1500, 0, 0, 0] } },
+    { date: '2026-09-02', products: { 100: [8, 1, 1, 1500, 1, 1500, 0] } }
   ];
   const dates = ['2026-09-01', '2026-09-02', '2026-09-03'];
   const matrix = funnelSalesMatrix(days, dates, null, 'orderCount');
-  assert.deepEqual(matrix.products.map(product => product.nmId), ['100', '200']);
+  assert.deepEqual(
+    matrix.products.map(product => product.nmId),
+    ['100', '200']
+  );
   assert.deepEqual(matrix.products[0].values, [3, 1, null]);
   assert.equal(matrix.products[0].total, 4);
   assert.deepEqual(matrix.totals, [4, 1, null]);
   assert.equal(matrix.total, 5);
   const filtered = funnelSalesMatrix(days, dates, ['200'], 'orderSum');
-  assert.deepEqual(filtered.products.map(product => product.nmId), ['200']);
+  assert.deepEqual(
+    filtered.products.map(product => product.nmId),
+    ['200']
+  );
   assert.deepEqual(filtered.products[0].values, [1500, 0, null]);
 });
 
 test('возвраты в ленте заказов получают свой статус, а не «новый»', () => {
-  const rows = normalizeOrderFeed({ data: { currency: 'RUB', orders: [
-    { srid: 'a', status: 'return', createdAt: '2026-09-09T19:40:00Z', updatedAt: '2026-09-17T23:12:00Z' },
-    { srid: 'b', status: 'returnDefective', createdAt: '2026-09-14T07:29:00Z', updatedAt: '2026-09-19T12:59:00Z' },
-    { srid: 'c', status: 'created', createdAt: '2026-09-18T07:00:00Z', updatedAt: '2026-09-18T07:00:00Z' }
-  ] } });
+  const rows = normalizeOrderFeed({
+    data: {
+      currency: 'RUB',
+      orders: [
+        { srid: 'a', status: 'return', createdAt: '2026-09-09T19:40:00Z', updatedAt: '2026-09-17T23:12:00Z' },
+        { srid: 'b', status: 'returnDefective', createdAt: '2026-09-14T07:29:00Z', updatedAt: '2026-09-19T12:59:00Z' },
+        { srid: 'c', status: 'created', createdAt: '2026-09-18T07:00:00Z', updatedAt: '2026-09-18T07:00:00Z' }
+      ]
+    }
+  });
   const byId = Object.fromEntries(rows.map(row => [row.id, row]));
   assert.equal(byId.a.status, 'return');
   assert.equal(byId.b.status, 'return');
@@ -781,13 +1363,19 @@ test('возвраты в ленте заказов получают свой с
   assert.equal(byId.c.status, 'new');
 });
 
-const summaryItem = (nmId, current, previous) => ({ nmId, name: `Товар ${nmId}`, vendorCode: `V-${nmId}`, photo: '',
+const summaryItem = (nmId, current, previous) => ({
+  nmId,
+  name: `Товар ${nmId}`,
+  vendorCode: `V-${nmId}`,
+  photo: '',
   current: { openCount: 0, cartCount: 0, orderCount: 0, orderSum: 0, buyoutCount: 0, buyoutSum: 0, addToWishlistCount: 0, ...current },
-  previous: { openCount: 0, cartCount: 0, orderCount: 0, orderSum: 0, buyoutCount: 0, buyoutSum: 0, addToWishlistCount: 0, ...previous } });
+  previous: { openCount: 0, cartCount: 0, orderCount: 0, orderSum: 0, buyoutCount: 0, buyoutSum: 0, addToWishlistCount: 0, ...previous }
+});
 
 test('сводка собирает товары из разбивки воронки и подставляет карточки', () => {
-  const products = summaryProducts({ products: { 11: [100, 10, 4, 4000, 2, 2000, 1] } }, { products: { 12: [50, 5, 2, 900, 1, 450, 0] } },
-    [{ nmID: 11, title: 'Худи', vendorCode: 'H-1', photos: [{ c246x328: 'photo.webp' }] }]);
+  const products = summaryProducts({ products: { 11: [100, 10, 4, 4000, 2, 2000, 1] } }, { products: { 12: [50, 5, 2, 900, 1, 450, 0] } }, [
+    { nmID: 11, title: 'Худи', vendorCode: 'H-1', photos: [{ c246x328: 'photo.webp' }] }
+  ]);
   const byId = Object.fromEntries(products.map(item => [item.nmId, item]));
   assert.equal(byId[11].name, 'Худи');
   assert.equal(byId[11].photo, 'photo.webp');
@@ -798,12 +1386,17 @@ test('сводка собирает товары из разбивки воро�
 });
 
 test('структура заказов: лидеры, «Прочие» и доли прошлого периода', () => {
-  const products = [1, 2, 3, 4, 5, 6, 7].map(nmId => summaryItem(nmId, { orderSum: nmId * 100, orderCount: nmId }, { orderSum: 100, orderCount: 1 }));
+  const products = [1, 2, 3, 4, 5, 6, 7].map(nmId =>
+    summaryItem(nmId, { orderSum: nmId * 100, orderCount: nmId }, { orderSum: 100, orderCount: 1 })
+  );
   products.push(summaryItem(8, {}, { orderSum: 300 }));
   const top = summaryTopProducts(products, 5);
   assert.equal(top.total, 2800);
   assert.equal(top.previousTotal, 1000);
-  assert.deepEqual(top.items.map(item => item.nmId), [7, 6, 5, 4, 3]);
+  assert.deepEqual(
+    top.items.map(item => item.nmId),
+    [7, 6, 5, 4, 3]
+  );
   assert.equal(Math.round(top.items[0].share * 100) / 100, 25);
   assert.equal(top.items[0].previousShare, 10);
   assert.equal(top.other.count, 2);
@@ -819,11 +1412,17 @@ test('просадки: падение заказов, переходов и к�
     summaryItem(4, { openCount: 500, orderCount: 20, orderSum: 20000 }, { openCount: 480, orderCount: 21, orderSum: 21000 })
   ]);
   assert.equal(drops.total, 2);
-  assert.deepEqual(drops.items.map(item => item.nmId), [1, 2]);
+  assert.deepEqual(
+    drops.items.map(item => item.nmId),
+    [1, 2]
+  );
   assert.equal(drops.items[0].lostSum, 8000);
   assert.equal(drops.items[0].severity, 'high');
   assert.deepEqual(drops.items[0].reasons.map(reason => reason.metric).sort(), ['orderConversion', 'orderCount']);
-  assert.deepEqual(drops.items[1].reasons.map(reason => reason.metric), ['openCount']);
+  assert.deepEqual(
+    drops.items[1].reasons.map(reason => reason.metric),
+    ['openCount']
+  );
   assert.equal(drops.items[1].severity, 'high');
 });
 
@@ -834,15 +1433,48 @@ test('выгрузка кампании обрезается по дате со�
   const finished = { timestamps: { created: '2026-05-10T10:00:00+03:00', deleted: '2026-08-04T08:45:00+03:00' } };
   assert.deepEqual(campaignActivePeriod(finished, period), { from: '2026-06-01', to: '2026-08-04' });
   assert.equal(campaignActivePeriod({ timestamps: { created: '2026-09-30T10:00:00+03:00' } }, period), null);
-  assert.equal(campaignActivePeriod({ timestamps: { created: '2026-01-01T10:00:00+03:00', deleted: '2026-03-01T10:00:00+03:00' } }, period), null);
+  assert.equal(
+    campaignActivePeriod({ timestamps: { created: '2026-01-01T10:00:00+03:00', deleted: '2026-03-01T10:00:00+03:00' } }, period),
+    null
+  );
   assert.deepEqual(campaignActivePeriod({}, period), period);
 });
 
 test('рекламные кампании и товары получают CPO, CR, CPM и добавления в корзину', () => {
-  const stats = [{ advertId: 1, views: 2000, clicks: 50, sum: 600, orders: 4, sum_price: 8000, atbs: 12,
-    days: [{ date: '2026-09-20T00:00:00+03:00', views: 2000, clicks: 50, sum: 600, orders: 4, sum_price: 8000, atbs: 12,
-      apps: [{ appType: 32, views: 2000, clicks: 50, sum: 600, orders: 4, sum_price: 8000, atbs: 12,
-        nms: [{ nmId: 11, name: 'Товар', views: 2000, clicks: 50, sum: 600, orders: 4, sum_price: 8000, atbs: 12 }] }] }] }];
+  const stats = [
+    {
+      advertId: 1,
+      views: 2000,
+      clicks: 50,
+      sum: 600,
+      orders: 4,
+      sum_price: 8000,
+      atbs: 12,
+      days: [
+        {
+          date: '2026-09-20T00:00:00+03:00',
+          views: 2000,
+          clicks: 50,
+          sum: 600,
+          orders: 4,
+          sum_price: 8000,
+          atbs: 12,
+          apps: [
+            {
+              appType: 32,
+              views: 2000,
+              clicks: 50,
+              sum: 600,
+              orders: 4,
+              sum_price: 8000,
+              atbs: 12,
+              nms: [{ nmId: 11, name: 'Товар', views: 2000, clicks: 50, sum: 600, orders: 4, sum_price: 8000, atbs: 12 }]
+            }
+          ]
+        }
+      ]
+    }
+  ];
   const summary = summarizeAdStats([{ id: 1, status: 9, settings: { name: 'Кампания' } }], stats, '2026-09-20', '2026-09-20');
   for (const row of [summary.campaigns[0], summary.products[0]]) {
     assert.equal(row.cpo, 150);
@@ -856,7 +1488,11 @@ test('рекламные кампании и товары получают CPO, 
 
 test('минус-фразы: исключение добавляет к текущему списку, включение убирает только выбранные', () => {
   const before = ['расческа выпрямитель', 'плойка детская'];
-  assert.deepEqual(mergeMinusList(before, ['плойки', 'расческа выпрямитель'], 'exclude'), ['расческа выпрямитель', 'плойка детская', 'плойки']);
+  assert.deepEqual(mergeMinusList(before, ['плойки', 'расческа выпрямитель'], 'exclude'), [
+    'расческа выпрямитель',
+    'плойка детская',
+    'плойки'
+  ]);
   assert.deepEqual(mergeMinusList(before, ['плойка детская', 'фен'], 'include'), ['расческа выпрямитель']);
   assert.deepEqual(mergeMinusList([], ['фен'], 'include'), []);
 });
@@ -865,15 +1501,24 @@ test('копия Google Таблицы: склейка без повторов, 
   const dir = require('node:fs').mkdtempSync(require('node:path').join(require('node:os').tmpdir(), 'wb-sheet-'));
   try {
     const row = (at, section, id, what, before, after) => ({ at, cabinet: 'Кабинет 1', section, id, title: 't', what, before, after });
-    const first = [row('2026-09-30T10:00:00.000Z', 'Цены', '1', 'Цена со скидкой, ₽', 1500, 1400), row('2026-10-02T10:00:00.000Z', 'Ставки', '77', 'Ставка в поиске, ₽', 3, 4),
-      row('2026-10-02T10:00:00.000Z', 'Остатки FBW', '1', 'Коледино', 10, 7), row('2026-10-02T10:00:00.000Z', 'Неизвестный раздел', '1', 'x', 1, 2)];
+    const first = [
+      row('2026-09-30T10:00:00.000Z', 'Цены', '1', 'Цена со скидкой, ₽', 1500, 1400),
+      row('2026-10-02T10:00:00.000Z', 'Ставки', '77', 'Ставка в поиске, ₽', 3, 4),
+      row('2026-10-02T10:00:00.000Z', 'Остатки FBW', '1', 'Коледино', 10, 7),
+      row('2026-10-02T10:00:00.000Z', 'Неизвестный раздел', '1', 'x', 1, 2)
+    ];
     assert.equal(saveSheetRows(first, dir), 3);
     // Повторная порция (дозагрузка с запасом в минуту) не добавляет повторов.
     assert.equal(saveSheetRows([first[1], row('2026-10-03T10:00:00.000Z', 'Цены', '1', 'Цена со скидкой, ₽', 1400, 1450)], dir), 1);
-    const months = require('node:fs').readdirSync(require('node:path').join(dir, 'Кабинет 1', 'Цены')).sort();
+    const months = require('node:fs')
+      .readdirSync(require('node:path').join(dir, 'Кабинет 1', 'Цены'))
+      .sort();
     assert.deepEqual(months, ['2026-09.json', '2026-10.json']);
     const prices = readSheetHistory({ ids: ['1'], sections: ['Цены'] }, dir);
-    assert.deepEqual(prices.items.map(item => item.after), [1450, 1400]);
+    assert.deepEqual(
+      prices.items.map(item => item.after),
+      [1450, 1400]
+    );
     assert.equal(prices.current, null);
     assert.equal(readSheetHistory({ ids: ['2'], sections: ['Цены'] }, dir).items.length, 0);
     assert.equal(readSheetHistory({ sections: ['Остатки FBW'] }, dir).items.length, 1);
@@ -885,11 +1530,23 @@ test('копия Google Таблицы: склейка без повторов, 
     // «История изменений»: все разделы сразу, новые сверху, без текущих остатков, с ограничением числа строк.
     const all = readSheetHistory({ sections: ['Цены', 'Ставки', 'Остатки FBW'], limit: 3, current: false }, dir);
     assert.equal(all.current, null);
-    assert.deepEqual(all.items.map(item => item.at), ['2026-10-20T08:45:00.000Z', '2026-10-20T08:45:00.000Z', '2026-10-03T10:00:00.000Z']);
+    assert.deepEqual(
+      all.items.map(item => item.at),
+      ['2026-10-20T08:45:00.000Z', '2026-10-20T08:45:00.000Z', '2026-10-03T10:00:00.000Z']
+    );
     // Только строки одного кабинета сайта.
-    const site = [{ id: '1', name: 'Кабинет 1' }, { id: '2', name: 'Другой' }];
-    assert.equal(readSheetHistory({ sections: ['Цены', 'Ставки'], current: false, cabinet: sheetCabinetFilter('1', site) }, dir).items.length, 5);
-    assert.equal(readSheetHistory({ sections: ['Цены', 'Ставки'], current: false, cabinet: sheetCabinetFilter('2', site) }, dir).items.length, 0);
+    const site = [
+      { id: '1', name: 'Кабинет 1' },
+      { id: '2', name: 'Другой' }
+    ];
+    assert.equal(
+      readSheetHistory({ sections: ['Цены', 'Ставки'], current: false, cabinet: sheetCabinetFilter('1', site) }, dir).items.length,
+      5
+    );
+    assert.equal(
+      readSheetHistory({ sections: ['Цены', 'Ставки'], current: false, cabinet: sheetCabinetFilter('2', site) }, dir).items.length,
+      0
+    );
     // С какого момента таблица ведёт кабинет: самая ранняя строка его папки — по всем разделам или только по выбранным;
     // новая более ранняя строка сдвигает начало своего раздела, а не чужого.
     const folder = require('node:path').join(dir, 'Кабинет 1');
@@ -901,114 +1558,282 @@ test('копия Google Таблицы: склейка без повторов, 
     assert.equal(sheetCabinetSince(folder, ['Цены']), '2026-09-30T10:00:00.000Z');
     assert.equal(sheetCabinetSince(folder, ['Реклама']), null);
     assert.equal(sheetCabinetSince(require('node:path').join(dir, 'Нет такого кабинета')), null);
-  } finally { require('node:fs').rmSync(dir, { recursive: true, force: true }); }
+  } finally {
+    require('node:fs').rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test('окно цены товара: история — с появления товара в таблице, разрыв на «Пропало», период', () => {
   // public/price-product.js — скрипт страницы: запускается в отдельном контексте, из него берутся функции расчёта.
-  const vm = require('node:vm'), context = vm.createContext({ document: { addEventListener() {} } });
-  vm.runInContext(require('node:fs').readFileSync(require('node:path').join(__dirname, '..', 'public', 'price-product.js'), 'utf8'), context);
+  const vm = require('node:vm'),
+    context = vm.createContext({ document: { addEventListener() {} } });
+  vm.runInContext(
+    require('node:fs').readFileSync(require('node:path').join(__dirname, '..', 'public', 'price-product.js'), 'utf8'),
+    context
+  );
   const plain = value => JSON.parse(JSON.stringify(value));
   const model = (...args) => plain(context.priceHistoryModel(...args));
   const item = (at, what, before, after) => ({ at, cabinet: 'К', section: 'Цены', id: '1', what, before, after });
   const row = { price: 1000, discount: 10, discountedPrice: 900, clubDiscount: 0, clubDiscountedPrice: 900 };
-  const change = [item('2026-11-03T10:00:00.000Z', 'Цена со скидкой, ₽', 1000, 900), item('2026-11-03T10:00:00.000Z', 'Скидка продавца, %', 0, 10), item('2026-11-03T10:00:00.000Z', 'Цена в WB Клубе, ₽', 1000, 900)];
+  const change = [
+    item('2026-11-03T10:00:00.000Z', 'Цена со скидкой, ₽', 1000, 900),
+    item('2026-11-03T10:00:00.000Z', 'Скидка продавца, %', 0, 10),
+    item('2026-11-03T10:00:00.000Z', 'Цена в WB Клубе, ₽', 1000, 900)
+  ];
   // Товар появился позже начала таблицы: история — с «Появилось», раньше ничего нет.
   const appeared = model(row, [item('2026-11-01T10:00:00.000Z', 'Появилось в списке', '—', 1000), ...change], '2026-10-20T00:00:00.000Z');
-  assert.deepEqual(appeared.points.map(point => [point.takenAt.slice(0, 10), point.kind, point.discountedPrice, point.discount]), [['2026-11-01', 'appear', 1000, 0], ['2026-11-03', 'change', 900, 10]]);
+  assert.deepEqual(
+    appeared.points.map(point => [point.takenAt.slice(0, 10), point.kind, point.discountedPrice, point.discount]),
+    [
+      ['2026-11-01', 'appear', 1000, 0],
+      ['2026-11-03', 'change', 900, 10]
+    ]
+  );
   assert.deepEqual([appeared.before, appeared.unrecorded, appeared.changes], [null, false, 1]);
   // Товар был в таблице с самого начала: цена до первого изменения известна с начала записей кабинета.
   const started = model(row, change, '2026-10-20T00:00:00.000Z');
-  assert.deepEqual(started.points.map(point => [point.takenAt.slice(0, 10), point.kind, point.discountedPrice]), [['2026-10-20', 'start', 1000], ['2026-11-03', 'change', 900]]);
+  assert.deepEqual(
+    started.points.map(point => [point.takenAt.slice(0, 10), point.kind, point.discountedPrice]),
+    [
+      ['2026-10-20', 'start', 1000],
+      ['2026-11-03', 'change', 900]
+    ]
+  );
   // Начало записей неизвестно: цена «до» есть, но без даты — в before, график начинается с первого изменения.
   const unknown = model(row, change, null);
-  assert.deepEqual([unknown.points.length, unknown.points[0].kind, unknown.before.discountedPrice, unknown.before.discount], [1, 'change', 1000, 0]);
+  assert.deepEqual(
+    [unknown.points.length, unknown.points[0].kind, unknown.before.discountedPrice, unknown.before.discount],
+    [1, 'change', 1000, 0]
+  );
   // «Пропало из списка»: цена с этого момента неизвестна; товар в списке сайта есть — «сейчас» ещё не записано.
   const gone = model(row, [...change, item('2026-11-05T10:00:00.000Z', 'Пропало из списка', 900, '—')], '2026-10-20T00:00:00.000Z');
-  assert.deepEqual(gone.points.map(point => [point.kind, point.absent, point.discountedPrice]), [['start', false, 1000], ['change', false, 900], ['gone', true, null]]);
+  assert.deepEqual(
+    gone.points.map(point => [point.kind, point.absent, point.discountedPrice]),
+    [
+      ['start', false, 1000],
+      ['change', false, 900],
+      ['gone', true, null]
+    ]
+  );
   assert.equal(gone.unrecorded, true);
   // Изменений нет: ровная линия с начала записей; цена на сайте уже другая — unrecorded; копейки не считаются изменением.
-  assert.deepEqual(model(row, [], '2026-10-20T00:00:00.000Z').points.map(point => [point.kind, point.discountedPrice]), [['start', 900]]);
+  assert.deepEqual(
+    model(row, [], '2026-10-20T00:00:00.000Z').points.map(point => [point.kind, point.discountedPrice]),
+    [['start', 900]]
+  );
   assert.equal(model(row, [], null).points.length, 0);
   assert.equal(model({ ...row, discountedPrice: 850 }, change, null).unrecorded, true);
   assert.equal(model({ ...row, discountedPrice: 900.4 }, change, null).unrecorded, false);
   // Период: точки с его начала, цена на начало — перенесённая точка; «всё время» — с первой точки.
-  const now = Date.parse('2026-11-10T10:00:00.000Z'), week = plain(context.priceHistoryView(started, 3, now)), all = plain(context.priceHistoryView(started, 0, now));
-  assert.deepEqual(week.points.map(point => [point.takenAt, point.kind, point.discountedPrice]), [['2026-11-07T10:00:00.000Z', 'carry', 900]]);
+  const now = Date.parse('2026-11-10T10:00:00.000Z'),
+    week = plain(context.priceHistoryView(started, 3, now)),
+    all = plain(context.priceHistoryView(started, 0, now));
+  assert.deepEqual(
+    week.points.map(point => [point.takenAt, point.kind, point.discountedPrice]),
+    [['2026-11-07T10:00:00.000Z', 'carry', 900]]
+  );
   assert.deepEqual([week.whole, all.whole, all.points.length, all.to], [false, true, 2, now]);
 });
 
 test('карточка истории цены: значение в момент времени, последнее изменение, ступенчатая линия с разрывом', () => {
   // public/price-metric.js — расчёты карточки; вспомогательные функции окна — из price-product.js.
-  const vm = require('node:vm'), fs = require('node:fs'), path = require('node:path');
+  const vm = require('node:vm'),
+    fs = require('node:fs'),
+    path = require('node:path');
   const context = vm.createContext({ document: { addEventListener() {} } });
-  for (const file of ['price-product.js', 'price-metric.js']) vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'public', file), 'utf8'), context);
-  const point = (takenAt, kind, discountedPrice, absent = false) => ({ takenAt, kind, absent, discountedPrice, price: null, discount: null, clubDiscount: null, clubDiscountedPrice: null });
-  const t = iso => Date.parse(iso), end = t('2026-11-10T00:00:00Z');
-  const model = { points: [point('2026-11-01T00:00:00Z', 'start', 1000), point('2026-11-03T00:00:00Z', 'change', 900), point('2026-11-05T00:00:00Z', 'gone', null, true), point('2026-11-07T00:00:00Z', 'appear', 950)],
-    before: null, current: { discountedPrice: 990 }, unrecorded: true };
+  for (const file of ['price-product.js', 'price-metric.js'])
+    vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'public', file), 'utf8'), context);
+  const point = (takenAt, kind, discountedPrice, absent = false) => ({
+    takenAt,
+    kind,
+    absent,
+    discountedPrice,
+    price: null,
+    discount: null,
+    clubDiscount: null,
+    clubDiscountedPrice: null
+  });
+  const t = iso => Date.parse(iso),
+    end = t('2026-11-10T00:00:00Z');
+  const model = {
+    points: [
+      point('2026-11-01T00:00:00Z', 'start', 1000),
+      point('2026-11-03T00:00:00Z', 'change', 900),
+      point('2026-11-05T00:00:00Z', 'gone', null, true),
+      point('2026-11-07T00:00:00Z', 'appear', 950)
+    ],
+    before: null,
+    current: { discountedPrice: 990 },
+    unrecorded: true
+  };
   const at = iso => context.pmValueAt(model, 'discountedPrice', t(iso), end);
   // До первой записи цены нет; дальше — держится до следующей записи; на «Пропало» — пусто; у правого края — цена с сайта.
-  assert.deepEqual([at('2026-10-30T00:00:00Z'), at('2026-11-02T00:00:00Z'), at('2026-11-04T00:00:00Z'), at('2026-11-06T00:00:00Z'), at('2026-11-08T00:00:00Z'), context.pmValueAt(model, 'discountedPrice', end, end)], [null, 1000, 900, null, 950, 990]);
+  assert.deepEqual(
+    [
+      at('2026-10-30T00:00:00Z'),
+      at('2026-11-02T00:00:00Z'),
+      at('2026-11-04T00:00:00Z'),
+      at('2026-11-06T00:00:00Z'),
+      at('2026-11-08T00:00:00Z'),
+      context.pmValueAt(model, 'discountedPrice', end, end)
+    ],
+    [null, 1000, 900, null, 950, 990]
+  );
   // Последнее изменение до момента: что было до него; пропуск не считается изменением, сравнение — с последней известной ценой.
-  assert.deepEqual(JSON.parse(JSON.stringify(context.pmLastChange(model, 'discountedPrice', t('2026-11-04T00:00:00Z'), end))), { at: t('2026-11-03T00:00:00Z'), before: 1000 });
-  assert.deepEqual(JSON.parse(JSON.stringify(context.pmLastChange(model, 'discountedPrice', t('2026-11-08T00:00:00Z'), end))), { at: t('2026-11-07T00:00:00Z'), before: 900 });
+  assert.deepEqual(JSON.parse(JSON.stringify(context.pmLastChange(model, 'discountedPrice', t('2026-11-04T00:00:00Z'), end))), {
+    at: t('2026-11-03T00:00:00Z'),
+    before: 1000
+  });
+  assert.deepEqual(JSON.parse(JSON.stringify(context.pmLastChange(model, 'discountedPrice', t('2026-11-08T00:00:00Z'), end))), {
+    at: t('2026-11-07T00:00:00Z'),
+    before: 900
+  });
   assert.equal(context.pmLastChange(model, 'discountedPrice', end, end).before, 950);
   // Ступенька: значение держится до следующей точки, null — разрыв; заливка закрыта до низа.
-  const paths = context.pmPaths([{ x: 0, y: 10 }, { x: 5, y: 20 }, { x: 8, y: null }, { x: 9, y: 30 }], 12, 50);
+  const paths = context.pmPaths(
+    [
+      { x: 0, y: 10 },
+      { x: 5, y: 20 },
+      { x: 8, y: null },
+      { x: 9, y: 30 }
+    ],
+    12,
+    50
+  );
   assert.equal(paths.line, 'M0 10H5V20H8M9 30H12');
   assert.equal(paths.area, 'M0 50V10H5V20H8V50ZM9 50V30H12V50Z');
 });
 
 test('копия Google Таблицы: у каждого кабинета своя папка; старые общие файлы раскладываются по кабинетам и целиком остаются в архиве', () => {
-  const fs = require('node:fs'), path = require('node:path');
+  const fs = require('node:fs'),
+    path = require('node:path');
   const dir = fs.mkdtempSync(path.join(require('node:os').tmpdir(), 'wb-sheet-'));
   try {
-    const row = (cabinet, at, section, id, after) => ({ at, cabinet, section, id, title: 't', what: 'Цена со скидкой, ₽', before: 1, after });
+    const row = (cabinet, at, section, id, after) => ({
+      at,
+      cabinet,
+      section,
+      id,
+      title: 't',
+      what: 'Цена со скидкой, ₽',
+      before: 1,
+      after
+    });
     const stock = (cabinet, type, nmId) => ({ type, cabinet, nmId, title: 't', total: 5 });
     const items = name => JSON.parse(fs.readFileSync(path.join(dir, name), 'utf8')).items;
     // Старая раскладка: все кабинеты в одном файле раздела.
-    const oldPrices = JSON.stringify({ items: [row('ИП Первый', '2026-10-01T10:00:00.000Z', 'Цены', '1', 100), row('Второй: тест', '2026-10-02T10:00:00.000Z', 'Цены', '2', 200), row('ИП Первый', '2026-10-03T10:00:00.000Z', 'Цены', '1', 300)] });
+    const oldPrices = JSON.stringify({
+      items: [
+        row('ИП Первый', '2026-10-01T10:00:00.000Z', 'Цены', '1', 100),
+        row('Второй: тест', '2026-10-02T10:00:00.000Z', 'Цены', '2', 200),
+        row('ИП Первый', '2026-10-03T10:00:00.000Z', 'Цены', '1', 300)
+      ]
+    });
     const oldCurrent = JSON.stringify({ items: [stock('ИП Первый', 'FBW', 1), stock('Второй: тест', 'FBW', 2)] });
-    fs.mkdirSync(path.join(dir, 'Цены')); fs.writeFileSync(path.join(dir, 'Цены', '2026-10.json'), oldPrices);
-    fs.mkdirSync(path.join(dir, 'Остатки FBW')); fs.writeFileSync(path.join(dir, 'Остатки FBW', 'current.json'), oldCurrent);
-    const site = [{ id: '1', name: 'ИП Первый' }, { id: '2', name: 'Второй: тест' }];
+    fs.mkdirSync(path.join(dir, 'Цены'));
+    fs.writeFileSync(path.join(dir, 'Цены', '2026-10.json'), oldPrices);
+    fs.mkdirSync(path.join(dir, 'Остатки FBW'));
+    fs.writeFileSync(path.join(dir, 'Остатки FBW', 'current.json'), oldCurrent);
+    const site = [
+      { id: '1', name: 'ИП Первый' },
+      { id: '2', name: 'Второй: тест' }
+    ];
     // Первое же чтение раскладывает старые файлы; строки не теряются.
     assert.equal(readSheetHistory({ sections: ['Цены'] }, dir).items.length, 3);
-    assert.deepEqual(items('ИП Первый/Цены/2026-10.json').map(item => item.after), [100, 300]);
-    assert.deepEqual(items('Второй тест/Цены/2026-10.json').map(item => item.after), [200]);
-    assert.deepEqual(items('ИП Первый/Остатки FBW/current.json').map(item => item.nmId), [1]);
+    assert.deepEqual(
+      items('ИП Первый/Цены/2026-10.json').map(item => item.after),
+      [100, 300]
+    );
+    assert.deepEqual(
+      items('Второй тест/Цены/2026-10.json').map(item => item.after),
+      [200]
+    );
+    assert.deepEqual(
+      items('ИП Первый/Остатки FBW/current.json').map(item => item.nmId),
+      [1]
+    );
     // Старые файлы — в архиве без изменений, папок старой раскладки больше нет.
     assert.equal(fs.readFileSync(path.join(dir, '_Все кабинеты вместе (до разделения)', 'Цены', '2026-10.json'), 'utf8'), oldPrices);
-    assert.equal(fs.readFileSync(path.join(dir, '_Все кабинеты вместе (до разделения)', 'Остатки FBW', 'current.json'), 'utf8'), oldCurrent);
+    assert.equal(
+      fs.readFileSync(path.join(dir, '_Все кабинеты вместе (до разделения)', 'Остатки FBW', 'current.json'), 'utf8'),
+      oldCurrent
+    );
     assert.equal(fs.existsSync(path.join(dir, 'Цены')), false);
     // Кабинет сайта читает только свою папку — и когда название в таблице не годится в имя папки.
-    assert.deepEqual(readSheetHistory({ sections: ['Цены'], cabinet: sheetCabinetFilter('1', site) }, dir).items.map(item => item.after), [300, 100]);
-    assert.deepEqual(readSheetHistory({ sections: ['Цены'], cabinet: sheetCabinetFilter('2', site) }, dir).items.map(item => item.after), [200]);
-    assert.deepEqual(readSheetHistory({ sections: ['Остатки FBW'], cabinet: sheetCabinetFilter('2', site) }, dir).current.map(item => item.nmId), [2]);
+    assert.deepEqual(
+      readSheetHistory({ sections: ['Цены'], cabinet: sheetCabinetFilter('1', site) }, dir).items.map(item => item.after),
+      [300, 100]
+    );
+    assert.deepEqual(
+      readSheetHistory({ sections: ['Цены'], cabinet: sheetCabinetFilter('2', site) }, dir).items.map(item => item.after),
+      [200]
+    );
+    assert.deepEqual(
+      readSheetHistory({ sections: ['Остатки FBW'], cabinet: sheetCabinetFilter('2', site) }, dir).current.map(item => item.nmId),
+      [2]
+    );
     // Новые строки — в папку своего кабинета; другой регистр названия — та же папка.
-    assert.equal(saveSheetRows([row('ип первый', '2026-11-01T10:00:00.000Z', 'Цены', '1', 400), row('Третий', '2026-11-01T10:00:00.000Z', 'Цены', '3', 500)], dir), 2);
-    assert.deepEqual(items('ИП Первый/Цены/2026-11.json').map(item => item.after), [400]);
-    assert.deepEqual(items('Третий/Цены/2026-11.json').map(item => item.after), [500]);
+    assert.equal(
+      saveSheetRows(
+        [row('ип первый', '2026-11-01T10:00:00.000Z', 'Цены', '1', 400), row('Третий', '2026-11-01T10:00:00.000Z', 'Цены', '3', 500)],
+        dir
+      ),
+      2
+    );
+    assert.deepEqual(
+      items('ИП Первый/Цены/2026-11.json').map(item => item.after),
+      [400]
+    );
+    assert.deepEqual(
+      items('Третий/Цены/2026-11.json').map(item => item.after),
+      [500]
+    );
     assert.equal(readSheetHistory({ sections: ['Цены'], cabinet: sheetCabinetFilter('1', site) }, dir).items.length, 3);
     // Новый снимок текущих остатков заменяет прежний у каждого кабинета; истории и архива не касается.
     saveSheetCurrent([stock('ИП Первый', 'FBW', 7), stock('ИП Первый', 'FBS', 8)], dir);
-    assert.deepEqual(items('ИП Первый/Остатки FBW/current.json').map(item => item.nmId), [7]);
-    assert.deepEqual(items('ИП Первый/Остатки FBS/current.json').map(item => item.nmId), [8]);
+    assert.deepEqual(
+      items('ИП Первый/Остатки FBW/current.json').map(item => item.nmId),
+      [7]
+    );
+    assert.deepEqual(
+      items('ИП Первый/Остатки FBS/current.json').map(item => item.nmId),
+      [8]
+    );
     assert.deepEqual(items('Второй тест/Остатки FBW/current.json'), []);
     assert.equal(readSheetHistory({ sections: ['Цены'] }, dir).items.length, 5);
-  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test('история изменений: кабинет таблицы — по названию без номера в начале; повтор клубной цены убирается', () => {
-  const site = [{ id: '1', name: '2 ИП Шамсиддинов' }, { id: '2', name: 'ИП Зикри' }, { id: '3', name: 'Samiri' }];
+  const site = [
+    { id: '1', name: '2 ИП Шамсиддинов' },
+    { id: '2', name: 'ИП Зикри' },
+    { id: '3', name: 'Samiri' }
+  ];
   assert.equal(sheetSiteCabinet('ИП Шамсиддинов', site), '1');
   assert.equal(sheetSiteCabinet('samiri', site), '3');
   assert.equal(sheetSiteCabinet('ИП', site), '');
   assert.equal(sheetSiteCabinet('Неизвестный', site), '');
-  const price = (what, before, after) => ({ at: '2026-10-29T12:18:33.331Z', cabinet: 'Samiri', section: 'Цены', id: '1', what, before, after });
-  const kept = withoutClubPriceRepeats([price('Цена до скидки, ₽', 12748, 10500), price('Цена со скидкой, ₽', 6628.96, 5460), price('Цена в WB Клубе, ₽', 6628.96, 5460)]);
-  assert.deepEqual(kept.map(item => item.what), ['Цена до скидки, ₽', 'Цена со скидкой, ₽']);
+  const price = (what, before, after) => ({
+    at: '2026-10-29T12:18:33.331Z',
+    cabinet: 'Samiri',
+    section: 'Цены',
+    id: '1',
+    what,
+    before,
+    after
+  });
+  const kept = withoutClubPriceRepeats([
+    price('Цена до скидки, ₽', 12748, 10500),
+    price('Цена со скидкой, ₽', 6628.96, 5460),
+    price('Цена в WB Клубе, ₽', 6628.96, 5460)
+  ]);
+  assert.deepEqual(
+    kept.map(item => item.what),
+    ['Цена до скидки, ₽', 'Цена со скидкой, ₽']
+  );
   assert.equal(withoutClubPriceRepeats([price('Цена со скидкой, ₽', 6628.96, 5460), price('Цена в WB Клубе, ₽', 6300, 5190)]).length, 2);
 });
 
@@ -1024,48 +1849,112 @@ test('минус-фразы: кластеры в архиве WB не отпра
   // Включение: выбранный убирается, архивные тоже не уходят.
   assert.deepEqual(minusPlan(before, ['фен дорожный'], 'include', archived).next, []);
   assert.deepEqual(minusPlan(['а', 'б'], ['в'], 'exclude').next, ['а', 'б', 'в']);
-  assert.deepEqual(archivedPresetsFromError("WB 400: cannot exclude archived presets: 'подарки для женщин оригинальные на новый год', 'подарки на 8 марта дочке взрослой'"),
-    ['подарки для женщин оригинальные на новый год', 'подарки на 8 марта дочке взрослой']);
+  assert.deepEqual(
+    archivedPresetsFromError(
+      "WB 400: cannot exclude archived presets: 'подарки для женщин оригинальные на новый год', 'подарки на 8 марта дочке взрослой'"
+    ),
+    ['подарки для женщин оригинальные на новый год', 'подарки на 8 марта дочке взрослой']
+  );
   assert.deepEqual(archivedPresetsFromError('другая ошибка'), []);
 });
 
 test('статистика ключевого запроса по дням: суммирует товары, заполняет пустые дни, без показов у CPC', () => {
   const items = [
-    { nmId: 1, dailyStats: [{ date: '2026-10-01', stat: { normQuery: 'фен', views: 100, clicks: 10, spend: 50, atbs: 2, orders: 1, avgPos: 4 } },
-      { date: '2026-10-01', stat: { normQuery: 'утюжок', views: 999, clicks: 99 } }] },
-    { nmId: 2, dailyStats: [{ date: '2026-10-01', stat: { normQuery: 'фен', views: 300, clicks: 20, spend: 70, atbs: 1, orders: 0, avgPos: 8 } }] }];
+    {
+      nmId: 1,
+      dailyStats: [
+        { date: '2026-10-01', stat: { normQuery: 'фен', views: 100, clicks: 10, spend: 50, atbs: 2, orders: 1, avgPos: 4 } },
+        { date: '2026-10-01', stat: { normQuery: 'утюжок', views: 999, clicks: 99 } }
+      ]
+    },
+    {
+      nmId: 2,
+      dailyStats: [{ date: '2026-10-01', stat: { normQuery: 'фен', views: 300, clicks: 20, spend: 70, atbs: 1, orders: 0, avgPos: 8 } }]
+    }
+  ];
   const result = summarizeKeywordDaily(items, 'фен', ['2026-10-01', '2026-10-02']);
   assert.equal(result.days.length, 2);
   assert.deepEqual([result.days[0].views, result.days[0].clicks, result.days[0].spend, result.days[0].carts], [400, 30, 120, 3]);
   assert.equal(result.days[0].avgPosition, 7);
   assert.equal(result.days[1].clicks, 0);
-  const cpc = summarizeKeywordDaily([{ dailyStats: [{ date: '2026-10-01', stat: { normQuery: 'фен', clicks: 5, spend: 40 } }] }], 'фен', ['2026-10-01']);
+  const cpc = summarizeKeywordDaily([{ dailyStats: [{ date: '2026-10-01', stat: { normQuery: 'фен', clicks: 5, spend: 40 } }] }], 'фен', [
+    '2026-10-01'
+  ]);
   assert.equal(cpc.viewsAvailable, false);
   assert.equal(cpc.days[0].views, null);
   assert.equal(cpc.days[0].cpc, 8);
 });
 
 test('средняя позиция кампании по дням взвешивается по показам кластеров, пустые дни — null', () => {
-  const items = [{ dailyStats: [
-    { date: '2026-10-01', stat: { normQuery: 'фен', views: 300, avgPos: 4 } },
-    { date: '2026-10-01', stat: { normQuery: 'утюжок', views: 100, avgPos: 12 } },
-    { date: '2026-10-01', stat: { normQuery: 'плойка', views: 50 } }] }];
-  assert.deepEqual(summarizePositionDaily(items, ['2026-10-01', '2026-10-02']), [{ date: '2026-10-01', avgPosition: 6 }, { date: '2026-10-02', avgPosition: null }]);
-  const cpc = [{ dailyStats: [{ date: '2026-10-01', stat: { normQuery: 'фен', avgPos: 3 } }, { date: '2026-10-01', stat: { normQuery: 'утюжок', avgPos: 9 } }] }];
+  const items = [
+    {
+      dailyStats: [
+        { date: '2026-10-01', stat: { normQuery: 'фен', views: 300, avgPos: 4 } },
+        { date: '2026-10-01', stat: { normQuery: 'утюжок', views: 100, avgPos: 12 } },
+        { date: '2026-10-01', stat: { normQuery: 'плойка', views: 50 } }
+      ]
+    }
+  ];
+  assert.deepEqual(summarizePositionDaily(items, ['2026-10-01', '2026-10-02']), [
+    { date: '2026-10-01', avgPosition: 6 },
+    { date: '2026-10-02', avgPosition: null }
+  ]);
+  const cpc = [
+    {
+      dailyStats: [
+        { date: '2026-10-01', stat: { normQuery: 'фен', avgPos: 3 } },
+        { date: '2026-10-01', stat: { normQuery: 'утюжок', avgPos: 9 } }
+      ]
+    }
+  ];
   assert.equal(summarizePositionDaily(cpc, ['2026-10-01'])[0].avgPosition, 6);
 });
 
 test('воронка: в таблицу уходят только нужные показатели; сохранённая таблица свежая 30 минут, окончательный период — неделю', () => {
-  const item = { product: { nmId: 5, title: 'Чехол', vendorCode: 'A-1', brandName: 'B', subjectName: 'Чехлы', tags: [], productRating: 10, stocks: { wb: 2, mp: 7, balanceSum: 900 } },
-    statistic: { selected: { openCount: 30, cartCount: 6, orderCount: 2, orderSum: 1300, buyoutCount: 1, buyoutSum: 650, cancelCount: 0, addToWishlist: 3, wbClub: { orderCount: 1 }, timeToReady: { days: 2 }, conversions: { addToCartPercent: 20, cartToOrderPercent: 33, buyoutPercent: 100 } },
-      past: { openCount: 10, orderCount: 1, conversions: {} }, comparison: { openCountDynamic: 200 } } };
+  const item = {
+    product: {
+      nmId: 5,
+      title: 'Чехол',
+      vendorCode: 'A-1',
+      brandName: 'B',
+      subjectName: 'Чехлы',
+      tags: [],
+      productRating: 10,
+      stocks: { wb: 2, mp: 7, balanceSum: 900 }
+    },
+    statistic: {
+      selected: {
+        openCount: 30,
+        cartCount: 6,
+        orderCount: 2,
+        orderSum: 1300,
+        buyoutCount: 1,
+        buyoutSum: 650,
+        cancelCount: 0,
+        addToWishlist: 3,
+        wbClub: { orderCount: 1 },
+        timeToReady: { days: 2 },
+        conversions: { addToCartPercent: 20, cartToOrderPercent: 33, buyoutPercent: 100 }
+      },
+      past: { openCount: 10, orderCount: 1, conversions: {} },
+      comparison: { openCountDynamic: 200 }
+    }
+  };
   const slim = slimFunnelProduct(item, new Map([['5', '/api/photo/x.webp']]));
-  assert.deepEqual(slim.product, { nmId: 5, title: 'Чехол', vendorCode: 'A-1', subjectName: 'Чехлы', photo: '/api/photo/x.webp', stocks: { wb: 2, mp: 7 } });
+  assert.deepEqual(slim.product, {
+    nmId: 5,
+    title: 'Чехол',
+    vendorCode: 'A-1',
+    subjectName: 'Чехлы',
+    photo: '/api/photo/x.webp',
+    stocks: { wb: 2, mp: 7 }
+  });
   assert.deepEqual(Object.keys(slim.statistic), ['selected', 'past']);
   assert.equal(slim.statistic.selected.wbClub, undefined);
   assert.equal(slim.statistic.selected.conversions.cartToOrderPercent, 33);
   assert.equal(slim.statistic.past.openCount, 10);
-  const now = Date.parse('2026-10-30T12:00:00Z'), ago = minutes => new Date(now - minutes * 60_000).toISOString();
+  const now = Date.parse('2026-10-30T12:00:00Z'),
+    ago = minutes => new Date(now - minutes * 60_000).toISOString();
   assert.equal(funnelTableFresh({ fetchedAt: ago(20) }, { to: '2026-10-29' }, now), true);
   assert.equal(funnelTableFresh({ fetchedAt: ago(40) }, { to: '2026-10-29' }, now), false);
   assert.equal(funnelTableFresh({ fetchedAt: ago(3 * 24 * 60) }, { to: '2026-09-30' }, now), true);

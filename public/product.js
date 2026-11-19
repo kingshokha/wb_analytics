@@ -8,23 +8,42 @@
   'use strict';
   const $ = selector => document.querySelector(selector);
   const params = new URLSearchParams(location.search);
-  const cabinet = params.get('cabinet') || 'demo', nmId = params.get('nmId') || '';
-  const esc = value => String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
+  const cabinet = params.get('cabinet') || 'demo',
+    nmId = params.get('nmId') || '';
+  const esc = value =>
+    String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]);
   const finite = value => value != null && Number.isFinite(Number(value));
-  const fmtNum = value => finite(value) ? Math.round(value).toLocaleString('ru-RU') : '—';
-  const fmtRub = value => finite(value) ? `${Math.round(value).toLocaleString('ru-RU')} ₽` : '—';
-  const fmtPct = value => finite(value) ? `${Number(value).toLocaleString('ru-RU', { maximumFractionDigits: value < 10 ? 1 : 0 })}%` : '—';
-  const fmtDec = value => finite(value) ? Number(value).toLocaleString('ru-RU', { maximumFractionDigits: 1 }) : '—';
-  const fmtShort = value => { const v = Math.abs(value); return v >= 1e6 ? `${(value / 1e6).toLocaleString('ru-RU', { maximumFractionDigits: 1 })} млн` : v >= 1e4 ? `${Math.round(value / 1000).toLocaleString('ru-RU')} тыс` : v >= 1000 ? `${(value / 1000).toLocaleString('ru-RU', { maximumFractionDigits: 1 })} тыс` : value.toLocaleString('ru-RU', { maximumFractionDigits: v < 10 ? 1 : 0 }); };
+  const fmtNum = value => (finite(value) ? Math.round(value).toLocaleString('ru-RU') : '—');
+  const fmtRub = value => (finite(value) ? `${Math.round(value).toLocaleString('ru-RU')} ₽` : '—');
+  const fmtPct = value =>
+    finite(value) ? `${Number(value).toLocaleString('ru-RU', { maximumFractionDigits: value < 10 ? 1 : 0 })}%` : '—';
+  const fmtDec = value => (finite(value) ? Number(value).toLocaleString('ru-RU', { maximumFractionDigits: 1 }) : '—');
+  const fmtShort = value => {
+    const v = Math.abs(value);
+    return v >= 1e6
+      ? `${(value / 1e6).toLocaleString('ru-RU', { maximumFractionDigits: 1 })} млн`
+      : v >= 1e4
+        ? `${Math.round(value / 1000).toLocaleString('ru-RU')} тыс`
+        : v >= 1000
+          ? `${(value / 1000).toLocaleString('ru-RU', { maximumFractionDigits: 1 })} тыс`
+          : value.toLocaleString('ru-RU', { maximumFractionDigits: v < 10 ? 1 : 0 });
+  };
   const mskToday = () => new Date(Date.now() + 3 * 3_600_000).toISOString().slice(0, 10);
-  const addDays = (iso, days) => { const date = new Date(`${iso}T00:00:00Z`); date.setUTCDate(date.getUTCDate() + days); return date.toISOString().slice(0, 10); };
+  const addDays = (iso, days) => {
+    const date = new Date(`${iso}T00:00:00Z`);
+    date.setUTCDate(date.getUTCDate() + days);
+    return date.toISOString().slice(0, 10);
+  };
   const daysBetween = (from, to) => Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000) + 1;
   const ddmm = iso => `${iso.slice(8, 10)}.${iso.slice(5, 7)}`;
-  const dayLong = iso => new Date(`${iso}T00:00:00Z`).toLocaleDateString('ru-RU', { weekday: 'short', day: 'numeric', month: 'long', timeZone: 'UTC' });
+  const dayLong = iso =>
+    new Date(`${iso}T00:00:00Z`).toLocaleDateString('ru-RU', { weekday: 'short', day: 'numeric', month: 'long', timeZone: 'UTC' });
   const hhmm = () => new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
   function niceScale(max, count) {
     if (!(max > 0)) return { max: 1, step: 1 };
-    const raw = max / count, power = 10 ** Math.floor(Math.log10(raw)), fraction = raw / power;
+    const raw = max / count,
+      power = 10 ** Math.floor(Math.log10(raw)),
+      fraction = raw / power;
     let step = (fraction <= 1 ? 1 : fraction <= 2 ? 2 : fraction <= 2.5 ? 2.5 : fraction <= 5 ? 5 : 10) * power;
     if (max >= count && step < 1) step = 1;
     return { max: Math.ceil(max / step) * step, step };
@@ -42,23 +61,49 @@
   // Флажки изменения цены — тёмные, со скруглёнными краями, чтобы не путать с кампаниями.
   const PRICE_COLOR = '#17211d';
   // setNotices / addNotice — из notifications.js (колокольчик); если файл не загрузился, страница работает без него.
-  const setNotices = (...args) => window.setNotices?.(...args), addNotice = (...args) => window.addNotice?.(...args);
-  const view = { data: null, notes: [], metric: 'cartCount', colors: new Map(), hoverCampaign: null, editing: null, confirmDelete: null, request: 0, pollTimer: 0, autoAt: Date.now(), loading: false };
-  try { const saved = localStorage.getItem('wb-product-metric'); if (METRICS.some(item => item.key === saved)) view.metric = saved; } catch { /* без памяти — по умолчанию корзины */ }
+  const setNotices = (...args) => window.setNotices?.(...args),
+    addNotice = (...args) => window.addNotice?.(...args);
+  const view = {
+    data: null,
+    notes: [],
+    metric: 'cartCount',
+    colors: new Map(),
+    hoverCampaign: null,
+    editing: null,
+    confirmDelete: null,
+    request: 0,
+    pollTimer: 0,
+    autoAt: Date.now(),
+    loading: false
+  };
+  try {
+    const saved = localStorage.getItem('wb-product-metric');
+    if (METRICS.some(item => item.key === saved)) view.metric = saved;
+  } catch {
+    /* без памяти — по умолчанию корзины */
+  }
 
   // --- Период: из ссылки (как в «Воронке»), не длиннее 93 дней и не позже сегодняшнего дня по Москве ---
-  const fromInput = $('#periodFrom'), toInput = $('#periodTo'), preset = $('#periodPreset');
+  const fromInput = $('#periodFrom'),
+    toInput = $('#periodTo'),
+    preset = $('#periodPreset');
   {
-    const today = mskToday(), valid = value => /^\d{4}-\d{2}-\d{2}$/.test(value || '');
-    let to = valid(params.get('to')) ? params.get('to') : today; if (to > today) to = today;
+    const today = mskToday(),
+      valid = value => /^\d{4}-\d{2}-\d{2}$/.test(value || '');
+    let to = valid(params.get('to')) ? params.get('to') : today;
+    if (to > today) to = today;
     let from = valid(params.get('from')) ? params.get('from') : addDays(to, -13);
     if (from > to) from = addDays(to, -13);
     if (daysBetween(from, to) > 93) from = addDays(to, -92);
-    fromInput.min = toInput.min = addDays(today, -364); fromInput.max = toInput.max = today;
-    fromInput.value = from; toInput.value = to; syncPreset();
+    fromInput.min = toInput.min = addDays(today, -364);
+    fromInput.max = toInput.max = today;
+    fromInput.value = from;
+    toInput.value = to;
+    syncPreset();
   }
   function syncPreset() {
-    const length = daysBetween(fromInput.value, toInput.value), match = toInput.value === mskToday() && [...preset.options].find(option => Number(option.value) === length);
+    const length = daysBetween(fromInput.value, toInput.value),
+      match = toInput.value === mskToday() && [...preset.options].find(option => Number(option.value) === length);
     preset.value = match ? match.value : 'custom';
   }
   let loadTimer = 0;
@@ -68,87 +113,168 @@
       if (!fromInput.value || !toInput.value) return;
       if (fromInput.value > toInput.value) return status('Начало периода позже конца', true);
       if (daysBetween(fromInput.value, toInput.value) > 93) return status('Выберите период не длиннее 93 дней', true);
-      syncPreset(); view.autoAt = Date.now();
-      const next = new URLSearchParams(location.search); next.set('from', fromInput.value); next.set('to', toInput.value); history.replaceState(null, '', `?${next}`);
+      syncPreset();
+      view.autoAt = Date.now();
+      const next = new URLSearchParams(location.search);
+      next.set('from', fromInput.value);
+      next.set('to', toInput.value);
+      history.replaceState(null, '', `?${next}`);
       load();
     }, 60);
   }
-  preset.onchange = () => { if (preset.value === 'custom') return; const to = mskToday(); toInput.value = to; fromInput.value = addDays(to, -(Number(preset.value) - 1)); scheduleLoad(); };
-  fromInput.addEventListener('change', scheduleLoad); toInput.addEventListener('change', scheduleLoad);
+  preset.onchange = () => {
+    if (preset.value === 'custom') return;
+    const to = mskToday();
+    toInput.value = to;
+    fromInput.value = addDays(to, -(Number(preset.value) - 1));
+    scheduleLoad();
+  };
+  fromInput.addEventListener('change', scheduleLoad);
+  toInput.addEventListener('change', scheduleLoad);
 
-  function status(text, error = false) { const line = $('#statusLine'); line.textContent = text; line.classList.toggle('error', error); }
+  function status(text, error = false) {
+    const line = $('#statusLine');
+    line.textContent = text;
+    line.classList.toggle('error', error);
+  }
 
   // --- Загрузка ---
   async function load({ silent = false, live = false } = {}) {
-    const request = ++view.request; clearTimeout(view.pollTimer);
-    if (!silent) { view.loading = true; status('Загрузка… Первая выгрузка рекламы из WB может занять до минуты.'); }
+    const request = ++view.request;
+    clearTimeout(view.pollTimer);
+    if (!silent) {
+      view.loading = true;
+      status('Загрузка… Первая выгрузка рекламы из WB может занять до минуты.');
+    }
     try {
       const q = new URLSearchParams({ cabinet, nmId, from: fromInput.value, to: toInput.value, ...(live ? { live: '1' } : {}) });
-      const response = await fetch(`/api/product-detail?${q}`), data = await response.json();
+      const response = await fetch(`/api/product-detail?${q}`),
+        data = await response.json();
       if (!response.ok) throw new Error(data.error || 'Не удалось загрузить данные товара');
       if (request !== view.request) return;
       view.data = data;
       view.colors = new Map(data.campaigns.map((campaign, index) => [campaign.id, CAMPAIGN_COLORS[index % CAMPAIGN_COLORS.length]]));
       render();
       const pending = data.sync?.pending || 0;
-      status(pending ? `Догружаем воронку из WB: осталось ${pending} дн., примерно ${Math.max(5, data.sync.etaSeconds || 0)} сек — график дорисуется сам` : `Обновлено ${hhmm()} · автообновление раз в 2 минуты`);
+      status(
+        pending
+          ? `Догружаем воронку из WB: осталось ${pending} дн., примерно ${Math.max(5, data.sync.etaSeconds || 0)} сек — график дорисуется сам`
+          : `Обновлено ${hhmm()} · автообновление раз в 2 минуты`
+      );
       // Пока сервер догружает дни воронки, переспрашиваем его каждые 5 секунд.
-      if (pending) view.pollTimer = setTimeout(() => { if (request === view.request) load({ silent: true }); }, 5000);
+      if (pending)
+        view.pollTimer = setTimeout(() => {
+          if (request === view.request) load({ silent: true });
+        }, 5000);
     } catch (error) {
       if (request !== view.request) return;
       if (!silent || !view.data) status(`Ошибка: ${error.message}`, true);
       addNotice('product', `Не удалось загрузить данные товара: ${error.message}`);
       if (!view.data) $('#mainChart').innerHTML = `<div class="chart-empty">${esc(error.message)}</div>`;
-    } finally { if (request === view.request) view.loading = false; }
+    } finally {
+      if (request === view.request) view.loading = false;
+    }
   }
   async function loadNotes() {
     try {
-      const response = await fetch(`/api/product-notes?${new URLSearchParams({ cabinet, nmId })}`), data = await response.json();
+      const response = await fetch(`/api/product-notes?${new URLSearchParams({ cabinet, nmId })}`),
+        data = await response.json();
       if (!response.ok) throw new Error(data.error);
       view.notes = data.notes || [];
-    } catch { view.notes = []; }
-    if (view.data) { renderMain(); renderMinis(); }
+    } catch {
+      view.notes = [];
+    }
+    if (view.data) {
+      renderMain();
+      renderMinis();
+    }
     renderNotes();
   }
   async function saveNote(body) {
-    const response = await fetch('/api/product-notes', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ cabinet, nmId, ...body }) });
+    const response = await fetch('/api/product-notes', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ cabinet, nmId, ...body })
+    });
     const data = await response.json();
     if (!response.ok) throw new Error(data.error || 'Не удалось сохранить отметку');
-    view.notes = data.notes || []; view.editing = null; view.confirmDelete = null;
-    renderNotes(); if (view.data) { renderMain(); renderMinis(); }
+    view.notes = data.notes || [];
+    view.editing = null;
+    view.confirmDelete = null;
+    renderNotes();
+    if (view.data) {
+      renderMain();
+      renderMinis();
+    }
   }
 
   // Оценка товара на WB и число оценок (сервер — открытые данные отзывов по склейке, glue-ratings.js); в подсказке —
   // по звёздам и оценка всей склейки, если товар склеен.
   function feedbackText(fb) {
     if (!fb) return '';
-    const num = value => Number(value || 0).toLocaleString('ru-RU'), word = count => { const a = count % 100, b = count % 10; return a > 10 && a < 20 ? 'оценок' : b === 1 ? 'оценка' : b > 1 && b < 5 ? 'оценки' : 'оценок'; };
+    const num = value => Number(value || 0).toLocaleString('ru-RU'),
+      word = count => {
+        const a = count % 100,
+          b = count % 10;
+        return a > 10 && a < 20 ? 'оценок' : b === 1 ? 'оценка' : b > 1 && b < 5 ? 'оценки' : 'оценок';
+      };
     const star = value => Number(value).toLocaleString('ru-RU', { minimumFractionDigits: value >= 10 ? 0 : 1, maximumFractionDigits: 2 });
-    const total = fb.count || 0, stars = fb.stars || [0, 0, 0, 0, 0];
-    const lines = total ? [5, 4, 3, 2, 1].map(s => `${s}★ — ${num(stars[s - 1])} (${Math.round(stars[s - 1] / total * 100)}%)`) : [];
-    if (fb.glueRating != null && fb.glueCount !== total) lines.push(`Склейка: ★ ${star(fb.glueRating)} · ${num(fb.glueCount)} ${word(fb.glueCount || 0)}`);
+    const total = fb.count || 0,
+      stars = fb.stars || [0, 0, 0, 0, 0];
+    const lines = total ? [5, 4, 3, 2, 1].map(s => `${s}★ — ${num(stars[s - 1])} (${Math.round((stars[s - 1] / total) * 100)}%)`) : [];
+    if (fb.glueRating != null && fb.glueCount !== total)
+      lines.push(`Склейка: ★ ${star(fb.glueRating)} · ${num(fb.glueCount)} ${word(fb.glueCount || 0)}`);
     const title = lines.length ? ` title="${esc(lines.join('\n'))}"` : '';
-    return total ? `<b class="product-rating"${title}>★ ${star(fb.avg)} · ${num(total)} ${word(total)}</b>` : `<span${title}>оценок нет</span>`;
+    return total
+      ? `<b class="product-rating"${title}>★ ${star(fb.avg)} · ${num(total)} ${word(total)}</b>`
+      : `<span${title}>оценок нет</span>`;
   }
-  function render() { renderHead();renderSwitch(); renderMain(); renderNotes(); renderMinis(); renderCampaigns(); }
+  function render() {
+    renderHead();
+    renderSwitch();
+    renderMain();
+    renderNotes();
+    renderMinis();
+    renderCampaigns();
+  }
   function renderHead() {
     const { product, demo } = view.data;
     document.title = `${product.name} — WB Pulse`;
     $('#productTitle').textContent = product.name;
-    const photo = $('#productPhoto'); if (product.photo) photo.src = product.photo; else photo.removeAttribute('src');
-    $('#productMeta').innerHTML = [product.vendorCode ? `<b>${esc(product.vendorCode)}</b>` : '', `<a href="https://www.wildberries.ru/catalog/${encodeURIComponent(product.nmId)}/detail.aspx" target="_blank" rel="noopener noreferrer" title="Открыть товар на WB">nmID ${esc(product.nmId)}</a>`,
-      product.subject ? esc(product.subject) : '', product.brand ? esc(product.brand) : '', feedbackText(product.feedback), demo ? 'демо-данные' : ''].filter(Boolean).map(item => `<span>${item}</span>`).join('');
+    const photo = $('#productPhoto');
+    if (product.photo) photo.src = product.photo;
+    else photo.removeAttribute('src');
+    $('#productMeta').innerHTML = [
+      product.vendorCode ? `<b>${esc(product.vendorCode)}</b>` : '',
+      `<a href="https://www.wildberries.ru/catalog/${encodeURIComponent(product.nmId)}/detail.aspx" target="_blank" rel="noopener noreferrer" title="Открыть товар на WB">nmID ${esc(product.nmId)}</a>`,
+      product.subject ? esc(product.subject) : '',
+      product.brand ? esc(product.brand) : '',
+      feedbackText(product.feedback),
+      demo ? 'демо-данные' : ''
+    ]
+      .filter(Boolean)
+      .map(item => `<span>${item}</span>`)
+      .join('');
     // Предупреждения WB и ошибки — в колокольчике (notifications.js), как на основном сайте.
     setNotices('product', 'load', view.data.warnings || []);
     setNotices('product', 'sync', view.data.sync?.lastError ? [`Догрузка воронки из WB: ${view.data.sync.lastError}`] : [], 'error');
   }
   function renderSwitch() {
-    $('#metricSwitch').innerHTML = METRICS.map(item => `<button type="button" data-metric="${item.key}" aria-pressed="${item.key === view.metric}">${item.label}</button>`).join('');
+    $('#metricSwitch').innerHTML = METRICS.map(
+      item => `<button type="button" data-metric="${item.key}" aria-pressed="${item.key === view.metric}">${item.label}</button>`
+    ).join('');
   }
   $('#metricSwitch').addEventListener('click', event => {
-    const button = event.target.closest('[data-metric]'); if (!button) return;
-    view.metric = button.dataset.metric; try { localStorage.setItem('wb-product-metric', view.metric); } catch { /* не запомним — не страшно */ }
-    renderSwitch(); renderMain();
+    const button = event.target.closest('[data-metric]');
+    if (!button) return;
+    view.metric = button.dataset.metric;
+    try {
+      localStorage.setItem('wb-product-metric', view.metric);
+    } catch {
+      /* не запомним — не страшно */
+    }
+    renderSwitch();
+    renderMain();
   });
 
   // Периоды работы кампаний — подряд идущие дни, когда кампания включена (days[].campaigns с сервера: до начала
@@ -156,15 +282,22 @@
   // Любой день без неё — перерыв.
   function campaignPeriods(days) {
     const periods = new Map();
-    days.forEach((day, index) => day.campaigns.forEach(id => {
-      const list = periods.get(id) || []; const last = list.at(-1);
-      if (last && last.to === index - 1) last.to = index; else list.push({ from: index, to: index });
-      periods.set(id, list);
-    }));
+    days.forEach((day, index) =>
+      day.campaigns.forEach(id => {
+        const list = periods.get(id) || [];
+        const last = list.at(-1);
+        if (last && last.to === index - 1) last.to = index;
+        else list.push({ from: index, to: index });
+        periods.set(id, list);
+      })
+    );
     return periods;
   }
   // Время событий из таблицы — местное (Душанбе), как на основном сайте.
-  const localTime = iso => new Date(iso).toLocaleString('ru-RU', { timeZone: 'Asia/Dushanbe', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }).replace(',', '');
+  const localTime = iso =>
+    new Date(iso)
+      .toLocaleString('ru-RU', { timeZone: 'Asia/Dushanbe', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
+      .replace(',', '');
   // События кампаний для флажков — по дням, когда кампания включена (days[].campaigns): ▶ первый день, ■ первый день
   // без неё, ◆ всего один день, у левого края ▶ (создана или включена в этот день) или ↤ (работала раньше).
   // С начала отслеживания (data.tracking.fromDate) день считается включённым, если кампания была «Активна» хоть
@@ -173,74 +306,139 @@
   // «по показам») — пометка «по статусу на начало отслеживания». Из причин в подсказку идёт только смена состава
   // кампании (товар добавили или убрали), смена статуса — нет.
   function campaignEvents(data) {
-    const days = data.days, count = days.length, tracking = data.tracking, events = [];
-    const found = tracking ? days.findIndex(day => day.date >= tracking.fromDate) : -1, split = found < 0 ? count : found;
-    const edgeKind = id => { const campaign = data.campaigns.find(item => item.id === id), created = String(campaign?.startedAt || campaign?.createdAt || '').slice(0, 10); return created && created >= days[0].date ? 'start' : 'ongoing'; };
-    const step = (id, on, date) => { const list = (tracking?.events || []).filter(event => event.id === id && event.on === on && event.date === date); return on ? list[0] : list.at(-1); };
-    const reason = event => String(event?.reason || '').split('; ').filter(part => part.startsWith('товар')).join('; ');
-    for (const [id, list] of campaignPeriods(days)) for (const period of list) {
-      const start = period.from >= split ? step(id, true, days[period.from].date) : null;
-      const stop = period.to < count - 1 && period.to + 1 >= split ? step(id, false, days[period.to].date) : null;
-      const tracked = { startTracked: period.from >= split, stopTracked: period.to + 1 >= split, startAt: start?.at, stopAt: stop?.at, startReason: reason(start), stopReason: reason(stop) };
-      if (period.from === period.to && period.from > 0 && period.to < count - 1) { events.push({ id, kind: 'blip', day: period.from, ...tracked }); continue; }
-      events.push({ id, kind: period.from === 0 && !start ? edgeKind(id) : 'start', day: period.from, ...tracked });
-      if (period.to < count - 1) events.push({ id, kind: 'stop', day: period.to + 1, ...tracked });
-    }
+    const days = data.days,
+      count = days.length,
+      tracking = data.tracking,
+      events = [];
+    const found = tracking ? days.findIndex(day => day.date >= tracking.fromDate) : -1,
+      split = found < 0 ? count : found;
+    const edgeKind = id => {
+      const campaign = data.campaigns.find(item => item.id === id),
+        created = String(campaign?.startedAt || campaign?.createdAt || '').slice(0, 10);
+      return created && created >= days[0].date ? 'start' : 'ongoing';
+    };
+    const step = (id, on, date) => {
+      const list = (tracking?.events || []).filter(event => event.id === id && event.on === on && event.date === date);
+      return on ? list[0] : list.at(-1);
+    };
+    const reason = event =>
+      String(event?.reason || '')
+        .split('; ')
+        .filter(part => part.startsWith('товар'))
+        .join('; ');
+    for (const [id, list] of campaignPeriods(days))
+      for (const period of list) {
+        const start = period.from >= split ? step(id, true, days[period.from].date) : null;
+        const stop = period.to < count - 1 && period.to + 1 >= split ? step(id, false, days[period.to].date) : null;
+        const tracked = {
+          startTracked: period.from >= split,
+          stopTracked: period.to + 1 >= split,
+          startAt: start?.at,
+          stopAt: stop?.at,
+          startReason: reason(start),
+          stopReason: reason(stop)
+        };
+        if (period.from === period.to && period.from > 0 && period.to < count - 1) {
+          events.push({ id, kind: 'blip', day: period.from, ...tracked });
+          continue;
+        }
+        events.push({ id, kind: period.from === 0 && !start ? edgeKind(id) : 'start', day: period.from, ...tracked });
+        if (period.to < count - 1) events.push({ id, kind: 'stop', day: period.to + 1, ...tracked });
+      }
     return events;
   }
   // Время перехода для подсказки: местное, а если день по Москве другой (дни графика — московские, как у WB) — и МСК.
-  const stepTime = iso => { const msk = new Date(Date.parse(iso) + 3 * 3_600_000).toISOString(), local = localTime(iso); return local.slice(0, 5) === `${msk.slice(8, 10)}.${msk.slice(5, 7)}` ? local : `${local} (МСК ${ddmm(msk.slice(0, 10))} ${msk.slice(11, 16)})`; };
+  const stepTime = iso => {
+    const msk = new Date(Date.parse(iso) + 3 * 3_600_000).toISOString(),
+      local = localTime(iso);
+    return local.slice(0, 5) === `${msk.slice(8, 10)}.${msk.slice(5, 7)}`
+      ? local
+      : `${local} (МСК ${ddmm(msk.slice(0, 10))} ${msk.slice(11, 16)})`;
+  };
   // Изменение цены из Google Таблицы: на флажке — цена со скидкой (или первое изменённое поле), в подсказке — всё.
   const priceMain = change => change.items.find(item => /^Цена со скидкой/.test(item.what)) || change.items[0];
-  const priceValue = (what, value) => value === '' || value == null || value === '—' ? '—' : /₽/.test(what) && finite(value) ? fmtRub(value) : /%/.test(what) && finite(value) ? `${value}%` : String(value);
+  const priceValue = (what, value) =>
+    value === '' || value == null || value === '—'
+      ? '—'
+      : /₽/.test(what) && finite(value)
+        ? fmtRub(value)
+        : /%/.test(what) && finite(value)
+          ? `${value}%`
+          : String(value);
   const campaignName = id => view.data.campaigns.find(item => item.id === id)?.name || `Кампания #${id}`;
   const notesNumbered = () => view.notes.map((note, index) => ({ ...note, number: index + 1 }));
 
   // --- Главный график: столбцы органика + реклама, флажки кампаний, отметки ---
   function renderMain() {
-    const box = $('#mainChart'), data = view.data; if (!data || !box) return;
+    const box = $('#mainChart'),
+      data = view.data;
+    if (!data || !box) return;
     const metric = METRICS.find(item => item.key === view.metric);
     $('#mainTitle').textContent = `${metric.title}: органика и реклама`;
-    const days = data.days, count = days.length, W = Math.max(320, box.clientWidth || 900);
+    const days = data.days,
+      count = days.length,
+      W = Math.max(320, box.clientWidth || 900);
     const stacks = days.map(day => {
       const ad = Number(day.ads?.[metric.ad] || 0);
       if (!day.funnel) return { total: null, ad, organic: 0 };
       const total = Number(day.funnel[metric.key] || 0);
       return { total, ad, organic: Math.max(0, total - ad) };
     });
-    const mL = 46, mR = 10, mB = 26, sw = (W - mL - mR) / count, x = index => mL + sw * (index + .5);
+    const mL = 46,
+      mR = 10,
+      mB = 26,
+      sw = (W - mL - mR) / count,
+      x = index => mL + sw * (index + 0.5);
     // Флажки кампаний — campaignEvents. Три и больше одинаковых события в один день — один общий серый флажок.
     // Флажки цены (₽) — изменения цены из Google Таблицы, не объединяются.
-    const periods = campaignPeriods(days), events = campaignEvents(data);
-    const groups = new Map(); events.forEach(event => { const key = `${event.kind}:${event.day}`; groups.set(key, [...(groups.get(key) || []), event]); });
+    const periods = campaignPeriods(days),
+      events = campaignEvents(data);
+    const groups = new Map();
+    events.forEach(event => {
+      const key = `${event.kind}:${event.day}`;
+      groups.set(key, [...(groups.get(key) || []), event]);
+    });
     const flags = [];
     for (const group of groups.values()) {
       if (group.length >= 3) flags.push({ kind: group[0].kind, day: group[0].day, merged: group.map(event => event.id) });
       else flags.push(...group);
     }
     const dayIndex = new Map(days.map((day, index) => [day.date, index]));
-    for (const change of data.priceChanges || []) if (dayIndex.has(change.date)) flags.push({ kind: 'price', day: dayIndex.get(change.date), change });
+    for (const change of data.priceChanges || [])
+      if (dayIndex.has(change.date)) flags.push({ kind: 'price', day: dayIndex.get(change.date), change });
     const order = { ongoing: 0, stop: 1, start: 2, blip: 3, price: 4 };
     flags.sort((a, b) => a.day - b.day || order[a.kind] - order[b.kind] || String(a.at || '').localeCompare(String(b.at || '')));
-    const maxLength = W < 560 ? 9 : 18, ends = [];
+    const maxLength = W < 560 ? 9 : 18,
+      ends = [];
     for (const flag of flags) {
       if (flag.kind === 'price') {
-        const main = priceMain(flag.change), short = value => finite(value) ? Math.round(value).toLocaleString('ru-RU') : String(value ?? '—');
+        const main = priceMain(flag.change),
+          short = value => (finite(value) ? Math.round(value).toLocaleString('ru-RU') : String(value ?? '—'));
         flag.text = /₽/.test(main.what) ? `₽ ${short(main.before)} → ${short(main.after)}` : `₽ ${main.what.replace(/,.*$/, '')}`;
       } else {
         const name = flag.merged ? `${flag.merged.length} ${flag.merged.length < 5 ? 'кампании' : 'кампаний'}` : campaignName(flag.id);
         flag.text = `${{ start: '▶', stop: '■', blip: '◆', ongoing: '↤' }[flag.kind]} ${name.length > maxLength ? `${name.slice(0, maxLength - 1)}…` : name}`;
       }
-      flag.width = flag.text.length * 6.4 + 14; flag.x = mL + flag.day * sw;
+      flag.width = flag.text.length * 6.4 + 14;
+      flag.x = mL + flag.day * sw;
       flag.fx = Math.max(mL, Math.min(flag.x, W - mR - flag.width));
-      let level = ends.findIndex(end => end < flag.fx - 4); if (level < 0) { level = ends.length; ends.push(0); }
-      ends[level] = flag.fx + flag.width; flag.level = level;
+      let level = ends.findIndex(end => end < flag.fx - 4);
+      if (level < 0) {
+        level = ends.length;
+        ends.push(0);
+      }
+      ends[level] = flag.fx + flag.width;
+      flag.level = level;
     }
-    const flagBand = ends.length ? ends.length * 20 + 4 : 0, mT = 10 + flagBand, ph = W < 560 ? 220 : 280, H = mT + ph + mB;
+    const flagBand = ends.length ? ends.length * 20 + 4 : 0,
+      mT = 10 + flagBand,
+      ph = W < 560 ? 220 : 280,
+      H = mT + ph + mB;
     const notes = notesNumbered().filter(note => note.date >= days[0].date && note.date <= days.at(-1).date);
     const noteTop = notes.length ? 24 : 0;
-    const max = Math.max(1, ...stacks.map(stack => stack.organic + stack.ad)), scale = niceScale(max * 1.04, W < 560 ? 3 : 4);
-    const y = value => mT + noteTop + (ph - noteTop) - value / scale.max * (ph - noteTop);
+    const max = Math.max(1, ...stacks.map(stack => stack.organic + stack.ad)),
+      scale = niceScale(max * 1.04, W < 560 ? 3 : 4);
+    const y = value => mT + noteTop + (ph - noteTop) - (value / scale.max) * (ph - noteTop);
     let svg = `<svg viewBox="0 0 ${W} ${H}" height="${H}" role="img" aria-label="${esc(metric.title)}: органика и реклама">`;
     for (let value = 0; value <= scale.max + 1e-9; value += scale.step) {
       if (value > 0) svg += `<line class="gridline" x1="${mL}" x2="${W - mR}" y1="${y(value)}" y2="${y(value)}"/>`;
@@ -248,209 +446,416 @@
     }
     svg += `<rect class="hover-col" x="0" y="${mT}" width="${sw}" height="${ph}" fill="#17211d" opacity="0" rx="4"/>`;
     // Заливка периодов кампаний — видна, только пока наведён её флажок или строка в таблице.
-    for (const [id, list] of periods) for (const period of list) svg += `<rect class="fillrect" data-fill="${id}" x="${mL + period.from * sw}" y="${mT}" width="${(period.to - period.from + 1) * sw}" height="${ph}" fill="${view.colors.get(id) || '#555b66'}"/>`;
-    const barWidth = Math.max(2, Math.min(34, sw * .72));
+    for (const [id, list] of periods)
+      for (const period of list)
+        svg += `<rect class="fillrect" data-fill="${id}" x="${mL + period.from * sw}" y="${mT}" width="${(period.to - period.from + 1) * sw}" height="${ph}" fill="${view.colors.get(id) || '#555b66'}"/>`;
+    const barWidth = Math.max(2, Math.min(34, sw * 0.72));
     stacks.forEach((stack, index) => {
-      const left = x(index) - barWidth / 2, organicTop = y(stack.organic), adTop = y(stack.organic + stack.ad);
-      if (stack.organic > 0) svg += `<rect x="${left}" y="${organicTop}" width="${barWidth}" height="${y(0) - organicTop}" fill="var(--organic)"/>`;
+      const left = x(index) - barWidth / 2,
+        organicTop = y(stack.organic),
+        adTop = y(stack.organic + stack.ad);
+      if (stack.organic > 0)
+        svg += `<rect x="${left}" y="${organicTop}" width="${barWidth}" height="${y(0) - organicTop}" fill="var(--organic)"/>`;
       if (stack.ad > 0) svg += `<rect x="${left}" y="${adTop}" width="${barWidth}" height="${organicTop - adTop}" fill="var(--ads)"/>`;
-      if (stack.total === null) svg += `<rect x="${left}" y="${y(0) - 3}" width="${barWidth}" height="3" fill="#d3d9d5"><title>Воронка за ${ddmm(days[index].date)} ещё загружается</title></rect>`;
+      if (stack.total === null)
+        svg += `<rect x="${left}" y="${y(0) - 3}" width="${barWidth}" height="3" fill="#d3d9d5"><title>Воронка за ${ddmm(days[index].date)} ещё загружается</title></rect>`;
     });
     svg += `<line class="baseline" x1="${mL}" x2="${W - mR}" y1="${y(0)}" y2="${y(0)}"/>`;
     // Флажки кампаний: пунктир от флажка до низа графика цветом кампании. Клик — детализация кампании в новой вкладке;
     // у общего флажка — список его кампаний.
     for (const flag of flags) {
-      const top = 10 + flag.level * 20, when = ddmm(days[flag.day].date);
+      const top = 10 + flag.level * 20,
+        when = ddmm(days[flag.day].date);
       if (flag.kind === 'price') {
         const title = `Цена ${stepTime(flag.change.at)} (из Google Таблицы):\n${flag.change.items.map(item => `${item.what.replace(/, (₽|%)$/, '')}: ${priceValue(item.what, item.before)} → ${priceValue(item.what, item.after)}`).join('\n')}`;
-        svg += `<g class="price-flag"><title>${esc(title)}</title><line x1="${flag.x}" x2="${flag.x}" y1="${top + 16}" y2="${mT + ph}" stroke="${PRICE_COLOR}" stroke-width="1.5" stroke-dasharray="2 3"/>` +
+        svg +=
+          `<g class="price-flag"><title>${esc(title)}</title><line x1="${flag.x}" x2="${flag.x}" y1="${top + 16}" y2="${mT + ph}" stroke="${PRICE_COLOR}" stroke-width="1.5" stroke-dasharray="2 3"/>` +
           `<rect x="${flag.fx}" y="${top}" width="${flag.width}" height="16" rx="8" fill="${PRICE_COLOR}"/><text class="flag-text" x="${flag.fx + 7}" y="${top + 12}">${esc(flag.text)}</text></g>`;
         continue;
       }
-      const color = flag.merged ? '#555b66' : view.colors.get(flag.id) || '#555b66', ids = flag.merged || [flag.id];
+      const color = flag.merged ? '#555b66' : view.colors.get(flag.id) || '#555b66',
+        ids = flag.merged || [flag.id];
       // Подписи: по показам — «первый день с 50 показами…»; по таблице — «включена / выключена» с точным временем и причиной.
       // Подписи: по показам — «первый день с 50 показами…»; с начала отслеживания — «включена / выключена» и время.
       const boundary = 'по статусу на начало отслеживания в Google Таблице';
-      const switched = (on, at, why) => `${on ? 'включена' : 'выключена'} ${at ? stepTime(at) : `${when} (${boundary})`}${why ? ` — ${why}` : ''}`;
+      const switched = (on, at, why) =>
+        `${on ? 'включена' : 'выключена'} ${at ? stepTime(at) : `${when} (${boundary})`}${why ? ` — ${why}` : ''}`;
       const lastOnDay = flag.kind === 'stop' ? ddmm(days[flag.day - 1].date) : when;
-      const what = flag.merged ? { start: 'Запущены', stop: 'Остановлены', blip: 'Работали один день', ongoing: 'Работали уже на начало периода' }[flag.kind]
-        : flag.kind === 'start' && flag.startTracked ? switched(true, flag.startAt, flag.startReason)
-        : flag.kind === 'stop' && flag.stopTracked ? (flag.stopAt ? switched(false, flag.stopAt, flag.stopReason) : `выключена, последний день работы ${lastOnDay} (${boundary})`)
-        : flag.kind === 'blip' && flag.startTracked ? `работала только ${when}: ${switched(true, flag.startAt, flag.startReason)}, ${flag.stopAt ? switched(false, flag.stopAt, flag.stopReason) : 'выключена в тот же день'}`
-        : { start: `первый день с 50 показами и больше ${when}`, stop: `первый день, когда показов меньше 50, ${when}`, blip: `50 показов и больше только ${when}`, ongoing: 'работала уже на начало периода' }[flag.kind];
+      const what = flag.merged
+        ? { start: 'Запущены', stop: 'Остановлены', blip: 'Работали один день', ongoing: 'Работали уже на начало периода' }[flag.kind]
+        : flag.kind === 'start' && flag.startTracked
+          ? switched(true, flag.startAt, flag.startReason)
+          : flag.kind === 'stop' && flag.stopTracked
+            ? flag.stopAt
+              ? switched(false, flag.stopAt, flag.stopReason)
+              : `выключена, последний день работы ${lastOnDay} (${boundary})`
+            : flag.kind === 'blip' && flag.startTracked
+              ? `работала только ${when}: ${switched(true, flag.startAt, flag.startReason)}, ${flag.stopAt ? switched(false, flag.stopAt, flag.stopReason) : 'выключена в тот же день'}`
+              : {
+                  start: `первый день с 50 показами и больше ${when}`,
+                  stop: `первый день, когда показов меньше 50, ${when}`,
+                  blip: `50 показов и больше только ${when}`,
+                  ongoing: 'работала уже на начало периода'
+                }[flag.kind];
       const removed = data.campaigns.find(item => item.id === flag.id)?.removed ? ' (сейчас товар из кампании убран)' : '';
-      const title = flag.merged ? `${what} ${when}: ${flag.merged.map(campaignName).join(', ')} — нажмите, чтобы выбрать кампанию` : `${campaignName(flag.id)}${removed}: ${what} — нажмите, чтобы открыть детализацию кампании`;
-      const body = `<title>${esc(title)}</title><line x1="${flag.x}" x2="${flag.x}" y1="${top + 16}" y2="${mT + ph}" stroke="${color}" stroke-width="1.5" stroke-dasharray="4 3"/>` +
+      const title = flag.merged
+        ? `${what} ${when}: ${flag.merged.map(campaignName).join(', ')} — нажмите, чтобы выбрать кампанию`
+        : `${campaignName(flag.id)}${removed}: ${what} — нажмите, чтобы открыть детализацию кампании`;
+      const body =
+        `<title>${esc(title)}</title><line x1="${flag.x}" x2="${flag.x}" y1="${top + 16}" y2="${mT + ph}" stroke="${color}" stroke-width="1.5" stroke-dasharray="4 3"/>` +
         `<rect x="${flag.fx}" y="${top}" width="${flag.width}" height="16" rx="4" fill="${color}"/><text class="flag-text" x="${flag.fx + 7}" y="${top + 12}">${esc(flag.text)}</text>`;
-      svg += flag.merged ? `<g class="camp flag-merged" data-campaigns="${ids.join(',')}" data-day="${flag.day}" data-kind="${flag.kind}" data-x="${flag.fx}" data-y="${top + 18}" tabindex="0" role="button">${body}</g>`
+      svg += flag.merged
+        ? `<g class="camp flag-merged" data-campaigns="${ids.join(',')}" data-day="${flag.day}" data-kind="${flag.kind}" data-x="${flag.fx}" data-y="${top + 18}" tabindex="0" role="button">${body}</g>`
         : `<a class="camp" data-campaigns="${flag.id}" href="${esc(campaignLink(flag.id))}" target="_blank" rel="noopener noreferrer">${body}</a>`;
     }
     // Ваши отметки: номер в кружке наверху графика и пунктир; короткая подпись — если хватает места до следующей.
     const byDay = new Map();
     notes.forEach((note, index) => {
-      const day = days.findIndex(item => item.date === note.date), level = byDay.get(day) || 0; byDay.set(day, level + 1);
-      const cx = x(day), cy = mT + 11 + level * 20, next = notes.slice(index + 1).find(item => item.date !== note.date);
-      const room = (next ? x(days.findIndex(item => item.date === next.date)) : W - mR) - cx - 20, label = note.text.length > 26 ? `${note.text.slice(0, 25)}…` : note.text;
-      svg += `<g class="note-mark"><title>${esc(`${note.number}. ${ddmm(note.date)} — ${note.text}`)}</title>${level ? '' : `<line x1="${cx}" x2="${cx}" y1="${cy}" y2="${mT + ph}" stroke="#555b66" stroke-width="1.2" stroke-dasharray="3 3"/>`}` +
+      const day = days.findIndex(item => item.date === note.date),
+        level = byDay.get(day) || 0;
+      byDay.set(day, level + 1);
+      const cx = x(day),
+        cy = mT + 11 + level * 20,
+        next = notes.slice(index + 1).find(item => item.date !== note.date);
+      const room = (next ? x(days.findIndex(item => item.date === next.date)) : W - mR) - cx - 20,
+        label = note.text.length > 26 ? `${note.text.slice(0, 25)}…` : note.text;
+      svg +=
+        `<g class="note-mark"><title>${esc(`${note.number}. ${ddmm(note.date)} — ${note.text}`)}</title>${level ? '' : `<line x1="${cx}" x2="${cx}" y1="${cy}" y2="${mT + ph}" stroke="#555b66" stroke-width="1.2" stroke-dasharray="3 3"/>`}` +
         `<circle cx="${cx}" cy="${cy}" r="9" fill="#17211d"/><text class="note-num" x="${cx}" y="${cy + 3.6}" text-anchor="middle">${note.number}</text>` +
-        (!level && room > label.length * 6.3 ? `<text x="${cx + 14}" y="${cy + 4}" font-size="11.5" font-weight="700" fill="#17211d">${esc(label)}</text>` : '') + '</g>';
+        (!level && room > label.length * 6.3
+          ? `<text x="${cx + 14}" y="${cy + 4}" font-size="11.5" font-weight="700" fill="#17211d">${esc(label)}</text>`
+          : '') +
+        '</g>';
     });
     const every = Math.max(1, Math.ceil(52 / sw));
-    days.forEach((day, index) => { if ((count - 1 - index) % every === 0) svg += `<text class="axis" x="${x(index)}" y="${mT + ph + 18}" text-anchor="middle">${ddmm(day.date)}</text>`; });
+    days.forEach((day, index) => {
+      if ((count - 1 - index) % every === 0)
+        svg += `<text class="axis" x="${x(index)}" y="${mT + ph + 18}" text-anchor="middle">${ddmm(day.date)}</text>`;
+    });
     svg += `<rect class="overlay" x="${mL}" y="${mT}" width="${W - mL - mR}" height="${ph + mB}" fill="transparent" style="cursor:crosshair"/></svg>`;
     box.innerHTML = `${svg}<div class="chart-tooltip" hidden></div><div class="flag-menu" role="menu" hidden></div>`;
     applyCampaignFocus();
-    const svgEl = box.querySelector('svg'), tip = box.querySelector('.chart-tooltip'), column = svgEl.querySelector('.hover-col');
-    const pick = event => { const rect = svgEl.getBoundingClientRect(); return Math.max(0, Math.min(count - 1, Math.floor(((event.clientX - rect.left) / rect.width * W - mL) / sw))); };
+    const svgEl = box.querySelector('svg'),
+      tip = box.querySelector('.chart-tooltip'),
+      column = svgEl.querySelector('.hover-col');
+    const pick = event => {
+      const rect = svgEl.getBoundingClientRect();
+      return Math.max(0, Math.min(count - 1, Math.floor((((event.clientX - rect.left) / rect.width) * W - mL) / sw)));
+    };
     svgEl.querySelector('.overlay').addEventListener('pointermove', event => {
-      const index = pick(event), day = days[index], stack = stacks[index], total = stack.organic + stack.ad;
-      column.setAttribute('x', mL + index * sw); column.setAttribute('opacity', '.05');
-      const share = value => total ? ` · ${Math.round(value / total * 100)}%` : '';
-      const active = day.campaigns.map(id => `<div class="row"><i style="background:${view.colors.get(id) || '#555b66'}"></i>${esc(campaignName(id))}</div>`).join('');
-      const dayNotes = notesNumbered().filter(note => note.date === day.date).map(note => `<div class="row"><i style="background:#17211d;border-radius:50%"></i>${note.number}. ${esc(note.text)}</div>`).join('');
-      tip.innerHTML = `<strong>${esc(dayLong(day.date))}</strong>` +
-        (stack.total === null ? '<div class="row muted">Воронка за этот день ещё загружается</div>' :
-          `<div class="row"><i style="background:var(--organic)"></i>Органика<b>${metric.fmt(stack.organic)}${share(stack.organic)}</b></div>`) +
+      const index = pick(event),
+        day = days[index],
+        stack = stacks[index],
+        total = stack.organic + stack.ad;
+      column.setAttribute('x', mL + index * sw);
+      column.setAttribute('opacity', '.05');
+      const share = value => (total ? ` · ${Math.round((value / total) * 100)}%` : '');
+      const active = day.campaigns
+        .map(id => `<div class="row"><i style="background:${view.colors.get(id) || '#555b66'}"></i>${esc(campaignName(id))}</div>`)
+        .join('');
+      const dayNotes = notesNumbered()
+        .filter(note => note.date === day.date)
+        .map(note => `<div class="row"><i style="background:#17211d;border-radius:50%"></i>${note.number}. ${esc(note.text)}</div>`)
+        .join('');
+      tip.innerHTML =
+        `<strong>${esc(dayLong(day.date))}</strong>` +
+        (stack.total === null
+          ? '<div class="row muted">Воронка за этот день ещё загружается</div>'
+          : `<div class="row"><i style="background:var(--organic)"></i>Органика<b>${metric.fmt(stack.organic)}${share(stack.organic)}</b></div>`) +
         `<div class="row"><i style="background:var(--ads)"></i>Реклама<b>${metric.fmt(stack.ad)}${share(stack.ad)}</b></div>` +
         (stack.total !== null ? `<div class="sep"></div><div class="row">Всего по воронке<b>${metric.fmt(stack.total)}</b></div>` : '') +
         `<div class="sep"></div>${active ? `<div class="row muted">Реклама включена: ${day.campaigns.length}</div>${active}` : '<div class="row muted">Реклама с этим товаром не показывалась</div>'}` +
-        (dayNotes ? `<div class="sep"></div>${dayNotes}` : '') + '<div class="sep"></div><div class="row muted">Клик — добавить отметку на этот день</div>';
+        (dayNotes ? `<div class="sep"></div>${dayNotes}` : '') +
+        '<div class="sep"></div><div class="row muted">Клик — добавить отметку на этот день</div>';
       tip.hidden = false;
-      const rect = svgEl.getBoundingClientRect(), scaleX = rect.width / W, cx = x(index) * scaleX, width = tip.offsetWidth;
-      tip.style.left = `${cx + 16 + width > box.clientWidth ? Math.max(0, cx - 16 - width) : cx + 16}px`; tip.style.top = `${mT * scaleX}px`;
+      const rect = svgEl.getBoundingClientRect(),
+        scaleX = rect.width / W,
+        cx = x(index) * scaleX,
+        width = tip.offsetWidth;
+      tip.style.left = `${cx + 16 + width > box.clientWidth ? Math.max(0, cx - 16 - width) : cx + 16}px`;
+      tip.style.top = `${mT * scaleX}px`;
     });
-    svgEl.querySelector('.overlay').addEventListener('pointerleave', () => { tip.hidden = true; column.setAttribute('opacity', '0'); });
-    svgEl.querySelector('.overlay').addEventListener('click', event => { view.editing = 'new'; view.newDate = days[pick(event)].date; renderNotes(); $('#notes input[type=text]')?.focus(); });
+    svgEl.querySelector('.overlay').addEventListener('pointerleave', () => {
+      tip.hidden = true;
+      column.setAttribute('opacity', '0');
+    });
+    svgEl.querySelector('.overlay').addEventListener('click', event => {
+      view.editing = 'new';
+      view.newDate = days[pick(event)].date;
+      renderNotes();
+      $('#notes input[type=text]')?.focus();
+    });
   }
   // Подсветка кампаний: view.hoverCampaign — список id (флажок, общий флажок или строка таблицы) или null.
   function applyCampaignFocus() {
-    const box = $('#mainChart'), ids = view.hoverCampaign ? view.hoverCampaign.map(String) : null;
+    const box = $('#mainChart'),
+      ids = view.hoverCampaign ? view.hoverCampaign.map(String) : null;
     box.classList.toggle('focus', Boolean(ids));
-    box.querySelectorAll('.camp').forEach(group => group.classList.toggle('on', Boolean(ids) && group.dataset.campaigns.split(',').some(id => ids.includes(id))));
+    box
+      .querySelectorAll('.camp')
+      .forEach(group => group.classList.toggle('on', Boolean(ids) && group.dataset.campaigns.split(',').some(id => ids.includes(id))));
     box.querySelectorAll('.fillrect').forEach(rect => rect.classList.toggle('on', Boolean(ids) && ids.includes(rect.dataset.fill)));
-    document.querySelectorAll('#campaignsBody tr[data-campaign]').forEach(row => row.classList.toggle('on', Boolean(ids) && ids.includes(row.dataset.campaign)));
+    document
+      .querySelectorAll('#campaignsBody tr[data-campaign]')
+      .forEach(row => row.classList.toggle('on', Boolean(ids) && ids.includes(row.dataset.campaign)));
   }
   function setCampaignHover(ids) {
     const key = ids ? ids.join(',') : '';
     if (key === (view.hoverCampaign || []).join(',')) return;
-    view.hoverCampaign = ids && ids.length ? ids : null; applyCampaignFocus();
+    view.hoverCampaign = ids && ids.length ? ids : null;
+    applyCampaignFocus();
   }
   const campaignLink = id => `/campaign.html?${new URLSearchParams({ cabinet, id, from: fromInput.value, to: toInput.value })}`;
   // Наведение на флажок подсвечивает период кампании; общий флажок по клику открывает список своих кампаний.
   const chartBox = $('#mainChart');
-  chartBox.addEventListener('pointerover', event => { if (event.target.closest('.flag-menu')) return; const flag = event.target.closest('[data-campaigns]'); setCampaignHover(flag ? flag.dataset.campaigns.split(',').map(Number) : null); });
+  chartBox.addEventListener('pointerover', event => {
+    if (event.target.closest('.flag-menu')) return;
+    const flag = event.target.closest('[data-campaigns]');
+    setCampaignHover(flag ? flag.dataset.campaigns.split(',').map(Number) : null);
+  });
   chartBox.addEventListener('pointerleave', () => setCampaignHover(null));
   function openFlagMenu(flag) {
-    const menu = chartBox.querySelector('.flag-menu'), svg = chartBox.querySelector('svg'); if (!menu || !svg) return;
-    const scale = svg.getBoundingClientRect().width / Number(svg.viewBox.baseVal.width), ids = flag.dataset.campaigns.split(',').map(Number);
-    const what = { start: 'Запущены', stop: 'Остановлены', blip: 'Работали один день', ongoing: 'Работали уже на начало периода' }[flag.dataset.kind];
-    menu.innerHTML = `<p>${esc(what)}${flag.dataset.kind === 'ongoing' ? '' : ` ${ddmm(view.data.days[Number(flag.dataset.day)].date)}`} — открыть детализацию:</p>` +
-      ids.map(id => `<a role="menuitem" href="${esc(campaignLink(id))}" target="_blank" rel="noopener noreferrer"><i style="background:${view.colors.get(id) || '#555b66'}"></i>${esc(campaignName(id))}</a>`).join('');
+    const menu = chartBox.querySelector('.flag-menu'),
+      svg = chartBox.querySelector('svg');
+    if (!menu || !svg) return;
+    const scale = svg.getBoundingClientRect().width / Number(svg.viewBox.baseVal.width),
+      ids = flag.dataset.campaigns.split(',').map(Number);
+    const what = { start: 'Запущены', stop: 'Остановлены', blip: 'Работали один день', ongoing: 'Работали уже на начало периода' }[
+      flag.dataset.kind
+    ];
+    menu.innerHTML =
+      `<p>${esc(what)}${flag.dataset.kind === 'ongoing' ? '' : ` ${ddmm(view.data.days[Number(flag.dataset.day)].date)}`} — открыть детализацию:</p>` +
+      ids
+        .map(
+          id =>
+            `<a role="menuitem" href="${esc(campaignLink(id))}" target="_blank" rel="noopener noreferrer"><i style="background:${view.colors.get(id) || '#555b66'}"></i>${esc(campaignName(id))}</a>`
+        )
+        .join('');
     menu.hidden = false;
-    menu.style.left = `${Math.max(0, Math.min(Number(flag.dataset.x) * scale, chartBox.clientWidth - menu.offsetWidth))}px`; menu.style.top = `${Number(flag.dataset.y) * scale}px`;
+    menu.style.left = `${Math.max(0, Math.min(Number(flag.dataset.x) * scale, chartBox.clientWidth - menu.offsetWidth))}px`;
+    menu.style.top = `${Number(flag.dataset.y) * scale}px`;
     menu.querySelector('a')?.focus();
   }
-  chartBox.addEventListener('click', event => { const flag = event.target.closest('.flag-merged'); if (flag) { event.stopPropagation(); openFlagMenu(flag); } });
-  chartBox.addEventListener('keydown', event => { const flag = event.target.closest('.flag-merged'); if (flag && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); openFlagMenu(flag); } });
-  document.addEventListener('click', event => { const menu = chartBox.querySelector('.flag-menu'); if (menu && !menu.hidden && !event.target.closest('.flag-menu')) menu.hidden = true; });
-  document.addEventListener('keydown', event => { const menu = chartBox.querySelector('.flag-menu'); if (event.key === 'Escape' && menu && !menu.hidden) menu.hidden = true; });
+  chartBox.addEventListener('click', event => {
+    const flag = event.target.closest('.flag-merged');
+    if (flag) {
+      event.stopPropagation();
+      openFlagMenu(flag);
+    }
+  });
+  chartBox.addEventListener('keydown', event => {
+    const flag = event.target.closest('.flag-merged');
+    if (flag && (event.key === 'Enter' || event.key === ' ')) {
+      event.preventDefault();
+      openFlagMenu(flag);
+    }
+  });
+  document.addEventListener('click', event => {
+    const menu = chartBox.querySelector('.flag-menu');
+    if (menu && !menu.hidden && !event.target.closest('.flag-menu')) menu.hidden = true;
+  });
+  document.addEventListener('keydown', event => {
+    const menu = chartBox.querySelector('.flag-menu');
+    if (event.key === 'Escape' && menu && !menu.hidden) menu.hidden = true;
+  });
 
   // --- Отметки под графиком ---
   function noteForm(note) {
     const date = note?.date || view.newDate || toInput.value;
-    return `<form class="note-form" data-note-form="${note ? esc(note.id) : 'new'}"><input type="date" value="${esc(date)}" max="${mskToday()}" aria-label="Дата отметки" required>` +
+    return (
+      `<form class="note-form" data-note-form="${note ? esc(note.id) : 'new'}"><input type="date" value="${esc(date)}" max="${mskToday()}" aria-label="Дата отметки" required>` +
       `<input type="text" maxlength="300" value="${esc(note?.text || '')}" placeholder="Например: СПП 24% → 12%, цена 1 690 → 1 950 ₽" aria-label="Текст отметки" required>` +
-      `<button type="submit" class="primary">${note ? 'Сохранить' : 'Добавить'}</button><button type="button" data-note-cancel>Отмена</button></form>`;
+      `<button type="submit" class="primary">${note ? 'Сохранить' : 'Добавить'}</button><button type="button" data-note-cancel>Отмена</button></form>`
+    );
   }
   function renderNotes() {
-    const box = $('#notes'), from = fromInput.value, to = toInput.value;
-    box.innerHTML = notesNumbered().map(note => view.editing === note.id ? noteForm(note) :
-      `<div class="note" data-note-id="${esc(note.id)}"><span class="num">${note.number}</span><span class="date">${ddmm(note.date)}${note.date.slice(0, 4) !== to.slice(0, 4) ? `.${note.date.slice(2, 4)}` : ''}</span><span class="text">${esc(note.text)}${note.date < from || note.date > to ? ' <span class="hint">(вне выбранного периода)</span>' : ''}</span>` +
-      `<span class="actions">${view.confirmDelete === note.id ? '<button type="button" class="icon-btn danger" data-note-delete-yes>Удалить</button><button type="button" class="icon-btn" data-note-delete-no>Отмена</button>' : '<button type="button" class="icon-btn" data-note-edit>Изменить</button><button type="button" class="icon-btn danger" data-note-delete>Удалить</button>'}</span></div>`).join('') +
+    const box = $('#notes'),
+      from = fromInput.value,
+      to = toInput.value;
+    box.innerHTML =
+      notesNumbered()
+        .map(note =>
+          view.editing === note.id
+            ? noteForm(note)
+            : `<div class="note" data-note-id="${esc(note.id)}"><span class="num">${note.number}</span><span class="date">${ddmm(note.date)}${note.date.slice(0, 4) !== to.slice(0, 4) ? `.${note.date.slice(2, 4)}` : ''}</span><span class="text">${esc(note.text)}${note.date < from || note.date > to ? ' <span class="hint">(вне выбранного периода)</span>' : ''}</span>` +
+              `<span class="actions">${view.confirmDelete === note.id ? '<button type="button" class="icon-btn danger" data-note-delete-yes>Удалить</button><button type="button" class="icon-btn" data-note-delete-no>Отмена</button>' : '<button type="button" class="icon-btn" data-note-edit>Изменить</button><button type="button" class="icon-btn danger" data-note-delete>Удалить</button>'}</span></div>`
+        )
+        .join('') +
       (view.editing === 'new' ? noteForm(null) : '<button type="button" class="note-add" data-note-add>+ Отметка на графике</button>');
   }
   $('#notes').addEventListener('click', event => {
     const id = event.target.closest('[data-note-id]')?.dataset.noteId;
-    if (event.target.closest('[data-note-add]')) { view.editing = 'new'; view.newDate = ''; renderNotes(); $('#notes input[type=text]')?.focus(); return; }
-    if (event.target.closest('[data-note-cancel]')) { view.editing = null; renderNotes(); return; }
-    if (event.target.closest('[data-note-edit]')) { view.editing = id; view.confirmDelete = null; renderNotes(); $('#notes input[type=text]')?.focus(); return; }
-    if (event.target.closest('[data-note-delete]')) { view.confirmDelete = id; renderNotes(); return; }
-    if (event.target.closest('[data-note-delete-no]')) { view.confirmDelete = null; renderNotes(); return; }
-    if (event.target.closest('[data-note-delete-yes]')) saveNote({ noteId: id, remove: true }).catch(error => { status(error.message, true); addNotice('product', `Отметка не удалена: ${error.message}`); });
+    if (event.target.closest('[data-note-add]')) {
+      view.editing = 'new';
+      view.newDate = '';
+      renderNotes();
+      $('#notes input[type=text]')?.focus();
+      return;
+    }
+    if (event.target.closest('[data-note-cancel]')) {
+      view.editing = null;
+      renderNotes();
+      return;
+    }
+    if (event.target.closest('[data-note-edit]')) {
+      view.editing = id;
+      view.confirmDelete = null;
+      renderNotes();
+      $('#notes input[type=text]')?.focus();
+      return;
+    }
+    if (event.target.closest('[data-note-delete]')) {
+      view.confirmDelete = id;
+      renderNotes();
+      return;
+    }
+    if (event.target.closest('[data-note-delete-no]')) {
+      view.confirmDelete = null;
+      renderNotes();
+      return;
+    }
+    if (event.target.closest('[data-note-delete-yes]'))
+      saveNote({ noteId: id, remove: true }).catch(error => {
+        status(error.message, true);
+        addNotice('product', `Отметка не удалена: ${error.message}`);
+      });
   });
   $('#notes').addEventListener('submit', event => {
-    const form = event.target.closest('[data-note-form]'); if (!form) return;
+    const form = event.target.closest('[data-note-form]');
+    if (!form) return;
     event.preventDefault();
-    const [date, text] = form.querySelectorAll('input'), noteId = form.dataset.noteForm === 'new' ? undefined : form.dataset.noteForm;
-    form.querySelectorAll('button').forEach(button => { button.disabled = true; });
-    saveNote({ noteId, date: date.value, text: text.value }).catch(error => { status(error.message, true); addNotice('product', `Отметка не сохранена: ${error.message}`); form.querySelectorAll('button').forEach(button => { button.disabled = false; }); });
+    const [date, text] = form.querySelectorAll('input'),
+      noteId = form.dataset.noteForm === 'new' ? undefined : form.dataset.noteForm;
+    form.querySelectorAll('button').forEach(button => {
+      button.disabled = true;
+    });
+    saveNote({ noteId, date: date.value, text: text.value }).catch(error => {
+      status(error.message, true);
+      addNotice('product', `Отметка не сохранена: ${error.message}`);
+      form.querySelectorAll('button').forEach(button => {
+        button.disabled = false;
+      });
+    });
   });
-  document.addEventListener('keydown', event => { if (event.key === 'Escape' && view.editing) { view.editing = null; renderNotes(); } });
+  document.addEventListener('keydown', event => {
+    if (event.key === 'Escape' && view.editing) {
+      view.editing = null;
+      renderNotes();
+    }
+  });
 
   // --- Мини-графики: у каждого своя шкала; итог за период и среднее в день (у долей — значение за период) ---
-  const funnelValue = key => day => day.funnel ? Number(day.funnel[key] || 0) : null;
+  const funnelValue = key => day => (day.funnel ? Number(day.funnel[key] || 0) : null);
   const adValue = key => day => Number(day.ads?.[key] || 0);
   const MINI_GROUPS = [
-    { title: 'Воронка', items: [
-      { label: 'Переходы в карточку', num: funnelValue('openCount'), fmt: fmtNum },
-      { label: 'Корзины', num: funnelValue('cartCount'), fmt: fmtNum },
-      { label: 'Заказы, шт', num: funnelValue('orderCount'), fmt: fmtNum },
-      { label: 'Заказы, ₽', num: funnelValue('orderSum'), fmt: fmtRub },
-      { label: 'Выкупы, шт', num: funnelValue('buyoutCount'), fmt: fmtNum },
-      { label: 'Выкупы, ₽', num: funnelValue('buyoutSum'), fmt: fmtRub },
-      { label: 'В избранное', num: funnelValue('addToWishlistCount'), fmt: fmtNum },
-      { label: 'Конверсия в корзину', num: funnelValue('cartCount'), den: funnelValue('openCount'), scale: 100, fmt: fmtPct },
-      { label: 'Конверсия в заказ', num: funnelValue('orderCount'), den: funnelValue('cartCount'), scale: 100, fmt: fmtPct },
-      { label: 'Средний чек заказа', num: funnelValue('orderSum'), den: funnelValue('orderCount'), scale: 1, fmt: fmtRub }
-    ] },
-    { title: 'Реклама', items: [
-      { label: 'Показы', num: adValue('views'), fmt: fmtNum },
-      { label: 'Клики', num: adValue('clicks'), fmt: fmtNum },
-      { label: 'CTR', num: adValue('clicks'), den: adValue('views'), scale: 100, fmt: fmtPct },
-      { label: 'CPC', num: adValue('spend'), den: adValue('clicks'), scale: 1, fmt: fmtRub },
-      { label: 'Расход', num: adValue('spend'), fmt: fmtRub },
-      { label: 'Рекламные заказы', num: adValue('orders'), fmt: fmtNum },
-      { label: 'ДРР по рекламным заказам', num: adValue('spend'), den: adValue('revenue'), scale: 100, fmt: fmtPct },
-      { label: 'ДРР от всех заказов', num: adValue('spend'), den: funnelValue('orderSum'), scale: 100, fmt: fmtPct }
-    ] },
-    { title: 'Доля рекламы', items: [
-      { label: 'В переходах', num: adValue('clicks'), den: funnelValue('openCount'), scale: 100, fmt: fmtPct, cap: true },
-      { label: 'В корзинах', num: adValue('carts'), den: funnelValue('cartCount'), scale: 100, fmt: fmtPct, cap: true },
-      { label: 'В заказах', num: adValue('orders'), den: funnelValue('orderCount'), scale: 100, fmt: fmtPct, cap: true }
-    ] },
-    { title: 'Позиция в поиске', items: [
-      { label: 'Средняя позиция', num: day => finite(day.avgPosition) ? Number(day.avgPosition) : null, average: true, invert: true, fmt: fmtDec,
-        averageNote: 'меньше — выше в поиске', emptyNote: 'нет данных по поисковым кластерам' }
-    ] }
+    {
+      title: 'Воронка',
+      items: [
+        { label: 'Переходы в карточку', num: funnelValue('openCount'), fmt: fmtNum },
+        { label: 'Корзины', num: funnelValue('cartCount'), fmt: fmtNum },
+        { label: 'Заказы, шт', num: funnelValue('orderCount'), fmt: fmtNum },
+        { label: 'Заказы, ₽', num: funnelValue('orderSum'), fmt: fmtRub },
+        { label: 'Выкупы, шт', num: funnelValue('buyoutCount'), fmt: fmtNum },
+        { label: 'Выкупы, ₽', num: funnelValue('buyoutSum'), fmt: fmtRub },
+        { label: 'В избранное', num: funnelValue('addToWishlistCount'), fmt: fmtNum },
+        { label: 'Конверсия в корзину', num: funnelValue('cartCount'), den: funnelValue('openCount'), scale: 100, fmt: fmtPct },
+        { label: 'Конверсия в заказ', num: funnelValue('orderCount'), den: funnelValue('cartCount'), scale: 100, fmt: fmtPct },
+        { label: 'Средний чек заказа', num: funnelValue('orderSum'), den: funnelValue('orderCount'), scale: 1, fmt: fmtRub }
+      ]
+    },
+    {
+      title: 'Реклама',
+      items: [
+        { label: 'Показы', num: adValue('views'), fmt: fmtNum },
+        { label: 'Клики', num: adValue('clicks'), fmt: fmtNum },
+        { label: 'CTR', num: adValue('clicks'), den: adValue('views'), scale: 100, fmt: fmtPct },
+        { label: 'CPC', num: adValue('spend'), den: adValue('clicks'), scale: 1, fmt: fmtRub },
+        { label: 'Расход', num: adValue('spend'), fmt: fmtRub },
+        { label: 'Рекламные заказы', num: adValue('orders'), fmt: fmtNum },
+        { label: 'ДРР по рекламным заказам', num: adValue('spend'), den: adValue('revenue'), scale: 100, fmt: fmtPct },
+        { label: 'ДРР от всех заказов', num: adValue('spend'), den: funnelValue('orderSum'), scale: 100, fmt: fmtPct }
+      ]
+    },
+    {
+      title: 'Доля рекламы',
+      items: [
+        { label: 'В переходах', num: adValue('clicks'), den: funnelValue('openCount'), scale: 100, fmt: fmtPct, cap: true },
+        { label: 'В корзинах', num: adValue('carts'), den: funnelValue('cartCount'), scale: 100, fmt: fmtPct, cap: true },
+        { label: 'В заказах', num: adValue('orders'), den: funnelValue('orderCount'), scale: 100, fmt: fmtPct, cap: true }
+      ]
+    },
+    {
+      title: 'Позиция в поиске',
+      items: [
+        {
+          label: 'Средняя позиция',
+          num: day => (finite(day.avgPosition) ? Number(day.avgPosition) : null),
+          average: true,
+          invert: true,
+          fmt: fmtDec,
+          averageNote: 'меньше — выше в поиске',
+          emptyNote: 'нет данных по поисковым кластерам'
+        }
+      ]
+    }
   ];
   // Рисует общий модуль mini-charts.js; ваши отметки — тонкие пунктиры, чтобы было видно, что после них изменилось.
   function renderMinis() {
-    const data = view.data; if (!data) return;
-    const groups = MINI_GROUPS.map(group => ({ ...group, items: group.items.map(item => ({ ...item, axis: item.fmt === fmtPct ? '%' : '' })) }));
+    const data = view.data;
+    if (!data) return;
+    const groups = MINI_GROUPS.map(group => ({
+      ...group,
+      items: group.items.map(item => ({ ...item, axis: item.fmt === fmtPct ? '%' : '' }))
+    }));
     window.MiniCharts?.render($('#minis'), groups, data.days, { markers: view.notes.map(note => note.date) });
   }
 
   // --- Кампании товара ---
   function renderCampaigns() {
-    const body = $('#campaignsBody'), list = view.data.campaigns;
-    if (!list.length) { body.innerHTML = '<tr><td colspan="10" style="text-align:center;color:var(--muted)">За период у товара не было рекламы</td></tr>'; return; }
-    body.innerHTML = list.map(campaign => `<tr data-campaign="${campaign.id}"><td><div class="camp-name"><i style="background:${view.colors.get(campaign.id)}"></i><a href="${esc(campaignLink(campaign.id))}" target="_blank" rel="noopener noreferrer" title="Открыть детализацию кампании">${esc(campaign.name)}</a><small>№ ${esc(campaign.id)}</small>${campaign.removed ? '<small class="removed" title="Показы за период были, но сейчас товара в настройках кампании нет">убран из кампании</small>' : ''}</div></td>` +
-      `<td>${fmtNum(campaign.activeDays)}</td><td>${fmtNum(campaign.views)}</td><td>${fmtNum(campaign.clicks)}</td><td>${fmtPct(campaign.ctr)}</td><td>${fmtRub(campaign.spend)}</td><td>${fmtNum(campaign.carts)}</td><td>${fmtNum(campaign.orders)}</td><td>${fmtRub(campaign.revenue)}</td><td>${campaign.revenue ? fmtPct(campaign.drr) : '—'}</td></tr>`).join('');
+    const body = $('#campaignsBody'),
+      list = view.data.campaigns;
+    if (!list.length) {
+      body.innerHTML = '<tr><td colspan="10" style="text-align:center;color:var(--muted)">За период у товара не было рекламы</td></tr>';
+      return;
+    }
+    body.innerHTML = list
+      .map(
+        campaign =>
+          `<tr data-campaign="${campaign.id}"><td><div class="camp-name"><i style="background:${view.colors.get(campaign.id)}"></i><a href="${esc(campaignLink(campaign.id))}" target="_blank" rel="noopener noreferrer" title="Открыть детализацию кампании">${esc(campaign.name)}</a><small>№ ${esc(campaign.id)}</small>${campaign.removed ? '<small class="removed" title="Показы за период были, но сейчас товара в настройках кампании нет">убран из кампании</small>' : ''}</div></td>` +
+          `<td>${fmtNum(campaign.activeDays)}</td><td>${fmtNum(campaign.views)}</td><td>${fmtNum(campaign.clicks)}</td><td>${fmtPct(campaign.ctr)}</td><td>${fmtRub(campaign.spend)}</td><td>${fmtNum(campaign.carts)}</td><td>${fmtNum(campaign.orders)}</td><td>${fmtRub(campaign.revenue)}</td><td>${campaign.revenue ? fmtPct(campaign.drr) : '—'}</td></tr>`
+      )
+      .join('');
   }
-  $('#campaignsBody').addEventListener('pointerover', event => { const row = event.target.closest('tr[data-campaign]'); setCampaignHover(row ? [Number(row.dataset.campaign)] : null); });
+  $('#campaignsBody').addEventListener('pointerover', event => {
+    const row = event.target.closest('tr[data-campaign]');
+    setCampaignHover(row ? [Number(row.dataset.campaign)] : null);
+  });
   $('#campaignsBody').addEventListener('pointerleave', () => setCampaignHover(null));
 
   // Перерисовка по ширине окна.
   let lastWidth = 0;
-  new ResizeObserver(() => { const width = $('#mainChart').clientWidth; if (view.data && width !== lastWidth) { lastWidth = width; renderMain(); renderMinis(); } }).observe($('#mainChart'));
+  new ResizeObserver(() => {
+    const width = $('#mainChart').clientWidth;
+    if (view.data && width !== lastWidth) {
+      lastWidth = width;
+      renderMain();
+      renderMinis();
+    }
+  }).observe($('#mainChart'));
 
   // Автообновление: раз в 2 минуты, пока вкладка видна и не открыта форма отметки. Сегодняшний день воронки
   // сервер перезапросит у WB (live), прошлые дни и прошлые куски рекламы берутся из сохранённого.
   setInterval(() => {
     if (document.hidden || view.loading || view.editing || Date.now() - view.autoAt < 2 * 60_000) return;
-    view.autoAt = Date.now(); load({ silent: true, live: true });
+    view.autoAt = Date.now();
+    load({ silent: true, live: true });
   }, 10_000);
 
-  if (!/^\d{1,15}$/.test(nmId)) { status('В ссылке нет артикула товара', true); $('#mainChart').innerHTML = '<div class="chart-empty">Откройте товар из «Воронки» — кнопкой со стрелкой слева от товара.</div>'; return; }
-  load(); loadNotes();
+  if (!/^\d{1,15}$/.test(nmId)) {
+    status('В ссылке нет артикула товара', true);
+    $('#mainChart').innerHTML = '<div class="chart-empty">Откройте товар из «Воронки» — кнопкой со стрелкой слева от товара.</div>';
+    return;
+  }
+  load();
+  loadNotes();
 })();

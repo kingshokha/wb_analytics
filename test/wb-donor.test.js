@@ -8,7 +8,10 @@ test('артикул WB из ссылок и текста', () => {
   assert.equal(donorArticle('product?nm=315371657'), 315371657);
   assert.equal(donorArticle('200724819'), 200724819);
   assert.equal(donorArticle('без цифр'), null);
-  assert.deepEqual(donorArticles('https://www.wildberries.ru/catalog/1111111/detail.aspx\n2222222, 1111111; 3333333'), [1111111, 2222222, 3333333]);
+  assert.deepEqual(
+    donorArticles('https://www.wildberries.ru/catalog/1111111/detail.aspx\n2222222, 1111111; 3333333'),
+    [1111111, 2222222, 3333333]
+  );
 });
 
 // Образец — карточка витрины 200724819 (зарядка) в сокращённом виде; характеристики предмета 765 — из /content/v2/object/charcs.
@@ -26,16 +29,29 @@ const charcs = [
   { charcID: 15000001, name: 'ТНВЭД', charcType: 1, maxCount: 1, required: true }
 ];
 const donor = {
-  nmId: 200724819, buyerPrice: 535, video: 'https://videonme-basket-05.wbbasket.ru/vol51/part20072/200724819/hls/1440p/index.m3u8',
+  nmId: 200724819,
+  buyerPrice: 535,
+  video: 'https://videonme-basket-05.wbbasket.ru/vol51/part20072/200724819/hls/1440p/index.m3u8',
   photos: [{ big: 'https://basket-13.wbbasket.ru/vol2007/part200724/200724819/images/big/1.webp', c246x328: 'x' }],
   card: {
-    imt_name: 'Быстрая зарядка для телефона 67w Type-c', subj_name: 'Зарядные устройства', description: 'Описание', vendor_code: 'xiaomi 67w', nm_colors_names: 'белый',
-    selling: { brand_name: 'Xiaomi' }, data: { subject_id: 765, subject_root_id: 8995, chrt_ids: [324428113], tech_size: '0' },
+    imt_name: 'Быстрая зарядка для телефона 67w Type-c',
+    subj_name: 'Зарядные устройства',
+    description: 'Описание',
+    vendor_code: 'xiaomi 67w',
+    nm_colors_names: 'белый',
+    selling: { brand_name: 'Xiaomi' },
+    data: { subject_id: 765, subject_root_id: 8995, chrt_ids: [324428113], tech_size: '0' },
     options: [
-      { name: 'Ширина упаковки', value: '13 см' }, { name: 'Высота упаковки', value: '3 см' }, { name: 'Вес с упаковкой (кг)', value: '0.25 кг' }, { name: 'Длина упаковки', value: '15 см' },
-      { name: 'Модель', value: '67W' }, { name: 'Разъем подключения', value: 'USB; Type C' },
+      { name: 'Ширина упаковки', value: '13 см' },
+      { name: 'Высота упаковки', value: '3 см' },
+      { name: 'Вес с упаковкой (кг)', value: '0.25 кг' },
+      { name: 'Длина упаковки', value: '15 см' },
+      { name: 'Модель', value: '67W' },
+      { name: 'Разъем подключения', value: 'USB; Type C' },
       { name: 'Доп. опции зарядного устройства', value: 'быстрая зарядка; Защита от перегрузок и замыканий; Защита от перегрева' },
-      { name: 'Количество предметов в упаковке', value: '2 шт.' }, { name: 'Максимальный выходной ток', value: '3,25 А' }, { name: 'Страна производства', value: 'Китай' }
+      { name: 'Количество предметов в упаковке', value: '2 шт.' },
+      { name: 'Максимальный выходной ток', value: '3,25 А' },
+      { name: 'Страна производства', value: 'Китай' }
     ]
   }
 };
@@ -53,7 +69,10 @@ test('черновик карточки из витрины: предмет, х�
   assert.equal(value(90745), undefined, 'размеры упаковки — в габариты, не в характеристики');
   assert.deepEqual(value(14177449), ['белый'], 'цвет — из nm_colors_names');
   assert.equal(value(14177446), undefined, 'бренд — не характеристика');
-  assert.deepEqual(report.unmatched.map(row => row.name), ['Страна производства']);
+  assert.deepEqual(
+    report.unmatched.map(row => row.name),
+    ['Страна производства']
+  );
   assert.deepEqual(report.requiredMissing, ['Назначение товара'], 'ТН ВЭД задаёт продавец — его в списке нет');
   assert.deepEqual(source.sizes, []);
   assert.equal(source.photos.length, 1);
@@ -62,13 +81,30 @@ test('черновик карточки из витрины: предмет, х�
 });
 
 test('размеры из таблицы размеров витрины', () => {
-  const card = { ...donor.card, data: { subject_id: 11, chrt_ids: [1, 2] }, sizes_table: { details_props: ['RU', 'Обхват талии, в см'], values: [{ tech_size: 'L', details: ['50', '86-90'] }, { tech_size: 'XL', details: ['52', '90-94'] }] }, options: [] };
+  const card = {
+    ...donor.card,
+    data: { subject_id: 11, chrt_ids: [1, 2] },
+    sizes_table: {
+      details_props: ['RU', 'Обхват талии, в см'],
+      values: [
+        { tech_size: 'L', details: ['50', '86-90'] },
+        { tech_size: 'XL', details: ['52', '90-94'] }
+      ]
+    },
+    options: []
+  };
   const { source, report } = draftFromDonor({ ...donor, card }, []);
-  assert.deepEqual(source.sizes, [{ techSize: 'L', wbSize: '50' }, { techSize: 'XL', wbSize: '52' }]);
+  assert.deepEqual(source.sizes, [
+    { techSize: 'L', wbSize: '50' },
+    { techSize: 'XL', wbSize: '52' }
+  ]);
   assert.deepEqual(report.missingDims, ['length', 'width', 'height', 'weightBrutto']);
   const one = draftFromDonor({ ...donor, card: { ...donor.card, data: { subject_id: 212, tech_size: 'ONE SIZE' }, options: [] } }, []);
   assert.deepEqual(one.source.sizes, [{ techSize: 'ONE SIZE', wbSize: '' }]);
-  const unknown = draftFromDonor({ ...donor, card: { ...donor.card, data: { subject_id: 5302, chrt_ids: [1, 2, 3, 4] }, options: [] } }, []);
+  const unknown = draftFromDonor(
+    { ...donor, card: { ...donor.card, data: { subject_id: 5302, chrt_ids: [1, 2, 3, 4] }, options: [] } },
+    []
+  );
   assert.match(unknown.report.warnings.join(' '), /4 размеров/);
   assert.throws(() => draftFromDonor({ ...donor, card: { ...donor.card, data: {} } }, []), /предмет/);
 });

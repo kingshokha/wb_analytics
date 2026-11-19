@@ -36,8 +36,8 @@ const path = require('node:path');
 const SYNC_EVERY = 60 * 60_000;
 const SIMA_API = 'https://www.sima-land.ru/api/v3/item/';
 const SIMA_FIELDS = 'id,sid,name,price,wholesale_price,balance,isEnough';
-const BATCH = 100;   // артикулов в запросе (per-page не больше 100)
-const PARALLEL = 5;  // запросов за раз; с паузой в секунду — до 50 запросов за 10 секунд при лимите 250
+const BATCH = 100; // артикулов в запросе (per-page не больше 100)
+const PARALLEL = 5; // запросов за раз; с паузой в секунду — до 50 запросов за 10 секунд при лимите 250
 // Плановая загрузка пропускается, если таблица обновлялась недавно (сервер перезапускали): раз в час, не чаще.
 const FRESH_MS = 50 * 60_000;
 const RETRY_MS = 5 * 60_000; // повтор неудавшейся плановой загрузки
@@ -45,7 +45,13 @@ const RETRY_MS = 5 * 60_000; // повтор неудавшейся планов
 const RESPONSE_LIMIT = 200_000;
 const rowKey = item => [item.at, item.id, item.title, item.what, item.before, item.after].map(value => String(value ?? '')).join('|');
 
-function readJsonFile(file, fallback) { try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return fallback; } }
+function readJsonFile(file, fallback) {
+  try {
+    return JSON.parse(fs.readFileSync(file, 'utf8'));
+  } catch {
+    return fallback;
+  }
+}
 function writeJsonFile(file, value) {
   fs.mkdirSync(path.dirname(file), { recursive: true });
   fs.writeFileSync(`${file}.tmp`, JSON.stringify(value));
@@ -53,21 +59,46 @@ function writeJsonFile(file, value) {
 }
 // Склейка сохранённых строк с новыми: без повторов, по времени.
 function mergeRows(existing = [], incoming = []) {
-  const seen = new Set(existing.map(rowKey)), added = [];
+  const seen = new Set(existing.map(rowKey)),
+    added = [];
   for (const item of incoming) {
     if (!item?.at || !/^\d+$/.test(String(item.id ?? ''))) continue;
-    const key = rowKey(item); if (seen.has(key)) continue;
-    seen.add(key); added.push(item);
+    const key = rowKey(item);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    added.push(item);
   }
   return { rows: added.length ? [...existing, ...added].sort((a, b) => String(a.at).localeCompare(String(b.at))) : existing, added };
 }
 
-module.exports = function createSimaLand({ send, apiError, readJson, root, dir = process.env.SIMA_DIR ? path.resolve(process.env.SIMA_DIR) : path.join(root, 'data', 'Sima'),
-  url = () => process.env.SIMA_SHEET_URL, key = () => process.env.SIMA_SHEET_KEY, token = () => process.env.SIMA_TOKEN, fetchImpl = (...args) => fetch(...args),
-  pause = ms => new Promise(resolve => setTimeout(resolve, ms)) }) {
-  const historyDir = path.join(dir, 'История'), syncFile = path.join(dir, 'sync.json'), refreshFile = path.join(dir, 'refresh.json'), pricesFile = path.join(dir, 'prices.json');
+module.exports = function createSimaLand({
+  send,
+  apiError,
+  readJson,
+  root,
+  dir = process.env.SIMA_DIR ? path.resolve(process.env.SIMA_DIR) : path.join(root, 'data', 'Sima'),
+  url = () => process.env.SIMA_SHEET_URL,
+  key = () => process.env.SIMA_SHEET_KEY,
+  token = () => process.env.SIMA_TOKEN,
+  fetchImpl = (...args) => fetch(...args),
+  pause = ms => new Promise(resolve => setTimeout(resolve, ms))
+}) {
+  const historyDir = path.join(dir, 'История'),
+    syncFile = path.join(dir, 'sync.json'),
+    refreshFile = path.join(dir, 'refresh.json'),
+    pricesFile = path.join(dir, 'prices.json');
   const configured = () => Boolean(String(url() || '').trim() && String(key() || '').trim());
-  const months = () => { try { return fs.readdirSync(historyDir).filter(name => /^\d{4}-\d{2}\.json$/.test(name)).map(name => name.slice(0, 7)).sort(); } catch { return []; } };
+  const months = () => {
+    try {
+      return fs
+        .readdirSync(historyDir)
+        .filter(name => /^\d{4}-\d{2}\.json$/.test(name))
+        .map(name => name.slice(0, 7))
+        .sort();
+    } catch {
+      return [];
+    }
+  };
   const state = { running: null, refreshing: null, timer: null, retry: null };
   // Запрос к веб-приложению таблицы. POST Apps Script отвечает переадресацией на страницу с ответом — fetch идёт по ней.
   async function sheetRequest(params = {}, body = null) {
@@ -76,10 +107,21 @@ module.exports = function createSimaLand({ send, apiError, readJson, root, dir =
     for (const [name, value] of Object.entries(params)) target.searchParams.set(name, String(value));
     let data;
     try {
-      const response = await fetchImpl(target, { redirect: 'follow', signal: AbortSignal.timeout(300_000),
-        ...(body ? { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ ...body, key: String(key()).trim() }) } : {}) });
+      const response = await fetchImpl(target, {
+        redirect: 'follow',
+        signal: AbortSignal.timeout(300_000),
+        ...(body
+          ? {
+              method: 'POST',
+              headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+              body: JSON.stringify({ ...body, key: String(key()).trim() })
+            }
+          : {})
+      });
       data = await response.json();
-    } catch (error) { throw new Error(`Google Таблица не ответила: ${error.message}`); }
+    } catch (error) {
+      throw new Error(`Google Таблица не ответила: ${error.message}`);
+    }
     if (data?.error) throw new Error(`Google Таблица: ${data.error}`);
     return data;
   }
@@ -87,22 +129,47 @@ module.exports = function createSimaLand({ send, apiError, readJson, root, dir =
   // Сималенд так и не ответил, errors — тексты ошибок для журнала таблицы. При лимите (429), сбоях (5xx) и обрыве
   // сотня повторяется до двух раз через 5 секунд; 401 (неверный токен) и 422 — сразу ошибка этой сотни.
   async function loadItems(sids) {
-    const found = {}, failed = [], errors = [], apiKey = String(token() || '').trim();
+    const found = {},
+      failed = [],
+      errors = [],
+      apiKey = String(token() || '').trim();
     const one = async batch => {
       const target = `${SIMA_API}?sid=${batch.join(',')}&per-page=${BATCH}&fields=${SIMA_FIELDS}`;
       for (let attempt = 0; ; attempt++) {
-        let status = 0, data = null;
+        let status = 0,
+          data = null;
         try {
-          const response = await fetchImpl(target, { headers: { Accept: 'application/json', ...(apiKey ? { 'x-api-key': apiKey } : {}) }, signal: AbortSignal.timeout(60_000) });
-          status = response.status; data = await response.json().catch(() => null);
-        } catch (error) { data = { message: error.message }; }
+          const response = await fetchImpl(target, {
+            headers: { Accept: 'application/json', ...(apiKey ? { 'x-api-key': apiKey } : {}) },
+            signal: AbortSignal.timeout(60_000)
+          });
+          status = response.status;
+          data = await response.json().catch(() => null);
+        } catch (error) {
+          data = { message: error.message };
+        }
         if (status === 200 && Array.isArray(data?.items)) {
-          for (const good of data.items) found[String(good.sid)] = { name: String(good.name || ''), price: good.price, wholesale_price: good.wholesale_price, balance: good.balance ?? null, isEnough: Boolean(good.isEnough) };
+          for (const good of data.items)
+            found[String(good.sid)] = {
+              name: String(good.name || ''),
+              price: good.price,
+              wholesale_price: good.wholesale_price,
+              balance: good.balance ?? null,
+              isEnough: Boolean(good.isEnough)
+            };
           return;
         }
-        if ((!status || status === 429 || status >= 500) && attempt < 2) { await pause(5000); continue; }
+        if ((!status || status === 429 || status >= 500) && attempt < 2) {
+          await pause(5000);
+          continue;
+        }
         failed.push(...batch);
-        const text = status === 401 || status === 403 ? `Сималенд не принял токен (${status}): токен неверный или истёк` : status ? `Сималенд ответил ${status}: ${String(data?.message || '').slice(0, 200)}` : `Сималенд не ответил: ${data?.message || 'нет связи'}`;
+        const text =
+          status === 401 || status === 403
+            ? `Сималенд не принял токен (${status}): токен неверный или истёк`
+            : status
+              ? `Сималенд ответил ${status}: ${String(data?.message || '').slice(0, 200)}`
+              : `Сималенд не ответил: ${data?.message || 'нет связи'}`;
         if (!errors.includes(text)) errors.push(text);
         return;
       }
@@ -125,13 +192,27 @@ module.exports = function createSimaLand({ send, apiError, readJson, root, dir =
       let result;
       try {
         const list = await sheetRequest({ articles: 1 });
-        if (!force && list.updatedAt && Date.now() - Date.parse(list.updatedAt) < FRESH_MS && fs.existsSync(pricesFile)) result = { ok: true, skipped: true, at: startedAt, result: 'таблица обновлялась меньше часа назад' };
+        if (!force && list.updatedAt && Date.now() - Date.parse(list.updatedAt) < FRESH_MS && fs.existsSync(pricesFile))
+          result = { ok: true, skipped: true, at: startedAt, result: 'таблица обновлялась меньше часа назад' };
         else {
-          const sids = Array.isArray(list.sids) ? list.sids.map(String) : [], loaded = await loadItems(sids);
+          const sids = Array.isArray(list.sids) ? list.sids.map(String) : [],
+            loaded = await loadItems(sids);
           // Цены — на компьютер до отправки в таблицу: разделу «Прибыль Сималенда» они нужны, даже если таблица не ответила.
           writeJsonFile(pricesFile, { at: new Date().toISOString(), sids, found: loaded.found, failed: loaded.failed });
-          const answer = await sheetRequest({}, { sids, found: loaded.found, failed: loaded.failed, errors: loaded.errors, skipped: Number(list.skipped) || 0 });
-          result = { ok: true, at: startedAt, finishedAt: new Date().toISOString(), result: String(answer.result || ''), changes: Number(answer.changes) || 0, first: Boolean(answer.first), articles: sids.length, failed: loaded.failed.length };
+          const answer = await sheetRequest(
+            {},
+            { sids, found: loaded.found, failed: loaded.failed, errors: loaded.errors, skipped: Number(list.skipped) || 0 }
+          );
+          result = {
+            ok: true,
+            at: startedAt,
+            finishedAt: new Date().toISOString(),
+            result: String(answer.result || ''),
+            changes: Number(answer.changes) || 0,
+            first: Boolean(answer.first),
+            articles: sids.length,
+            failed: loaded.failed.length
+          };
         }
       } catch (error) {
         result = { ok: false, at: startedAt, finishedAt: new Date().toISOString(), error: error.message };
@@ -140,7 +221,9 @@ module.exports = function createSimaLand({ send, apiError, readJson, root, dir =
       if (!result.skipped) writeJsonFile(refreshFile, result);
       await sync();
       return result;
-    })().finally(() => { state.refreshing = null; });
+    })().finally(() => {
+      state.refreshing = null;
+    });
     return state.refreshing;
   }
 
@@ -151,21 +234,37 @@ module.exports = function createSimaLand({ send, apiError, readJson, root, dir =
       const month = String(item?.at || '').slice(0, 7);
       if (!/^\d{4}-\d{2}$/.test(month)) continue;
       if (!byMonth.has(month)) byMonth.set(month, []);
-      byMonth.get(month).push({ at: item.at, id: String(item.id ?? ''), title: String(item.title ?? ''), what: String(item.what ?? ''), before: item.before ?? '', after: item.after ?? '' });
+      byMonth
+        .get(month)
+        .push({
+          at: item.at,
+          id: String(item.id ?? ''),
+          title: String(item.title ?? ''),
+          what: String(item.what ?? ''),
+          before: item.before ?? '',
+          after: item.after ?? ''
+        });
     }
     let added = 0;
     for (const [month, rows] of byMonth) {
-      const file = path.join(historyDir, `${month}.json`), merged = mergeRows(readJsonFile(file, { items: [] }).items || [], rows);
-      if (merged.added.length) { writeJsonFile(file, { items: merged.rows }); added += merged.added.length; }
+      const file = path.join(historyDir, `${month}.json`),
+        merged = mergeRows(readJsonFile(file, { items: [] }).items || [], rows);
+      if (merged.added.length) {
+        writeJsonFile(file, { items: merged.rows });
+        added += merged.added.length;
+      }
     }
     return added;
   }
   // Строки за последние days дней (0 — все), новые сверху.
   function readHistory(days = 0) {
-    const fromIso = days ? new Date(Date.now() - days * 86_400_000).toISOString() : '', fromMonth = fromIso.slice(0, 7), items = [];
+    const fromIso = days ? new Date(Date.now() - days * 86_400_000).toISOString() : '',
+      fromMonth = fromIso.slice(0, 7),
+      items = [];
     for (const month of months()) {
       if (fromMonth && month < fromMonth) continue;
-      for (const item of readJsonFile(path.join(historyDir, `${month}.json`), { items: [] }).items || []) if (!fromIso || String(item.at) >= fromIso) items.push(item);
+      for (const item of readJsonFile(path.join(historyDir, `${month}.json`), { items: [] }).items || [])
+        if (!fromIso || String(item.at) >= fromIso) items.push(item);
     }
     return items.sort((a, b) => String(b.at).localeCompare(String(a.at)));
   }
@@ -180,22 +279,33 @@ module.exports = function createSimaLand({ send, apiError, readJson, root, dir =
       let added = 0;
       try {
         const after = saved.cursor ? new Date(Date.parse(saved.cursor) - 60_000).toISOString() : '';
-        let cursor = saved.cursor || '', info = {};
+        let cursor = saved.cursor || '',
+          info = {};
         for (let offset = 0, page = 0; page < 100; page++) {
           const target = new URL(String(url()).trim());
-          target.searchParams.set('key', String(key()).trim()); target.searchParams.set('sync', '1');
+          target.searchParams.set('key', String(key()).trim());
+          target.searchParams.set('sync', '1');
           if (after) target.searchParams.set('after', after);
-          target.searchParams.set('offset', String(offset)); target.searchParams.set('limit', '20000');
+          target.searchParams.set('offset', String(offset));
+          target.searchParams.set('limit', '20000');
           let data;
-          try { data = await (await fetchImpl(target, { redirect: 'follow', signal: AbortSignal.timeout(180_000) })).json(); }
-          catch (error) { throw new Error(`Google Таблица не ответила: ${error.message}`); }
+          try {
+            data = await (await fetchImpl(target, { redirect: 'follow', signal: AbortSignal.timeout(180_000) })).json();
+          } catch (error) {
+            throw new Error(`Google Таблица не ответила: ${error.message}`);
+          }
           if (data?.error) throw new Error(`Google Таблица: ${data.error}`);
           const items = Array.isArray(data?.items) ? data.items : [];
           added += saveRows(items);
           for (const item of items) if (String(item.at) > cursor) cursor = String(item.at);
           // Сведения о таблице — из первой порции; чего в ответе нет, остаётся от прошлой дозагрузки.
-          if (!page) info = { since: data?.since || saved.since || null, articles: Number(data?.articles) || saved.articles || 0,
-            updatedAt: data?.updatedAt || saved.updatedAt || null, lastResult: String(data?.lastResult || saved.lastResult || '') };
+          if (!page)
+            info = {
+              since: data?.since || saved.since || null,
+              articles: Number(data?.articles) || saved.articles || 0,
+              updatedAt: data?.updatedAt || saved.updatedAt || null,
+              lastResult: String(data?.lastResult || saved.lastResult || '')
+            };
           if (!data?.more || !items.length) break;
           offset += items.length;
         }
@@ -207,7 +317,9 @@ module.exports = function createSimaLand({ send, apiError, readJson, root, dir =
         writeJsonFile(syncFile, result);
         console.error('Таблица Сималенда:', error.message);
         return { ...result, added };
-      } finally { state.running = null; }
+      } finally {
+        state.running = null;
+      }
     })();
     return state.running;
   }
@@ -215,11 +327,23 @@ module.exports = function createSimaLand({ send, apiError, readJson, root, dir =
     if (!configured()) return { configured: false, items: [] };
     const days = Math.min(3660, Math.max(0, Math.round(Number(daysInput) || 0)));
     const synced = source === 'sheet' ? await sync() : null;
-    const saved = readJsonFile(syncFile, {}), items = readHistory(days), truncated = items.length > RESPONSE_LIMIT;
-    return { configured: true, source: source === 'sheet' ? 'sheet' : 'local', items: truncated ? items.slice(0, RESPONSE_LIMIT) : items, truncated,
-      since: saved.since || null, articles: saved.articles || 0, updatedAt: saved.updatedAt || null, lastResult: saved.lastResult || '',
-      syncedAt: saved.syncedAt || null, added: synced?.added || 0, syncError: synced?.lastError || '',
-      refresh: { ...readJsonFile(refreshFile, {}), running: Boolean(state.refreshing) } };
+    const saved = readJsonFile(syncFile, {}),
+      items = readHistory(days),
+      truncated = items.length > RESPONSE_LIMIT;
+    return {
+      configured: true,
+      source: source === 'sheet' ? 'sheet' : 'local',
+      items: truncated ? items.slice(0, RESPONSE_LIMIT) : items,
+      truncated,
+      since: saved.since || null,
+      articles: saved.articles || 0,
+      updatedAt: saved.updatedAt || null,
+      lastResult: saved.lastResult || '',
+      syncedAt: saved.syncedAt || null,
+      added: synced?.added || 0,
+      syncError: synced?.lastError || '',
+      refresh: { ...readJsonFile(refreshFile, {}), running: Boolean(state.refreshing) }
+    };
   }
   async function handle(req, res, target) {
     if (req.method === 'GET' && target.pathname === '/api/sima/history') {
@@ -239,7 +363,10 @@ module.exports = function createSimaLand({ send, apiError, readJson, root, dir =
   // RETRY_MS, а не через час. Повторы идут, пока загрузка не пройдёт; часовой порядок при этом не сбивается.
   function planned() {
     clearTimeout(state.retry);
-    return refresh().then(result => { if (result?.ok === false) state.retry = setTimeout(planned, RETRY_MS); return result; });
+    return refresh().then(result => {
+      if (result?.ok === false) state.retry = setTimeout(planned, RETRY_MS);
+      return result;
+    });
   }
   function start() {
     if (!configured() || state.timer) return;
@@ -248,6 +375,19 @@ module.exports = function createSimaLand({ send, apiError, readJson, root, dir =
   }
   // Цены последней загрузки: { at, sids — артикулы таблицы, found — артикул → цены, failed } или null, если загрузок не было.
   const prices = () => readJsonFile(pricesFile, null);
-  return { handle, start, planned, sync, refresh, loadItems, saveRows, readHistory, history, configured, prices, refreshing: () => Boolean(state.refreshing) };
+  return {
+    handle,
+    start,
+    planned,
+    sync,
+    refresh,
+    loadItems,
+    saveRows,
+    readHistory,
+    history,
+    configured,
+    prices,
+    refreshing: () => Boolean(state.refreshing)
+  };
 };
 module.exports.mergeRows = mergeRows;

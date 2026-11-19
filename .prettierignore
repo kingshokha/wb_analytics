@@ -1,0 +1,8 @@
+# Данные, выгрузки и сторонние файлы — не форматируются.
+data/
+node_modules/
+google-sheets/
+*.md
+*.json
+*.bat
+spp-test.js

@@ -17,7 +17,16 @@ const FUNNEL_DIR = path.join(ROOT, 'data', 'Funnel');
 // cancelCount («Отменили и вернули товаров, шт.», statistic.cancelCount в sales-funnel/products) нужен для процента выкупа
 // (выкупы ÷ (выкупы + отмены), как у WB). В днях, сохранённых до его появления, отмен нет — там он NaN (в ответе null),
 // чтобы процент выкупа таких дней считался неизвестным, а не 100%.
-const FUNNEL_COUNT_KEYS = ['openCount', 'cartCount', 'orderCount', 'orderSum', 'buyoutCount', 'buyoutSum', 'addToWishlistCount', 'cancelCount'];
+const FUNNEL_COUNT_KEYS = [
+  'openCount',
+  'cartCount',
+  'orderCount',
+  'orderSum',
+  'buyoutCount',
+  'buyoutSum',
+  'addToWishlistCount',
+  'cancelCount'
+];
 const FUNNEL_OPTIONAL_KEYS = new Set(['cancelCount']);
 const FUNNEL_PRODUCTS_URL = 'https://seller-analytics-api.wildberries.ru/api/analytics/v3/sales-funnel/products';
 const FUNNEL_BUCKET_SIZE = 3;
@@ -38,15 +47,24 @@ const PHOTO_MAX_BYTES = 5 * 1024 * 1024;
 const PHOTO_TYPES = { '.webp': 'image/webp', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png' };
 const photoPending = new Map();
 const WB_HOSTS = new Set([
-  'content-api.wildberries.ru', 'content-api-sandbox.wildberries.ru',
-  'seller-analytics-api.wildberries.ru', 'discounts-prices-api.wildberries.ru',
-  'discounts-prices-api-sandbox.wildberries.ru', 'marketplace-api.wildberries.ru',
-  'statistics-api.wildberries.ru', 'statistics-api-sandbox.wildberries.ru',
-  'advert-api.wildberries.ru', 'advert-api-sandbox.wildberries.ru',
-  'feedbacks-api.wildberries.ru', 'buyer-chat-api.wildberries.ru',
-  'supplies-api.wildberries.ru', 'returns-api.wildberries.ru',
-  'documents-api.wildberries.ru', 'finance-api.wildberries.ru',
-  'common-api.wildberries.ru', 'user-management-api.wildberries.ru'
+  'content-api.wildberries.ru',
+  'content-api-sandbox.wildberries.ru',
+  'seller-analytics-api.wildberries.ru',
+  'discounts-prices-api.wildberries.ru',
+  'discounts-prices-api-sandbox.wildberries.ru',
+  'marketplace-api.wildberries.ru',
+  'statistics-api.wildberries.ru',
+  'statistics-api-sandbox.wildberries.ru',
+  'advert-api.wildberries.ru',
+  'advert-api-sandbox.wildberries.ru',
+  'feedbacks-api.wildberries.ru',
+  'buyer-chat-api.wildberries.ru',
+  'supplies-api.wildberries.ru',
+  'returns-api.wildberries.ru',
+  'documents-api.wildberries.ru',
+  'finance-api.wildberries.ru',
+  'common-api.wildberries.ru',
+  'user-management-api.wildberries.ru'
 ]);
 const ALLOWED_METHODS = new Set(['GET', 'POST', 'PUT', 'PATCH', 'DELETE']);
 const MARKETPLACE_API = 'https://marketplace-api.wildberries.ru';
@@ -61,7 +79,18 @@ const PRICE_PRESETS_FILE = path.join(ROOT, 'data', 'price-presets.json');
 const KEYWORD_TAGS_FILE = path.join(ROOT, 'data', 'keyword-tags.json');
 const CAMPAIGN_NOTES_FILE = path.join(ROOT, 'data', 'campaign-notes.json');
 // Отметки ключевых запросов: одна основная отметка на запрос плюс независимая «Важный».
-const KEYWORD_TAG_KEYS = ['target', 'nearTarget', 'nonTarget', 'promote', 'test', 'traffic', 'watch', 'unprofitable', 'profitable', 'investigate'];
+const KEYWORD_TAG_KEYS = [
+  'target',
+  'nearTarget',
+  'nonTarget',
+  'promote',
+  'test',
+  'traffic',
+  'watch',
+  'unprofitable',
+  'profitable',
+  'investigate'
+];
 const PRESET_MAX_ITEMS = 200;
 const PRESET_MAX_COUNT = 50;
 const STOCK_PRESET_MAX_AMOUNT = 100_000;
@@ -103,21 +132,36 @@ function loadEnv(file) {
 }
 
 function readAliases() {
-  try { return JSON.parse(fs.readFileSync(DATA_FILE, 'utf8')); } catch { return {}; }
+  try {
+    return JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
+  } catch {
+    return {};
+  }
 }
 
 function readBalanceHistory() {
-  try { return JSON.parse(fs.readFileSync(BALANCE_HISTORY_FILE, 'utf8')); } catch { return {}; }
+  try {
+    return JSON.parse(fs.readFileSync(BALANCE_HISTORY_FILE, 'utf8'));
+  } catch {
+    return {};
+  }
 }
 
 function readPresets(file) {
-  try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return {}; }
+  try {
+    return JSON.parse(fs.readFileSync(file, 'utf8'));
+  } catch {
+    return {};
+  }
 }
 
 // Шаблоны, сохранённые до локального кэша фото, хранят прямые ссылки на CDN WB — отдаём их тоже через кэш.
 function cabinetPresets(file, cabinetId) {
   const list = readPresets(file)[cabinetId];
-  return (Array.isArray(list) ? list : []).map(preset => ({ ...preset, items: (preset.items || []).map(item => ({ ...item, photo: localPhoto(item.photo || '') })) }));
+  return (Array.isArray(list) ? list : []).map(preset => ({
+    ...preset,
+    items: (preset.items || []).map(item => ({ ...item, photo: localPhoto(item.photo || '') }))
+  }));
 }
 
 function writePresets(file, presets) {
@@ -126,13 +170,17 @@ function writePresets(file, presets) {
 }
 
 function presetName(preset = {}) {
-  const name = String(preset.name || '').trim().slice(0, 60);
+  const name = String(preset.name || '')
+    .trim()
+    .slice(0, 60);
   if (!name) throw apiError(400, 'Укажите название шаблона');
   return name;
 }
 
 function presetId(preset = {}) {
-  return /^[\w-]{1,40}$/.test(String(preset.id || '')) ? String(preset.id) : `preset-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
+  return /^[\w-]{1,40}$/.test(String(preset.id || ''))
+    ? String(preset.id)
+    : `preset-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
 }
 
 function savePreset(file, cabinetId, preset, normalize) {
@@ -142,7 +190,8 @@ function savePreset(file, cabinetId, preset, normalize) {
   const all = readPresets(file);
   const list = Array.isArray(all[id]) ? all[id] : [];
   const index = list.findIndex(item => item.id === normalized.id);
-  if (index >= 0) list[index] = normalized; else list.push(normalized);
+  if (index >= 0) list[index] = normalized;
+  else list.push(normalized);
   if (list.length > PRESET_MAX_COUNT) throw apiError(400, `Больше ${PRESET_MAX_COUNT} шаблонов хранить нельзя`);
   all[id] = list;
   writePresets(file, all);
@@ -159,12 +208,25 @@ function removePreset(file, cabinetId, id) {
 
 function normalizePricePreset(preset = {}) {
   const name = presetName(preset);
-  const items = (Array.isArray(preset.items) ? preset.items : []).map(item => ({
-    nmId: Number(item.nmId), price: Math.round(Number(item.price)), discount: Math.round(Number(item.discount)),
-    name: String(item.name || '').slice(0, 160), vendorCode: String(item.vendorCode || '').slice(0, 80),
-    photo: String(item.photo || '').slice(0, 300)
-  })).filter(item => Number.isInteger(item.nmId) && Number.isFinite(item.price) && item.price > 0 && item.price <= PRICE_PRESET_MAX_PRICE
-    && Number.isInteger(item.discount) && item.discount >= 0 && item.discount <= 99);
+  const items = (Array.isArray(preset.items) ? preset.items : [])
+    .map(item => ({
+      nmId: Number(item.nmId),
+      price: Math.round(Number(item.price)),
+      discount: Math.round(Number(item.discount)),
+      name: String(item.name || '').slice(0, 160),
+      vendorCode: String(item.vendorCode || '').slice(0, 80),
+      photo: String(item.photo || '').slice(0, 300)
+    }))
+    .filter(
+      item =>
+        Number.isInteger(item.nmId) &&
+        Number.isFinite(item.price) &&
+        item.price > 0 &&
+        item.price <= PRICE_PRESET_MAX_PRICE &&
+        Number.isInteger(item.discount) &&
+        item.discount >= 0 &&
+        item.discount <= 99
+    );
   if (!items.length) throw apiError(400, 'Добавьте в шаблон хотя бы один товар с ценой и скидкой');
   if (items.length > PRESET_MAX_ITEMS) throw apiError(400, `В шаблоне не может быть больше ${PRESET_MAX_ITEMS} товаров`);
   return { id: presetId(preset), name, items, updatedAt: new Date().toISOString() };
@@ -172,14 +234,24 @@ function normalizePricePreset(preset = {}) {
 
 function normalizeStockPreset(preset = {}) {
   const name = presetName(preset);
-  const warehouseIds = [...new Set((Array.isArray(preset.warehouseIds) ? preset.warehouseIds : []).map(value => String(value || '')).filter(Boolean))];
+  const warehouseIds = [
+    ...new Set((Array.isArray(preset.warehouseIds) ? preset.warehouseIds : []).map(value => String(value || '')).filter(Boolean))
+  ];
   if (!warehouseIds.length) throw apiError(400, 'Выберите хотя бы один склад FBS');
-  const items = (Array.isArray(preset.items) ? preset.items : []).map(item => ({
-    chrtId: Number(item.chrtId), amount: Math.floor(Number(item.amount)),
-    nmId: Number(item.nmId) || '', sku: String(item.sku || '').slice(0, 40),
-    name: String(item.name || '').slice(0, 160), vendorCode: String(item.vendorCode || '').slice(0, 80),
-    size: String(item.size || '').slice(0, 40), photo: String(item.photo || '').slice(0, 300)
-  })).filter(item => Number.isInteger(item.chrtId) && Number.isInteger(item.amount) && item.amount >= 0 && item.amount <= STOCK_PRESET_MAX_AMOUNT);
+  const items = (Array.isArray(preset.items) ? preset.items : [])
+    .map(item => ({
+      chrtId: Number(item.chrtId),
+      amount: Math.floor(Number(item.amount)),
+      nmId: Number(item.nmId) || '',
+      sku: String(item.sku || '').slice(0, 40),
+      name: String(item.name || '').slice(0, 160),
+      vendorCode: String(item.vendorCode || '').slice(0, 80),
+      size: String(item.size || '').slice(0, 40),
+      photo: String(item.photo || '').slice(0, 300)
+    }))
+    .filter(
+      item => Number.isInteger(item.chrtId) && Number.isInteger(item.amount) && item.amount >= 0 && item.amount <= STOCK_PRESET_MAX_AMOUNT
+    );
   if (!items.length) throw apiError(400, 'Добавьте в шаблон хотя бы один артикул с количеством');
   if (items.length > PRESET_MAX_ITEMS) throw apiError(400, `В шаблоне не может быть больше ${PRESET_MAX_ITEMS} артикулов`);
   return { id: presetId(preset), name, warehouseIds, items, updatedAt: new Date().toISOString() };
@@ -192,8 +264,14 @@ function saveBalanceSnapshot(cabinetId, balance) {
   const forWithdraw = Number(balance?.for_withdraw || 0);
   const previous = list[0];
   if (!previous || previous.current !== current || previous.forWithdraw !== forWithdraw || previous.currency !== balance.currency) {
-    list.unshift({ timestamp: new Date().toISOString(), currency: balance.currency || 'RUB', current, forWithdraw,
-      delta: previous ? current - previous.current : 0, withdrawDelta: previous ? forWithdraw - previous.forWithdraw : 0 });
+    list.unshift({
+      timestamp: new Date().toISOString(),
+      currency: balance.currency || 'RUB',
+      current,
+      forWithdraw,
+      delta: previous ? current - previous.current : 0,
+      withdrawDelta: previous ? forWithdraw - previous.forWithdraw : 0
+    });
     history[cabinetId] = list.slice(0, 20);
     fs.mkdirSync(path.dirname(BALANCE_HISTORY_FILE), { recursive: true });
     fs.writeFileSync(BALANCE_HISTORY_FILE, JSON.stringify(history, null, 2));
@@ -229,7 +307,10 @@ function tokenFor(id) {
 }
 
 function apiError(status, message, details) {
-  const error = new Error(message); error.status = status; error.details = details; return error;
+  const error = new Error(message);
+  error.status = status;
+  error.details = details;
+  return error;
 }
 
 async function readJson(req, limit = 2_000_000) {
@@ -239,7 +320,11 @@ async function readJson(req, limit = 2_000_000) {
     if (raw.length > limit) throw apiError(413, 'Слишком большой запрос');
   }
   if (!raw) return {};
-  try { return JSON.parse(raw); } catch { throw apiError(400, 'Некорректный JSON'); }
+  try {
+    return JSON.parse(raw);
+  } catch {
+    throw apiError(400, 'Некорректный JSON');
+  }
 }
 
 function send(res, status, payload, headers = {}) {
@@ -257,13 +342,16 @@ async function wbRequest(token, url, options = {}) {
   const timeout = setTimeout(() => controller.abort(), 25_000);
   try {
     const response = await fetch(target, {
-      method, signal: controller.signal,
+      method,
+      signal: controller.signal,
       headers: { Authorization: token, 'Content-Type': 'application/json', 'User-Agent': 'wb-analytics/1.0' },
       body: ['GET', 'DELETE'].includes(method) || options.body === undefined ? undefined : JSON.stringify(options.body)
     });
     const text = await response.text();
     let data = text;
-    try { data = text ? JSON.parse(text) : null; } catch {}
+    try {
+      data = text ? JSON.parse(text) : null;
+    } catch {}
     if (!response.ok) {
       const message = data?.detail || data?.message || `WB API вернул ${response.status}`;
       const error = apiError(response.status, message, data);
@@ -274,7 +362,9 @@ async function wbRequest(token, url, options = {}) {
   } catch (error) {
     if (error.name === 'AbortError') throw apiError(504, 'WB API не ответил за 25 секунд');
     throw error;
-  } finally { clearTimeout(timeout); }
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 // Все даты по умолчанию считаются по Москве (UTC+3), как в кабинете WB.
@@ -282,7 +372,9 @@ function dateDaysAgo(days) {
   return moscowDate(-days);
 }
 
-function wait(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
+function wait(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
 
 // Одновременные запросы с одним ключом ждут одну общую загрузку, а не идут в WB параллельно.
 const analyticsPending = new Map();
@@ -290,13 +382,18 @@ async function cachedAnalytics(key, loader, ttl = 60_000) {
   const cached = analyticsCache.get(key);
   if (cached && Date.now() - cached.savedAt < ttl) return cached.value;
   if (!analyticsPending.has(key)) {
-    analyticsPending.set(key, (async () => {
-      try {
-        const value = await loader();
-        analyticsCache.set(key, { value, savedAt: Date.now() });
-        return value;
-      } finally { analyticsPending.delete(key); }
-    })());
+    analyticsPending.set(
+      key,
+      (async () => {
+        try {
+          const value = await loader();
+          analyticsCache.set(key, { value, savedAt: Date.now() });
+          return value;
+        } finally {
+          analyticsPending.delete(key);
+        }
+      })()
+    );
   }
   try {
     return await analyticsPending.get(key);
@@ -334,7 +431,8 @@ const glueRatings = require('./glue-ratings')({ dirFor: productCardsDir });
 function readProductCardsCopy(id) {
   const dir = productCardsDir(id);
   try {
-    const index = JSON.parse(fs.readFileSync(path.join(dir, 'index.json'), 'utf8')), cards = [];
+    const index = JSON.parse(fs.readFileSync(path.join(dir, 'index.json'), 'utf8')),
+      cards = [];
     for (const item of index.files || []) {
       const saved = JSON.parse(fs.readFileSync(path.join(dir, item.file), 'utf8'));
       if (!Array.isArray(saved?.cards)) return null;
@@ -350,7 +448,8 @@ function readProductCardsCopy(id) {
   return null;
 }
 function writeProductCardsCopy(id, cards, savedAt) {
-  const dir = productCardsDir(id), groups = new Map();
+  const dir = productCardsDir(id),
+    groups = new Map();
   for (const card of cards) {
     const subjectID = card.subjectID ?? 0;
     if (!groups.has(subjectID)) groups.set(subjectID, { subjectID, subjectName: card.subjectName || '', cards: [] });
@@ -367,24 +466,44 @@ function writeProductCardsCopy(id, cards, savedAt) {
   fs.mkdirSync(dir, { recursive: true });
   // Прежний файл того же предмета (по index.json) переименовывается в новое имя — так он не остаётся лишним рядом.
   let previous = [];
-  try { previous = JSON.parse(fs.readFileSync(path.join(dir, 'index.json'), 'utf8')).files || []; } catch {}
+  try {
+    previous = JSON.parse(fs.readFileSync(path.join(dir, 'index.json'), 'utf8')).files || [];
+  } catch {}
   const oldFile = new Map(previous.map(item => [item.subjectID, item.file]));
   for (const [file, group] of bySubject) {
     const old = oldFile.get(group.subjectID);
-    if (old && old !== file && !bySubject.has(old) && fs.existsSync(path.join(dir, old)) && !fs.existsSync(path.join(dir, file))) fs.renameSync(path.join(dir, old), path.join(dir, file));
+    if (old && old !== file && !bySubject.has(old) && fs.existsSync(path.join(dir, old)) && !fs.existsSync(path.join(dir, file)))
+      fs.renameSync(path.join(dir, old), path.join(dir, file));
   }
-  const write = (file, data) => { const target = path.join(dir, file); fs.writeFileSync(`${target}.tmp`, JSON.stringify(data)); fs.renameSync(`${target}.tmp`, target); };
+  const write = (file, data) => {
+    const target = path.join(dir, file);
+    fs.writeFileSync(`${target}.tmp`, JSON.stringify(data));
+    fs.renameSync(`${target}.tmp`, target);
+  };
   for (const [file, group] of bySubject) write(file, { cabinet: id, savedAt: new Date(savedAt).toISOString(), ...group });
   // Индекс — последним: пока все файлы предметов не записаны, читается прежний набор.
-  write('index.json', { cabinet: id, savedAt: new Date(savedAt).toISOString(), count: cards.length,
-    files: [...bySubject].map(([file, group]) => ({ file, subjectID: group.subjectID, subjectName: group.subjectName, count: group.cards.length })) });
+  write('index.json', {
+    cabinet: id,
+    savedAt: new Date(savedAt).toISOString(),
+    count: cards.length,
+    files: [...bySubject].map(([file, group]) => ({
+      file,
+      subjectID: group.subjectID,
+      subjectName: group.subjectName,
+      count: group.cards.length
+    }))
+  });
 }
 function productCardsCopy(id) {
   const key = productCardsKey(id);
   if (!analyticsCache.has(key)) {
     const saved = readProductCardsCopy(id);
     // Копии, сохранённые до исправления повторов (см. loadProductCardPages), могут содержать карточку дважды.
-    if (saved) { const seen = new Set(); saved.value = saved.value.filter(card => !seen.has(card.nmID) && seen.add(card.nmID)); analyticsCache.set(key, saved); }
+    if (saved) {
+      const seen = new Set();
+      saved.value = saved.value.filter(card => !seen.has(card.nmID) && seen.add(card.nmID));
+      analyticsCache.set(key, saved);
+    }
   }
   return analyticsCache.get(key) || null;
 }
@@ -395,18 +514,27 @@ function refreshProductCards(id, token = tokenFor(id)) {
     const job = (async () => {
       try {
         let value = await loadProductCards(token);
-        const savedAt = Date.now(), changed = (productCardsGen.get(id) || 0) !== gen;
+        const savedAt = Date.now(),
+          changed = (productCardsGen.get(id) || 0) !== gen;
         // Карточку изменили на сайте, пока шла загрузка: список мог прочитать старые данные — он сразу считается устаревшим,
         // а правки, сделанные за время загрузки, накладываются на него заново. Иначе после склейки по 30 (десятки шагов,
         // пока у кабинета с 15 000 карточек идёт загрузка) часть склеенных карточек снова выглядела отдельными.
         const patches = productCardsPatches.get(id) || [];
         if (changed) for (const item of patches) if (item.gen > gen) value = item.patch(value) || value;
-        productCardsPatches.set(id, patches.filter(item => item.gen > gen));
+        productCardsPatches.set(
+          id,
+          patches.filter(item => item.gen > gen)
+        );
         analyticsCache.set(key, { value, savedAt, stale: changed });
-        try { writeProductCardsCopy(id, value, savedAt); }
-        catch (error) { console.error(`Не удалось сохранить карточки кабинета ${id}: ${error.message}`); }
+        try {
+          writeProductCardsCopy(id, value, savedAt);
+        } catch (error) {
+          console.error(`Не удалось сохранить карточки кабинета ${id}: ${error.message}`);
+        }
         return value;
-      } finally { analyticsPending.delete(key); }
+      } finally {
+        analyticsPending.delete(key);
+      }
     })();
     job.catch(error => console.error(`Карточки кабинета ${id}: ${error.message}`));
     analyticsPending.set(key, job);
@@ -417,7 +545,10 @@ function refreshProductCards(id, token = tokenFor(id)) {
 async function productCards(id, token = tokenFor(id), { wait = true } = {}) {
   const copy = productCardsCopy(id);
   if (copy && !copy.stale && Date.now() - copy.savedAt < PRODUCT_CARDS_TTL) return copy.value;
-  if (copy) { refreshProductCards(id, token); return copy.value; }
+  if (copy) {
+    refreshProductCards(id, token);
+    return copy.value;
+  }
   const job = refreshProductCards(id, token);
   return wait ? job : [...(productCardsLoading.get(token) || [])];
 }
@@ -427,17 +558,28 @@ function productCardsChanged(id, patch) {
   productCardsGen.set(id, gen);
   if (patch) productCardsPatches.set(id, [...(productCardsPatches.get(id) || []), { gen, patch }]);
   const copy = productCardsCopy(id);
-  if (copy) { if (patch) copy.value = patch(copy.value) || copy.value; copy.stale = true; }
+  if (copy) {
+    if (patch) copy.value = patch(copy.value) || copy.value;
+    copy.stale = true;
+  }
   refreshProductCards(id);
 }
 function productCardsStatus(id) {
   const copy = analyticsCache.get(productCardsKey(id));
-  return { savedAt: copy?.savedAt || 0, refreshing: analyticsPending.has(productCardsKey(id)), loaded: productCardsLoading.get(tokenFor(id))?.length || 0 };
+  return {
+    savedAt: copy?.savedAt || 0,
+    refreshing: analyticsPending.has(productCardsKey(id)),
+    loaded: productCardsLoading.get(tokenFor(id))?.length || 0
+  };
 }
 async function loadProductCards(token) {
   const cards = [];
   productCardsLoading.set(token, cards);
-  try { return await loadProductCardPages(token, cards); } finally { productCardsLoading.delete(token); }
+  try {
+    return await loadProductCardPages(token, cards);
+  } finally {
+    productCardsLoading.delete(token);
+  }
 }
 // По документации следующая страница — по cursor { updatedAt, nmID } из ответа. На деле, когда у сотен карточек одинаковое
 // updatedAt (изменены одной пачкой), WB на стыке страниц присылает часть из них ещё раз — с другим порядком характеристик.
@@ -447,7 +589,8 @@ async function loadProductCards(token) {
 // склеенные во время загрузки (14 780 вместо 14 961, хотя ни одна не удалена). Поэтому после полного прохода начало списка
 // читается ещё раз — до карточек, изменённых раньше начала загрузки (с запасом CATCH_UP_MARGIN на разницу часов), — и
 // изменённые за это время заменяют или дополняют загруженные.
-const CATCH_UP_MARGIN = 5 * 60_000, CATCH_UP_MAX_PAGES = 100;
+const CATCH_UP_MARGIN = 5 * 60_000,
+  CATCH_UP_MAX_PAGES = 100;
 async function cardsListPage(token, cursor) {
   for (let retry = 0; ; retry++) {
     try {
@@ -468,7 +611,11 @@ async function loadProductCardPages(token, cards) {
   for (let page = 0; page < PRODUCT_CARDS_MAX_PAGES; page++) {
     const response = await cardsListPage(token, cursor);
     const batch = Array.isArray(response?.cards) ? response.cards : [];
-    for (const card of batch) if (!index.has(card.nmID)) { index.set(card.nmID, cards.length); cards.push(card); }
+    for (const card of batch)
+      if (!index.has(card.nmID)) {
+        index.set(card.nmID, cards.length);
+        cards.push(card);
+      }
     if (batch.length < 100 || !response?.cursor?.updatedAt || !response?.cursor?.nmID) break;
     cursor = { limit: 100, updatedAt: response.cursor.updatedAt, nmID: response.cursor.nmID };
     if ((page + 1) % 5 === 0) await wait(650);
@@ -482,9 +629,15 @@ async function loadProductCardPages(token, cards) {
     const batch = Array.isArray(response?.cards) ? response.cards : [];
     let older = false;
     for (const card of batch) {
-      if (Date.parse(card.updatedAt) < since) { older = true; continue; }
+      if (Date.parse(card.updatedAt) < since) {
+        older = true;
+        continue;
+      }
       if (index.has(card.nmID)) cards[index.get(card.nmID)] = card;
-      else { index.set(card.nmID, cards.length); cards.push(card); }
+      else {
+        index.set(card.nmID, cards.length);
+        cards.push(card);
+      }
     }
     if (older || batch.length < 100 || !response?.cursor?.updatedAt || !response?.cursor?.nmID) break;
     cursor = { limit: 100, updatedAt: response.cursor.updatedAt, nmID: response.cursor.nmID };
@@ -502,8 +655,14 @@ function cardPhoto(card = {}) {
 function isWbPhotoUrl(value) {
   try {
     const target = new URL(value);
-    return target.protocol === 'https:' && /(^|\.)wbbasket\.ru$/.test(target.hostname) && Boolean(PHOTO_TYPES[path.extname(target.pathname).toLowerCase()]);
-  } catch { return false; }
+    return (
+      target.protocol === 'https:' &&
+      /(^|\.)wbbasket\.ru$/.test(target.hostname) &&
+      Boolean(PHOTO_TYPES[path.extname(target.pathname).toLowerCase()])
+    );
+  } catch {
+    return false;
+  }
 }
 
 function localPhoto(url) {
@@ -511,19 +670,30 @@ function localPhoto(url) {
 }
 
 function downloadPhoto(source, file) {
-  if (!photoPending.has(file)) photoPending.set(file, (async () => {
-    try {
-      const response = await fetch(source, { signal: AbortSignal.timeout(15_000), headers: { 'User-Agent': 'wb-analytics/1.0' } });
-      if (!response.ok) throw apiError(response.status === 404 ? 404 : 502, `Фото WB не загрузилось (${response.status})`);
-      const body = Buffer.from(await response.arrayBuffer());
-      if (!body.length || body.length > PHOTO_MAX_BYTES) throw apiError(502, 'Фото WB пустое или слишком большое');
-      fs.mkdirSync(PHOTOS_DIR, { recursive: true });
-      const temp = `${file}.${process.pid}.tmp`;
-      fs.writeFileSync(temp, body);
-      // На Windows файл, который сейчас кто-то читает, заменить нельзя — тогда остаётся старая копия.
-      try { fs.renameSync(temp, file); } catch (error) { fs.rmSync(temp, { force: true }); if (!fs.existsSync(file)) throw error; }
-    } finally { photoPending.delete(file); }
-  })());
+  if (!photoPending.has(file))
+    photoPending.set(
+      file,
+      (async () => {
+        try {
+          const response = await fetch(source, { signal: AbortSignal.timeout(15_000), headers: { 'User-Agent': 'wb-analytics/1.0' } });
+          if (!response.ok) throw apiError(response.status === 404 ? 404 : 502, `Фото WB не загрузилось (${response.status})`);
+          const body = Buffer.from(await response.arrayBuffer());
+          if (!body.length || body.length > PHOTO_MAX_BYTES) throw apiError(502, 'Фото WB пустое или слишком большое');
+          fs.mkdirSync(PHOTOS_DIR, { recursive: true });
+          const temp = `${file}.${process.pid}.tmp`;
+          fs.writeFileSync(temp, body);
+          // На Windows файл, который сейчас кто-то читает, заменить нельзя — тогда остаётся старая копия.
+          try {
+            fs.renameSync(temp, file);
+          } catch (error) {
+            fs.rmSync(temp, { force: true });
+            if (!fs.existsSync(file)) throw error;
+          }
+        } finally {
+          photoPending.delete(file);
+        }
+      })()
+    );
   return photoPending.get(file);
 }
 
@@ -541,42 +711,114 @@ async function servePhoto(res, url) {
 
 function stockCardIndex(cards = []) {
   const index = new Map();
-  for (const card of cards) for (const size of card.sizes || []) {
-    const chrtId = String(size.chrtID || size.chrtId || '');
-    if (!chrtId) continue;
-    index.set(chrtId, { nmId: card.nmID, vendorCode: card.vendorCode || '', name: card.title || `Товар ${card.nmID}`,
-      category: card.subjectName || 'Без категории', size: size.techSize || size.wbSize || '—', sku: (size.skus || [])[0] || '',
-      photo: cardPhoto(card) });
-  }
+  for (const card of cards)
+    for (const size of card.sizes || []) {
+      const chrtId = String(size.chrtID || size.chrtId || '');
+      if (!chrtId) continue;
+      index.set(chrtId, {
+        nmId: card.nmID,
+        vendorCode: card.vendorCode || '',
+        name: card.title || `Товар ${card.nmID}`,
+        category: card.subjectName || 'Без категории',
+        size: size.techSize || size.wbSize || '—',
+        sku: (size.skus || [])[0] || '',
+        photo: cardPhoto(card)
+      });
+    }
   return index;
 }
 
 function normalizeFbsStocks(warehouses = [], stockResponses = [], cards = []) {
-  const byChrt = stockCardIndex(cards); const rows = [];
-  stockResponses.forEach(({ warehouse, stocks }) => (stocks || []).forEach(stock => {
-    const meta = byChrt.get(String(stock.chrtId)) || {};
-    rows.push({ warehouseId: warehouse.id, warehouseName: warehouse.name || `Склад ${warehouse.id}`, officeId: warehouse.officeId,
-      nmId: meta.nmId || '', vendorCode: meta.vendorCode || '', name: meta.name || `Размер ${stock.chrtId}`,
-      category: meta.category || 'Без категории', size: meta.size || '—', sku: stock.sku || meta.sku || '', photo: meta.photo || '', chrtId: stock.chrtId,
-      amount: Number(stock.amount || 0) });
-  }));
+  const byChrt = stockCardIndex(cards);
+  const rows = [];
+  stockResponses.forEach(({ warehouse, stocks }) =>
+    (stocks || []).forEach(stock => {
+      const meta = byChrt.get(String(stock.chrtId)) || {};
+      rows.push({
+        warehouseId: warehouse.id,
+        warehouseName: warehouse.name || `Склад ${warehouse.id}`,
+        officeId: warehouse.officeId,
+        nmId: meta.nmId || '',
+        vendorCode: meta.vendorCode || '',
+        name: meta.name || `Размер ${stock.chrtId}`,
+        category: meta.category || 'Без категории',
+        size: meta.size || '—',
+        sku: stock.sku || meta.sku || '',
+        photo: meta.photo || '',
+        chrtId: stock.chrtId,
+        amount: Number(stock.amount || 0)
+      });
+    })
+  );
   const totalAmount = rows.reduce((sum, row) => sum + row.amount, 0);
   const categories = [...new Set(rows.map(row => row.category).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'ru'));
-  return { rows: rows.sort((a, b) => b.amount - a.amount || String(a.name).localeCompare(String(b.name), 'ru')),
-    warehouses: warehouses.map(item => ({ id: item.id, name: item.name || `Склад ${item.id}`, officeId: item.officeId })), categories,
-    totals: { rows: rows.length, products: new Set(rows.map(row => String(row.nmId || row.chrtId))).size,
-      warehouses: new Set(rows.map(row => String(row.warehouseId))).size, amount: totalAmount,
-      zero: rows.filter(row => row.amount === 0).length, positive: rows.filter(row => row.amount > 0).length } };
+  return {
+    rows: rows.sort((a, b) => b.amount - a.amount || String(a.name).localeCompare(String(b.name), 'ru')),
+    warehouses: warehouses.map(item => ({ id: item.id, name: item.name || `Склад ${item.id}`, officeId: item.officeId })),
+    categories,
+    totals: {
+      rows: rows.length,
+      products: new Set(rows.map(row => String(row.nmId || row.chrtId))).size,
+      warehouses: new Set(rows.map(row => String(row.warehouseId))).size,
+      amount: totalAmount,
+      zero: rows.filter(row => row.amount === 0).length,
+      positive: rows.filter(row => row.amount > 0).length
+    }
+  };
 }
 
 function demoFbsStocks() {
-  const warehouses = [{ id: 'demo-1', name: 'Основной FBS', officeId: 1 }, { id: 'demo-2', name: 'Резервный FBS', officeId: 2 }];
-  const cards = [
-    { nmID: 100001, vendorCode: 'TSHIRT-BLACK', title: 'Футболка базовая', subjectName: 'Одежда', sizes: [{ chrtID: 501, techSize: 'M', skus: ['460000000001'] }] },
-    { nmID: 100002, vendorCode: 'MUG-THERMO', title: 'Термокружка', subjectName: 'Посуда', sizes: [{ chrtID: 502, techSize: '500 мл', skus: ['460000000002'] }] },
-    { nmID: 100003, vendorCode: 'HOODIE-GREEN', title: 'Худи Oversize', subjectName: 'Одежда', sizes: [{ chrtID: 503, techSize: 'L', skus: ['460000000003'] }] }
+  const warehouses = [
+    { id: 'demo-1', name: 'Основной FBS', officeId: 1 },
+    { id: 'demo-2', name: 'Резервный FBS', officeId: 2 }
   ];
-  return { demo: true, ...normalizeFbsStocks(warehouses, [{ warehouse: warehouses[0], stocks: [{ chrtId: 501, sku: '460000000001', amount: 42 }, { chrtId: 502, sku: '460000000002', amount: 8 }] }, { warehouse: warehouses[1], stocks: [{ chrtId: 501, sku: '460000000001', amount: 15 }, { chrtId: 503, sku: '460000000003', amount: 0 }] }], cards), warnings: [] };
+  const cards = [
+    {
+      nmID: 100001,
+      vendorCode: 'TSHIRT-BLACK',
+      title: 'Футболка базовая',
+      subjectName: 'Одежда',
+      sizes: [{ chrtID: 501, techSize: 'M', skus: ['460000000001'] }]
+    },
+    {
+      nmID: 100002,
+      vendorCode: 'MUG-THERMO',
+      title: 'Термокружка',
+      subjectName: 'Посуда',
+      sizes: [{ chrtID: 502, techSize: '500 мл', skus: ['460000000002'] }]
+    },
+    {
+      nmID: 100003,
+      vendorCode: 'HOODIE-GREEN',
+      title: 'Худи Oversize',
+      subjectName: 'Одежда',
+      sizes: [{ chrtID: 503, techSize: 'L', skus: ['460000000003'] }]
+    }
+  ];
+  return {
+    demo: true,
+    ...normalizeFbsStocks(
+      warehouses,
+      [
+        {
+          warehouse: warehouses[0],
+          stocks: [
+            { chrtId: 501, sku: '460000000001', amount: 42 },
+            { chrtId: 502, sku: '460000000002', amount: 8 }
+          ]
+        },
+        {
+          warehouse: warehouses[1],
+          stocks: [
+            { chrtId: 501, sku: '460000000001', amount: 15 },
+            { chrtId: 503, sku: '460000000003', amount: 0 }
+          ]
+        }
+      ],
+      cards
+    ),
+    warnings: []
+  };
 }
 
 // --- Списки, которые сервер собирает по частям: цены, остатки FBS и FBW ---
@@ -589,18 +831,43 @@ async function progressiveList(key, ttl, force, run) {
   const fresh = job?.done && Date.now() - job.doneAt < ttl;
   if (!job || (!job.running && (force || !fresh))) {
     let first;
-    job = { running: true, done: false, snapshot: null, final: null, error: null, first: new Promise(resolve => { first = resolve; }) };
+    job = {
+      running: true,
+      done: false,
+      snapshot: null,
+      final: null,
+      error: null,
+      first: new Promise(resolve => {
+        first = resolve;
+      })
+    };
     listJobs.set(key, job);
     const current = job;
-    current.promise = run(snapshot => { current.snapshot = snapshot; first(); })
-      .then(final => { Object.assign(current, { final, done: true, doneAt: Date.now() }); }, error => { current.error = error; })
-      .finally(() => { current.running = false; first(); });
+    current.promise = run(snapshot => {
+      current.snapshot = snapshot;
+      first();
+    })
+      .then(
+        final => {
+          Object.assign(current, { final, done: true, doneAt: Date.now() });
+        },
+        error => {
+          current.error = error;
+        }
+      )
+      .finally(() => {
+        current.running = false;
+        first();
+      });
   }
   // Показать ещё нечего — ждём первую порцию (до 20 с) или конец.
   if (!job.done && !job.snapshot) await Promise.race([job.first, wait(20_000)]);
   if (job.done) return { ...job.final, partial: false };
   if (job.error) {
-    if (!job.snapshot) { listJobs.delete(key); throw job.error; }
+    if (!job.snapshot) {
+      listJobs.delete(key);
+      throw job.error;
+    }
     const data = job.snapshot();
     return { ...data, partial: false, warnings: [...(data.warnings || []), `Загрузка прервалась: ${job.error.message}`] };
   }
@@ -610,8 +877,15 @@ const forgetList = key => listJobs.delete(key);
 // Карточки кабинета: готовые — сразу, а пока грузятся — те, что уже пришли. cards() — текущий список, done — промис конца.
 function cardsSoFar(id, token, warnings) {
   let cards = null;
-  const done = productCards(id, token)
-    .then(list => { cards = list; }, error => { cards = []; warnings.push(`Карточки товаров: ${error.message}`); });
+  const done = productCards(id, token).then(
+    list => {
+      cards = list;
+    },
+    error => {
+      cards = [];
+      warnings.push(`Карточки товаров: ${error.message}`);
+    }
+  );
   return { cards: () => cards || productCardsLoading.get(token) || [], loading: () => !cards, done };
 }
 
@@ -623,22 +897,45 @@ async function fbsStocks(id, force = false) {
   const token = tokenFor(id);
   return progressiveList(`fbs-stocks:${id}`, 30_000, force, async publish => {
     const warnings = [];
-    const warehousesResponse = await cachedAnalytics(`fbs-warehouses:${id}`, () => wbRequest(token, 'https://marketplace-api.wildberries.ru/api/v3/warehouses'), 2 * 60_000);
-    const warehouses = (Array.isArray(warehousesResponse) ? warehousesResponse : []).filter(item => Number(item.deliveryType) === 1 && !item.isDeleting);
-    const cards = cardsSoFar(id, token, warnings), responses = warehouses.map(warehouse => ({ warehouse, stocks: [] })), asked = new Set();
-    const snapshot = () => ({ demo: false, ...normalizeFbsStocks(warehouses, responses, cards.cards()), warnings: [...new Set(warnings)], progress: { sizes: asked.size, cardsLoading: cards.loading() } });
+    const warehousesResponse = await cachedAnalytics(
+      `fbs-warehouses:${id}`,
+      () => wbRequest(token, 'https://marketplace-api.wildberries.ru/api/v3/warehouses'),
+      2 * 60_000
+    );
+    const warehouses = (Array.isArray(warehousesResponse) ? warehousesResponse : []).filter(
+      item => Number(item.deliveryType) === 1 && !item.isDeleting
+    );
+    const cards = cardsSoFar(id, token, warnings),
+      responses = warehouses.map(warehouse => ({ warehouse, stocks: [] })),
+      asked = new Set();
+    const snapshot = () => ({
+      demo: false,
+      ...normalizeFbsStocks(warehouses, responses, cards.cards()),
+      warnings: [...new Set(warnings)],
+      progress: { sizes: asked.size, cardsLoading: cards.loading() }
+    });
     publish(snapshot);
     for (;;) {
-      const loading = cards.loading(), pending = [...stockCardIndex(cards.cards()).keys()].filter(chrtId => !asked.has(chrtId));
+      const loading = cards.loading(),
+        pending = [...stockCardIndex(cards.cards()).keys()].filter(chrtId => !asked.has(chrtId));
       if (!pending.length && !loading) break;
       // Пока карточки грузятся, остатки запрашиваются полными тысячами размеров.
-      if (!pending.length || (loading && pending.length < 1000)) { await Promise.race([cards.done, wait(700)]); continue; }
-      const chunk = pending.slice(0, 1000); chunk.forEach(chrtId => asked.add(chrtId));
+      if (!pending.length || (loading && pending.length < 1000)) {
+        await Promise.race([cards.done, wait(700)]);
+        continue;
+      }
+      const chunk = pending.slice(0, 1000);
+      chunk.forEach(chrtId => asked.add(chrtId));
       for (const item of responses) {
         try {
-          const result = await wbRequest(token, `https://marketplace-api.wildberries.ru/api/v3/stocks/${item.warehouse.id}`, { method: 'POST', body: { chrtIds: chunk.map(Number) } });
+          const result = await wbRequest(token, `https://marketplace-api.wildberries.ru/api/v3/stocks/${item.warehouse.id}`, {
+            method: 'POST',
+            body: { chrtIds: chunk.map(Number) }
+          });
           item.stocks.push(...(Array.isArray(result?.stocks) ? result.stocks : []));
-        } catch (error) { warnings.push(`${item.warehouse.name || item.warehouse.id}: ${error.message}`); }
+        } catch (error) {
+          warnings.push(`${item.warehouse.name || item.warehouse.id}: ${error.message}`);
+        }
         await wait(220);
       }
       publish(snapshot);
@@ -651,29 +948,80 @@ function normalizeFbwStocks(items = [], cards = []) {
   const byChrt = stockCardIndex(cards);
   const rows = items.map(item => {
     const meta = byChrt.get(String(item.chrtId)) || {};
-    return { warehouseId: item.warehouseId, warehouseName: item.warehouseName || `Склад ${item.warehouseId || 'WB'}`,
-      regionName: item.regionName || 'Без региона', nmId: Number(item.nmId || meta.nmId || 0) || '', chrtId: Number(item.chrtId || 0) || '',
-      vendorCode: meta.vendorCode || '', name: meta.name || `Товар ${item.nmId || item.chrtId || ''}`,
-      category: meta.category || 'Без категории', size: meta.size || '—', sku: meta.sku || '', photo: meta.photo || '',
-      amount: Number(item.quantity || 0), inWayToClient: Number(item.inWayToClient || 0), inWayFromClient: Number(item.inWayFromClient || 0) };
+    return {
+      warehouseId: item.warehouseId,
+      warehouseName: item.warehouseName || `Склад ${item.warehouseId || 'WB'}`,
+      regionName: item.regionName || 'Без региона',
+      nmId: Number(item.nmId || meta.nmId || 0) || '',
+      chrtId: Number(item.chrtId || 0) || '',
+      vendorCode: meta.vendorCode || '',
+      name: meta.name || `Товар ${item.nmId || item.chrtId || ''}`,
+      category: meta.category || 'Без категории',
+      size: meta.size || '—',
+      sku: meta.sku || '',
+      photo: meta.photo || '',
+      amount: Number(item.quantity || 0),
+      inWayToClient: Number(item.inWayToClient || 0),
+      inWayFromClient: Number(item.inWayFromClient || 0)
+    };
   });
-  const warehouses = [...new Map(rows.map(row => [String(row.warehouseId), { id: row.warehouseId, name: row.warehouseName }])).values()]
-    .sort((a, b) => String(a.name).localeCompare(String(b.name), 'ru'));
+  const warehouses = [
+    ...new Map(rows.map(row => [String(row.warehouseId), { id: row.warehouseId, name: row.warehouseName }])).values()
+  ].sort((a, b) => String(a.name).localeCompare(String(b.name), 'ru'));
   const categories = [...new Set(rows.map(row => row.category).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'ru'));
-  return { rows: rows.sort((a, b) => b.amount - a.amount || String(a.name).localeCompare(String(b.name), 'ru')), warehouses, categories,
-    totals: { rows: rows.length, products: new Set(rows.map(row => String(row.nmId || row.chrtId))).size,
-      warehouses: new Set(rows.map(row => String(row.warehouseId))).size, amount: rows.reduce((sum, row) => sum + row.amount, 0),
-      zero: rows.filter(row => row.amount === 0).length, positive: rows.filter(row => row.amount > 0).length } };
+  return {
+    rows: rows.sort((a, b) => b.amount - a.amount || String(a.name).localeCompare(String(b.name), 'ru')),
+    warehouses,
+    categories,
+    totals: {
+      rows: rows.length,
+      products: new Set(rows.map(row => String(row.nmId || row.chrtId))).size,
+      warehouses: new Set(rows.map(row => String(row.warehouseId))).size,
+      amount: rows.reduce((sum, row) => sum + row.amount, 0),
+      zero: rows.filter(row => row.amount === 0).length,
+      positive: rows.filter(row => row.amount > 0).length
+    }
+  };
 }
 
 function demoFbwStocks() {
   const cards = [
-    { nmID: 100001, vendorCode: 'TSHIRT-BLACK', title: 'Футболка базовая', subjectName: 'Одежда', sizes: [{ chrtID: 501, techSize: 'M', skus: ['460000000001'] }] },
-    { nmID: 100002, vendorCode: 'MUG-THERMO', title: 'Термокружка', subjectName: 'Посуда', sizes: [{ chrtID: 502, techSize: '500 мл', skus: ['460000000002'] }] }
+    {
+      nmID: 100001,
+      vendorCode: 'TSHIRT-BLACK',
+      title: 'Футболка базовая',
+      subjectName: 'Одежда',
+      sizes: [{ chrtID: 501, techSize: 'M', skus: ['460000000001'] }]
+    },
+    {
+      nmID: 100002,
+      vendorCode: 'MUG-THERMO',
+      title: 'Термокружка',
+      subjectName: 'Посуда',
+      sizes: [{ chrtID: 502, techSize: '500 мл', skus: ['460000000002'] }]
+    }
   ];
   const items = [
-    { nmId: 100001, chrtId: 501, warehouseId: 507, warehouseName: 'Коледино', regionName: 'Центральный', quantity: 42, inWayToClient: 3, inWayFromClient: 1 },
-    { nmId: 100002, chrtId: 502, warehouseId: 117986, warehouseName: 'Казань', regionName: 'Приволжский', quantity: 8, inWayToClient: 2, inWayFromClient: 0 }
+    {
+      nmId: 100001,
+      chrtId: 501,
+      warehouseId: 507,
+      warehouseName: 'Коледино',
+      regionName: 'Центральный',
+      quantity: 42,
+      inWayToClient: 3,
+      inWayFromClient: 1
+    },
+    {
+      nmId: 100002,
+      chrtId: 502,
+      warehouseId: 117986,
+      warehouseName: 'Казань',
+      regionName: 'Приволжский',
+      quantity: 8,
+      inWayToClient: 2,
+      inWayFromClient: 0
+    }
   ];
   return { demo: true, ...normalizeFbwStocks(items, cards), warnings: [] };
 }
@@ -681,9 +1029,13 @@ function demoFbwStocks() {
 // Отчёты остатков WB обновляются раз в 30 минут и ограничены 3 запросами в минуту,
 // поэтому ответ кэшируется ненадолго и общий для вкладок FBW и цен.
 async function loadInventoryReport(token, report) {
-  const limit = 250000; const items = [];
+  const limit = 250000;
+  const items = [];
   for (let offset = 0; ; offset += limit) {
-    const response = await wbRequest(token, `${STOCKS_REPORT_API}/${report}`, { method: 'POST', body: { nmIds: [], chrtIds: [], limit, offset } });
+    const response = await wbRequest(token, `${STOCKS_REPORT_API}/${report}`, {
+      method: 'POST',
+      body: { nmIds: [], chrtIds: [], limit, offset }
+    });
     const batch = Array.isArray(response?.data?.items) ? response.data.items : Array.isArray(response?.items) ? response.items : [];
     items.push(...batch);
     if (batch.length < limit) break;
@@ -702,23 +1054,45 @@ function summarizeStockTotals(wbItems = [], sellerItems = []) {
     for (const item of items) {
       const nmId = String(item.nmId || '');
       if (!nmId) continue;
-      const row = totals[nmId] ||= { fbs: 0, fbw: 0, total: 0 };
+      const row = (totals[nmId] ||= { fbs: 0, fbw: 0, total: 0 });
       const quantity = Number(item.quantity || 0);
-      row[key] += quantity; row.total += quantity;
+      row[key] += quantity;
+      row.total += quantity;
     }
   };
-  add(wbItems, 'fbw'); add(sellerItems, 'fbs');
+  add(wbItems, 'fbw');
+  add(sellerItems, 'fbs');
   return totals;
 }
 
 async function priceStocks(id) {
   if (id === 'demo' || !cabinets().length) {
-    return { demo: true, byNmId: summarizeStockTotals([{ nmId: 100001, quantity: 57 }, { nmId: 100002, quantity: 12 }],
-      [{ nmId: 100001, quantity: 42 }, { nmId: 100001, quantity: 15 }, { nmId: 100002, quantity: 8 }]), warnings: [] };
+    return {
+      demo: true,
+      byNmId: summarizeStockTotals(
+        [
+          { nmId: 100001, quantity: 57 },
+          { nmId: 100002, quantity: 12 }
+        ],
+        [
+          { nmId: 100001, quantity: 42 },
+          { nmId: 100001, quantity: 15 },
+          { nmId: 100002, quantity: 8 }
+        ]
+      ),
+      warnings: []
+    };
   }
-  const token = tokenFor(id); const warnings = [];
-  const wb = await inventoryReport(id, token, 'wb-warehouses').catch(error => { warnings.push(`Остатки на складах WB: ${error.message}`); return null; });
-  const seller = await inventoryReport(id, token, 'seller-warehouses').catch(error => { warnings.push(`Остатки на складах продавца: ${error.message}`); return null; });
+  const token = tokenFor(id);
+  const warnings = [];
+  const wb = await inventoryReport(id, token, 'wb-warehouses').catch(error => {
+    warnings.push(`Остатки на складах WB: ${error.message}`);
+    return null;
+  });
+  const seller = await inventoryReport(id, token, 'seller-warehouses').catch(error => {
+    warnings.push(`Остатки на складах продавца: ${error.message}`);
+    return null;
+  });
   if (!wb && !seller) throw apiError(502, warnings.join('; '));
   return { demo: false, updatedAt: new Date().toISOString(), byNmId: summarizeStockTotals(wb || [], seller || []), warnings };
 }
@@ -728,9 +1102,15 @@ async function fbwStocks(id, force = false) {
   if (id === 'demo' || !cabinets().length) return demoFbwStocks();
   const token = tokenFor(id);
   return progressiveList(`fbw-stocks:${id}`, 60_000, force, async publish => {
-    const warnings = [], cards = cardsSoFar(id, token, warnings);
+    const warnings = [],
+      cards = cardsSoFar(id, token, warnings);
     const items = await inventoryReport(id, token, 'wb-warehouses');
-    const snapshot = () => ({ demo: false, ...normalizeFbwStocks(items, cards.cards()), warnings: [...warnings], progress: { cardsLoading: cards.loading() } });
+    const snapshot = () => ({
+      demo: false,
+      ...normalizeFbwStocks(items, cards.cards()),
+      warnings: [...warnings],
+      progress: { cardsLoading: cards.loading() }
+    });
     publish(snapshot);
     await cards.done;
     return snapshot();
@@ -739,24 +1119,69 @@ async function fbwStocks(id, force = false) {
 function normalizePrices(goods = [], cards = []) {
   const byNmId = new Map(cards.map(card => [String(card.nmID), card]));
   const rows = goods.map(good => {
-    const card = byNmId.get(String(good.nmID)) || {}; const sizes = Array.isArray(good.sizes) ? good.sizes : []; const firstSize = sizes[0] || {};
-    return { nmId: Number(good.nmID), vendorCode: good.vendorCode || card.vendorCode || '', name: card.title || `Товар ${good.nmID}`,
+    const card = byNmId.get(String(good.nmID)) || {};
+    const sizes = Array.isArray(good.sizes) ? good.sizes : [];
+    const firstSize = sizes[0] || {};
+    return {
+      nmId: Number(good.nmID),
+      vendorCode: good.vendorCode || card.vendorCode || '',
+      name: card.title || `Товар ${good.nmID}`,
       photo: cardPhoto(card),
-      category: card.subjectName || 'Без категории', brand: card.brand || 'Без бренда', currency: good.currencyIsoCode4217 || 'RUB',
-      price: Number(firstSize.price || good.price || 0), discountedPrice: Number(firstSize.discountedPrice || good.discountedPrice || 0),
-      clubDiscountedPrice: Number(firstSize.clubDiscountedPrice || good.clubDiscountedPrice || 0), discount: Number(good.discount || 0),
-      clubDiscount: Number(good.clubDiscount || 0), sizes: sizes.length, sizeItems: sizes.map(size => ({ sizeId: Number(size.sizeID), name: size.techSizeName || '' })).filter(size => Number.isInteger(size.sizeId)), editableSizePrice: Boolean(good.editableSizePrice), isBadTurnover: Boolean(good.isBadTurnover) };
+      category: card.subjectName || 'Без категории',
+      brand: card.brand || 'Без бренда',
+      currency: good.currencyIsoCode4217 || 'RUB',
+      price: Number(firstSize.price || good.price || 0),
+      discountedPrice: Number(firstSize.discountedPrice || good.discountedPrice || 0),
+      clubDiscountedPrice: Number(firstSize.clubDiscountedPrice || good.clubDiscountedPrice || 0),
+      discount: Number(good.discount || 0),
+      clubDiscount: Number(good.clubDiscount || 0),
+      sizes: sizes.length,
+      sizeItems: sizes
+        .map(size => ({ sizeId: Number(size.sizeID), name: size.techSizeName || '' }))
+        .filter(size => Number.isInteger(size.sizeId)),
+      editableSizePrice: Boolean(good.editableSizePrice),
+      isBadTurnover: Boolean(good.isBadTurnover)
+    };
   });
   const categories = [...new Set(rows.map(row => row.category))].sort((a, b) => a.localeCompare(b, 'ru'));
   const brands = [...new Set(rows.map(row => row.brand))].sort((a, b) => a.localeCompare(b, 'ru'));
-  return { rows, categories, brands, totals: { products: rows.length, averagePrice: rows.length ? rows.reduce((sum, row) => sum + row.price, 0) / rows.length : 0,
-    averageDiscount: rows.length ? rows.reduce((sum, row) => sum + row.discount, 0) / rows.length : 0, discounted: rows.filter(row => row.discount > 0).length,
-    badTurnover: rows.filter(row => row.isBadTurnover).length } };
+  return {
+    rows,
+    categories,
+    brands,
+    totals: {
+      products: rows.length,
+      averagePrice: rows.length ? rows.reduce((sum, row) => sum + row.price, 0) / rows.length : 0,
+      averageDiscount: rows.length ? rows.reduce((sum, row) => sum + row.discount, 0) / rows.length : 0,
+      discounted: rows.filter(row => row.discount > 0).length,
+      badTurnover: rows.filter(row => row.isBadTurnover).length
+    }
+  };
 }
 
 function demoPrices() {
-  const cards = [{ nmID: 100001, vendorCode: 'TSHIRT-BLACK', title: 'Футболка базовая', subjectName: 'Одежда', brand: 'WB Pulse' }, { nmID: 100002, vendorCode: 'MUG-THERMO', title: 'Термокружка', subjectName: 'Посуда', brand: 'Home' }];
-  const goods = [{ nmID: 100001, vendorCode: 'TSHIRT-BLACK', currencyIsoCode4217: 'RUB', discount: 20, clubDiscount: 5, sizes: [{ price: 1990, discountedPrice: 1592, clubDiscountedPrice: 1512 }] }, { nmID: 100002, vendorCode: 'MUG-THERMO', currencyIsoCode4217: 'RUB', discount: 10, clubDiscount: 0, sizes: [{ price: 1290, discountedPrice: 1161, clubDiscountedPrice: 1161 }] }];
+  const cards = [
+    { nmID: 100001, vendorCode: 'TSHIRT-BLACK', title: 'Футболка базовая', subjectName: 'Одежда', brand: 'WB Pulse' },
+    { nmID: 100002, vendorCode: 'MUG-THERMO', title: 'Термокружка', subjectName: 'Посуда', brand: 'Home' }
+  ];
+  const goods = [
+    {
+      nmID: 100001,
+      vendorCode: 'TSHIRT-BLACK',
+      currencyIsoCode4217: 'RUB',
+      discount: 20,
+      clubDiscount: 5,
+      sizes: [{ price: 1990, discountedPrice: 1592, clubDiscountedPrice: 1512 }]
+    },
+    {
+      nmID: 100002,
+      vendorCode: 'MUG-THERMO',
+      currencyIsoCode4217: 'RUB',
+      discount: 10,
+      clubDiscount: 0,
+      sizes: [{ price: 1290, discountedPrice: 1161, clubDiscountedPrice: 1161 }]
+    }
+  ];
   return { demo: true, ...normalizePrices(goods, cards), warnings: [] };
 }
 
@@ -765,9 +1190,15 @@ function demoPrices() {
 async function loadPriceGoods(token, onBatch = () => {}) {
   const goods = [];
   for (let offset = 0; offset < 100_000; offset += 1000) {
-    const response = await wbRequest(token, `https://discounts-prices-api.wildberries.ru/api/v2/list/goods/filter?limit=1000&offset=${offset}`);
-    const batch = Array.isArray(response?.data?.listGoods) ? response.data.listGoods : []; goods.push(...batch); onBatch(goods);
-    if (batch.length < 1000) break; await wait(650);
+    const response = await wbRequest(
+      token,
+      `https://discounts-prices-api.wildberries.ru/api/v2/list/goods/filter?limit=1000&offset=${offset}`
+    );
+    const batch = Array.isArray(response?.data?.listGoods) ? response.data.listGoods : [];
+    goods.push(...batch);
+    onBatch(goods);
+    if (batch.length < 1000) break;
+    await wait(650);
   }
   return goods;
 }
@@ -778,10 +1209,19 @@ async function prices(id, force = false) {
   if (id === 'demo' || !cabinets().length) return demoPrices();
   const token = tokenFor(id);
   return progressiveList(`prices:${id}`, 30_000, force, async publish => {
-    const warnings = [], cards = cardsSoFar(id, token, warnings);
+    const warnings = [],
+      cards = cardsSoFar(id, token, warnings);
     let goods = [];
-    const snapshot = () => ({ demo: false, ...normalizePrices(goods, cards.cards()), warnings: [...warnings], progress: { loaded: goods.length, cardsLoading: cards.loading() } });
-    goods = await loadPriceGoods(token, list => { goods = list; publish(snapshot); });
+    const snapshot = () => ({
+      demo: false,
+      ...normalizePrices(goods, cards.cards()),
+      warnings: [...warnings],
+      progress: { loaded: goods.length, cardsLoading: cards.loading() }
+    });
+    goods = await loadPriceGoods(token, list => {
+      goods = list;
+      publish(snapshot);
+    });
     publish(snapshot);
     await cards.done;
     return snapshot();
@@ -790,19 +1230,52 @@ async function prices(id, force = false) {
 
 async function updatePrices(body) {
   const token = tokenFor(body.cabinet);
-  const items = (body.items || []).map(item => ({ nmID: Number(item.nmId), price: Number(item.price), discount: Number(item.discount), editableSizePrice: Boolean(item.editableSizePrice), sizeItems: Array.isArray(item.sizeItems) ? item.sizeItems : [] }))
-    .filter(item => Number.isInteger(item.nmID) && Number.isFinite(item.price) && item.price > 0 && Number.isInteger(item.discount) && item.discount >= 0 && item.discount <= 99);
+  const items = (body.items || [])
+    .map(item => ({
+      nmID: Number(item.nmId),
+      price: Number(item.price),
+      discount: Number(item.discount),
+      editableSizePrice: Boolean(item.editableSizePrice),
+      sizeItems: Array.isArray(item.sizeItems) ? item.sizeItems : []
+    }))
+    .filter(
+      item =>
+        Number.isInteger(item.nmID) &&
+        Number.isFinite(item.price) &&
+        item.price > 0 &&
+        Number.isInteger(item.discount) &&
+        item.discount >= 0 &&
+        item.discount <= 99
+    );
   if (!items.length) throw apiError(400, 'Выберите товары и укажите корректные цену и скидку');
-  const data = items.map(item => item.editableSizePrice ? { nmID: item.nmID, discount: item.discount } : { nmID: item.nmID, price: item.price, discount: item.discount });
-  const sizeData = items.filter(item => item.editableSizePrice).flatMap(item => item.sizeItems.map(size => ({ nmID: item.nmID, sizeID: Number(size.sizeId), price: item.price })).filter(size => Number.isInteger(size.sizeID)));
+  const data = items.map(item =>
+    item.editableSizePrice ? { nmID: item.nmID, discount: item.discount } : { nmID: item.nmID, price: item.price, discount: item.discount }
+  );
+  const sizeData = items
+    .filter(item => item.editableSizePrice)
+    .flatMap(item =>
+      item.sizeItems
+        .map(size => ({ nmID: item.nmID, sizeID: Number(size.sizeId), price: item.price }))
+        .filter(size => Number.isInteger(size.sizeID))
+    );
   const uploads = [];
   for (let offset = 0; offset < data.length; offset += 1000) {
     if (offset) await wait(650);
-    uploads.push(await wbRequest(token, 'https://discounts-prices-api.wildberries.ru/api/v2/upload/task', { method: 'POST', body: { data: data.slice(offset, offset + 1000) } }));
+    uploads.push(
+      await wbRequest(token, 'https://discounts-prices-api.wildberries.ru/api/v2/upload/task', {
+        method: 'POST',
+        body: { data: data.slice(offset, offset + 1000) }
+      })
+    );
   }
   for (let offset = 0; offset < sizeData.length; offset += 1000) {
     await wait(650);
-    uploads.push(await wbRequest(token, 'https://discounts-prices-api.wildberries.ru/api/v2/upload/task/size', { method: 'POST', body: { data: sizeData.slice(offset, offset + 1000) } }));
+    uploads.push(
+      await wbRequest(token, 'https://discounts-prices-api.wildberries.ru/api/v2/upload/task/size', {
+        method: 'POST',
+        body: { data: sizeData.slice(offset, offset + 1000) }
+      })
+    );
   }
   forgetList(`prices:${body.cabinet}`);
   return { ok: true, updated: items.length, updatedSizes: sizeData.length, uploads };
@@ -811,7 +1284,9 @@ async function updatePrices(body) {
 function groupStockUpdates(items = []) {
   const grouped = new Map();
   for (const item of items) {
-    const warehouseId = String(item.warehouseId || ''); const chrtId = Number(item.chrtId); const amount = Number(item.amount);
+    const warehouseId = String(item.warehouseId || '');
+    const chrtId = Number(item.chrtId);
+    const amount = Number(item.amount);
     if (!warehouseId || !Number.isInteger(chrtId) || !Number.isFinite(amount) || amount < 0) continue;
     if (!grouped.has(warehouseId)) grouped.set(warehouseId, []);
     grouped.get(warehouseId).push({ chrtId, amount: Math.floor(amount) });
@@ -823,17 +1298,26 @@ function groupStockUpdates(items = []) {
 // (POST /api/v3/stocks/{warehouseId}, до 1000 chrtId за запрос, 300 запросов в минуту) и возвращает их остатки — сайт
 // подставляет их в свои строки. Если перечитать не удалось, возвращаются отправленные значения: WB их уже принял (204).
 async function readBackFbsStocks(token, grouped) {
-  const stocks = [], warnings = [];
+  const stocks = [],
+    warnings = [];
   for (const [warehouseId, items] of grouped) {
     for (let offset = 0; offset < items.length; offset += 1000) {
       const chunk = items.slice(offset, offset + 1000);
       if (stocks.length || warnings.length) await wait(220);
       try {
-        const result = await wbRequest(token, `https://marketplace-api.wildberries.ru/api/v3/stocks/${encodeURIComponent(warehouseId)}`, { method: 'POST', body: { chrtIds: chunk.map(item => item.chrtId) } });
-        const found = new Map((Array.isArray(result?.stocks) ? result.stocks : []).map(stock => [Number(stock.chrtId), Number(stock.amount || 0)]));
-        chunk.forEach(item => stocks.push({ warehouseId, chrtId: item.chrtId, amount: found.has(item.chrtId) ? found.get(item.chrtId) : item.amount }));
+        const result = await wbRequest(token, `https://marketplace-api.wildberries.ru/api/v3/stocks/${encodeURIComponent(warehouseId)}`, {
+          method: 'POST',
+          body: { chrtIds: chunk.map(item => item.chrtId) }
+        });
+        const found = new Map(
+          (Array.isArray(result?.stocks) ? result.stocks : []).map(stock => [Number(stock.chrtId), Number(stock.amount || 0)])
+        );
+        chunk.forEach(item =>
+          stocks.push({ warehouseId, chrtId: item.chrtId, amount: found.has(item.chrtId) ? found.get(item.chrtId) : item.amount })
+        );
         const differ = chunk.filter(item => found.has(item.chrtId) && found.get(item.chrtId) !== item.amount).length;
-        if (differ) warnings.push(`WB пока показывает другой остаток у ${differ} поз. — показан остаток из WB, проверьте позже кнопкой «Обновить»`);
+        if (differ)
+          warnings.push(`WB пока показывает другой остаток у ${differ} поз. — показан остаток из WB, проверьте позже кнопкой «Обновить»`);
       } catch (error) {
         warnings.push(`Остатки сохранены, но перечитать их у WB не удалось: ${error.message}`);
         chunk.forEach(item => stocks.push({ warehouseId, chrtId: item.chrtId, amount: item.amount }));
@@ -844,66 +1328,147 @@ async function readBackFbsStocks(token, grouped) {
 }
 
 async function updateFbsStocks(body) {
-  const token = tokenFor(body.cabinet); const grouped = groupStockUpdates(body.items);
+  const token = tokenFor(body.cabinet);
+  const grouped = groupStockUpdates(body.items);
   if (!grouped.size) throw apiError(400, 'Выберите хотя бы один товар и укажите корректный остаток');
   const results = [];
   for (const [warehouseId, stocks] of grouped) {
-    const response = await wbRequest(token, `https://marketplace-api.wildberries.ru/api/v3/stocks/${encodeURIComponent(warehouseId)}`, { method: 'PUT', body: { stocks } });
+    const response = await wbRequest(token, `https://marketplace-api.wildberries.ru/api/v3/stocks/${encodeURIComponent(warehouseId)}`, {
+      method: 'PUT',
+      body: { stocks }
+    });
     results.push({ warehouseId, count: stocks.length, response: response || null });
   }
   forgetList(`fbs-stocks:${body.cabinet}`);
-  return { ok: true, updated: results.reduce((sum, item) => sum + item.count, 0), warehouses: results, ...await readBackFbsStocks(token, grouped) };
+  return {
+    ok: true,
+    updated: results.reduce((sum, item) => sum + item.count, 0),
+    warehouses: results,
+    ...(await readBackFbsStocks(token, grouped))
+  };
 }
 
 // «Добавить вручную»: товары кабинета для поиска в окне — по размерам (chrtId), из сохранённого списка карточек.
 async function fbsStockProducts(id) {
-  if (id === 'demo' || !cabinets().length) return { demo: true, products: [
-    { nmId: 100001, vendorCode: 'TSHIRT-BLACK', name: 'Футболка базовая', category: 'Одежда', brand: 'Demo', photo: '', sizes: [{ chrtId: 501, size: 'M', sku: '460000000001' }] },
-    { nmId: 100002, vendorCode: 'MUG-THERMO', name: 'Термокружка', category: 'Посуда', brand: 'Demo', photo: '', sizes: [{ chrtId: 502, size: '500 мл', sku: '460000000002' }] },
-    { nmId: 100003, vendorCode: 'HOODIE-GREEN', name: 'Худи Oversize', category: 'Одежда', brand: 'Demo', photo: '', sizes: [{ chrtId: 503, size: 'L', sku: '460000000003' }] }] };
+  if (id === 'demo' || !cabinets().length)
+    return {
+      demo: true,
+      products: [
+        {
+          nmId: 100001,
+          vendorCode: 'TSHIRT-BLACK',
+          name: 'Футболка базовая',
+          category: 'Одежда',
+          brand: 'Demo',
+          photo: '',
+          sizes: [{ chrtId: 501, size: 'M', sku: '460000000001' }]
+        },
+        {
+          nmId: 100002,
+          vendorCode: 'MUG-THERMO',
+          name: 'Термокружка',
+          category: 'Посуда',
+          brand: 'Demo',
+          photo: '',
+          sizes: [{ chrtId: 502, size: '500 мл', sku: '460000000002' }]
+        },
+        {
+          nmId: 100003,
+          vendorCode: 'HOODIE-GREEN',
+          name: 'Худи Oversize',
+          category: 'Одежда',
+          brand: 'Demo',
+          photo: '',
+          sizes: [{ chrtId: 503, size: 'L', sku: '460000000003' }]
+        }
+      ]
+    };
   const cards = await productCards(id, tokenFor(id));
-  return { demo: false, products: cards.map(card => ({ nmId: card.nmID, vendorCode: card.vendorCode || '', name: card.title || `Товар ${card.nmID}`, category: card.subjectName || '', brand: card.brand || '', photo: cardPhoto(card),
-    sizes: (card.sizes || []).map(size => ({ chrtId: Number(size.chrtID || size.chrtId), size: size.techSize && size.techSize !== '0' ? size.techSize : size.wbSize || '', sku: (size.skus || [])[0] || '' })).filter(size => Number.isInteger(size.chrtId) && size.chrtId > 0) }))
-    .filter(product => product.sizes.length) };
+  return {
+    demo: false,
+    products: cards
+      .map(card => ({
+        nmId: card.nmID,
+        vendorCode: card.vendorCode || '',
+        name: card.title || `Товар ${card.nmID}`,
+        category: card.subjectName || '',
+        brand: card.brand || '',
+        photo: cardPhoto(card),
+        sizes: (card.sizes || [])
+          .map(size => ({
+            chrtId: Number(size.chrtID || size.chrtId),
+            size: size.techSize && size.techSize !== '0' ? size.techSize : size.wbSize || '',
+            sku: (size.skus || [])[0] || ''
+          }))
+          .filter(size => Number.isInteger(size.chrtId) && size.chrtId > 0)
+      }))
+      .filter(product => product.sizes.length)
+  };
 }
 // Причины, по которым WB не принимает остаток (409 и 406 метода PUT /api/v3/stocks/{warehouseId}, документация
 // «Остатки на складах продавца», 02-items.yaml).
 const STOCK_ERRORS = {
-  UploadDataLimit: 'превышен лимит загружаемых данных', NotFound: 'размер не найден', StoreIsProcessing: 'склад обновляется или удаляется — повторите через несколько секунд',
-  CargoWarehouseRestrictionMGT: 'склад не подходит для малогабаритных товаров', CargoWarehouseRestrictionSGT: 'склад не подходит для сверхгабаритных товаров',
-  CargoWarehouseRestrictionSGTKGTPlus: 'склад не подходит для сверх- и крупногабаритных товаров', CargoWarehouseRestrictionKGTPlus: 'склад не подходит для крупногабаритных товаров',
-  DeliveryTypeRestriction: 'этот тип доставки недоступен для предмета товара', SubjectRestriction: 'продажа с этого склада недоступна для предмета товара',
-  TnvedRequired: 'в карточке нет кода ТНВЭД', StocksUpdateBlock: 'обновление остатков ограничено из-за блокировки продавца', WarehouseStocksUpdateBlock: 'технические работы на складе — повторите позже'
+  UploadDataLimit: 'превышен лимит загружаемых данных',
+  NotFound: 'размер не найден',
+  StoreIsProcessing: 'склад обновляется или удаляется — повторите через несколько секунд',
+  CargoWarehouseRestrictionMGT: 'склад не подходит для малогабаритных товаров',
+  CargoWarehouseRestrictionSGT: 'склад не подходит для сверхгабаритных товаров',
+  CargoWarehouseRestrictionSGTKGTPlus: 'склад не подходит для сверх- и крупногабаритных товаров',
+  CargoWarehouseRestrictionKGTPlus: 'склад не подходит для крупногабаритных товаров',
+  DeliveryTypeRestriction: 'этот тип доставки недоступен для предмета товара',
+  SubjectRestriction: 'продажа с этого склада недоступна для предмета товара',
+  TnvedRequired: 'в карточке нет кода ТНВЭД',
+  StocksUpdateBlock: 'обновление остатков ограничено из-за блокировки продавца',
+  WarehouseStocksUpdateBlock: 'технические работы на складе — повторите позже'
 };
 // Остатки новых товаров на складах: по складу, до 1000 размеров за запрос (лимит метода — 300 запросов в минуту, 4XX
 // считается за 10). На 409 WB перечисляет размеры, которые не принял, — их откладываем с причиной, остальные отправляем
 // ещё раз (до 3 раз). Принятые перечитываются у WB, как после «Задать остаток».
 async function addFbsStocks(body) {
-  const id = String(body.cabinet || 'demo'), grouped = groupStockUpdates(body.items);
+  const id = String(body.cabinet || 'demo'),
+    grouped = groupStockUpdates(body.items);
   if (!grouped.size) throw apiError(400, 'Выберите товары, склады и укажите остаток');
   const count = [...grouped.values()].reduce((sum, list) => sum + list.length, 0);
   if (count > 20_000) throw apiError(400, `Слишком много позиций за раз: ${count}, можно до 20 000`);
-  if (id === 'demo' || !cabinets().length) return { ok: true, demo: true, added: count, failed: [], stocks: [...grouped].flatMap(([warehouseId, list]) => list.map(item => ({ warehouseId, ...item }))), warnings: [] };
-  const token = tokenFor(id), failed = [], accepted = new Map();
+  if (id === 'demo' || !cabinets().length)
+    return {
+      ok: true,
+      demo: true,
+      added: count,
+      failed: [],
+      stocks: [...grouped].flatMap(([warehouseId, list]) => list.map(item => ({ warehouseId, ...item }))),
+      warnings: []
+    };
+  const token = tokenFor(id),
+    failed = [],
+    accepted = new Map();
   for (const [warehouseId, list] of grouped) {
     for (let offset = 0; offset < list.length; offset += 1000) {
       let chunk = list.slice(offset, offset + 1000);
       for (let attempt = 0; chunk.length && attempt < 3; attempt++) {
         try {
-          await wbRequest(token, `https://marketplace-api.wildberries.ru/api/v3/stocks/${encodeURIComponent(warehouseId)}`, { method: 'PUT', body: { stocks: chunk } });
+          await wbRequest(token, `https://marketplace-api.wildberries.ru/api/v3/stocks/${encodeURIComponent(warehouseId)}`, {
+            method: 'PUT',
+            body: { stocks: chunk }
+          });
           if (!accepted.has(warehouseId)) accepted.set(warehouseId, []);
           accepted.get(warehouseId).push(...chunk);
           break;
         } catch (error) {
-          const reasons = Array.isArray(error.details) ? error.details : [], rejected = new Map();
-          for (const reason of reasons) for (const item of Array.isArray(reason?.data) ? reason.data : []) rejected.set(Number(item.chrtId), STOCK_ERRORS[reason.code] || reason.message || reason.code || error.message);
+          const reasons = Array.isArray(error.details) ? error.details : [],
+            rejected = new Map();
+          for (const reason of reasons)
+            for (const item of Array.isArray(reason?.data) ? reason.data : [])
+              rejected.set(Number(item.chrtId), STOCK_ERRORS[reason.code] || reason.message || reason.code || error.message);
           // Не 409 со списком размеров — отклонена вся порция.
           if (error.status !== 409 || !rejected.size) {
             const text = STOCK_ERRORS[reasons[0]?.code || error.details?.code] || error.message;
             chunk.forEach(item => failed.push({ warehouseId, chrtId: item.chrtId, text }));
             break;
           }
-          chunk.filter(item => rejected.has(item.chrtId)).forEach(item => failed.push({ warehouseId, chrtId: item.chrtId, text: rejected.get(item.chrtId) }));
+          chunk
+            .filter(item => rejected.has(item.chrtId))
+            .forEach(item => failed.push({ warehouseId, chrtId: item.chrtId, text: rejected.get(item.chrtId) }));
           chunk = chunk.filter(item => !rejected.has(item.chrtId));
         }
         await wait(220);
@@ -918,18 +1483,35 @@ async function addFbsStocks(body) {
 
 async function copyFbsStocks(body) {
   const token = tokenFor(body.cabinet);
-  const targetWarehouseIds = [...new Set((Array.isArray(body.targetWarehouseIds) ? body.targetWarehouseIds : [body.targetWarehouseId]).map(value => String(value || '')).filter(Boolean))];
-  const stocks = (body.items || []).map(item => ({ chrtId: Number(item.chrtId), amount: Math.floor(Number(item.amount)) }))
+  const targetWarehouseIds = [
+    ...new Set(
+      (Array.isArray(body.targetWarehouseIds) ? body.targetWarehouseIds : [body.targetWarehouseId])
+        .map(value => String(value || ''))
+        .filter(Boolean)
+    )
+  ];
+  const stocks = (body.items || [])
+    .map(item => ({ chrtId: Number(item.chrtId), amount: Math.floor(Number(item.amount)) }))
     .filter(item => Number.isInteger(item.chrtId) && Number.isFinite(item.amount) && item.amount >= 0);
   if (!targetWarehouseIds.length || !stocks.length) throw apiError(400, 'Выберите хотя бы один целевой склад и товары для копирования');
   const results = [];
   for (const targetWarehouseId of targetWarehouseIds) {
-    const response = await wbRequest(token, `https://marketplace-api.wildberries.ru/api/v3/stocks/${encodeURIComponent(targetWarehouseId)}`, { method: 'PUT', body: { stocks } });
+    const response = await wbRequest(
+      token,
+      `https://marketplace-api.wildberries.ru/api/v3/stocks/${encodeURIComponent(targetWarehouseId)}`,
+      { method: 'PUT', body: { stocks } }
+    );
     results.push({ targetWarehouseId, count: stocks.length, response: response || null });
   }
   forgetList(`fbs-stocks:${body.cabinet}`);
   const grouped = new Map(targetWarehouseIds.map(warehouseId => [warehouseId, stocks]));
-  return { ok: true, updated: stocks.length * results.length, warehouses: results, targetWarehouseIds, ...await readBackFbsStocks(token, grouped) };
+  return {
+    ok: true,
+    updated: stocks.length * results.length,
+    warehouses: results,
+    targetWarehouseIds,
+    ...(await readBackFbsStocks(token, grouped))
+  };
 }
 
 function enrichOrders(orders, cards) {
@@ -938,9 +1520,15 @@ function enrichOrders(orders, cards) {
     const card = byNmId.get(String(order.nmId));
     if (!card) return order;
     const size = (card.sizes || []).find(item => String(item.chrtID || item.chrtId) === String(order.chrtId)) || card.sizes?.[0];
-    return { ...order, name: card.title || order.name, article: card.vendorCode || order.article, barcode: size?.skus?.[0] || '',
-      brand: card.brand || '', subjectName: card.subjectName || '',
-      photo: cardPhoto(card) };
+    return {
+      ...order,
+      name: card.title || order.name,
+      article: card.vendorCode || order.article,
+      barcode: size?.skus?.[0] || '',
+      brand: card.brand || '',
+      subjectName: card.subjectName || '',
+      photo: cardPhoto(card)
+    };
   });
 }
 
@@ -949,17 +1537,30 @@ function demoDashboard() {
   const statuses = ['new', 'confirm', 'complete', 'cancel'];
   const names = ['Футболка базовая', 'Кроссовки Urban', 'Набор полотенец', 'Худи Oversize', 'Термокружка'];
   const orders = Array.from({ length: 18 }, (_, index) => ({
-    id: 88422000 + index, nmId: 17540000 + index % 5, article: `WB-${1200 + index}`,
-    name: names[index % names.length], status: statuses[index % statuses.length],
+    id: 88422000 + index,
+    nmId: 17540000 + (index % 5),
+    article: `WB-${1200 + index}`,
+    name: names[index % names.length],
+    status: statuses[index % statuses.length],
     createdAt: new Date(now - index * 3_600_000).toISOString(),
-    price: 129900 + (index % 5) * 45000, currencyCode: 643,
-    warehouse: ['Коледино', 'Казань', 'Электросталь'][index % 3], source: index < 6 ? 'FBS' : 'Статистика'
+    price: 129900 + (index % 5) * 45000,
+    currencyCode: 643,
+    warehouse: ['Коледино', 'Казань', 'Электросталь'][index % 3],
+    source: index < 6 ? 'FBS' : 'Статистика'
   }));
-  return { demo: true, orders, funnel: { views: 14840, cart: 3180, orders: 1246, sales: 982, revenue: 1762400, currency: 'RUB' }, funnelProducts: [], funnelHistory: [], funnelGroupedHistory: [], warnings: [] };
+  return {
+    demo: true,
+    orders,
+    funnel: { views: 14840, cart: 3180, orders: 1246, sales: 982, revenue: 1762400, currency: 'RUB' },
+    funnelProducts: [],
+    funnelHistory: [],
+    funnelGroupedHistory: [],
+    warnings: []
+  };
 }
 
 function currencyCode(currency) {
-  return ({ RUB: 643, BYN: 933, KZT: 398, AMD: 51, KGS: 417, UZS: 860 })[currency] || 643;
+  return { RUB: 643, BYN: 933, KZT: 398, AMD: 51, KGS: 417, UZS: 860 }[currency] || 643;
 }
 
 function normalizeOrderFeed(payload) {
@@ -971,8 +1572,14 @@ function normalizeOrderFeed(payload) {
     chrtId: order.chrtId,
     article: `chrtID ${order.chrtId}`,
     name: `Товар WB ${order.nmId}`,
-    status: order.status === 'buyout' ? 'complete' : order.status === 'cancel' ? 'cancel'
-      : ['return', 'returnDefective'].includes(order.status) ? 'return' : 'new',
+    status:
+      order.status === 'buyout'
+        ? 'complete'
+        : order.status === 'cancel'
+          ? 'cancel'
+          : ['return', 'returnDefective'].includes(order.status)
+            ? 'return'
+            : 'new',
     rawStatus: order.status,
     cancelType: order.cancelType,
     createdAt: order.updatedAt || order.createdAt,
@@ -994,14 +1601,17 @@ function normalizeOrderFeed(payload) {
 // сумма покупателя с учётом СПП (buyerPrice). Задания, которых ещё нет в ленте, видны в разделе «Новые заказы».
 function normalizeOrders(fbs, orderFeed) {
   const tasks = new Map((fbs?.orders || []).filter(o => o.rid).map(o => [String(o.rid), o]));
-  return normalizeOrderFeed(orderFeed).map(order => {
-    const task = tasks.get(String(order.id));
-    if (!task) return order;
-    // Сумма покупателя — в валюте продавца; если валюта события другая, не показываем её, чтобы не сравнивать разные валюты.
-    const buyerPrice = task.convertedFinalPrice ?? task.finalPrice;
-    const sameCurrency = !task.convertedCurrencyCode || !order.currencyCode || String(task.convertedCurrencyCode) === String(order.currencyCode);
-    return buyerPrice != null && sameCurrency ? { ...order, buyerPrice } : order;
-  }).sort((x, y) => new Date(y.createdAt) - new Date(x.createdAt));
+  return normalizeOrderFeed(orderFeed)
+    .map(order => {
+      const task = tasks.get(String(order.id));
+      if (!task) return order;
+      // Сумма покупателя — в валюте продавца; если валюта события другая, не показываем её, чтобы не сравнивать разные валюты.
+      const buyerPrice = task.convertedFinalPrice ?? task.finalPrice;
+      const sameCurrency =
+        !task.convertedCurrencyCode || !order.currencyCode || String(task.convertedCurrencyCode) === String(order.currencyCode);
+      return buyerPrice != null && sameCurrency ? { ...order, buyerPrice } : order;
+    })
+    .sort((x, y) => new Date(y.createdAt) - new Date(x.createdAt));
 }
 
 function extractFunnel(payload) {
@@ -1020,31 +1630,56 @@ function extractFunnel(payload) {
 }
 
 function safeRatio(value, base, multiplier = 100) {
-  return Number(base) ? Number(value || 0) / Number(base) * multiplier : 0;
+  return Number(base) ? (Number(value || 0) / Number(base)) * multiplier : 0;
 }
 
 function adMetrics(source = {}) {
-  const views = Number(source.views || 0), clicks = Number(source.clicks || 0), spend = Number(source.sum || 0);
-  const orders = Number(source.orders || 0), revenue = Number(source.sum_price || 0);
+  const views = Number(source.views || 0),
+    clicks = Number(source.clicks || 0),
+    spend = Number(source.sum || 0);
+  const orders = Number(source.orders || 0),
+    revenue = Number(source.sum_price || 0);
   return {
-    views, clicks, spend, orders, revenue,
-    carts: Number(source.atbs || 0), sales: Number(source.shks || 0), canceled: Number(source.canceled || 0),
-    ctr: safeRatio(clicks, views), cpc: safeRatio(spend, clicks, 1), cpm: safeRatio(spend, views, 1000),
-    cr: safeRatio(orders, clicks), cpo: safeRatio(spend, orders, 1), drr: safeRatio(spend, revenue), roas: safeRatio(revenue, spend, 1)
+    views,
+    clicks,
+    spend,
+    orders,
+    revenue,
+    carts: Number(source.atbs || 0),
+    sales: Number(source.shks || 0),
+    canceled: Number(source.canceled || 0),
+    ctr: safeRatio(clicks, views),
+    cpc: safeRatio(spend, clicks, 1),
+    cpm: safeRatio(spend, views, 1000),
+    cr: safeRatio(orders, clicks),
+    cpo: safeRatio(spend, orders, 1),
+    drr: safeRatio(spend, revenue),
+    roas: safeRatio(revenue, spend, 1)
   };
 }
 
 function addAdMetrics(target, source = {}) {
-  target.views += Number(source.views || 0); target.clicks += Number(source.clicks || 0);
-  target.spend += Number(source.sum ?? source.spend ?? 0); target.orders += Number(source.orders || 0);
-  target.revenue += Number(source.sum_price ?? source.revenue ?? 0); target.carts += Number(source.atbs ?? source.carts ?? 0);
-  target.sales += Number(source.shks ?? source.sales ?? 0); target.canceled += Number(source.canceled || 0);
+  target.views += Number(source.views || 0);
+  target.clicks += Number(source.clicks || 0);
+  target.spend += Number(source.sum ?? source.spend ?? 0);
+  target.orders += Number(source.orders || 0);
+  target.revenue += Number(source.sum_price ?? source.revenue ?? 0);
+  target.carts += Number(source.atbs ?? source.carts ?? 0);
+  target.sales += Number(source.shks ?? source.sales ?? 0);
+  target.canceled += Number(source.canceled || 0);
 }
 
 function finalizeAdMetrics(target) {
-  return { ...target, ctr: safeRatio(target.clicks, target.views), cpc: safeRatio(target.spend, target.clicks, 1),
-    cpm: safeRatio(target.spend, target.views, 1000), cr: safeRatio(target.orders, target.clicks), cpo: safeRatio(target.spend, target.orders, 1),
-    drr: safeRatio(target.spend, target.revenue), roas: safeRatio(target.revenue, target.spend, 1) };
+  return {
+    ...target,
+    ctr: safeRatio(target.clicks, target.views),
+    cpc: safeRatio(target.spend, target.clicks, 1),
+    cpm: safeRatio(target.spend, target.views, 1000),
+    cr: safeRatio(target.orders, target.clicks),
+    cpo: safeRatio(target.spend, target.orders, 1),
+    drr: safeRatio(target.spend, target.revenue),
+    roas: safeRatio(target.revenue, target.spend, 1)
+  };
 }
 
 function emptyAdMetrics(extra = {}) {
@@ -1052,65 +1687,146 @@ function emptyAdMetrics(extra = {}) {
 }
 
 function campaignProductIds(campaign = {}) {
-  const candidates = [campaign.nm_settings, campaign.nmSettings, campaign.settings?.nms, campaign.autoParams?.nms,
-    Array.isArray(campaign.unitedParams) ? campaign.unitedParams.flatMap(item => item.nms || []) : []];
-  return [...new Set(candidates.flatMap(list => Array.isArray(list) ? list : []).map(item => Number(item?.nm_id || item?.nmId || item?.nm || item)).filter(Number.isInteger))];
+  const candidates = [
+    campaign.nm_settings,
+    campaign.nmSettings,
+    campaign.settings?.nms,
+    campaign.autoParams?.nms,
+    Array.isArray(campaign.unitedParams) ? campaign.unitedParams.flatMap(item => item.nms || []) : []
+  ];
+  return [
+    ...new Set(
+      candidates
+        .flatMap(list => (Array.isArray(list) ? list : []))
+        .map(item => Number(item?.nm_id || item?.nmId || item?.nm || item))
+        .filter(Number.isInteger)
+    )
+  ];
 }
 
 function summarizeAdStats(campaigns = [], stats = [], from, to) {
   const campaignById = new Map(campaigns.map(item => [String(item.id), item]));
   const daily = new Map();
-  for (let cursor = new Date(`${from}T00:00:00Z`), end = new Date(`${to}T00:00:00Z`); cursor <= end; cursor.setUTCDate(cursor.getUTCDate() + 1)) {
-    const date = cursor.toISOString().slice(0, 10); daily.set(date, emptyAdMetrics({ date }));
+  for (
+    let cursor = new Date(`${from}T00:00:00Z`), end = new Date(`${to}T00:00:00Z`);
+    cursor <= end;
+    cursor.setUTCDate(cursor.getUTCDate() + 1)
+  ) {
+    const date = cursor.toISOString().slice(0, 10);
+    daily.set(date, emptyAdMetrics({ date }));
   }
-  const platforms = new Map([[1, emptyAdMetrics({ id: 1, name: 'Сайт' })], [32, emptyAdMetrics({ id: 32, name: 'Android' })], [64, emptyAdMetrics({ id: 64, name: 'iOS' })]]);
+  const platforms = new Map([
+    [1, emptyAdMetrics({ id: 1, name: 'Сайт' })],
+    [32, emptyAdMetrics({ id: 32, name: 'Android' })],
+    [64, emptyAdMetrics({ id: 64, name: 'iOS' })]
+  ]);
   const products = new Map();
   const productDaily = new Map();
   const rows = [];
   for (const stat of stats) {
     const campaign = campaignById.get(String(stat.advertId));
-    const nmIds = [...new Set([...campaignProductIds(campaign), ...(stat.days || []).flatMap(day => (day.apps || []).flatMap(app => (app.nms || []).map(nm => Number(nm.nmId || nm.nm)).filter(Number.isInteger)))])];
+    const nmIds = [
+      ...new Set([
+        ...campaignProductIds(campaign),
+        ...(stat.days || []).flatMap(day =>
+          (day.apps || []).flatMap(app => (app.nms || []).map(nm => Number(nm.nmId || nm.nm)).filter(Number.isInteger))
+        )
+      ])
+    ];
     // Для столбца «Артикулы»: сколько товаров в кампании сейчас и у скольких были показы или клики за период.
     const inCampaign = campaignProductIds(campaign);
-    const activeNmIds = [...new Set((stat.days || []).flatMap(day => (day.apps || []).flatMap(app => (app.nms || [])
-      .filter(nm => Number(nm.views || 0) > 0 || Number(nm.clicks || 0) > 0).map(nm => Number(nm.nmId || nm.nm)).filter(Number.isInteger))))];
-    rows.push({ id: stat.advertId, name: campaign?.settings?.name || `Кампания #${stat.advertId}`,
-      status: campaign?.status, type: campaign?.type ?? null, paymentType: campaign?.settings?.payment_type || '', bidType: campaign?.bid_type || '',
-      createdAt: campaign?.timestamps?.created || '', startedAt: campaign?.timestamps?.started || '', updatedAt: campaign?.timestamps?.updated || '', nmIds, nmInCampaign: inCampaign, nmCount: inCampaign.length || nmIds.length,
+    const activeNmIds = [
+      ...new Set(
+        (stat.days || []).flatMap(day =>
+          (day.apps || []).flatMap(app =>
+            (app.nms || [])
+              .filter(nm => Number(nm.views || 0) > 0 || Number(nm.clicks || 0) > 0)
+              .map(nm => Number(nm.nmId || nm.nm))
+              .filter(Number.isInteger)
+          )
+        )
+      )
+    ];
+    rows.push({
+      id: stat.advertId,
+      name: campaign?.settings?.name || `Кампания #${stat.advertId}`,
+      status: campaign?.status,
+      type: campaign?.type ?? null,
+      paymentType: campaign?.settings?.payment_type || '',
+      bidType: campaign?.bid_type || '',
+      createdAt: campaign?.timestamps?.created || '',
+      startedAt: campaign?.timestamps?.started || '',
+      updatedAt: campaign?.timestamps?.updated || '',
+      nmIds,
+      nmInCampaign: inCampaign,
+      nmCount: inCampaign.length || nmIds.length,
       nmActive: inCampaign.length ? activeNmIds.filter(nmId => inCampaign.includes(nmId)).length : activeNmIds.length,
-      nmRemovedActive: inCampaign.length ? activeNmIds.filter(nmId => !inCampaign.includes(nmId)).length : 0, activeNmIds, daily: (stat.days || []).map(day => ({ date: String(day.date || '').slice(0, 10), ...adMetrics(day) })), ...adMetrics(stat) });
+      nmRemovedActive: inCampaign.length ? activeNmIds.filter(nmId => !inCampaign.includes(nmId)).length : 0,
+      activeNmIds,
+      daily: (stat.days || []).map(day => ({ date: String(day.date || '').slice(0, 10), ...adMetrics(day) })),
+      ...adMetrics(stat)
+    });
     for (const day of stat.days || []) {
       const date = String(day.date || '').slice(0, 10);
       if (!daily.has(date)) daily.set(date, emptyAdMetrics({ date }));
       addAdMetrics(daily.get(date), day);
       for (const app of day.apps || []) {
         const appType = Number(app.appType || 0);
-        if (!platforms.has(appType)) platforms.set(appType, emptyAdMetrics({ id: appType, name: appType === 0 ? 'Не определено WB' : `Платформа ${appType}` }));
+        if (!platforms.has(appType))
+          platforms.set(appType, emptyAdMetrics({ id: appType, name: appType === 0 ? 'Не определено WB' : `Платформа ${appType}` }));
         addAdMetrics(platforms.get(appType), app);
         for (const nm of app.nms || []) {
           const key = String(nm.nmId || nm.nm || 'unknown');
           if (!products.has(key)) products.set(key, emptyAdMetrics({ nmId: nm.nmId || nm.nm, name: nm.name || `Товар ${key}` }));
           addAdMetrics(products.get(key), nm);
           const productKey = `${stat.advertId}:${key}:${date}`;
-          if (!productDaily.has(productKey)) productDaily.set(productKey, emptyAdMetrics({ advertId: stat.advertId, nmId: nm.nmId || nm.nm, name: nm.name || `Товар ${key}`, date }));
+          if (!productDaily.has(productKey))
+            productDaily.set(
+              productKey,
+              emptyAdMetrics({ advertId: stat.advertId, nmId: nm.nmId || nm.nm, name: nm.name || `Товар ${key}`, date })
+            );
           addAdMetrics(productDaily.get(productKey), nm);
         }
       }
     }
   }
   for (const campaign of campaigns) {
-    if (!rows.some(row => String(row.id) === String(campaign.id))) rows.push({ id: campaign.id,
-      name: campaign.settings?.name || `Кампания #${campaign.id}`, status: campaign.status, type: campaign.type ?? null,
-      paymentType: campaign.settings?.payment_type || '', bidType: campaign.bid_type || '', createdAt: campaign.timestamps?.created || '', startedAt: campaign.timestamps?.started || '', updatedAt: campaign.timestamps?.updated || '', nmIds: campaignProductIds(campaign), nmInCampaign: campaignProductIds(campaign), nmCount: campaignProductIds(campaign).length, nmActive: 0, nmRemovedActive: 0, activeNmIds: [],
-      ...finalizeAdMetrics(emptyAdMetrics()) });
+    if (!rows.some(row => String(row.id) === String(campaign.id)))
+      rows.push({
+        id: campaign.id,
+        name: campaign.settings?.name || `Кампания #${campaign.id}`,
+        status: campaign.status,
+        type: campaign.type ?? null,
+        paymentType: campaign.settings?.payment_type || '',
+        bidType: campaign.bid_type || '',
+        createdAt: campaign.timestamps?.created || '',
+        startedAt: campaign.timestamps?.started || '',
+        updatedAt: campaign.timestamps?.updated || '',
+        nmIds: campaignProductIds(campaign),
+        nmInCampaign: campaignProductIds(campaign),
+        nmCount: campaignProductIds(campaign).length,
+        nmActive: 0,
+        nmRemovedActive: 0,
+        activeNmIds: [],
+        ...finalizeAdMetrics(emptyAdMetrics())
+      });
   }
-  const total = emptyAdMetrics(); rows.forEach(row => addAdMetrics(total, row));
-  return { period: { from, to }, totals: finalizeAdMetrics(total),
+  const total = emptyAdMetrics();
+  rows.forEach(row => addAdMetrics(total, row));
+  return {
+    period: { from, to },
+    totals: finalizeAdMetrics(total),
     daily: [...daily.values()].sort((a, b) => a.date.localeCompare(b.date)).map(finalizeAdMetrics),
     campaigns: rows.map(finalizeAdMetrics).sort((a, b) => b.spend - a.spend),
     platforms: [...platforms.values()].map(finalizeAdMetrics).sort((a, b) => b.spend - a.spend),
-    products: [...products.values()].map(finalizeAdMetrics).sort((a, b) => b.spend - a.spend).slice(0, 100),
-    productDaily: [...productDaily.values()].map(finalizeAdMetrics).sort((a, b) => `${a.date}:${a.nmId}`.localeCompare(`${b.date}:${b.nmId}`)) };
+    products: [...products.values()]
+      .map(finalizeAdMetrics)
+      .sort((a, b) => b.spend - a.spend)
+      .slice(0, 100),
+    productDaily: [...productDaily.values()]
+      .map(finalizeAdMetrics)
+      .sort((a, b) => `${a.date}:${a.nmId}`.localeCompare(`${b.date}:${b.nmId}`))
+  };
 }
 
 function campaignProductDaily(rows = [], campaignId, nmIds = []) {
@@ -1121,48 +1837,123 @@ function campaignProductDaily(rows = [], campaignId, nmIds = []) {
 }
 
 function enrichAdvertising(summary, cards = []) {
-  const byNmId = new Map(cards.map(card => [String(card.nmID), { name: card.title || `Товар ${card.nmID}`, vendorCode: card.vendorCode || '',
-    photo: cardPhoto(card),
-    barcode: card.sizes?.[0]?.skus?.[0] || '' }]));
+  const byNmId = new Map(
+    cards.map(card => [
+      String(card.nmID),
+      {
+        name: card.title || `Товар ${card.nmID}`,
+        vendorCode: card.vendorCode || '',
+        photo: cardPhoto(card),
+        barcode: card.sizes?.[0]?.skus?.[0] || ''
+      }
+    ])
+  );
   const products = (summary.products || []).map(product => ({ ...product, ...(byNmId.get(String(product.nmId)) || {}) }));
   // nmVendorCodes — артикулы продавца для подсказки столбца «Артикулы» (до 100 товаров кампании).
-  const campaigns = (summary.campaigns || []).map(campaign => ({ ...campaign, photo: (campaign.nmIds || []).map(nmId => byNmId.get(String(nmId))?.photo).find(Boolean) || '',
-    nmVendorCodes: Object.fromEntries((campaign.nmIds || []).slice(0, 100).map(nmId => [nmId, byNmId.get(String(nmId))?.vendorCode || ''])) }));
+  const campaigns = (summary.campaigns || []).map(campaign => ({
+    ...campaign,
+    photo: (campaign.nmIds || []).map(nmId => byNmId.get(String(nmId))?.photo).find(Boolean) || '',
+    nmVendorCodes: Object.fromEntries((campaign.nmIds || []).slice(0, 100).map(nmId => [nmId, byNmId.get(String(nmId))?.vendorCode || '']))
+  }));
   const productDaily = (summary.productDaily || []).map(row => ({ ...row, ...(byNmId.get(String(row.nmId)) || {}) }));
   return { ...summary, products, campaigns, productDaily };
 }
 
 function demoAdProducts(campaignIndex, views, clicks, spend, orders, revenue) {
-  return [.62, .38].map((share, index) => ({ nmId: 4210000 + campaignIndex * 10 + index, name: `Демо-товар ${campaignIndex + 1}.${index + 1}`,
-    views: Math.round(views * share), clicks: Math.round(clicks * share), sum: Math.round(spend * share * 100) / 100,
-    orders: Math.round(orders * share), sum_price: Math.round(revenue * share * 100) / 100,
-    atbs: Math.round(clicks * share * .23), shks: Math.round(orders * share * .78) }));
+  return [0.62, 0.38].map((share, index) => ({
+    nmId: 4210000 + campaignIndex * 10 + index,
+    name: `Демо-товар ${campaignIndex + 1}.${index + 1}`,
+    views: Math.round(views * share),
+    clicks: Math.round(clicks * share),
+    sum: Math.round(spend * share * 100) / 100,
+    orders: Math.round(orders * share),
+    sum_price: Math.round(revenue * share * 100) / 100,
+    atbs: Math.round(clicks * share * 0.23),
+    shks: Math.round(orders * share * 0.78)
+  }));
 }
 
 function demoAds(from, to) {
   const campaigns = [
-    { id: 101, status: 9, type: 9, bid_type: 'manual', timestamps: { created: '2026-03-12T09:15:00+03:00', started: '2026-09-01T10:00:00+03:00', updated: '2026-09-20T18:42:00+03:00' }, settings: { name: 'Поиск · базовая коллекция', payment_type: 'cpm' } },
-    { id: 102, status: 11, type: 8, bid_type: 'unified', timestamps: { created: '2026-06-02T14:40:00+03:00', started: null, updated: '2026-09-18T09:05:00+03:00' }, settings: { name: 'Автокампания · хиты', payment_type: 'cpm' } },
-    { id: 103, status: 7, type: 5, bid_type: 'manual', timestamps: { created: '2025-11-20T11:05:00+03:00', started: '2026-01-15T12:30:00+03:00', updated: '2026-08-30T21:10:00+03:00' }, settings: { name: 'Карточка товара · новинки', payment_type: 'cpc' } }
+    {
+      id: 101,
+      status: 9,
+      type: 9,
+      bid_type: 'manual',
+      timestamps: { created: '2026-03-12T09:15:00+03:00', started: '2026-09-01T10:00:00+03:00', updated: '2026-09-20T18:42:00+03:00' },
+      settings: { name: 'Поиск · базовая коллекция', payment_type: 'cpm' }
+    },
+    {
+      id: 102,
+      status: 11,
+      type: 8,
+      bid_type: 'unified',
+      timestamps: { created: '2026-06-02T14:40:00+03:00', started: null, updated: '2026-09-18T09:05:00+03:00' },
+      settings: { name: 'Автокампания · хиты', payment_type: 'cpm' }
+    },
+    {
+      id: 103,
+      status: 7,
+      type: 5,
+      bid_type: 'manual',
+      timestamps: { created: '2025-11-20T11:05:00+03:00', started: '2026-01-15T12:30:00+03:00', updated: '2026-08-30T21:10:00+03:00' },
+      settings: { name: 'Карточка товара · новинки', payment_type: 'cpc' }
+    }
   ];
-  const demoBudgets = new Map([['101', 18400], ['102', 7250]]);
+  const demoBudgets = new Map([
+    ['101', 18400],
+    ['102', 7250]
+  ]);
   const stats = campaigns.map((campaign, campaignIndex) => {
     const days = [];
-    for (let cursor = new Date(`${from}T00:00:00Z`), end = new Date(`${to}T00:00:00Z`), index = 0; cursor <= end; cursor.setUTCDate(cursor.getUTCDate() + 1), index++) {
-      const views = 5200 + campaignIndex * 1700 + index * 260, clicks = Math.round(views * (0.025 + campaignIndex * .006));
-      const spend = Math.round((clicks * (13 + campaignIndex * 4)) * 100) / 100, orders = Math.round(clicks * (.08 + campaignIndex * .015));
+    for (
+      let cursor = new Date(`${from}T00:00:00Z`), end = new Date(`${to}T00:00:00Z`), index = 0;
+      cursor <= end;
+      cursor.setUTCDate(cursor.getUTCDate() + 1), index++
+    ) {
+      const views = 5200 + campaignIndex * 1700 + index * 260,
+        clicks = Math.round(views * (0.025 + campaignIndex * 0.006));
+      const spend = Math.round(clicks * (13 + campaignIndex * 4) * 100) / 100,
+        orders = Math.round(clicks * (0.08 + campaignIndex * 0.015));
       const revenue = orders * (1750 + campaignIndex * 410);
-      days.push({ date: cursor.toISOString(), views, clicks, sum: spend, orders, sum_price: revenue,
-        atbs: Math.round(clicks * .23), shks: Math.round(orders * .78), canceled: campaignIndex === 2 && index % 4 === 0 ? 1 : 0,
+      days.push({
+        date: cursor.toISOString(),
+        views,
+        clicks,
+        sum: spend,
+        orders,
+        sum_price: revenue,
+        atbs: Math.round(clicks * 0.23),
+        shks: Math.round(orders * 0.78),
+        canceled: campaignIndex === 2 && index % 4 === 0 ? 1 : 0,
         apps: [1, 32, 64].map((appType, appIndex) => {
-          const share = [.18, .52, .30][appIndex];
-          return { appType, views: Math.round(views * share), clicks: Math.round(clicks * share), sum: spend * share,
-            orders: Math.round(orders * share), sum_price: revenue * share, nms: demoAdProducts(campaignIndex, views * share, clicks * share, spend * share, orders * share, revenue * share) };
-        }) });
+          const share = [0.18, 0.52, 0.3][appIndex];
+          return {
+            appType,
+            views: Math.round(views * share),
+            clicks: Math.round(clicks * share),
+            sum: spend * share,
+            orders: Math.round(orders * share),
+            sum_price: revenue * share,
+            nms: demoAdProducts(campaignIndex, views * share, clicks * share, spend * share, orders * share, revenue * share)
+          };
+        })
+      });
     }
-    const total = emptyAdMetrics(); days.forEach(day => addAdMetrics(total, day));
-    return { advertId: campaign.id, sum: total.spend, sum_price: total.revenue, atbs: total.carts, shks: total.sales,
-      views: total.views, clicks: total.clicks, orders: total.orders, canceled: total.canceled, days };
+    const total = emptyAdMetrics();
+    days.forEach(day => addAdMetrics(total, day));
+    return {
+      advertId: campaign.id,
+      sum: total.spend,
+      sum_price: total.revenue,
+      atbs: total.carts,
+      shks: total.sales,
+      views: total.views,
+      clicks: total.clicks,
+      orders: total.orders,
+      canceled: total.canceled,
+      days
+    };
   });
   const summary = summarizeAdStats(campaigns, stats, from, to);
   return { demo: true, ...summary, campaigns: withAdBudgets(summary.campaigns, demoBudgets), warnings: [] };
@@ -1192,9 +1983,11 @@ function historyPeriod(from, to, today = moscowDate(0)) {
 function historyChunks({ from, to }) {
   const chunks = [];
   for (let cursor = new Date(`${from}T00:00:00Z`), end = new Date(`${to}T00:00:00Z`); cursor <= end; ) {
-    const chunkEnd = new Date(cursor); chunkEnd.setUTCDate(chunkEnd.getUTCDate() + 30);
+    const chunkEnd = new Date(cursor);
+    chunkEnd.setUTCDate(chunkEnd.getUTCDate() + 30);
     chunks.push({ from: cursor.toISOString().slice(0, 10), to: (chunkEnd > end ? end : chunkEnd).toISOString().slice(0, 10) });
-    cursor = chunkEnd; cursor.setUTCDate(cursor.getUTCDate() + 1);
+    cursor = chunkEnd;
+    cursor.setUTCDate(cursor.getUTCDate() + 1);
   }
   return chunks;
 }
@@ -1203,16 +1996,25 @@ function historyChunks({ from, to }) {
 // поэтому все обращения к ней идут через очередь кабинета.
 function fullstatsRequest(id, token, ids, from, to, onWait = () => {}) {
   const key = `ad-stats:${id}:${from}:${to}:${ids}`;
-  const fresh = () => { const cached = analyticsCache.get(key); return cached && Date.now() - cached.savedAt < 3 * 60_000 ? cached : null; };
+  const fresh = () => {
+    const cached = analyticsCache.get(key);
+    return cached && Date.now() - cached.savedAt < 3 * 60_000 ? cached : null;
+  };
   if (fresh()) return Promise.resolve(fresh().value);
   const task = async () => {
     if (fresh()) return fresh().value;
     for (let attempt = 0; ; attempt++) {
       const delay = (fullstatsLastCall.get(id) || 0) + FULLSTATS_INTERVAL - Date.now();
-      if (delay > 0) { onWait(delay, attempt ? 'retry' : 'limit'); await wait(delay); }
+      if (delay > 0) {
+        onWait(delay, attempt ? 'retry' : 'limit');
+        await wait(delay);
+      }
       fullstatsLastCall.set(id, Date.now());
       try {
-        const value = await wbRequest(token, `https://advert-api.wildberries.ru/adv/v3/fullstats?ids=${ids}&beginDate=${from}&endDate=${to}`);
+        const value = await wbRequest(
+          token,
+          `https://advert-api.wildberries.ru/adv/v3/fullstats?ids=${ids}&beginDate=${from}&endDate=${to}`
+        );
         analyticsCache.set(key, { value, savedAt: Date.now() });
         return value;
       } catch (error) {
@@ -1227,12 +2029,16 @@ function fullstatsRequest(id, token, ids, from, to, onWait = () => {}) {
     }
   };
   const run = (fullstatsQueues.get(id) || Promise.resolve()).then(task);
-  fullstatsQueues.set(id, run.catch(() => {}));
+  fullstatsQueues.set(
+    id,
+    run.catch(() => {})
+  );
   return run;
 }
 
 function addDays(date, days) {
-  const value = new Date(`${date}T00:00:00Z`); value.setUTCDate(value.getUTCDate() + days);
+  const value = new Date(`${date}T00:00:00Z`);
+  value.setUTCDate(value.getUTCDate() + days);
   return value.toISOString().slice(0, 10);
 }
 
@@ -1261,7 +2067,12 @@ function planAdFetch(dates = [], storedDates = new Set(), today = moscowDate(0),
 // Имя папки из названия кабинета: без символов, запрещённых в Windows, и не только из цифр,
 // чтобы не путать с папками кампаний.
 function safeFolderName(name, fallback) {
-  const clean = String(name || '').replace(/[<>:"/\\|?*\u0000-\u001f]/g, ' ').replace(/\s+/g, ' ').trim().replace(/[. ]+$/, '').slice(0, 80);
+  const clean = String(name || '')
+    .replace(/[<>:"/\\|?*\u0000-\u001f]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/[. ]+$/, '')
+    .slice(0, 80);
   if (!clean || /^(con|prn|aux|nul|com\d|lpt\d)$/i.test(clean)) return fallback;
   return /^\d+$/.test(clean) ? `Кабинет ${clean}` : clean;
 }
@@ -1286,7 +2097,9 @@ function campaignDir(cabinetId, campaignId) {
   if (source) {
     fs.mkdirSync(path.dirname(target), { recursive: true });
     fs.renameSync(source, target);
-    try { if (path.dirname(source) !== ADS_DIR && !fs.readdirSync(path.dirname(source)).length) fs.rmdirSync(path.dirname(source)); } catch {}
+    try {
+      if (path.dirname(source) !== ADS_DIR && !fs.readdirSync(path.dirname(source)).length) fs.rmdirSync(path.dirname(source));
+    } catch {}
   }
   return target;
 }
@@ -1296,7 +2109,11 @@ function adMonthFile(cabinetId, campaignId, month) {
 }
 
 function readAdMonth(cabinetId, campaignId, month) {
-  try { return JSON.parse(fs.readFileSync(adMonthFile(cabinetId, campaignId, month), 'utf8')); } catch { return null; }
+  try {
+    return JSON.parse(fs.readFileSync(adMonthFile(cabinetId, campaignId, month), 'utf8'));
+  } catch {
+    return null;
+  }
 }
 
 function loadStoredAdDays(cabinetId, campaignId, from, to) {
@@ -1323,8 +2140,11 @@ function saveAdDays(campaignId, cabinet, name, dates, daily, productsByDate) {
   for (const [month, monthDates] of byMonth) {
     const file = readAdMonth(cabinet, campaignId, month) || { campaignId: Number(campaignId), month, days: {} };
     for (const date of monthDates) {
-      file.days[date] = { fetchedAt, campaign: daily.get(date) || emptyAdDay(date),
-        products: (productsByDate.get(date) || []).map(({ photo, vendorCode, barcode, ...item }) => item) };
+      file.days[date] = {
+        fetchedAt,
+        campaign: daily.get(date) || emptyAdDay(date),
+        products: (productsByDate.get(date) || []).map(({ photo, vendorCode, barcode, ...item }) => item)
+      };
     }
     file.days = Object.fromEntries(Object.entries(file.days).sort(([a], [b]) => a.localeCompare(b)));
     Object.assign(file, { cabinet, name, updatedAt: fetchedAt });
@@ -1345,7 +2165,15 @@ function cachedCampaignStats(id, campaignId, from, to) {
     if (cachedFrom > from || cachedTo < to || !ids.split(',').includes(String(campaignId))) continue;
     const stat = (Array.isArray(entry.value) ? entry.value : []).find(item => String(item.advertId) === String(campaignId));
     if (!stat) return [];
-    return [{ ...stat, days: (stat.days || []).filter(day => { const date = String(day.date || '').slice(0, 10); return date >= from && date <= to; }) }];
+    return [
+      {
+        ...stat,
+        days: (stat.days || []).filter(day => {
+          const date = String(day.date || '').slice(0, 10);
+          return date >= from && date <= to;
+        })
+      }
+    ];
   }
   return null;
 }
@@ -1360,52 +2188,103 @@ function hasAdActivity(day = {}) {
 // Места размещения и ставки товаров из списка кампаний (/api/advert/v2/adverts): ставки WB хранит в копейках.
 // Для CPM ставка — за 1000 показов, для CPC — за клик.
 function campaignSetup(meta, cards = [], demo = false) {
-  if (demo) return { paymentType: 'cpm', bidType: 'manual', placements: { search: true, recommendations: false },
-    bids: [{ nmId: 4210000, name: 'Демо-товар 1.1', vendorCode: 'DEMO-1', photo: '', subject: 'Демо', search: 250, recommendations: 0 }] };
+  if (demo)
+    return {
+      paymentType: 'cpm',
+      bidType: 'manual',
+      placements: { search: true, recommendations: false },
+      bids: [{ nmId: 4210000, name: 'Демо-товар 1.1', vendorCode: 'DEMO-1', photo: '', subject: 'Демо', search: 250, recommendations: 0 }]
+    };
   if (!meta) return null;
   const byNmId = new Map(cards.map(card => [String(card.nmID), card]));
-  const rub = value => value == null ? null : Number(value) / 100;
-  return { paymentType: meta.settings?.payment_type || '', bidType: meta.bid_type || '', placements: meta.settings?.placements || null,
-    bids: (Array.isArray(meta.nm_settings) ? meta.nm_settings : []).map(item => { const card = byNmId.get(String(item.nm_id)) || {};
-      return { nmId: item.nm_id, name: card.title || `Товар ${item.nm_id}`, vendorCode: card.vendorCode || '', photo: cardPhoto(card), subject: item.subject?.name || '',
-        search: rub(item.bids_kopecks?.search), recommendations: rub(item.bids_kopecks?.recommendations) }; }) };
+  const rub = value => (value == null ? null : Number(value) / 100);
+  return {
+    paymentType: meta.settings?.payment_type || '',
+    bidType: meta.bid_type || '',
+    placements: meta.settings?.placements || null,
+    bids: (Array.isArray(meta.nm_settings) ? meta.nm_settings : []).map(item => {
+      const card = byNmId.get(String(item.nm_id)) || {};
+      return {
+        nmId: item.nm_id,
+        name: card.title || `Товар ${item.nm_id}`,
+        vendorCode: card.vendorCode || '',
+        photo: cardPhoto(card),
+        subject: item.subject?.name || '',
+        search: rub(item.bids_kopecks?.search),
+        recommendations: rub(item.bids_kopecks?.recommendations)
+      };
+    })
+  };
 }
 
 // --- Статистика одного ключевого запроса по дням ---
 // /adv/v1/normquery/stats отдаёт дневную статистику сразу по всем кластерам товаров кампании, поэтому ответ кэшируется:
 // первый запрос ждёт WB (до 10 запросов в минуту), следующие ключевые запросы того же периода открываются мгновенно.
-function emptyKeywordDay(date) { return { date, views: 0, clicks: 0, spend: 0, carts: 0, orders: 0, sales: 0, positionWeight: 0, positionBase: 0, viewsKnown: false }; }
+function emptyKeywordDay(date) {
+  return { date, views: 0, clicks: 0, spend: 0, carts: 0, orders: 0, sales: 0, positionWeight: 0, positionBase: 0, viewsKnown: false };
+}
 function summarizeKeywordDaily(items = [], query, dates = []) {
   const byDate = new Map(dates.map(date => [date, emptyKeywordDay(date)]));
-  for (const item of items) for (const day of item.dailyStats || []) {
-    const stat = day.stat || {}; if (String(stat.normQuery || '').trim() !== query) continue;
-    const date = String(day.date || '').slice(0, 10); if (!byDate.has(date)) byDate.set(date, emptyKeywordDay(date));
-    const row = byDate.get(date), views = Number(stat.views || 0);
-    if (stat.views !== undefined && stat.views !== null) row.viewsKnown = true;
-    row.views += views; row.clicks += Number(stat.clicks || 0); row.spend += Number(stat.spend || 0);
-    row.carts += Number(stat.atbs || 0); row.orders += Number(stat.orders || 0); row.sales += Number(stat.shks || 0);
-    if (stat.avgPos) { row.positionWeight += Number(stat.avgPos) * (views || 1); row.positionBase += views || 1; }
-  }
+  for (const item of items)
+    for (const day of item.dailyStats || []) {
+      const stat = day.stat || {};
+      if (String(stat.normQuery || '').trim() !== query) continue;
+      const date = String(day.date || '').slice(0, 10);
+      if (!byDate.has(date)) byDate.set(date, emptyKeywordDay(date));
+      const row = byDate.get(date),
+        views = Number(stat.views || 0);
+      if (stat.views !== undefined && stat.views !== null) row.viewsKnown = true;
+      row.views += views;
+      row.clicks += Number(stat.clicks || 0);
+      row.spend += Number(stat.spend || 0);
+      row.carts += Number(stat.atbs || 0);
+      row.orders += Number(stat.orders || 0);
+      row.sales += Number(stat.shks || 0);
+      if (stat.avgPos) {
+        row.positionWeight += Number(stat.avgPos) * (views || 1);
+        row.positionBase += views || 1;
+      }
+    }
   const viewsAvailable = [...byDate.values()].some(row => row.viewsKnown);
-  return { viewsAvailable, days: [...byDate.values()].sort((a, b) => a.date.localeCompare(b.date)).map(({ positionWeight, positionBase, viewsKnown, ...row }) => ({ ...row,
-    views: viewsAvailable ? row.views : null, ctr: viewsAvailable ? safeRatio(row.clicks, row.views) : null, cpm: viewsAvailable ? safeRatio(row.spend, row.views, 1000) : null,
-    cpc: safeRatio(row.spend, row.clicks, 1), cr: safeRatio(row.orders, row.clicks), avgPosition: positionBase ? Math.round(positionWeight / positionBase * 10) / 10 : null })) };
+  return {
+    viewsAvailable,
+    days: [...byDate.values()]
+      .sort((a, b) => a.date.localeCompare(b.date))
+      .map(({ positionWeight, positionBase, viewsKnown, ...row }) => ({
+        ...row,
+        views: viewsAvailable ? row.views : null,
+        ctr: viewsAvailable ? safeRatio(row.clicks, row.views) : null,
+        cpm: viewsAvailable ? safeRatio(row.spend, row.views, 1000) : null,
+        cpc: safeRatio(row.spend, row.clicks, 1),
+        cr: safeRatio(row.orders, row.clicks),
+        avgPosition: positionBase ? Math.round((positionWeight / positionBase) * 10) / 10 : null
+      }))
+  };
 }
 // Средняя позиция кампании по дням: из статистики поисковых кластеров (/adv/v1/normquery/stats), взвешенная по показам
 // (у CPC-кампаний показов нет — тогда каждый кластер весит одинаково). Это позиция в поиске; дни без данных — null.
 function summarizePositionDaily(items = [], dates = []) {
   const byDate = new Map(dates.map(date => [date, { weight: 0, base: 0 }]));
-  for (const item of items) for (const day of item.dailyStats || []) {
-    const stat = day.stat || {}; if (!stat.avgPos) continue;
-    const date = String(day.date || '').slice(0, 10); if (!byDate.has(date)) byDate.set(date, { weight: 0, base: 0 });
-    const weight = Number(stat.views) || 1, row = byDate.get(date);
-    row.weight += Number(stat.avgPos) * weight; row.base += weight;
-  }
-  return [...byDate].sort(([a], [b]) => a.localeCompare(b)).map(([date, row]) => ({ date, avgPosition: row.base ? Math.round(row.weight / row.base * 10) / 10 : null }));
+  for (const item of items)
+    for (const day of item.dailyStats || []) {
+      const stat = day.stat || {};
+      if (!stat.avgPos) continue;
+      const date = String(day.date || '').slice(0, 10);
+      if (!byDate.has(date)) byDate.set(date, { weight: 0, base: 0 });
+      const weight = Number(stat.views) || 1,
+        row = byDate.get(date);
+      row.weight += Number(stat.avgPos) * weight;
+      row.base += weight;
+    }
+  return [...byDate]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([date, row]) => ({ date, avgPosition: row.base ? Math.round((row.weight / row.base) * 10) / 10 : null }));
 }
 async function campaignPositions(id, campaignId, from, to) {
-  const period = historyPeriod(from, to), dates = datesBetween(period.from, period.to);
-  if (id === 'demo' || !cabinets().length) return { demo: true, period, days: dates.map((date, index) => ({ date, avgPosition: 6 + (index * 7) % 9 })) };
+  const period = historyPeriod(from, to),
+    dates = datesBetween(period.from, period.to);
+  if (id === 'demo' || !cabinets().length)
+    return { demo: true, period, days: dates.map((date, index) => ({ date, avgPosition: 6 + ((index * 7) % 9) })) };
   if (!/^\d{1,15}$/.test(String(campaignId || ''))) throw apiError(400, 'Некорректный номер кампании');
   const token = tokenFor(id);
   const campaignData = await cachedAnalytics(`ad-campaigns:${id}`, () => wbRequest(token, AD_CAMPAIGNS_URL), 3 * 60_000);
@@ -1413,8 +2292,17 @@ async function campaignPositions(id, campaignId, from, to) {
   if (!meta) throw apiError(404, 'Кампания не найдена');
   const nmIds = campaignProductIds(meta).map(String).slice(0, 100);
   if (!nmIds.length) return { demo: false, period, days: dates.map(date => ({ date, avgPosition: null })) };
-  const response = await cachedAnalytics(`keyword-daily:${id}:${campaignId}:${period.from}:${period.to}:${nmIds.join(',')}`, () => normqueryRequest(id, token,
-    { from: period.from, to: period.to, items: nmIds.map(nmId => ({ advertId: Number(campaignId), nmId: Number(nmId) })) }, NORMQUERY_DAILY_URL), 10 * 60_000);
+  const response = await cachedAnalytics(
+    `keyword-daily:${id}:${campaignId}:${period.from}:${period.to}:${nmIds.join(',')}`,
+    () =>
+      normqueryRequest(
+        id,
+        token,
+        { from: period.from, to: period.to, items: nmIds.map(nmId => ({ advertId: Number(campaignId), nmId: Number(nmId) })) },
+        NORMQUERY_DAILY_URL
+      ),
+    10 * 60_000
+  );
   return { demo: false, period, days: summarizePositionDaily(response?.items || [], dates) };
 }
 
@@ -1430,7 +2318,8 @@ function productDetailPeriod(from, to, today = moscowDate(0)) {
   const safeTo = pattern.test(to || '') ? (to > today ? today : to) : today;
   const safeFrom = pattern.test(from || '') ? from : addDays(safeTo, -13);
   if (safeFrom > safeTo) throw apiError(400, 'Начало периода должно быть не позже конца');
-  if (datesBetween(safeFrom, safeTo).length > PRODUCT_DETAIL_MAX_DAYS) throw apiError(400, `Выберите период не длиннее ${PRODUCT_DETAIL_MAX_DAYS} дней`);
+  if (datesBetween(safeFrom, safeTo).length > PRODUCT_DETAIL_MAX_DAYS)
+    throw apiError(400, `Выберите период не длиннее ${PRODUCT_DETAIL_MAX_DAYS} дней`);
   const earliest = addDays(today, -FUNNEL_MAX_DEPTH_DAYS);
   if (safeFrom < earliest) throw apiError(400, `WB отдаёт воронку только с ${earliest.split('-').reverse().join('.')}`);
   return { from: safeFrom, to: safeTo };
@@ -1440,35 +2329,98 @@ function productDetailPeriod(from, to, today = moscowDate(0)) {
 // случайных показов, расход «хвостом» после паузы) она по сути не работала.
 const PRODUCT_AD_MIN_VIEWS = 50;
 function productAdDays(stats = [], nmId, dates = []) {
-  const days = new Map(dates.map(date => [date, { ...emptyAdMetrics(), campaigns: [] }])), campaigns = new Map();
-  for (const stat of stats) for (const day of stat.days || []) {
-    const date = String(day.date || '').slice(0, 10), row = days.get(date);
-    if (!row) continue;
-    const metrics = emptyAdMetrics();
-    for (const app of day.apps || []) for (const nm of app.nms || []) if (String(nm.nmId ?? nm.nm) === String(nmId)) addAdMetrics(metrics, nm);
-    addAdMetrics(row, metrics);
-    const key = String(stat.advertId);
-    if (!campaigns.has(key)) campaigns.set(key, { ...emptyAdMetrics(), activeDays: 0 });
-    addAdMetrics(campaigns.get(key), metrics);
-    if (metrics.views >= PRODUCT_AD_MIN_VIEWS) { row.campaigns.push(Number(stat.advertId)); campaigns.get(key).activeDays += 1; }
-  }
+  const days = new Map(dates.map(date => [date, { ...emptyAdMetrics(), campaigns: [] }])),
+    campaigns = new Map();
+  for (const stat of stats)
+    for (const day of stat.days || []) {
+      const date = String(day.date || '').slice(0, 10),
+        row = days.get(date);
+      if (!row) continue;
+      const metrics = emptyAdMetrics();
+      for (const app of day.apps || [])
+        for (const nm of app.nms || []) if (String(nm.nmId ?? nm.nm) === String(nmId)) addAdMetrics(metrics, nm);
+      addAdMetrics(row, metrics);
+      const key = String(stat.advertId);
+      if (!campaigns.has(key)) campaigns.set(key, { ...emptyAdMetrics(), activeDays: 0 });
+      addAdMetrics(campaigns.get(key), metrics);
+      if (metrics.views >= PRODUCT_AD_MIN_VIEWS) {
+        row.campaigns.push(Number(stat.advertId));
+        campaigns.get(key).activeDays += 1;
+      }
+    }
   return { days, campaigns };
 }
 function demoProductDetail(nmId, period, dates) {
-  const campaigns = [{ id: 901, name: 'Поиск — основной', type: 9 }, { id: 902, name: 'Авто — весь каталог', type: 8 }, { id: 903, name: 'Поиск — распродажа', type: 9 }];
-  const active = (id, index) => id === 901 ? true : id === 902 ? index >= 3 && index < dates.length - 4 : index >= Math.floor(dates.length / 2);
+  const campaigns = [
+    { id: 901, name: 'Поиск — основной', type: 9 },
+    { id: 902, name: 'Авто — весь каталог', type: 8 },
+    { id: 903, name: 'Поиск — распродажа', type: 9 }
+  ];
+  const active = (id, index) =>
+    id === 901 ? true : id === 902 ? index >= 3 && index < dates.length - 4 : index >= Math.floor(dates.length / 2);
   const days = dates.map((date, index) => {
-    const wave = 1 + .15 * Math.sin(index / 1.7), on = campaigns.filter(item => active(item.id, index)).map(item => item.id);
-    const opens = Math.round(900 * wave), carts = Math.round(opens * .12), orders = Math.round(carts * .3);
-    const adClicks = Math.round(opens * (.18 + on.length * .07)), adCarts = Math.round(adClicks * .1), adOrders = Math.round(adCarts * .3), spend = Math.round(adClicks * 14);
-    return { date, funnel: { openCount: opens, cartCount: carts, orderCount: orders, orderSum: orders * 1890, buyoutCount: Math.round(orders * .7), buyoutSum: Math.round(orders * .7) * 1890, addToWishlistCount: Math.round(opens * .03) },
-      ads: finalizeAdMetrics({ ...emptyAdMetrics(), views: adClicks * 30, clicks: adClicks, spend, carts: adCarts, orders: adOrders, revenue: adOrders * 1890 }), campaigns: on, avgPosition: Math.round((14 - on.length * 2 + Math.sin(index) * 2) * 10) / 10 };
+    const wave = 1 + 0.15 * Math.sin(index / 1.7),
+      on = campaigns.filter(item => active(item.id, index)).map(item => item.id);
+    const opens = Math.round(900 * wave),
+      carts = Math.round(opens * 0.12),
+      orders = Math.round(carts * 0.3);
+    const adClicks = Math.round(opens * (0.18 + on.length * 0.07)),
+      adCarts = Math.round(adClicks * 0.1),
+      adOrders = Math.round(adCarts * 0.3),
+      spend = Math.round(adClicks * 14);
+    return {
+      date,
+      funnel: {
+        openCount: opens,
+        cartCount: carts,
+        orderCount: orders,
+        orderSum: orders * 1890,
+        buyoutCount: Math.round(orders * 0.7),
+        buyoutSum: Math.round(orders * 0.7) * 1890,
+        addToWishlistCount: Math.round(opens * 0.03)
+      },
+      ads: finalizeAdMetrics({
+        ...emptyAdMetrics(),
+        views: adClicks * 30,
+        clicks: adClicks,
+        spend,
+        carts: adCarts,
+        orders: adOrders,
+        revenue: adOrders * 1890
+      }),
+      campaigns: on,
+      avgPosition: Math.round((14 - on.length * 2 + Math.sin(index) * 2) * 10) / 10
+    };
   });
-  return { demo: true, period, product: { nmId: Number(nmId), name: 'Демо-товар: худи оверсайз', vendorCode: 'HOODIE-01', brand: 'Демо', subject: 'Худи', photo: '' },
-    days, campaigns: campaigns.map(item => ({ ...item, status: 9, activeDays: days.filter(day => day.campaigns.includes(item.id)).length, ...finalizeAdMetrics(emptyAdMetrics()) })),
-    tracking: null, priceChanges: [[3, 2100, 1890], [Math.max(4, dates.length - 5), 1890, 1990]].filter(([index]) => index < dates.length).map(([index, before, after]) => ({
-      at: `${dates[index]}T09:45:00.000Z`, date: dates[index], items: [{ what: 'Цена со скидкой, ₽', before, after }, { what: 'Скидка продавца, %', before: 30, after: Math.round((1 - after / 3000) * 100) }] })),
-    sync: { pending: 0 }, warnings: [], fetchedAt: new Date().toISOString() };
+  return {
+    demo: true,
+    period,
+    product: { nmId: Number(nmId), name: 'Демо-товар: худи оверсайз', vendorCode: 'HOODIE-01', brand: 'Демо', subject: 'Худи', photo: '' },
+    days,
+    campaigns: campaigns.map(item => ({
+      ...item,
+      status: 9,
+      activeDays: days.filter(day => day.campaigns.includes(item.id)).length,
+      ...finalizeAdMetrics(emptyAdMetrics())
+    })),
+    tracking: null,
+    priceChanges: [
+      [3, 2100, 1890],
+      [Math.max(4, dates.length - 5), 1890, 1990]
+    ]
+      .filter(([index]) => index < dates.length)
+      .map(([index, before, after]) => ({
+        at: `${dates[index]}T09:45:00.000Z`,
+        date: dates[index],
+        items: [
+          { what: 'Цена со скидкой, ₽', before, after },
+          { what: 'Скидка продавца, %', before: 30, after: Math.round((1 - after / 3000) * 100) }
+        ]
+      })),
+    sync: { pending: 0 },
+    warnings: [],
+    fetchedAt: new Date().toISOString()
+  };
 }
 // --- Включена ли кампания для товара — по истории Google Таблицы (статус и состав кампании) ---
 // С начала отслеживания (sync.json → since) таблица записывает смену статуса («Статус», «Появилось в списке»,
@@ -1482,71 +2434,133 @@ const moscowDateOf = iso => new Date(Date.parse(iso) + 3 * 3_600_000).toISOStrin
 const moscowDayStart = date => new Date(Date.parse(`${date}T00:00:00+03:00`)).toISOString();
 function campaignSheetChange(row, nmId) {
   const what = String(row.what || '');
-  if (what === 'Статус') return { field: 'status', before: row.before === SHEET_ACTIVE_STATUS, after: row.after === SHEET_ACTIVE_STATUS, reason: `статус: ${row.before} → ${row.after}` };
-  if (what === 'Появилось в списке') return { field: 'status', before: false, after: row.after === SHEET_ACTIVE_STATUS, reason: `кампания появилась (${row.after})` };
-  if (what === 'Пропало из списка') return { field: 'status', before: row.before === SHEET_ACTIVE_STATUS, after: false, reason: 'кампания пропала из списка' };
+  if (what === 'Статус')
+    return {
+      field: 'status',
+      before: row.before === SHEET_ACTIVE_STATUS,
+      after: row.after === SHEET_ACTIVE_STATUS,
+      reason: `статус: ${row.before} → ${row.after}`
+    };
+  if (what === 'Появилось в списке')
+    return { field: 'status', before: false, after: row.after === SHEET_ACTIVE_STATUS, reason: `кампания появилась (${row.after})` };
+  if (what === 'Пропало из списка')
+    return { field: 'status', before: row.before === SHEET_ACTIVE_STATUS, after: false, reason: 'кампания пропала из списка' };
   if (!what.startsWith('Артикулы WB')) return null;
   let before, after;
-  if (what.startsWith('Артикулы WB:')) { before = sheetIds(row.before).includes(nmId); after = sheetIds(row.after).includes(nmId); }
-  else {
-    const listed = prefix => [row.before, row.after].filter(value => new RegExp(`^${prefix}`, 'i').test(String(value ?? ''))).flatMap(sheetIds).includes(nmId);
-    if (listed('убран')) { before = true; after = false; } else if (listed('добавлен')) { before = false; after = true; } else return null;
+  if (what.startsWith('Артикулы WB:')) {
+    before = sheetIds(row.before).includes(nmId);
+    after = sheetIds(row.after).includes(nmId);
+  } else {
+    const listed = prefix =>
+      [row.before, row.after]
+        .filter(value => new RegExp(`^${prefix}`, 'i').test(String(value ?? '')))
+        .flatMap(sheetIds)
+        .includes(nmId);
+    if (listed('убран')) {
+      before = true;
+      after = false;
+    } else if (listed('добавлен')) {
+      before = false;
+      after = true;
+    } else return null;
   }
-  return before === after ? null : { field: 'member', before, after, reason: after ? 'товар добавлен в кампанию' : 'товар убран из кампании' };
+  return before === after
+    ? null
+    : { field: 'member', before, after, reason: after ? 'товар добавлен в кампанию' : 'товар убран из кампании' };
 }
 function productCampaignTimeline(nmId, rows = [], current = new Map()) {
   const byCampaign = new Map();
   for (const row of rows) {
     if (row?.section !== 'Реклама') continue;
-    const change = campaignSheetChange(row, String(nmId)); if (!change) continue;
-    const id = String(row.id); if (!byCampaign.has(id)) byCampaign.set(id, []);
+    const change = campaignSheetChange(row, String(nmId));
+    if (!change) continue;
+    const id = String(row.id);
+    if (!byCampaign.has(id)) byCampaign.set(id, []);
     byCampaign.get(id).push({ ...change, at: String(row.at) });
   }
-  const on = state => state.status && state.member, result = new Map();
+  const on = state => state.status && state.member,
+    result = new Map();
   for (const id of new Set([...byCampaign.keys(), ...current.keys()])) {
     const list = (byCampaign.get(id) || []).sort((a, b) => a.at.localeCompare(b.at));
     const state = { status: false, member: false, ...current.get(id) };
-    for (const field of ['status', 'member']) { const last = list.filter(change => change.field === field).at(-1); if (last) state[field] = last.after; }
+    for (const field of ['status', 'member']) {
+      const last = list.filter(change => change.field === field).at(-1);
+      if (last) state[field] = last.after;
+    }
     // Назад по записям: перед каждой записью поле было равно её «до». Записи одного обновления таблицы (одно время) —
     // один переход: сравниваем состояние до первой и после последней из них.
     const states = [{ ...state }];
     for (let index = list.length - 1; index >= 0; index--) states.unshift({ ...states[0], [list[index].field]: list[index].before });
     const changes = [];
-    for (let index = 0; index < list.length;) {
-      let end = index; while (end + 1 < list.length && list[end + 1].at === list[index].at) end++;
-      const was = on(states[index]), now = on(states[end + 1]);
-      if (was !== now) changes.push({ at: list[index].at, on: now, reason: list.slice(index, end + 1).map(change => change.reason).join('; ') });
+    for (let index = 0; index < list.length; ) {
+      let end = index;
+      while (end + 1 < list.length && list[end + 1].at === list[index].at) end++;
+      const was = on(states[index]),
+        now = on(states[end + 1]);
+      if (was !== now)
+        changes.push({
+          at: list[index].at,
+          on: now,
+          reason: list
+            .slice(index, end + 1)
+            .map(change => change.reason)
+            .join('; ')
+        });
       index = end + 1;
     }
     result.set(id, { initial: on(states[0]), changes });
   }
   return result;
 }
-const timelineOnAt = (timeline, time) => { let on = timeline.initial; for (const change of timeline.changes) { if (change.at <= time) on = change.on; else break; } return on; };
+const timelineOnAt = (timeline, time) => {
+  let on = timeline.initial;
+  for (const change of timeline.changes) {
+    if (change.at <= time) on = change.on;
+    else break;
+  }
+  return on;
+};
 // Работала ли кампания по дням — для флажков ▶ / ■ в детализации кампании, по тем же правилам, что у товара:
 // до начала отслеживания Google Таблицы — 50 показов в день и больше, с начала — статус «Активна» хоть какое-то время
 // дня (пауза и запуск внутри дня флажков не дают). Состав кампании здесь не важен: timeline строится только по статусу.
 // events — точные переходы из таблицы за период (для подсказки флажка). Только копия таблицы на компьютере.
 function campaignActivity(campaignId, period, daily = [], currentStatus) {
-  const dates = datesBetween(period.from, period.to), views = new Map(daily.map(day => [String(day.date).slice(0, 10), Number(day.views || 0)]));
-  const byViews = date => (views.get(date) || 0) >= PRODUCT_AD_MIN_VIEWS, untracked = { tracking: null, days: dates.map(date => ({ date, on: byViews(date) })), events: [] };
+  const dates = datesBetween(period.from, period.to),
+    views = new Map(daily.map(day => [String(day.date).slice(0, 10), Number(day.views || 0)]));
+  const byViews = date => (views.get(date) || 0) >= PRODUCT_AD_MIN_VIEWS,
+    untracked = { tracking: null, days: dates.map(date => ({ date, on: byViews(date) })), events: [] };
   if (!sheetConfigured()) return untracked;
   const rows = readSheetHistory({ ids: [String(campaignId)], sections: ['Реклама'], limit: 1_000_000 }).items;
   const since = sheetAdsTrackingSince(readSheetJson(path.join(SHEET_DIR, 'sync.json'), {}).since, rows);
   if (!since || moscowDateOf(since) > period.to) return untracked;
   const fromDate = moscowDateOf(since) < period.from ? period.from : moscowDateOf(since);
-  const startTime = [since, moscowDayStart(period.from)].sort().at(-1), endTime = moscowDayStart(addDays(period.to, 1));
-  const timeline = productCampaignTimeline('', rows, new Map([[String(campaignId), { status: Number(currentStatus) === 9, member: true }]])).get(String(campaignId));
+  const startTime = [since, moscowDayStart(period.from)].sort().at(-1),
+    endTime = moscowDayStart(addDays(period.to, 1));
+  const timeline = productCampaignTimeline(
+    '',
+    rows,
+    new Map([[String(campaignId), { status: Number(currentStatus) === 9, member: true }]])
+  ).get(String(campaignId));
   const days = dates.map(date => {
     if (date < fromDate) return { date, on: byViews(date) };
-    const dayStart = [startTime, moscowDayStart(date)].sort().at(-1), dayEnd = moscowDayStart(addDays(date, 1));
-    return { date, on: timelineOnAt(timeline, dayStart) || timeline.changes.some(change => change.on && change.at > dayStart && change.at < dayEnd) };
+    const dayStart = [startTime, moscowDayStart(date)].sort().at(-1),
+      dayEnd = moscowDayStart(addDays(date, 1));
+    return {
+      date,
+      on: timelineOnAt(timeline, dayStart) || timeline.changes.some(change => change.on && change.at > dayStart && change.at < dayEnd)
+    };
   });
   // pausedAt — у включения: когда кампанию перед этим выключили (по таблице), чтобы подсказка флажка ▶ показывала,
   // что это запуск после паузы, а не первый запуск кампании.
-  const events = timeline.changes.map((change, index) => ({ change, previous: timeline.changes[index - 1] }))
+  const events = timeline.changes
+    .map((change, index) => ({ change, previous: timeline.changes[index - 1] }))
     .filter(({ change }) => change.at > startTime && change.at < endTime)
-    .map(({ change, previous }) => ({ at: change.at, date: moscowDateOf(change.at), on: change.on, ...(change.on && previous && !previous.on ? { pausedAt: previous.at } : {}) }));
+    .map(({ change, previous }) => ({
+      at: change.at,
+      date: moscowDateOf(change.at),
+      on: change.on,
+      ...(change.on && previous && !previous.on ? { pausedAt: previous.at } : {})
+    }));
   return { tracking: { since, fromDate }, days, events };
 }
 // Данные таблицы для детализации товара (только копия на компьютере — без запросов к таблице):
@@ -1558,26 +2572,42 @@ function productSheetData(nmId, period, dates, allCampaigns = [], inSettings = n
   if (!sheetConfigured()) return empty;
   const groups = new Map();
   for (const row of readSheetHistory({ ids: [String(nmId)], sections: ['Цены'], limit: 100_000 }).items) {
-    const date = moscowDateOf(row.at); if (date < period.from || date > period.to) continue;
+    const date = moscowDateOf(row.at);
+    if (date < period.from || date > period.to) continue;
     if (!groups.has(row.at)) groups.set(row.at, { at: row.at, date, items: [] });
     groups.get(row.at).items.push({ what: row.what, before: row.before, after: row.after });
   }
   const priceChanges = [...groups.values()].sort((a, b) => a.at.localeCompare(b.at));
-  const current = new Map([...new Set([...statIds.map(String), ...inSettings])].map(id => [id, { status: allCampaigns.find(item => String(item.id) === id)?.status === 9, member: inSettings.has(id) }]));
+  const current = new Map(
+    [...new Set([...statIds.map(String), ...inSettings])].map(id => [
+      id,
+      { status: allCampaigns.find(item => String(item.id) === id)?.status === 9, member: inSettings.has(id) }
+    ])
+  );
   const adRows = readSheetHistory({ sections: ['Реклама'], limit: 1_000_000 }).items;
-  const since = sheetAdsTrackingSince(readSheetJson(path.join(SHEET_DIR, 'sync.json'), {}).since, adRows.filter(row => current.has(String(row.id))));
+  const since = sheetAdsTrackingSince(
+    readSheetJson(path.join(SHEET_DIR, 'sync.json'), {}).since,
+    adRows.filter(row => current.has(String(row.id)))
+  );
   if (!since || moscowDateOf(since) > period.to) return { ...empty, priceChanges };
   const fromDate = moscowDateOf(since) < period.from ? period.from : moscowDateOf(since);
-  const startTime = [since, moscowDayStart(period.from)].sort().at(-1), endTime = moscowDayStart(addDays(period.to, 1));
+  const startTime = [since, moscowDayStart(period.from)].sort().at(-1),
+    endTime = moscowDayStart(addDays(period.to, 1));
   const timelines = productCampaignTimeline(nmId, adRows, current);
-  const onAtStart = [], events = [], onByDate = new Map(dates.filter(date => date >= fromDate).map(date => [date, []]));
+  const onAtStart = [],
+    events = [],
+    onByDate = new Map(dates.filter(date => date >= fromDate).map(date => [date, []]));
   for (const [id, timeline] of timelines) {
     if (!timeline.initial && !timeline.changes.length) continue;
     if (timelineOnAt(timeline, startTime)) onAtStart.push(Number(id));
-    for (const change of timeline.changes) if (change.at > startTime && change.at < endTime) events.push({ id: Number(id), at: change.at, date: moscowDateOf(change.at), on: change.on, reason: change.reason });
+    for (const change of timeline.changes)
+      if (change.at > startTime && change.at < endTime)
+        events.push({ id: Number(id), at: change.at, date: moscowDateOf(change.at), on: change.on, reason: change.reason });
     for (const [date, list] of onByDate) {
-      const dayStart = [startTime, moscowDayStart(date)].sort().at(-1), dayEnd = moscowDayStart(addDays(date, 1));
-      if (timelineOnAt(timeline, dayStart) || timeline.changes.some(change => change.on && change.at > dayStart && change.at < dayEnd)) list.push(Number(id));
+      const dayStart = [startTime, moscowDayStart(date)].sort().at(-1),
+        dayEnd = moscowDayStart(addDays(date, 1));
+      if (timelineOnAt(timeline, dayStart) || timeline.changes.some(change => change.on && change.at > dayStart && change.at < dayEnd))
+        list.push(Number(id));
     }
   }
   return { tracking: { since, fromDate, onAtStart, events: events.sort((a, b) => a.at.localeCompare(b.at)) }, onByDate, priceChanges };
@@ -1585,16 +2615,21 @@ function productSheetData(nmId, period, dates, allCampaigns = [], inSettings = n
 async function productDetail(id, nmIdInput, from, to, live = false) {
   const nmId = String(nmIdInput || '');
   if (!/^\d{1,15}$/.test(nmId)) throw apiError(400, 'Некорректный артикул');
-  const period = productDetailPeriod(from, to), dates = datesBetween(period.from, period.to);
+  const period = productDetailPeriod(from, to),
+    dates = datesBetween(period.from, period.to);
   if (id === 'demo' || !cabinets().length) return demoProductDetail(nmId, period, dates);
-  const token = tokenFor(id), warnings = [], today = moscowDate(0);
+  const token = tokenFor(id),
+    warnings = [],
+    today = moscowDate(0);
   const cardsJob = productCards(id, token).catch(error => (warnings.push(`Карточки товаров: ${error.message}`), []));
   const funnelJob = funnelHistory(id, period.from, period.to, 'day', [nmId], live);
   let allCampaigns = [];
   try {
     const campaignData = await cachedAnalytics(`ad-campaigns:${id}`, () => wbRequest(token, AD_CAMPAIGNS_URL), 3 * 60_000);
     allCampaigns = Array.isArray(campaignData?.adverts) ? campaignData.adverts : [];
-  } catch (error) { warnings.push(`Рекламные кампании: ${error.message}`); }
+  } catch (error) {
+    warnings.push(`Рекламные кампании: ${error.message}`);
+  }
   const inSettings = new Set(allCampaigns.filter(item => campaignProductIds(item).map(String).includes(nmId)).map(item => String(item.id)));
   // Статистика — по всем кампаниям кабинета, а не только по тем, где товар есть в настройках сейчас: если артикул
   // из кампании убрали, его показы за прошлые дни всё равно должны попасть на график. Товар ищется в самой статистике.
@@ -1604,30 +2639,70 @@ async function productDetail(id, nmIdInput, from, to, live = false) {
     const stats = [];
     for (const chunk of historyChunks(period)) {
       const key = `product-ad-all:${id}:${chunk.from}:${chunk.to}`;
-      const result = await cachedAnalytics(key, async () => { const chunkWarnings = []; const loaded = await loadAdStats(id, token, chunk, chunkWarnings); return { stats: loaded.stats, warnings: chunkWarnings }; },
-        chunk.to < today ? 6 * 60 * 60_000 : 2 * 60_000).catch(error => ({ stats: [], warnings: [`Статистика рекламы: ${error.message}`], failed: true }));
-      if (result.warnings.length) { if (!result.failed) analyticsCache.delete(key); warnings.push(...result.warnings); }
+      const result = await cachedAnalytics(
+        key,
+        async () => {
+          const chunkWarnings = [];
+          const loaded = await loadAdStats(id, token, chunk, chunkWarnings);
+          return { stats: loaded.stats, warnings: chunkWarnings };
+        },
+        chunk.to < today ? 6 * 60 * 60_000 : 2 * 60_000
+      ).catch(error => ({ stats: [], warnings: [`Статистика рекламы: ${error.message}`], failed: true }));
+      if (result.warnings.length) {
+        if (!result.failed) analyticsCache.delete(key);
+        warnings.push(...result.warnings);
+      }
       stats.push(...result.stats);
     }
     return stats;
   })();
   // Позиция в поиске — по поисковым кластерам кампаний с этим товаром (как в детализации кампании), взвешенно по показам:
   // кампании, где товар есть сейчас, и те, где у него была статистика за период.
-  const positionsJob = adsJob.then(stats => {
-    const withStats = [...productAdDays(stats, nmId, dates).campaigns].filter(([, metrics]) => metrics.views || metrics.clicks || metrics.spend || metrics.orders).map(([campaignId]) => campaignId);
-    const ids = [...new Set([...inSettings, ...withStats])].filter(campaignId => allCampaigns.some(item => String(item.id) === campaignId) && adCampaignMayHaveStats(allCampaigns.find(item => String(item.id) === campaignId), period.from, period.to)).slice(0, 100);
-    if (!ids.length) return new Map();
-    return cachedAnalytics(`product-positions:${id}:${nmId}:${period.from}:${period.to}:${ids.join(',')}`,
-      () => normqueryRequest(id, token, { from: period.from, to: period.to, items: ids.map(campaignId => ({ advertId: Number(campaignId), nmId: Number(nmId) })) }, NORMQUERY_DAILY_URL), 10 * 60_000)
-      .then(response => new Map(summarizePositionDaily(response?.items || [], dates).map(day => [day.date, day.avgPosition])));
-  }).catch(error => (warnings.push(`Позиция в поиске: ${error.message}`), new Map()));
+  const positionsJob = adsJob
+    .then(stats => {
+      const withStats = [...productAdDays(stats, nmId, dates).campaigns]
+        .filter(([, metrics]) => metrics.views || metrics.clicks || metrics.spend || metrics.orders)
+        .map(([campaignId]) => campaignId);
+      const ids = [...new Set([...inSettings, ...withStats])]
+        .filter(
+          campaignId =>
+            allCampaigns.some(item => String(item.id) === campaignId) &&
+            adCampaignMayHaveStats(
+              allCampaigns.find(item => String(item.id) === campaignId),
+              period.from,
+              period.to
+            )
+        )
+        .slice(0, 100);
+      if (!ids.length) return new Map();
+      return cachedAnalytics(
+        `product-positions:${id}:${nmId}:${period.from}:${period.to}:${ids.join(',')}`,
+        () =>
+          normqueryRequest(
+            id,
+            token,
+            { from: period.from, to: period.to, items: ids.map(campaignId => ({ advertId: Number(campaignId), nmId: Number(nmId) })) },
+            NORMQUERY_DAILY_URL
+          ),
+        10 * 60_000
+      ).then(response => new Map(summarizePositionDaily(response?.items || [], dates).map(day => [day.date, day.avgPosition])));
+    })
+    .catch(error => (warnings.push(`Позиция в поиске: ${error.message}`), new Map()));
   const [funnel, stats, positions, cards] = await Promise.all([funnelJob, adsJob, positionsJob, cardsJob]);
-  const ads = productAdDays(stats, nmId, dates), funnelByDate = new Map((funnel.current || []).map(day => [day.date, day]));
+  const ads = productAdDays(stats, nmId, dates),
+    funnelByDate = new Map((funnel.current || []).map(day => [day.date, day]));
   // До начала отслеживания в Google Таблице кампания включена по показам (50 и больше), после — по статусу и составу.
   const sheet = productSheetData(nmId, period, dates, allCampaigns, inSettings, [...ads.campaigns.keys()]);
   const days = dates.map(date => {
-    const { campaigns, ...metrics } = ads.days.get(date), day = funnelByDate.get(date);
-    return { date, funnel: day ? pickFunnelCounts(day) : null, ads: finalizeAdMetrics(metrics), campaigns: sheet.onByDate.get(date) || campaigns, avgPosition: positions.get(date) ?? null };
+    const { campaigns, ...metrics } = ads.days.get(date),
+      day = funnelByDate.get(date);
+    return {
+      date,
+      funnel: day ? pickFunnelCounts(day) : null,
+      ads: finalizeAdMetrics(metrics),
+      campaigns: sheet.onByDate.get(date) || campaigns,
+      avgPosition: positions.get(date) ?? null
+    };
   });
   const card = cards.find(item => String(item.nmID) === nmId);
   // createdAt / startedAt — чтобы на графике отличить кампанию, запущенную в первый день периода, от работавшей раньше.
@@ -1635,15 +2710,45 @@ async function productDetail(id, nmIdInput, from, to, live = false) {
   // activeDays — дни, когда кампания была включена (по показам или по статусу из таблицы). В список попадают и
   // кампании без статистики, которые по таблице были включены (товар был в активной кампании, но показов не набрал).
   const campaignIds = new Set([...ads.campaigns.keys(), ...days.flatMap(day => day.campaigns.map(String))]);
-  const campaigns = [...campaignIds].map(campaignId => {
-    const item = allCampaigns.find(campaign => String(campaign.id) === campaignId) || { id: Number(campaignId) }, metrics = ads.campaigns.get(campaignId) || emptyAdMetrics();
-    return { id: Number(campaignId), name: item.settings?.name || `Кампания #${campaignId}`, status: item.status ?? null, type: item.type ?? null,
-      paymentType: item.settings?.payment_type || '', createdAt: item.timestamps?.created || '', startedAt: item.timestamps?.started || '',
-      removed: !inSettings.has(campaignId), ...finalizeAdMetrics(metrics), activeDays: days.filter(day => day.campaigns.includes(Number(campaignId))).length };
-  }).filter(item => item.activeDays || item.spend || item.views || item.orders).sort((a, b) => b.spend - a.spend);
-  return { demo: false, period, fetchedAt: new Date().toISOString(),
-    product: { nmId: Number(nmId), name: card?.title || `Товар ${nmId}`, vendorCode: card?.vendorCode || '', brand: card?.brand || '', subject: card?.subjectName || '', photo: card ? cardPhoto(card) : '', feedback: await productFeedback(id, card) },
-    days, campaigns, tracking: sheet.tracking, priceChanges: sheet.priceChanges, sync: funnel.sync || { pending: 0 }, warnings: [...warnings, ...(funnel.warnings || [])] };
+  const campaigns = [...campaignIds]
+    .map(campaignId => {
+      const item = allCampaigns.find(campaign => String(campaign.id) === campaignId) || { id: Number(campaignId) },
+        metrics = ads.campaigns.get(campaignId) || emptyAdMetrics();
+      return {
+        id: Number(campaignId),
+        name: item.settings?.name || `Кампания #${campaignId}`,
+        status: item.status ?? null,
+        type: item.type ?? null,
+        paymentType: item.settings?.payment_type || '',
+        createdAt: item.timestamps?.created || '',
+        startedAt: item.timestamps?.started || '',
+        removed: !inSettings.has(campaignId),
+        ...finalizeAdMetrics(metrics),
+        activeDays: days.filter(day => day.campaigns.includes(Number(campaignId))).length
+      };
+    })
+    .filter(item => item.activeDays || item.spend || item.views || item.orders)
+    .sort((a, b) => b.spend - a.spend);
+  return {
+    demo: false,
+    period,
+    fetchedAt: new Date().toISOString(),
+    product: {
+      nmId: Number(nmId),
+      name: card?.title || `Товар ${nmId}`,
+      vendorCode: card?.vendorCode || '',
+      brand: card?.brand || '',
+      subject: card?.subjectName || '',
+      photo: card ? cardPhoto(card) : '',
+      feedback: await productFeedback(id, card)
+    },
+    days,
+    campaigns,
+    tracking: sheet.tracking,
+    priceChanges: sheet.priceChanges,
+    sync: funnel.sync || { pending: 0 },
+    warnings: [...warnings, ...(funnel.warnings || [])]
+  };
 }
 // Оценка и число оценок товара и его склейки (glue-ratings.js). Склейки нет в файле — загружается сейчас (меньше секунды);
 // не загрузилась — null, страница просто не покажет оценку.
@@ -1654,37 +2759,54 @@ async function productFeedback(id, card) {
     if (!glue?.stars) return null;
     const item = glueRatings.item(id, card.imtID, Number(card.nmID));
     return { ...item, glueRating: glue.rating, glueCount: glue.count };
-  } catch { return null; }
+  } catch {
+    return null;
+  }
 }
 // Отметки на графике товара: data/product-notes.json, { "кабинет:артикул": [{ id, date, text, at }] } — свои заметки
 // продавца: смена цены или СПП, ставки, акция. WB историю этого не отдаёт, поэтому их вносят вручную.
 const PRODUCT_NOTES_FILE = path.join(ROOT, 'data', 'product-notes.json');
 function productNotesKey(cabinet, nmId) {
-  if (!/^[\w-]{1,40}$/.test(String(cabinet || '')) || !/^\d{1,15}$/.test(String(nmId || ''))) throw apiError(400, 'Некорректный кабинет или артикул');
+  if (!/^[\w-]{1,40}$/.test(String(cabinet || '')) || !/^\d{1,15}$/.test(String(nmId || '')))
+    throw apiError(400, 'Некорректный кабинет или артикул');
   return `${cabinet}:${nmId}`;
 }
 function readProductNotes() {
-  try { const data = JSON.parse(fs.readFileSync(PRODUCT_NOTES_FILE, 'utf8')); return data && typeof data === 'object' && !Array.isArray(data) ? data : {}; } catch { return {}; }
+  try {
+    const data = JSON.parse(fs.readFileSync(PRODUCT_NOTES_FILE, 'utf8'));
+    return data && typeof data === 'object' && !Array.isArray(data) ? data : {};
+  } catch {
+    return {};
+  }
 }
 function productNotes(cabinet, nmId) {
-  return { notes: [...(readProductNotes()[productNotesKey(cabinet, nmId)] || [])].sort((a, b) => a.date.localeCompare(b.date) || a.at.localeCompare(b.at)) };
+  return {
+    notes: [...(readProductNotes()[productNotesKey(cabinet, nmId)] || [])].sort(
+      (a, b) => a.date.localeCompare(b.date) || a.at.localeCompare(b.at)
+    )
+  };
 }
 // Без noteId — новая отметка; с noteId — изменить дату и текст или удалить (remove).
 function setProductNote(cabinet, nmId, body = {}) {
-  const key = productNotesKey(cabinet, nmId), text = String(body.text || '').trim(), date = String(body.date || '');
+  const key = productNotesKey(cabinet, nmId),
+    text = String(body.text || '').trim(),
+    date = String(body.date || '');
   if (!body.remove) {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw apiError(400, 'Укажите дату отметки');
     if (!text) throw apiError(400, 'Пустая отметка');
     if (text.length > 300) throw apiError(400, 'Отметка длиннее 300 символов');
   }
-  const data = readProductNotes(), notes = [...(data[key] || [])];
+  const data = readProductNotes(),
+    notes = [...(data[key] || [])];
   if (!body.noteId) notes.push({ id: keywordEventId(), date, text, at: new Date().toISOString() });
   else {
     const index = notes.findIndex(note => note.id === body.noteId);
     if (index < 0) throw apiError(404, 'Отметка не найдена — обновите страницу');
-    if (body.remove) notes.splice(index, 1); else notes[index] = { ...notes[index], date, text, editedAt: new Date().toISOString() };
+    if (body.remove) notes.splice(index, 1);
+    else notes[index] = { ...notes[index], date, text, editedAt: new Date().toISOString() };
   }
-  if (notes.length) data[key] = notes; else delete data[key];
+  if (notes.length) data[key] = notes;
+  else delete data[key];
   fs.mkdirSync(path.dirname(PRODUCT_NOTES_FILE), { recursive: true });
   fs.writeFileSync(`${PRODUCT_NOTES_FILE}.tmp`, JSON.stringify(data, null, 2));
   fs.renameSync(`${PRODUCT_NOTES_FILE}.tmp`, PRODUCT_NOTES_FILE);
@@ -1707,27 +2829,47 @@ const sheetSyncState = { running: null };
 const sheetConfigured = () => Boolean(String(process.env.WB_SHEET_URL || '').trim() && String(process.env.WB_SHEET_KEY || '').trim());
 // Ключ строки для отбрасывания повторов. Подпись (title) обязательна: у ставок и минус-фраз ID — номер кампании,
 // а артикул — только в подписи, и одинаковое изменение у двух артикулов иначе сливалось бы в одну строку.
-const sheetRowKey = item => [item.at, item.cabinet, item.section, item.id, item.title, item.what, item.before, item.after].map(value => String(value ?? '')).join('|');
+const sheetRowKey = item =>
+  [item.at, item.cabinet, item.section, item.id, item.title, item.what, item.before, item.after]
+    .map(value => String(value ?? ''))
+    .join('|');
 // Версия ключа: при смене копия один раз перекачивает всю историю из таблицы и дописывает пропущенные строки.
 const SHEET_KEY_VERSION = 2;
 // Склейка сохранённых строк с новыми: без повторов, по времени.
 function mergeSheetRows(existing = [], incoming = []) {
-  const seen = new Set(existing.map(sheetRowKey)), added = [];
+  const seen = new Set(existing.map(sheetRowKey)),
+    added = [];
   for (const item of incoming) {
     if (!item?.at || !SHEET_SECTIONS.includes(item.section)) continue;
-    const key = sheetRowKey(item); if (seen.has(key)) continue;
-    seen.add(key); added.push(item);
+    const key = sheetRowKey(item);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    added.push(item);
   }
   return { rows: added.length ? [...existing, ...added].sort((a, b) => String(a.at).localeCompare(String(b.at))) : existing, added };
 }
-function readSheetJson(file, fallback) { try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return fallback; } }
+function readSheetJson(file, fallback) {
+  try {
+    return JSON.parse(fs.readFileSync(file, 'utf8'));
+  } catch {
+    return fallback;
+  }
+}
 function writeSheetJson(file, value) {
   fs.mkdirSync(path.dirname(file), { recursive: true });
   fs.writeFileSync(`${file}.tmp`, JSON.stringify(value));
   fs.renameSync(`${file}.tmp`, file);
 }
 function sheetMonths(folder) {
-  try { return fs.readdirSync(folder).filter(name => /^\d{4}-\d{2}\.json$/.test(name)).map(name => name.slice(0, 7)).sort(); } catch { return []; }
+  try {
+    return fs
+      .readdirSync(folder)
+      .filter(name => /^\d{4}-\d{2}\.json$/.test(name))
+      .map(name => name.slice(0, 7))
+      .sort();
+  } catch {
+    return [];
+  }
 }
 // Папка кабинета — его название из таблицы (как в строках: поле cabinet) без знаков, запрещённых в именах папок.
 // Папки с «_» в начале и с названиями разделов — не кабинеты: это старая раскладка и её архив.
@@ -1741,20 +2883,29 @@ function sheetCabinetFolder(name) {
 function sheetCabinetFolders(dir = SHEET_DIR) {
   const other = readSheetJson(path.join(dir, 'cabinets.json'), {});
   try {
-    return fs.readdirSync(dir, { withFileTypes: true }).filter(entry => entry.isDirectory() && !entry.name.startsWith('_') && !SHEET_SECTIONS.includes(entry.name))
+    return fs
+      .readdirSync(dir, { withFileTypes: true })
+      .filter(entry => entry.isDirectory() && !entry.name.startsWith('_') && !SHEET_SECTIONS.includes(entry.name))
       .map(entry => ({ folder: entry.name, names: [entry.name, ...(other[entry.name.toLowerCase()] || [])] }));
-  } catch { return []; }
+  } catch {
+    return [];
+  }
 }
 // Название кабинета из строки → его папка. Регистр не различается (как в Windows): «samiri» попадёт в папку «Samiri».
 function sheetFolderOf(dir) {
-  const existing = new Map(sheetCabinetFolders(dir).map(item => [item.folder.toLowerCase(), item.folder])), known = new Map();
+  const existing = new Map(sheetCabinetFolders(dir).map(item => [item.folder.toLowerCase(), item.folder])),
+    known = new Map();
   return value => {
     const name = String(value ?? '');
     if (!known.has(name)) {
-      const clean = sheetCabinetFolder(name), key = clean.toLowerCase(), folder = existing.get(key) || clean;
-      existing.set(key, folder); known.set(name, folder);
+      const clean = sheetCabinetFolder(name),
+        key = clean.toLowerCase(),
+        folder = existing.get(key) || clean;
+      existing.set(key, folder);
+      known.set(name, folder);
       if (name && name !== folder) {
-        const file = path.join(dir, 'cabinets.json'), names = readSheetJson(file, {});
+        const file = path.join(dir, 'cabinets.json'),
+          names = readSheetJson(file, {});
         if (!(names[key] || []).includes(name)) writeSheetJson(file, { ...names, [key]: [...(names[key] || []), name] });
       }
     }
@@ -1764,7 +2915,8 @@ function sheetFolderOf(dir) {
 // Порция строк из таблицы → файлы по кабинетам, разделам и месяцам. Возвращает число новых строк.
 function saveSheetRows(items = [], dir = SHEET_DIR) {
   splitSheetByCabinet(dir);
-  const groups = new Map(), folderOf = sheetFolderOf(dir);
+  const groups = new Map(),
+    folderOf = sheetFolderOf(dir);
   for (const item of items) {
     if (!SHEET_SECTIONS.includes(item?.section) || !/^\d{4}-\d{2}/.test(String(item.at || ''))) continue;
     const group = `${folderOf(item.cabinet)}|${item.section}|${String(item.at).slice(0, 7)}`;
@@ -1773,9 +2925,14 @@ function saveSheetRows(items = [], dir = SHEET_DIR) {
   }
   let added = 0;
   for (const [group, list] of groups) {
-    const [folder, section, month] = group.split('|'), file = path.join(dir, folder, section, `${month}.json`);
+    const [folder, section, month] = group.split('|'),
+      file = path.join(dir, folder, section, `${month}.json`);
     const merged = mergeSheetRows(readSheetJson(file, { items: [] }).items || [], list);
-    if (merged.added.length) { writeSheetJson(file, { items: merged.rows }); added += merged.added.length; sheetSinceCache.delete(path.join(dir, folder)); }
+    if (merged.added.length) {
+      writeSheetJson(file, { items: merged.rows });
+      added += merged.added.length;
+      sheetSinceCache.delete(path.join(dir, folder));
+    }
   }
   return added;
 }
@@ -1792,7 +2949,9 @@ function sheetCabinetSince(folder, sections = SHEET_SECTIONS) {
     if (!cache.has(section)) {
       const [month] = sheetMonths(path.join(folder, section));
       let first = '';
-      if (month) for (const item of readSheetJson(path.join(folder, section, `${month}.json`), { items: [] }).items || []) if (item?.at && (!first || String(item.at) < first)) first = String(item.at);
+      if (month)
+        for (const item of readSheetJson(path.join(folder, section, `${month}.json`), { items: [] }).items || [])
+          if (item?.at && (!first || String(item.at) < first)) first = String(item.at);
       cache.set(section, first);
     }
     const first = cache.get(section);
@@ -1805,7 +2964,8 @@ function sheetCabinetSince(folder, sections = SHEET_SECTIONS) {
 // (23.10.2026 02:18 UTC) на 5 часов позже первой записи того же обновления в истории, а статусы кампаний Samiri записаны
 // ещё с 17.10.2026. По одному журналу включения до его начала отбрасывались, и флажок ▶ показывал не то время.
 function sheetAdsTrackingSince(saved, rows = [], dir = SHEET_DIR) {
-  const folderOf = sheetFolderOf(dir), folders = new Set(rows.map(row => folderOf(row.cabinet)));
+  const folderOf = sheetFolderOf(dir),
+    folders = new Set(rows.map(row => folderOf(row.cabinet)));
   const firsts = [...folders].map(folder => sheetCabinetSince(path.join(dir, folder), ['Реклама'])).filter(Boolean);
   return [saved, ...firsts].filter(Boolean).sort()[0] || null;
 }
@@ -1814,17 +2974,24 @@ function sheetAdsTrackingSince(saved, rows = [], dir = SHEET_DIR) {
 // которые уже есть (перенос старой раскладки).
 function saveSheetCurrent(current = [], dir = SHEET_DIR, keep = false) {
   splitSheetByCabinet(dir);
-  const groups = new Map(), folderOf = sheetFolderOf(dir), fileOf = group => { const [folder, type] = group.split('|'); return path.join(dir, folder, `Остатки ${type}`, 'current.json'); };
+  const groups = new Map(),
+    folderOf = sheetFolderOf(dir),
+    fileOf = group => {
+      const [folder, type] = group.split('|');
+      return path.join(dir, folder, `Остатки ${type}`, 'current.json');
+    };
   for (const row of current) {
     if (!['FBW', 'FBS'].includes(row?.type)) continue;
     const group = `${folderOf(row.cabinet)}|${row.type}`;
     if (!groups.has(group)) groups.set(group, []);
     groups.get(group).push(row);
   }
-  if (!keep) for (const { folder } of sheetCabinetFolders(dir)) for (const type of ['FBW', 'FBS']) {
-    const group = `${folder}|${type}`;
-    if (!groups.has(group) && fs.existsSync(fileOf(group))) groups.set(group, []);
-  }
+  if (!keep)
+    for (const { folder } of sheetCabinetFolders(dir))
+      for (const type of ['FBW', 'FBS']) {
+        const group = `${folder}|${type}`;
+        if (!groups.has(group) && fs.existsSync(fileOf(group))) groups.set(group, []);
+      }
   for (const [group, items] of groups) if (!keep || !fs.existsSync(fileOf(group))) writeSheetJson(fileOf(group), { items });
 }
 // Старая раскладка (до 10.11.2026): data/Sheet/<раздел>/<файл> — все кабинеты в одном файле. Строки дописываются в файлы
@@ -1836,29 +3003,50 @@ function splitSheetByCabinet(dir = SHEET_DIR) {
   sheetSplitDone.add(dir);
   for (const section of SHEET_SECTIONS) {
     let files;
-    try { files = fs.readdirSync(path.join(dir, section)).filter(name => name.endsWith('.json')); } catch { continue; }
+    try {
+      files = fs.readdirSync(path.join(dir, section)).filter(name => name.endsWith('.json'));
+    } catch {
+      continue;
+    }
     for (const name of files) {
       try {
-        const file = path.join(dir, section, name), items = readSheetJson(file, null)?.items;
+        const file = path.join(dir, section, name),
+          items = readSheetJson(file, null)?.items;
         if (!Array.isArray(items)) throw new Error('файл не читается');
         if (name === 'current.json') saveSheetCurrent(items, dir, true);
         else saveSheetRows(items, dir);
         let target = path.join(dir, SHEET_OLD_DIR, section, name);
-        for (let copy = 2; fs.existsSync(target); copy++) target = path.join(dir, SHEET_OLD_DIR, section, `${name.slice(0, -5)} (${copy}).json`);
+        for (let copy = 2; fs.existsSync(target); copy++)
+          target = path.join(dir, SHEET_OLD_DIR, section, `${name.slice(0, -5)} (${copy}).json`);
         fs.mkdirSync(path.dirname(target), { recursive: true });
         fs.renameSync(file, target);
-        console.log(`Копия Google Таблицы: ${section}/${name} разложен по кабинетам (${items.length} строк), старый файл — в «${SHEET_OLD_DIR}»`);
-      } catch (error) { console.error(`Копия Google Таблицы: ${section}/${name} не разложен по кабинетам:`, error.message); }
+        console.log(
+          `Копия Google Таблицы: ${section}/${name} разложен по кабинетам (${items.length} строк), старый файл — в «${SHEET_OLD_DIR}»`
+        );
+      } catch (error) {
+        console.error(`Копия Google Таблицы: ${section}/${name} не разложен по кабинетам:`, error.message);
+      }
     }
     // Пустая папка раздела старой раскладки больше не нужна; непустую rmdir не тронет.
-    try { fs.rmdirSync(path.join(dir, section)); } catch { /* в папке остались файлы */ }
+    try {
+      fs.rmdirSync(path.join(dir, section));
+    } catch {
+      /* в папке остались файлы */
+    }
   }
 }
 // Кабинет сайта по названию из таблицы. Названия заданы отдельно на сайте и в таблице («2 ИП Шамсиддинов» и «ИП Шамсиддинов»),
 // поэтому сравниваются без номера в начале и без регистра: сначала точно, потом — одно содержит другое, если такой кабинет один.
-const sheetCabinetKey = name => String(name || '').toLowerCase().replace(/ё/g, 'е').replace(/^[\s\d.,)№#-]+/, '').replace(/\s+/g, ' ').trim();
+const sheetCabinetKey = name =>
+  String(name || '')
+    .toLowerCase()
+    .replace(/ё/g, 'е')
+    .replace(/^[\s\d.,)№#-]+/, '')
+    .replace(/\s+/g, ' ')
+    .trim();
 function sheetSiteCabinet(name, list = publicCabinets()) {
-  const key = sheetCabinetKey(name), keys = list.map(item => ({ id: item.id, key: sheetCabinetKey(item.name) }));
+  const key = sheetCabinetKey(name),
+    keys = list.map(item => ({ id: item.id, key: sheetCabinetKey(item.name) }));
   if (!key) return '';
   const exact = keys.filter(item => item.key === key);
   if (exact.length === 1) return exact[0].id;
@@ -1868,7 +3056,10 @@ function sheetSiteCabinet(name, list = publicCabinets()) {
 // Проверка «строка этого кабинета сайта» — с запоминанием по названию: названий в таблице несколько, строк — десятки тысяч.
 function sheetCabinetFilter(cabinetId, list = publicCabinets()) {
   const known = new Map();
-  return name => { if (!known.has(name)) known.set(name, sheetSiteCabinet(name, list) === String(cabinetId)); return known.get(name); };
+  return name => {
+    if (!known.has(name)) known.set(name, sheetSiteCabinet(name, list) === String(cabinetId));
+    return known.get(name);
+  };
 }
 // «Цена в WB Клубе» с теми же «было» и «стало», что у «Цены со скидкой» того же товара в то же время, — повтор (клубной скидки нет).
 function withoutClubPriceRepeats(items) {
@@ -1879,19 +3070,41 @@ function withoutClubPriceRepeats(items) {
 // Чтение копии: строки нужных разделов (по артикулам или кампаниям, за последние days дней, одного кабинета), новые сверху;
 // для остатков — ещё текущие остатки. limit — сколько самых новых строк отдать. С cabinet читаются только папки этого
 // кабинета, без него — всех кабинетов.
-function readSheetHistory({ ids = [], sections = [], days = 0, limit = 0, current: withCurrent = true, cabinet = null } = {}, dir = SHEET_DIR) {
+function readSheetHistory(
+  { ids = [], sections = [], days = 0, limit = 0, current: withCurrent = true, cabinet = null } = {},
+  dir = SHEET_DIR
+) {
   splitSheetByCabinet(dir);
-  const fromIso = days ? new Date(Date.now() - days * 86_400_000).toISOString() : '', fromMonth = fromIso.slice(0, 7), items = [];
-  const folders = sheetCabinetFolders(dir).filter(item => !cabinet || item.names.some(name => cabinet(name))).map(item => path.join(dir, item.folder));
-  for (const folder of folders) for (const section of sections) for (const month of sheetMonths(path.join(folder, section))) {
-    if (fromMonth && month < fromMonth) continue;
-    for (const item of readSheetJson(path.join(folder, section, `${month}.json`), { items: [] }).items || []) {
-      if ((!ids.length || ids.includes(String(item.id))) && (!fromIso || String(item.at) >= fromIso) && (!cabinet || cabinet(item.cabinet))) items.push(item);
-    }
-  }
+  const fromIso = days ? new Date(Date.now() - days * 86_400_000).toISOString() : '',
+    fromMonth = fromIso.slice(0, 7),
+    items = [];
+  const folders = sheetCabinetFolders(dir)
+    .filter(item => !cabinet || item.names.some(name => cabinet(name)))
+    .map(item => path.join(dir, item.folder));
+  for (const folder of folders)
+    for (const section of sections)
+      for (const month of sheetMonths(path.join(folder, section))) {
+        if (fromMonth && month < fromMonth) continue;
+        for (const item of readSheetJson(path.join(folder, section, `${month}.json`), { items: [] }).items || []) {
+          if (
+            (!ids.length || ids.includes(String(item.id))) &&
+            (!fromIso || String(item.at) >= fromIso) &&
+            (!cabinet || cabinet(item.cabinet))
+          )
+            items.push(item);
+        }
+      }
   const stockTypes = sections.filter(item => item.startsWith('Остатки ')).map(item => item.slice('Остатки '.length));
-  const current = stockTypes.length && withCurrent ? folders.flatMap(folder => stockTypes.flatMap(type => (readSheetJson(path.join(folder, `Остатки ${type}`, 'current.json'), { items: [] }).items || [])
-    .filter(row => (!ids.length || ids.includes(String(row.nmId))) && (!cabinet || cabinet(row.cabinet))))) : null;
+  const current =
+    stockTypes.length && withCurrent
+      ? folders.flatMap(folder =>
+          stockTypes.flatMap(type =>
+            (readSheetJson(path.join(folder, `Остатки ${type}`, 'current.json'), { items: [] }).items || []).filter(
+              row => (!ids.length || ids.includes(String(row.nmId))) && (!cabinet || cabinet(row.cabinet))
+            )
+          )
+        )
+      : null;
   items.sort((a, b) => String(b.at).localeCompare(String(a.at)));
   return { items: items.slice(0, limit || (stockTypes.length ? 60_000 : 5_000)), current };
 }
@@ -1902,24 +3115,35 @@ function syncSheet() {
   if (!sheetConfigured()) return Promise.resolve({ configured: false });
   if (sheetSyncState.running) return sheetSyncState.running;
   sheetSyncState.running = (async () => {
-    const syncFile = path.join(SHEET_DIR, 'sync.json'), saved = readSheetJson(syncFile, {});
+    const syncFile = path.join(SHEET_DIR, 'sync.json'),
+      saved = readSheetJson(syncFile, {});
     let added = 0;
     try {
       const full = saved.keyVersion !== SHEET_KEY_VERSION;
       const after = saved.cursor && !full ? new Date(Date.parse(saved.cursor) - 60_000).toISOString() : '';
-      let cursor = full ? '' : saved.cursor || '', since = saved.since || null, currentSaved = false;
+      let cursor = full ? '' : saved.cursor || '',
+        since = saved.since || null,
+        currentSaved = false;
       for (let offset = 0, page = 0; page < 50; page++) {
         const target = new URL(String(process.env.WB_SHEET_URL).trim());
-        target.searchParams.set('key', String(process.env.WB_SHEET_KEY).trim()); target.searchParams.set('sync', '1');
+        target.searchParams.set('key', String(process.env.WB_SHEET_KEY).trim());
+        target.searchParams.set('sync', '1');
         if (after) target.searchParams.set('after', after);
-        target.searchParams.set('offset', String(offset)); target.searchParams.set('limit', '20000');
+        target.searchParams.set('offset', String(offset));
+        target.searchParams.set('limit', '20000');
         let data;
-        try { data = await (await fetch(target, { redirect: 'follow', signal: AbortSignal.timeout(180_000) })).json(); }
-        catch (error) { throw new Error(`Google Таблица не ответила: ${error.message}`); }
+        try {
+          data = await (await fetch(target, { redirect: 'follow', signal: AbortSignal.timeout(180_000) })).json();
+        } catch (error) {
+          throw new Error(`Google Таблица не ответила: ${error.message}`);
+        }
         if (data?.error) throw new Error(`Google Таблица: ${data.error}`);
         const items = Array.isArray(data?.items) ? data.items : [];
         added += saveSheetRows(items);
-        if (!currentSaved && Array.isArray(data?.current)) { saveSheetCurrent(data.current); currentSaved = true; }
+        if (!currentSaved && Array.isArray(data?.current)) {
+          saveSheetCurrent(data.current);
+          currentSaved = true;
+        }
         for (const item of items) if (String(item.at) > cursor) cursor = String(item.at);
         since = data?.since || since;
         if (!data?.more || !items.length) break;
@@ -1933,7 +3157,9 @@ function syncSheet() {
       writeSheetJson(syncFile, result);
       console.error('Google Таблица:', error.message);
       return { ...result, added };
-    } finally { sheetSyncState.running = null; }
+    } finally {
+      sheetSyncState.running = null;
+    }
   })();
   return sheetSyncState.running;
 }
@@ -1948,8 +3174,18 @@ function syncSheet() {
 const SHEET_ALL_LIMIT = 200_000;
 async function sheetHistory(idsInput, sectionsInput, daysInput, source = 'local', all = false, cabinetInput = '') {
   if (!sheetConfigured()) return { configured: false, items: [], current: null, since: null };
-  const ids = [...new Set(String(idsInput || '').split(',').map(id => id.trim()).filter(id => /^\d{1,15}$/.test(id)))].slice(0, 50);
-  const sections = String(sectionsInput || '').split(',').map(item => item.trim()).filter(item => SHEET_SECTIONS.includes(item));
+  const ids = [
+    ...new Set(
+      String(idsInput || '')
+        .split(',')
+        .map(id => id.trim())
+        .filter(id => /^\d{1,15}$/.test(id))
+    )
+  ].slice(0, 50);
+  const sections = String(sectionsInput || '')
+    .split(',')
+    .map(item => item.trim())
+    .filter(item => SHEET_SECTIONS.includes(item));
   const stocks = sections.some(item => item.startsWith('Остатки '));
   if (!ids.length && !stocks && !all) throw apiError(400, 'Не указан артикул или кампания');
   const days = Math.min(all ? 3660 : 365, Math.max(0, Math.round(Number(daysInput) || 0)));
@@ -1961,21 +3197,44 @@ async function sheetHistory(idsInput, sectionsInput, daysInput, source = 'local'
   // История по артикулу или кампании: если кабинет сайта не нашёлся в таблице по названию, ищем по всем кабинетам,
   // как без cabinet, — артикул и номер кампании и так относятся к одному кабинету.
   const cabinet = asked && !folders.length && ids.length && !stocks && !all ? null : asked;
-  const cabinetSince = folders.map(item => sheetCabinetSince(path.join(SHEET_DIR, item.folder), sections.length ? sections : SHEET_SECTIONS)).filter(Boolean).sort()[0] || null;
+  const cabinetSince =
+    folders
+      .map(item => sheetCabinetSince(path.join(SHEET_DIR, item.folder), sections.length ? sections : SHEET_SECTIONS))
+      .filter(Boolean)
+      .sort()[0] || null;
   const history = all
     ? readSheetHistory({ ids, sections: sections.length ? sections : SHEET_SECTIONS, days, limit: Infinity, current: false, cabinet })
-    : readSheetHistory({ ids, sections: sections.length ? sections : SHEET_SECTIONS.filter(item => !item.startsWith('Остатки ')), days, cabinet });
+    : readSheetHistory({
+        ids,
+        sections: sections.length ? sections : SHEET_SECTIONS.filter(item => !item.startsWith('Остатки ')),
+        days,
+        cabinet
+      });
   // Сначала без повторов клубной цены, потом предел: иначе повторы вытесняют из ответа старые дни периода.
   if (all && cabinet) history.items = withoutClubPriceRepeats(history.items);
   const truncated = all && history.items.length > SHEET_ALL_LIMIT;
   if (truncated) history.items = history.items.slice(0, SHEET_ALL_LIMIT);
-  return { configured: true, source: source === 'sheet' ? 'sheet' : 'local', ...history, ...(all ? { truncated } : {}),
-    since: saved.since || null, cabinetSince, syncedAt: saved.syncedAt || null, added: sync?.added || 0, syncError: sync?.lastError || '' };
+  return {
+    configured: true,
+    source: source === 'sheet' ? 'sheet' : 'local',
+    ...history,
+    ...(all ? { truncated } : {}),
+    since: saved.since || null,
+    cabinetSince,
+    syncedAt: saved.syncedAt || null,
+    added: sync?.added || 0,
+    syncError: sync?.lastError || ''
+  };
 }
 
 // --- Отметки ключевых запросов (data/keyword-tags.json) ---
 function readKeywordTags() {
-  try { const data = JSON.parse(fs.readFileSync(KEYWORD_TAGS_FILE, 'utf8')); return { colors: data.colors || {}, campaigns: data.campaigns || {} }; } catch { return { colors: {}, campaigns: {} }; }
+  try {
+    const data = JSON.parse(fs.readFileSync(KEYWORD_TAGS_FILE, 'utf8'));
+    return { colors: data.colors || {}, campaigns: data.campaigns || {} };
+  } catch {
+    return { colors: {}, campaigns: {} };
+  }
 }
 function writeKeywordTags(data) {
   fs.mkdirSync(path.dirname(KEYWORD_TAGS_FILE), { recursive: true });
@@ -1983,7 +3242,8 @@ function writeKeywordTags(data) {
   fs.renameSync(`${KEYWORD_TAGS_FILE}.tmp`, KEYWORD_TAGS_FILE);
 }
 function keywordTagsKey(cabinet, campaignId) {
-  if (!/^[\w-]{1,40}$/.test(String(cabinet || '')) || !/^\d{1,15}$/.test(String(campaignId || ''))) throw apiError(400, 'Некорректный кабинет или кампания');
+  if (!/^[\w-]{1,40}$/.test(String(cabinet || '')) || !/^\d{1,15}$/.test(String(campaignId || '')))
+    throw apiError(400, 'Некорректный кабинет или кампания');
   return `${cabinet}:${campaignId}`;
 }
 function keywordTags(cabinet, campaignId) {
@@ -2004,44 +3264,67 @@ function pushKeywordEvent(entry, event) {
 // Запись без отметок и истории удаляется, чтобы файл не копил пустые записи.
 function storeKeywordEntry(data, key, query, entry) {
   const campaign = data.campaigns[key] || {};
-  if (entry.tag || entry.important || entry.history?.length) campaign[query] = entry; else delete campaign[query];
-  if (Object.keys(campaign).length) data.campaigns[key] = campaign; else delete data.campaigns[key];
+  if (entry.tag || entry.important || entry.history?.length) campaign[query] = entry;
+  else delete campaign[query];
+  if (Object.keys(campaign).length) data.campaigns[key] = campaign;
+  else delete data.campaigns[key];
   writeKeywordTags(data);
   return campaign[query] || null;
 }
 function setKeywordTag(cabinet, campaignId, body = {}) {
-  const key = keywordTagsKey(cabinet, campaignId), query = keywordQuery(body.query);
+  const key = keywordTagsKey(cabinet, campaignId),
+    query = keywordQuery(body.query);
   if (body.tag != null && body.tag !== '' && !KEYWORD_TAG_KEYS.includes(body.tag)) throw apiError(400, 'Неизвестная отметка');
-  const data = readKeywordTags(), before = data.campaigns[key]?.[query] || {};
+  const data = readKeywordTags(),
+    before = data.campaigns[key]?.[query] || {};
   const current = { ...before, history: [...(before.history || [])] };
-  if (body.clear) { delete current.tag; delete current.important; }
-  if ('tag' in body) { if (body.tag) current.tag = body.tag; else delete current.tag; }
-  if ('important' in body) { if (body.important) current.important = true; else delete current.important; }
+  if (body.clear) {
+    delete current.tag;
+    delete current.important;
+  }
+  if ('tag' in body) {
+    if (body.tag) current.tag = body.tag;
+    else delete current.tag;
+  }
+  if ('important' in body) {
+    if (body.important) current.important = true;
+    else delete current.important;
+  }
   if ((before.tag || '') !== (current.tag || '')) pushKeywordEvent(current, { type: 'tag', from: before.tag || '', to: current.tag || '' });
-  if (Boolean(before.important) !== Boolean(current.important)) pushKeywordEvent(current, { type: 'important', on: Boolean(current.important) });
+  if (Boolean(before.important) !== Boolean(current.important))
+    pushKeywordEvent(current, { type: 'important', on: Boolean(current.important) });
   return { query, tag: storeKeywordEntry(data, key, query, current) };
 }
 // Пояснение к смене отметки (eventId события отметки) или комментарий (без eventId — новый); remove — удалить.
 // --- Заметки по кампании (кнопка с заметками в детализации): data/campaign-notes.json, { "кабинет:кампания": [заметки] } ---
 function readCampaignNotes() {
-  try { const data = JSON.parse(fs.readFileSync(CAMPAIGN_NOTES_FILE, 'utf8')); return data && typeof data === 'object' && !Array.isArray(data) ? data : {}; } catch { return {}; }
+  try {
+    const data = JSON.parse(fs.readFileSync(CAMPAIGN_NOTES_FILE, 'utf8'));
+    return data && typeof data === 'object' && !Array.isArray(data) ? data : {};
+  } catch {
+    return {};
+  }
 }
 function campaignNotes(cabinet, campaignId) {
   return { notes: readCampaignNotes()[keywordTagsKey(cabinet, campaignId)] || [] };
 }
 // Без noteId — новая заметка; с noteId — изменить текст или удалить (remove).
 function setCampaignNote(cabinet, campaignId, body = {}) {
-  const key = keywordTagsKey(cabinet, campaignId), text = String(body.text || '').trim();
+  const key = keywordTagsKey(cabinet, campaignId),
+    text = String(body.text || '').trim();
   if (!body.remove && !text) throw apiError(400, 'Пустая заметка');
   if (text.length > 3000) throw apiError(400, 'Заметка длиннее 3000 символов');
-  const data = readCampaignNotes(), notes = [...(data[key] || [])];
+  const data = readCampaignNotes(),
+    notes = [...(data[key] || [])];
   if (!body.noteId) notes.push({ id: keywordEventId(), at: new Date().toISOString(), text });
   else {
     const index = notes.findIndex(note => note.id === body.noteId);
     if (index < 0) throw apiError(404, 'Заметка не найдена — обновите страницу');
-    if (body.remove) notes.splice(index, 1); else notes[index] = { ...notes[index], text, editedAt: new Date().toISOString() };
+    if (body.remove) notes.splice(index, 1);
+    else notes[index] = { ...notes[index], text, editedAt: new Date().toISOString() };
   }
-  if (notes.length) data[key] = notes; else delete data[key];
+  if (notes.length) data[key] = notes;
+  else delete data[key];
   fs.mkdirSync(path.dirname(CAMPAIGN_NOTES_FILE), { recursive: true });
   fs.writeFileSync(`${CAMPAIGN_NOTES_FILE}.tmp`, JSON.stringify(data, null, 2));
   fs.renameSync(`${CAMPAIGN_NOTES_FILE}.tmp`, CAMPAIGN_NOTES_FILE);
@@ -2056,7 +3339,12 @@ const TODO_TYPES = ['review', 'client', 'ads', 'prices', 'stock', 'card', 'check
 const TODO_PRIORITIES = ['normal', 'high', 'urgent'];
 const TODO_LIMIT = 5000;
 function readTodos() {
-  try { const data = JSON.parse(fs.readFileSync(TODOS_FILE, 'utf8')); return Array.isArray(data?.tasks) ? data.tasks : []; } catch { return []; }
+  try {
+    const data = JSON.parse(fs.readFileSync(TODOS_FILE, 'utf8'));
+    return Array.isArray(data?.tasks) ? data.tasks : [];
+  } catch {
+    return [];
+  }
 }
 function writeTodos(tasks) {
   fs.mkdirSync(path.dirname(TODOS_FILE), { recursive: true });
@@ -2073,7 +3361,8 @@ function todoNmId(value) {
 }
 // Новая задача берёт все поля (пустые — по умолчанию), изменение — только присланные.
 function todoFields(body = {}, isNew = true) {
-  const fields = {}, has = key => isNew || Object.hasOwn(body, key);
+  const fields = {},
+    has = key => isNew || Object.hasOwn(body, key);
   if (has('text')) {
     const text = String(body.text || '').trim();
     if (!text) throw apiError(400, 'Пустая задача');
@@ -2092,35 +3381,59 @@ function todoFields(body = {}, isNew = true) {
 }
 // Название и фото товара — из карточек кабинета задачи (без кабинета — ищем во всех: артикул WB уникален).
 async function todoProducts(tasks) {
-  const wanted = new Set(tasks.filter(task => task.nmId).map(task => String(task.nmId))), products = new Map();
+  const wanted = new Set(tasks.filter(task => task.nmId).map(task => String(task.nmId))),
+    products = new Map();
   if (!wanted.size) return products;
-  const ids = new Set(tasks.filter(task => task.nmId).flatMap(task => task.cabinet ? [task.cabinet] : cabinets().map(item => item.id)));
+  const ids = new Set(tasks.filter(task => task.nmId).flatMap(task => (task.cabinet ? [task.cabinet] : cabinets().map(item => item.id))));
   for (const id of ids) {
     if (!cabinets().some(item => item.id === id)) continue;
     const cards = await productCards(id).catch(() => []);
-    for (const card of cards) if (wanted.has(String(card.nmID))) products.set(String(card.nmID), { name: card.title || '', vendorCode: card.vendorCode || '', photo: cardPhoto(card) });
+    for (const card of cards)
+      if (wanted.has(String(card.nmID)))
+        products.set(String(card.nmID), { name: card.title || '', vendorCode: card.vendorCode || '', photo: cardPhoto(card) });
   }
   return products;
 }
 async function todos() {
-  const tasks = readTodos(), products = await todoProducts(tasks);
+  const tasks = readTodos(),
+    products = await todoProducts(tasks);
   return { tasks: tasks.map(task => ({ ...task, product: task.nmId ? products.get(String(task.nmId)) || null : null })) };
 }
 // Без id — новая задача. С id: поля для изменения, done (выполнена / вернуть), comment (запись в журнал), remove.
 function saveTodo(body = {}) {
-  const tasks = readTodos(), now = new Date().toISOString();
+  const tasks = readTodos(),
+    now = new Date().toISOString();
   if (!body.id) {
     if (tasks.length >= TODO_LIMIT) throw apiError(400, `Задач больше ${TODO_LIMIT} — удалите старые из архива`);
-    const task = { id: keywordEventId(), ...todoFields(body), createdAt: now, updatedAt: now, doneAt: null, log: [{ at: now, action: 'created' }] };
-    tasks.push(task); writeTodos(tasks);
+    const task = {
+      id: keywordEventId(),
+      ...todoFields(body),
+      createdAt: now,
+      updatedAt: now,
+      doneAt: null,
+      log: [{ at: now, action: 'created' }]
+    };
+    tasks.push(task);
+    writeTodos(tasks);
     return { task };
   }
   const index = tasks.findIndex(task => task.id === body.id);
   if (index < 0) throw apiError(404, 'Задача не найдена — обновите страницу');
-  if (body.remove) { tasks.splice(index, 1); writeTodos(tasks); return { removed: body.id }; }
-  const task = { ...tasks[index] }, log = [...(task.log || [])], fields = todoFields(body, false);
-  const changes = Object.entries(fields).filter(([key, value]) => value !== (task[key] ?? (key === 'nmId' ? null : ''))).map(([field, to]) => ({ field, from: task[field] ?? null, to }));
-  if (changes.length) { Object.assign(task, fields); log.push({ at: now, action: 'edited', changes }); }
+  if (body.remove) {
+    tasks.splice(index, 1);
+    writeTodos(tasks);
+    return { removed: body.id };
+  }
+  const task = { ...tasks[index] },
+    log = [...(task.log || [])],
+    fields = todoFields(body, false);
+  const changes = Object.entries(fields)
+    .filter(([key, value]) => value !== (task[key] ?? (key === 'nmId' ? null : '')))
+    .map(([field, to]) => ({ field, from: task[field] ?? null, to }));
+  if (changes.length) {
+    Object.assign(task, fields);
+    log.push({ at: now, action: 'edited', changes });
+  }
   const comment = String(body.comment || '').trim();
   if (comment.length > 2000) throw apiError(400, 'Комментарий длиннее 2000 символов');
   if (comment) log.push({ at: now, action: 'comment', text: comment });
@@ -2129,14 +3442,20 @@ function saveTodo(body = {}) {
     log.push({ at: now, action: body.done ? 'done' : 'reopened' });
   }
   if (log.length === (task.log || []).length) return { task };
-  task.log = log; task.updatedAt = now; tasks[index] = task; writeTodos(tasks);
+  task.log = log;
+  task.updatedAt = now;
+  tasks[index] = task;
+  writeTodos(tasks);
   return { task };
 }
 function setKeywordNote(cabinet, campaignId, body = {}) {
-  const key = keywordTagsKey(cabinet, campaignId), query = keywordQuery(body.query), text = String(body.text || '').trim();
+  const key = keywordTagsKey(cabinet, campaignId),
+    query = keywordQuery(body.query),
+    text = String(body.text || '').trim();
   if (!body.remove && !text) throw apiError(400, 'Пустой комментарий');
   if (text.length > 1000) throw apiError(400, 'Комментарий длиннее 1000 символов');
-  const data = readKeywordTags(), current = { ...(data.campaigns[key]?.[query] || {}) };
+  const data = readKeywordTags(),
+    current = { ...(data.campaigns[key]?.[query] || {}) };
   current.history = [...(current.history || [])];
   if (!body.eventId) {
     if (body.remove) throw apiError(400, 'Не указано, что удалить');
@@ -2144,10 +3463,22 @@ function setKeywordNote(cabinet, campaignId, body = {}) {
   } else {
     const index = current.history.findIndex(event => event.id === body.eventId);
     if (index < 0) throw apiError(404, 'Запись истории не найдена — обновите страницу');
-    const event = { ...current.history[index] }, now = new Date().toISOString();
-    if (event.type === 'comment') { if (body.remove) { current.history.splice(index, 1); return { query, tag: storeKeywordEntry(data, key, query, current) }; } event.text = text; event.editedAt = now; }
-    else if (body.remove) { delete event.note; delete event.noteAt; }
-    else { event.note = text; event.noteAt = now; }
+    const event = { ...current.history[index] },
+      now = new Date().toISOString();
+    if (event.type === 'comment') {
+      if (body.remove) {
+        current.history.splice(index, 1);
+        return { query, tag: storeKeywordEntry(data, key, query, current) };
+      }
+      event.text = text;
+      event.editedAt = now;
+    } else if (body.remove) {
+      delete event.note;
+      delete event.noteAt;
+    } else {
+      event.note = text;
+      event.noteAt = now;
+    }
     current.history[index] = event;
   }
   return { query, tag: storeKeywordEntry(data, key, query, current) };
@@ -2155,7 +3486,8 @@ function setKeywordNote(cabinet, campaignId, body = {}) {
 // Исключение и включение фраз через сайт попадают в историю («Статус фразы»).
 function recordKeywordStatus(cabinet, campaignId, action, queries = []) {
   if (!queries.length) return;
-  const key = keywordTagsKey(cabinet, campaignId), data = readKeywordTags();
+  const key = keywordTagsKey(cabinet, campaignId),
+    data = readKeywordTags();
   for (const query of queries) {
     const entry = { ...(data.campaigns[key]?.[query] || {}) };
     pushKeywordEvent(entry, { type: 'status', action });
@@ -2164,17 +3496,38 @@ function recordKeywordStatus(cabinet, campaignId, action, queries = []) {
   writeKeywordTags(data);
 }
 function setKeywordTagColors(colors = {}) {
-  const data = readKeywordTags(), allowed = ['important', ...KEYWORD_TAG_KEYS];
-  data.colors = Object.fromEntries(Object.entries(colors || {}).filter(([key, value]) => allowed.includes(key) && /^#[0-9a-f]{6}$/i.test(String(value))));
+  const data = readKeywordTags(),
+    allowed = ['important', ...KEYWORD_TAG_KEYS];
+  data.colors = Object.fromEntries(
+    Object.entries(colors || {}).filter(([key, value]) => allowed.includes(key) && /^#[0-9a-f]{6}$/i.test(String(value)))
+  );
   writeKeywordTags(data);
   return { colors: data.colors };
 }
 
 async function campaignKeywordDaily(id, campaignId, from, to, queryInput, nmIdsInput) {
-  const period = historyPeriod(from, to), query = String(queryInput || '').trim(), dates = datesBetween(period.from, period.to);
+  const period = historyPeriod(from, to),
+    query = String(queryInput || '').trim(),
+    dates = datesBetween(period.from, period.to);
   if (!query) throw apiError(400, 'Не указан ключевой запрос');
   if (id === 'demo' || !cabinets().length) {
-    const items = [{ dailyStats: dates.map((date, index) => ({ date, stat: { normQuery: query, views: 400 + (index * 53) % 300, clicks: 12 + (index * 7) % 15, spend: 90 + (index * 31) % 80, atbs: 2 + index % 4, orders: index % 3, shks: index % 2, avgPos: 4 + index % 5 } })) }];
+    const items = [
+      {
+        dailyStats: dates.map((date, index) => ({
+          date,
+          stat: {
+            normQuery: query,
+            views: 400 + ((index * 53) % 300),
+            clicks: 12 + ((index * 7) % 15),
+            spend: 90 + ((index * 31) % 80),
+            atbs: 2 + (index % 4),
+            orders: index % 3,
+            shks: index % 2,
+            avgPos: 4 + (index % 5)
+          }
+        }))
+      }
+    ];
     return { demo: true, period, query, ...summarizeKeywordDaily(items, query, dates) };
   }
   if (!/^\d{1,15}$/.test(String(campaignId || ''))) throw apiError(400, 'Некорректный номер кампании');
@@ -2187,8 +3540,17 @@ async function campaignKeywordDaily(id, campaignId, from, to, queryInput, nmIdsI
     nmIds = campaignProductIds(meta).map(String).slice(0, 100);
   }
   if (!nmIds.length) throw apiError(400, 'В кампании нет товаров');
-  const response = await cachedAnalytics(`keyword-daily:${id}:${campaignId}:${period.from}:${period.to}:${nmIds.join(',')}`, () => normqueryRequest(id, token,
-    { from: period.from, to: period.to, items: nmIds.map(nmId => ({ advertId: Number(campaignId), nmId: Number(nmId) })) }, NORMQUERY_DAILY_URL), 10 * 60_000);
+  const response = await cachedAnalytics(
+    `keyword-daily:${id}:${campaignId}:${period.from}:${period.to}:${nmIds.join(',')}`,
+    () =>
+      normqueryRequest(
+        id,
+        token,
+        { from: period.from, to: period.to, items: nmIds.map(nmId => ({ advertId: Number(campaignId), nmId: Number(nmId) })) },
+        NORMQUERY_DAILY_URL
+      ),
+    10 * 60_000
+  );
   return { demo: false, period, query, ...summarizeKeywordDaily(response?.items || [], query, dates) };
 }
 
@@ -2200,13 +3562,19 @@ function normqueryRequest(id, token, body, url = NORMQUERY_URL) {
       bucket.tokens = Math.min(NORMQUERY_BURST, bucket.tokens + Math.max(0, now - bucket.updatedAt) / NORMQUERY_INTERVAL);
       bucket.updatedAt = now;
       normqueryBuckets.set(id, bucket);
-      if (bucket.tokens < 1) { await wait((1 - bucket.tokens) * NORMQUERY_INTERVAL); continue; }
+      if (bucket.tokens < 1) {
+        await wait((1 - bucket.tokens) * NORMQUERY_INTERVAL);
+        continue;
+      }
       bucket.tokens -= 1;
       return wbRequest(token, url, { method: 'POST', body });
     }
   };
   const run = (normqueryQueues.get(id) || Promise.resolve()).then(task);
-  normqueryQueues.set(id, run.catch(() => {}));
+  normqueryQueues.set(
+    id,
+    run.catch(() => {})
+  );
   return run;
 }
 
@@ -2234,7 +3602,10 @@ function archivedPresetsFromError(message = '') {
 }
 
 async function readMinusList(token, campaignId, nmId) {
-  const response = await wbRequest(token, NORMQUERY_GET_MINUS_URL, { method: 'POST', body: { items: [{ advert_id: Number(campaignId), nm_id: Number(nmId) }] } });
+  const response = await wbRequest(token, NORMQUERY_GET_MINUS_URL, {
+    method: 'POST',
+    body: { items: [{ advert_id: Number(campaignId), nm_id: Number(nmId) }] }
+  });
   const item = (response?.items || []).find(entry => String(entry.nm_id ?? entry.nmId) === String(nmId));
   return (item?.norm_queries || item?.normQueries || []).map(String);
 }
@@ -2245,15 +3616,19 @@ async function campaignMinus(id, campaignId, action, queriesInput, nmIdsInput) {
   if (id === 'demo' || !cabinets().length) throw apiError(400, 'В демо-режиме исключать запросы нельзя');
   if (!/^\d{1,15}$/.test(String(campaignId || ''))) throw apiError(400, 'Некорректный номер кампании');
   if (!['exclude', 'include'].includes(action)) throw apiError(400, 'Неизвестное действие');
-  const queries = [...new Set((Array.isArray(queriesInput) ? queriesInput : []).map(query => String(query || '').trim()).filter(Boolean))].slice(0, 500);
+  const queries = [
+    ...new Set((Array.isArray(queriesInput) ? queriesInput : []).map(query => String(query || '').trim()).filter(Boolean))
+  ].slice(0, 500);
   if (!queries.length) throw apiError(400, 'Не выбраны запросы');
   const token = tokenFor(id);
   const campaignData = await cachedAnalytics(`ad-campaigns:${id}`, () => wbRequest(token, AD_CAMPAIGNS_URL), 3 * 60_000);
   const meta = (Array.isArray(campaignData?.adverts) ? campaignData.adverts : []).find(item => String(item.id) === String(campaignId));
   if (!meta) throw apiError(404, 'Кампания не найдена');
-  if (String(meta.settings?.payment_type || '').toLowerCase() === 'cpc') throw apiError(400, 'В кампаниях с оплатой за клики (CPC) WB не позволяет исключать запросы');
+  if (String(meta.settings?.payment_type || '').toLowerCase() === 'cpc')
+    throw apiError(400, 'В кампаниях с оплатой за клики (CPC) WB не позволяет исключать запросы');
   const campaignNms = campaignProductIds(meta).map(String);
-  const requested = Array.isArray(nmIdsInput) && nmIdsInput.length ? nmIdsInput.map(String).filter(nmId => campaignNms.includes(nmId)) : campaignNms;
+  const requested =
+    Array.isArray(nmIdsInput) && nmIdsInput.length ? nmIdsInput.map(String).filter(nmId => campaignNms.includes(nmId)) : campaignNms;
   if (!requested.length) throw apiError(400, 'В кампании нет выбранных товаров');
   const statuses = await fetchNormqueryStatuses(id, token, campaignId, requested);
   const results = [];
@@ -2264,28 +3639,47 @@ async function campaignMinus(id, campaignId, action, queriesInput, nmIdsInput) {
     if (!mine.length) continue;
     if (results.length) await wait(NORMQUERY_LIST_INTERVAL);
     try {
-      const before = await readMinusList(token, campaignId, nmId), archived = new Set(lists?.archived || []);
+      const before = await readMinusList(token, campaignId, nmId),
+        archived = new Set(lists?.archived || []);
       let plan = minusPlan(before, mine, action, archived);
       const skippedNote = plan.skipped.length ? `в архиве WB, исключать не нужно: ${plan.skipped.join(', ')}` : '';
-      if (!plan.usable.length) { results.push({ nmId, ok: false, changed: 0, queries: mine, error: skippedNote }); continue; }
+      if (!plan.usable.length) {
+        results.push({ nmId, ok: false, changed: 0, queries: mine, error: skippedNote });
+        continue;
+      }
       const unchanged = plan.next.length === before.length && plan.next.every(query => before.includes(query));
-      if (unchanged) { results.push({ nmId, ok: true, changed: 0, queries: mine, note: skippedNote }); continue; }
-      if (plan.next.length > NORMQUERY_MINUS_LIMIT) throw apiError(400, `у товара было бы больше ${NORMQUERY_MINUS_LIMIT} минус-фраз — это предел WB`);
-      const send = () => wbRequest(token, NORMQUERY_SET_MINUS_URL, { method: 'POST', body: { advert_id: Number(campaignId), nm_id: Number(nmId), norm_queries: plan.next } });
-      try { await send(); }
-      catch (error) {
+      if (unchanged) {
+        results.push({ nmId, ok: true, changed: 0, queries: mine, note: skippedNote });
+        continue;
+      }
+      if (plan.next.length > NORMQUERY_MINUS_LIMIT)
+        throw apiError(400, `у товара было бы больше ${NORMQUERY_MINUS_LIMIT} минус-фраз — это предел WB`);
+      const send = () =>
+        wbRequest(token, NORMQUERY_SET_MINUS_URL, {
+          method: 'POST',
+          body: { advert_id: Number(campaignId), nm_id: Number(nmId), norm_queries: plan.next }
+        });
+      try {
+        await send();
+      } catch (error) {
         // Список архивных из normquery/list мог отстать — убираем то, что WB назвал в ошибке, и пробуем ещё раз.
         const named = archivedPresetsFromError(error.message);
         if (!named.length || named.every(query => archived.has(query))) throw error;
-        named.forEach(query => archived.add(query)); plan = minusPlan(before, mine, action, archived);
-        await wait(NORMQUERY_LIST_INTERVAL); await send();
+        named.forEach(query => archived.add(query));
+        plan = minusPlan(before, mine, action, archived);
+        await wait(NORMQUERY_LIST_INTERVAL);
+        await send();
       }
       const after = await readMinusList(token, campaignId, nmId);
-      const ok = plan.usable.every(query => action === 'exclude' ? after.includes(query) : !after.includes(query));
+      const ok = plan.usable.every(query => (action === 'exclude' ? after.includes(query) : !after.includes(query)));
       const changed = plan.usable.filter(query => before.includes(query) !== after.includes(query)).length;
-      const note = [skippedNote, plan.dropped.length ? `из минус-фраз убраны кластеры в архиве WB: ${plan.dropped.join(', ')}` : ''].filter(Boolean).join('; ');
+      const note = [skippedNote, plan.dropped.length ? `из минус-фраз убраны кластеры в архиве WB: ${plan.dropped.join(', ')}` : '']
+        .filter(Boolean)
+        .join('; ');
       results.push({ nmId, ok, changed, queries: mine, note, error: ok ? '' : 'WB принял запрос, но список минус-фраз не изменился' });
-    } catch (error) { results.push({ nmId, ok: false, changed: 0, queries: mine, error: error.message }); }
+    } catch (error) {
+      results.push({ nmId, ok: false, changed: 0, queries: mine, error: error.message });
+    }
   }
   if (!results.length) throw apiError(400, 'Выбранные запросы не относятся к товарам кампании');
   return { action, results };
@@ -2296,12 +3690,18 @@ async function campaignMinus(id, campaignId, action, queriesInput, nmIdsInput) {
 async function renameCampaign(id, campaignId, nameInput) {
   if (id === 'demo' || !cabinets().length) throw apiError(400, 'В демо-режиме переименовывать кампании нельзя');
   if (!/^\d{1,15}$/.test(String(campaignId || ''))) throw apiError(400, 'Некорректный номер кампании');
-  const name = String(nameInput || '').replace(/\s+/g, ' ').trim();
+  const name = String(nameInput || '')
+    .replace(/\s+/g, ' ')
+    .trim();
   if (!name) throw apiError(400, 'Название не может быть пустым');
   if (name.length > 100) throw apiError(400, 'Название длиннее 100 символов — это предел WB');
   const token = tokenFor(id);
-  try { await wbRequest(token, 'https://advert-api.wildberries.ru/adv/v0/rename', { method: 'POST', body: { advertId: Number(campaignId), name } }); }
-  catch (error) {
+  try {
+    await wbRequest(token, 'https://advert-api.wildberries.ru/adv/v0/rename', {
+      method: 'POST',
+      body: { advertId: Number(campaignId), name }
+    });
+  } catch (error) {
     // На 400/422 WB отвечает простым текстом — показываем его, а не «WB API вернул 400».
     const text = typeof error.details === 'string' ? error.details.trim() : '';
     throw apiError(error.status || 502, text ? `WB: ${text.slice(0, 200)}` : error.message);
@@ -2336,13 +3736,17 @@ async function setCampaignStatus(id, campaignId, action) {
   if (!/^\d{1,15}$/.test(String(campaignId || ''))) throw apiError(400, 'Некорректный номер кампании');
   const spec = CAMPAIGN_STATUS_ACTIONS[action];
   if (!spec) throw apiError(400, 'Неизвестное действие с кампанией');
-  const token = tokenFor(id), before = await fetchCampaign(token, campaignId);
+  const token = tokenFor(id),
+    before = await fetchCampaign(token, campaignId);
   if (!before) throw apiError(404, 'WB не нашёл кампанию');
-  if (!spec.from.includes(Number(before.status))) throw apiError(400, `Кампанию в статусе «${CAMPAIGN_STATUS_NAMES[before.status] || before.status}» нельзя ${spec.verb}`);
-  try { await wbRequest(token, `${spec.url}?id=${encodeURIComponent(campaignId)}`); }
-  catch (error) {
+  if (!spec.from.includes(Number(before.status)))
+    throw apiError(400, `Кампанию в статусе «${CAMPAIGN_STATUS_NAMES[before.status] || before.status}» нельзя ${spec.verb}`);
+  try {
+    await wbRequest(token, `${spec.url}?id=${encodeURIComponent(campaignId)}`);
+  } catch (error) {
     const text = wbErrorText(error);
-    if (/low budget|not enough budget/i.test(text)) throw apiError(400, 'Недостаточно бюджета кампании — пополните его в кабинете WB и запустите снова');
+    if (/low budget|not enough budget/i.test(text))
+      throw apiError(400, 'Недостаточно бюджета кампании — пополните его в кабинете WB и запустите снова');
     if (/not found/i.test(text)) throw apiError(404, 'WB не нашёл кампанию');
     if (error.status === 422) throw apiError(422, `WB не изменил статус кампании${text ? `: ${text.slice(0, 200)}` : ''}`);
     throw apiError(error.status || 502, text ? `WB: ${text.slice(0, 200)}` : error.message);
@@ -2366,18 +3770,26 @@ const AD_DEPOSIT_URL = 'https://advert-api.wildberries.ru/adv/v1/budget/deposit'
 const AD_DEPOSIT_MIN = 1000;
 // В документации net — «Баланс», но в кабинете WB эта же сумма подписана «Единый счёт» (сверено с кабинетом: 95 324 ₽
 // в net и в окне пополнения WB) — называем как в кабинете.
-const AD_DEPOSIT_SOURCES = [{ type: 0, field: 'balance', name: 'Счёт продвижения' }, { type: 1, field: 'net', name: 'Единый счёт' }, { type: 3, field: 'bonus', name: 'Бонусы' }];
+const AD_DEPOSIT_SOURCES = [
+  { type: 0, field: 'balance', name: 'Счёт продвижения' },
+  { type: 1, field: 'net', name: 'Единый счёт' },
+  { type: 3, field: 'bonus', name: 'Бонусы' }
+];
 
 async function campaignBudget(id, campaignId) {
   if (!/^\d{1,15}$/.test(String(campaignId || ''))) throw apiError(400, 'Некорректный номер кампании');
   if (id === 'demo' || !cabinets().length) return { demo: true, budget: 2450, currency: 'RUB' };
   const token = tokenFor(id);
-  const data = await cachedAnalytics(`ad-budget:${id}:${campaignId}`, async () => {
-    const pause = AD_BUDGET_INTERVAL - (Date.now() - (adBudgetLastCall.get(id) || 0));
-    if (pause > 0) await wait(pause);
-    adBudgetLastCall.set(id, Date.now());
-    return wbRequest(token, AD_BUDGET_URL, { method: 'POST', body: { advertIds: [Number(campaignId)] } });
-  }, 30_000);
+  const data = await cachedAnalytics(
+    `ad-budget:${id}:${campaignId}`,
+    async () => {
+      const pause = AD_BUDGET_INTERVAL - (Date.now() - (adBudgetLastCall.get(id) || 0));
+      if (pause > 0) await wait(pause);
+      adBudgetLastCall.set(id, Date.now());
+      return wbRequest(token, AD_BUDGET_URL, { method: 'POST', body: { advertIds: [Number(campaignId)] } });
+    },
+    30_000
+  );
   const item = (Array.isArray(data?.adverts) ? data.adverts : []).find(advert => String(advert.advertId) === String(campaignId));
   return { demo: false, budget: item?.total != null ? Number(item.total) : null, currency: item?.currency || 'RUB' };
 }
@@ -2387,17 +3799,32 @@ async function adDepositMinimum(id, token) {
     const config = await cachedAnalytics(`ad-config:${id}`, () => wbRequest(token, AD_CONFIG_URL), 60 * 60_000);
     const min = Number(config?.minTopUp) / 100;
     return Number.isFinite(min) && min > 0 ? Math.ceil(min) : AD_DEPOSIT_MIN;
-  } catch { return AD_DEPOSIT_MIN; }
+  } catch {
+    return AD_DEPOSIT_MIN;
+  }
 }
 
 async function adFinance(id) {
   if (id === 'demo' || !cabinets().length) {
-    return { demo: true, currency: 'RUB', minTopUp: AD_DEPOSIT_MIN, sources: [{ type: 0, name: 'Счёт продвижения', amount: 0 }, { type: 1, name: 'Единый счёт', amount: 95324 }, { type: 3, name: 'Бонусы', amount: 1200 }] };
+    return {
+      demo: true,
+      currency: 'RUB',
+      minTopUp: AD_DEPOSIT_MIN,
+      sources: [
+        { type: 0, name: 'Счёт продвижения', amount: 0 },
+        { type: 1, name: 'Единый счёт', amount: 95324 },
+        { type: 3, name: 'Бонусы', amount: 1200 }
+      ]
+    };
   }
   const token = tokenFor(id);
   const balance = await cachedAnalytics(`ad-balance:${id}`, () => wbRequest(token, AD_BALANCE_URL), 5_000);
-  return { demo: false, currency: balance?.currency || 'RUB', minTopUp: await adDepositMinimum(id, token),
-    sources: AD_DEPOSIT_SOURCES.map(source => ({ type: source.type, name: source.name, amount: Number(balance?.[source.field] || 0) })) };
+  return {
+    demo: false,
+    currency: balance?.currency || 'RUB',
+    minTopUp: await adDepositMinimum(id, token),
+    sources: AD_DEPOSIT_SOURCES.map(source => ({ type: source.type, name: source.name, amount: Number(balance?.[source.field] || 0) }))
+  };
 }
 
 // Пополнение: POST /adv/v1/budget/deposit?id= с { sum, type, return: true } — в ответе новый бюджет { total, currency }.
@@ -2405,24 +3832,40 @@ async function adFinance(id) {
 async function depositCampaignBudget(id, campaignId, body = {}) {
   if (id === 'demo' || !cabinets().length) throw apiError(400, 'В демо-режиме пополнять бюджет нельзя');
   if (!/^\d{1,15}$/.test(String(campaignId || ''))) throw apiError(400, 'Некорректный номер кампании');
-  const sum = Number(body.sum), type = Number(body.type), source = AD_DEPOSIT_SOURCES.find(item => item.type === type);
+  const sum = Number(body.sum),
+    type = Number(body.type),
+    source = AD_DEPOSIT_SOURCES.find(item => item.type === type);
   if (!source) throw apiError(400, 'Выберите источник списания');
-  const token = tokenFor(id), min = await adDepositMinimum(id, token);
-  if (!Number.isInteger(sum) || sum < min) throw apiError(400, `Сумма пополнения — целое число рублей, не меньше ${min.toLocaleString('ru-RU')} ₽`);
+  const token = tokenFor(id),
+    min = await adDepositMinimum(id, token);
+  if (!Number.isInteger(sum) || sum < min)
+    throw apiError(400, `Сумма пополнения — целое число рублей, не меньше ${min.toLocaleString('ru-RU')} ₽`);
   const campaign = await fetchCampaign(token, campaignId);
   if (!campaign) throw apiError(404, 'WB не нашёл кампанию');
-  if (!AD_BUDGET_STATUSES.has(Number(campaign.status))) throw apiError(400, `Кампанию в статусе «${CAMPAIGN_STATUS_NAMES[campaign.status] || campaign.status}» пополнить нельзя`);
+  if (!AD_BUDGET_STATUSES.has(Number(campaign.status)))
+    throw apiError(400, `Кампанию в статусе «${CAMPAIGN_STATUS_NAMES[campaign.status] || campaign.status}» пополнить нельзя`);
   const balance = await wbRequest(token, AD_BALANCE_URL).catch(() => null);
-  if (balance && Number(balance[source.field] || 0) < sum) throw apiError(400, `Источник «${source.name}»: доступно ${Number(balance[source.field] || 0).toLocaleString('ru-RU')} ₽ — меньше суммы пополнения`);
+  if (balance && Number(balance[source.field] || 0) < sum)
+    throw apiError(
+      400,
+      `Источник «${source.name}»: доступно ${Number(balance[source.field] || 0).toLocaleString('ru-RU')} ₽ — меньше суммы пополнения`
+    );
   let result;
-  try { result = await wbRequest(token, `${AD_DEPOSIT_URL}?id=${encodeURIComponent(campaignId)}`, { method: 'POST', body: { sum, type, return: true } }); }
-  catch (error) {
-    const text = wbErrorText(error), minimum = text.match(/minimum deposit amount is (\d+)/i);
+  try {
+    result = await wbRequest(token, `${AD_DEPOSIT_URL}?id=${encodeURIComponent(campaignId)}`, {
+      method: 'POST',
+      body: { sum, type, return: true }
+    });
+  } catch (error) {
+    const text = wbErrorText(error),
+      minimum = text.match(/minimum deposit amount is (\d+)/i);
     if (minimum) throw apiError(400, `WB: минимальная сумма пополнения — ${Number(minimum[1]).toLocaleString('ru-RU')} ₽`);
     throw apiError(error.status || 502, text ? `WB: ${text.slice(0, 200)}` : error.message);
   }
-  analyticsCache.delete(`ad-budget:${id}:${campaignId}`); analyticsCache.delete(`ad-balance:${id}`);
-  const budget = result?.total != null ? Number(result.total) : (await campaignBudget(id, campaignId).catch(() => ({ budget: null }))).budget;
+  analyticsCache.delete(`ad-budget:${id}:${campaignId}`);
+  analyticsCache.delete(`ad-balance:${id}`);
+  const budget =
+    result?.total != null ? Number(result.total) : (await campaignBudget(id, campaignId).catch(() => ({ budget: null }))).budget;
   return { ok: true, id: Number(campaignId), budget, currency: result?.currency || 'RUB', status: Number(campaign.status) };
 }
 
@@ -2438,15 +3881,22 @@ async function setCampaignPlacements(id, campaignId, body = {}) {
   const { search, recommendations } = body;
   if (typeof search !== 'boolean' || typeof recommendations !== 'boolean') throw apiError(400, 'Укажите, включены ли поиск и рекомендации');
   if (!search && !recommendations) throw apiError(400, 'Хотя бы одно место показа должно остаться включённым');
-  const token = tokenFor(id), campaign = await fetchCampaign(token, campaignId);
+  const token = tokenFor(id),
+    campaign = await fetchCampaign(token, campaignId);
   if (!campaign) throw apiError(404, 'WB не нашёл кампанию');
-  if (campaign.bid_type !== 'manual' || String(campaign.settings?.payment_type || '').toLowerCase() !== 'cpm') throw apiError(400, 'Места показа меняются только у кампаний с ручной ставкой и оплатой за показы (CPM)');
-  if (![4, 9, 11].includes(Number(campaign.status))) throw apiError(400, `У кампании в статусе «${CAMPAIGN_STATUS_NAMES[campaign.status] || campaign.status}» места показа менять нельзя`);
+  if (campaign.bid_type !== 'manual' || String(campaign.settings?.payment_type || '').toLowerCase() !== 'cpm')
+    throw apiError(400, 'Места показа меняются только у кампаний с ручной ставкой и оплатой за показы (CPM)');
+  if (![4, 9, 11].includes(Number(campaign.status)))
+    throw apiError(400, `У кампании в статусе «${CAMPAIGN_STATUS_NAMES[campaign.status] || campaign.status}» места показа менять нельзя`);
   const pause = 1_100 - (Date.now() - (placementLastCall.get(id) || 0));
   if (pause > 0) await wait(pause);
   placementLastCall.set(id, Date.now());
-  try { await wbRequest(token, PLACEMENTS_URL, { method: 'PUT', body: { placements: [{ advert_id: Number(campaignId), placements: { search, recommendations } }] } }); }
-  catch (error) {
+  try {
+    await wbRequest(token, PLACEMENTS_URL, {
+      method: 'PUT',
+      body: { placements: [{ advert_id: Number(campaignId), placements: { search, recommendations } }] }
+    });
+  } catch (error) {
     const text = wbErrorText(error);
     if (/payment type cpc/i.test(text)) throw apiError(400, 'WB: у кампаний с оплатой за клики места показа менять нельзя');
     throw apiError(error.status || 502, text ? `WB: ${text.slice(0, 200)}` : error.message);
@@ -2467,7 +3917,8 @@ const ZONE_KEYS = ['all', 'searchCatalog', 'shelves'];
 const ZONES_FILE = 'zones.json';
 
 function zoneMetrics(src) {
-  const out = {}; let any = false;
+  const out = {};
+  let any = false;
   for (const field of ZONE_FIELDS) {
     const value = Number(src?.[field]);
     out[field] = Number.isFinite(value) && value > 0 ? Math.round(value * 100) / 100 : 0;
@@ -2480,12 +3931,18 @@ function zoneMetrics(src) {
 // catalogDaily: { дата: метрики } | null (fullstat не ответил), catalogNm: { nm: { metrics, name } } | null }.
 // Каталог по артикулам WB отдаёт только итогом за период, поэтому он хранится по периодам «from_to».
 function mergeCampaignZones(stored, upload = {}, receivedAt = new Date().toISOString()) {
-  const from = String(upload.from || ''), to = String(upload.to || '');
+  const from = String(upload.from || ''),
+    to = String(upload.to || '');
   if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to) || from > to) throw apiError(400, 'Неверный период');
   const dates = datesBetween(from, to);
   if (dates.length > 400) throw apiError(400, 'Период больше 400 дней');
-  const result = { days: { ...(stored?.days || {}) }, catalogByNm: { ...(stored?.catalogByNm || {}) }, names: { ...(stored?.names || {}) } };
-  const byNm = upload.byNm || {}, catalogDaily = upload.catalogDaily && typeof upload.catalogDaily === 'object' ? upload.catalogDaily : null;
+  const result = {
+    days: { ...(stored?.days || {}) },
+    catalogByNm: { ...(stored?.catalogByNm || {}) },
+    names: { ...(stored?.names || {}) }
+  };
+  const byNm = upload.byNm || {},
+    catalogDaily = upload.catalogDaily && typeof upload.catalogDaily === 'object' ? upload.catalogDaily : null;
   for (const date of dates) {
     const day = { receivedAt };
     for (const zone of ZONE_KEYS) {
@@ -2530,8 +3987,11 @@ async function campaignCabinet(campaignId) {
 function readCampaignZones(cabinetId, campaignId) {
   const file = path.join(campaignDir(cabinetId, campaignId), ZONES_FILE);
   if (!fs.existsSync(file)) return { file, data: null };
-  try { return { file, data: JSON.parse(fs.readFileSync(file, 'utf8')) }; }
-  catch (error) { throw apiError(500, `Не удалось прочитать ${ZONES_FILE}: ${error.message}`); }
+  try {
+    return { file, data: JSON.parse(fs.readFileSync(file, 'utf8')) };
+  } catch (error) {
+    throw apiError(500, `Не удалось прочитать ${ZONES_FILE}: ${error.message}`);
+  }
 }
 
 async function saveCampaignZones(body = {}) {
@@ -2546,41 +4006,73 @@ async function saveCampaignZones(body = {}) {
   fs.writeFileSync(`${file}.tmp`, JSON.stringify({ campaignId: Number(campaignId), cabinet, updatedAt: receivedAt, ...merged }));
   fs.renameSync(`${file}.tmp`, file);
   const name = cabinets().find(item => item.id === cabinet)?.name || '';
-  return { ok: true, campaignId: Number(campaignId), cabinet, cabinetName: name, from: body.from, to: body.to,
-    days: datesBetween(body.from, body.to).length, catalog: Boolean(body.catalogDaily), folder: `data/Ads/${cabinetFolderName(cabinet)}/${campaignId}` };
+  return {
+    ok: true,
+    campaignId: Number(campaignId),
+    cabinet,
+    cabinetName: name,
+    from: body.from,
+    to: body.to,
+    days: datesBetween(body.from, body.to).length,
+    catalog: Boolean(body.catalogDaily),
+    folder: `data/Ads/${cabinetFolderName(cabinet)}/${campaignId}`
+  };
 }
 
 // Демо: два своих артикула и третий, у которого только заказы после клика по рекламе («другие товары»).
 function demoZones(from, to) {
   const days = {};
   for (const date of datesBetween(from, to)) {
-    const seed = Number(date.replace(/-/g, '')) % 97, vary = k => 0.7 + ((seed * k) % 13) / 20;
+    const seed = Number(date.replace(/-/g, '')) % 97,
+      vary = k => 0.7 + ((seed * k) % 13) / 20;
     const zone = (views, ctr, cpm, cart, order, price) => {
-      const clicks = Math.round(views * ctr * vary(3)), atbs = Math.round(clicks * cart * vary(5)), orders = Math.round(atbs * order * vary(7));
-      return zoneMetrics({ views, clicks, atbs, orders, shks: orders, sum_price: orders * price, spend: views * cpm / 1000 });
+      const clicks = Math.round(views * ctr * vary(3)),
+        atbs = Math.round(clicks * cart * vary(5)),
+        orders = Math.round(atbs * order * vary(7));
+      return zoneMetrics({ views, clicks, atbs, orders, shks: orders, sum_price: orders * price, spend: (views * cpm) / 1000 });
     };
-    const searchA = zone(Math.round(900 * vary(2)), 0.035, 188, 0.13, 0.3, 2490), shelvesA = zone(Math.round(2600 * vary(4)), 0.017, 185, 0.12, 0.2, 2490);
-    const searchB = zone(Math.round(400 * vary(6)), 0.03, 188, 0.1, 0.25, 1590), shelvesB = zone(Math.round(1400 * vary(8)), 0.014, 185, 0.1, 0.2, 1590);
+    const searchA = zone(Math.round(900 * vary(2)), 0.035, 188, 0.13, 0.3, 2490),
+      shelvesA = zone(Math.round(2600 * vary(4)), 0.017, 185, 0.12, 0.2, 2490);
+    const searchB = zone(Math.round(400 * vary(6)), 0.03, 188, 0.1, 0.25, 1590),
+      shelvesB = zone(Math.round(1400 * vary(8)), 0.014, 185, 0.1, 0.2, 1590);
     const catalog = zone(Math.round(45 * vary(9)), 0.02, 188, 0, 0, 0);
-    const sum = (...list) => zoneMetrics(Object.fromEntries(ZONE_FIELDS.map(field => [field, list.reduce((s, m) => s + Number(m?.[field] || 0), 0)])));
+    const sum = (...list) =>
+      zoneMetrics(Object.fromEntries(ZONE_FIELDS.map(field => [field, list.reduce((s, m) => s + Number(m?.[field] || 0), 0)])));
     const other = seed % 3 ? zoneMetrics({ orders: 1, shks: 1, sum_price: 990 }) : null;
     const searchCatalogA = sum(searchA, catalog);
-    days[date] = { all: { 100001: sum(searchCatalogA, shelvesA), 100002: sum(searchB, shelvesB), ...(other ? { 100003: other } : {}) },
-      searchCatalog: { 100001: searchCatalogA, 100002: searchB, ...(other ? { 100003: other } : {}) }, shelves: { 100001: shelvesA, 100002: shelvesB }, catalog };
+    days[date] = {
+      all: { 100001: sum(searchCatalogA, shelvesA), 100002: sum(searchB, shelvesB), ...(other ? { 100003: other } : {}) },
+      searchCatalog: { 100001: searchCatalogA, 100002: searchB, ...(other ? { 100003: other } : {}) },
+      shelves: { 100001: shelvesA, 100002: shelvesB },
+      catalog
+    };
   }
-  return { demo: true, updatedAt: new Date().toISOString(), days, catalogByNm: {}, names: { 100001: 'Демо-товар 1', 100002: 'Демо-товар 2', 100003: 'Демо-товар 3' } };
+  return {
+    demo: true,
+    updatedAt: new Date().toISOString(),
+    days,
+    catalogByNm: {},
+    names: { 100001: 'Демо-товар 1', 100002: 'Демо-товар 2', 100003: 'Демо-товар 3' }
+  };
 }
 
 function campaignZones(cabinetId, campaignId, from, to) {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(from)) || !/^\d{4}-\d{2}-\d{2}$/.test(String(to)) || from > to) throw apiError(400, 'Неверный период');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(from)) || !/^\d{4}-\d{2}-\d{2}$/.test(String(to)) || from > to)
+    throw apiError(400, 'Неверный период');
   if (cabinetId === 'demo' || !cabinets().length) return demoZones(from, to);
   if (!/^\d{1,15}$/.test(String(campaignId || ''))) throw apiError(400, 'Некорректный номер кампании');
   tokenFor(cabinetId);
   // Отдаются все дни, не только выбранного периода: по ним страница проверяет, подходит ли к таблице каталог артикула,
   // присланный за другой период (например, 23.10–05.11 при периоде страницы 22.10–04.11, если 22.10 и 05.11 пустые).
   const data = readCampaignZones(cabinetId, campaignId).data;
-  return { demo: false, updatedAt: data?.updatedAt || '', days: data?.days || {}, catalogByNm: data?.catalogByNm || {}, names: data?.names || {},
-    folder: `data/Ads/${cabinetFolderName(cabinetId)}/${campaignId}` };
+  return {
+    demo: false,
+    updatedAt: data?.updatedAt || '',
+    days: data?.days || {},
+    catalogByNm: data?.catalogByNm || {},
+    names: data?.names || {},
+    folder: `data/Ads/${cabinetFolderName(cabinetId)}/${campaignId}`
+  };
 }
 
 async function fetchNormqueryStatuses(id, token, campaignId, nmIds = []) {
@@ -2593,7 +4085,11 @@ async function fetchNormqueryStatuses(id, token, campaignId, nmIds = []) {
       const nmId = String(item.nmId ?? item.nm_id ?? '');
       if (!nmId) continue;
       const lists = item.normQueries || item.norm_queries || {};
-      statuses.set(nmId, { active: new Set(lists.active || []), excluded: new Set(lists.excluded || []), archived: new Set(lists.archived || []) });
+      statuses.set(nmId, {
+        active: new Set(lists.active || []),
+        excluded: new Set(lists.excluded || []),
+        archived: new Set(lists.archived || [])
+      });
     }
   }
   return statuses;
@@ -2609,7 +4105,20 @@ function keywordStatus(statuses, nmId, query) {
 }
 
 function emptyKeyword(query) {
-  return { query, views: 0, clicks: 0, spend: 0, carts: 0, orders: 0, sales: 0, positionWeight: 0, activeIn: 0, excludedIn: 0, archivedIn: 0, viewsKnown: false };
+  return {
+    query,
+    views: 0,
+    clicks: 0,
+    spend: 0,
+    carts: 0,
+    orders: 0,
+    sales: 0,
+    positionWeight: 0,
+    activeIn: 0,
+    excludedIn: 0,
+    archivedIn: 0,
+    viewsKnown: false
+  };
 }
 
 // По кампаниям с оплатой за клики WB не присылает в статистике запросов показы (а значит, и CTR с CPM):
@@ -2617,8 +4126,12 @@ function emptyKeyword(query) {
 function addKeyword(target, row = {}) {
   if (row.views !== undefined && row.views !== null) target.viewsKnown = true;
   const views = Number(row.views || 0);
-  target.views += views; target.clicks += Number(row.clicks || 0); target.spend += Number(row.spend || 0);
-  target.carts += Number(row.atbs || 0); target.orders += Number(row.orders || 0); target.sales += Number(row.shks || 0);
+  target.views += views;
+  target.clicks += Number(row.clicks || 0);
+  target.spend += Number(row.spend || 0);
+  target.carts += Number(row.atbs || 0);
+  target.orders += Number(row.orders || 0);
+  target.sales += Number(row.shks || 0);
   target.positionWeight += Number(row.avg_pos || 0) * (views || 1);
   target.positionBase = (target.positionBase || 0) + (views || 1);
 }
@@ -2626,16 +4139,33 @@ function addKeyword(target, row = {}) {
 function finalizeKeyword(row) {
   const { positionWeight, positionBase, ...rest } = row;
   // Запрос неактивен, если он выключен у всех артикулов, где встречается; частично — у одних активен, у других исключён.
-  const status = rest.activeIn && rest.excludedIn ? 'partial' : rest.activeIn ? 'active' : rest.excludedIn ? 'excluded' : rest.archivedIn ? 'archived' : '';
+  const status =
+    rest.activeIn && rest.excludedIn
+      ? 'partial'
+      : rest.activeIn
+        ? 'active'
+        : rest.excludedIn
+          ? 'excluded'
+          : rest.archivedIn
+            ? 'archived'
+            : '';
   const known = rest.viewsKnown;
-  return { ...rest, status, views: known ? rest.views : null, ctr: known ? safeRatio(row.clicks, row.views) : null, cpc: safeRatio(row.spend, row.clicks, 1),
-    cpm: known ? safeRatio(row.spend, row.views, 1000) : null, cr: safeRatio(row.orders, row.clicks),
-    avgPosition: positionBase ? Math.round((positionWeight / positionBase) * 10) / 10 : 0 };
+  return {
+    ...rest,
+    status,
+    views: known ? rest.views : null,
+    ctr: known ? safeRatio(row.clicks, row.views) : null,
+    cpc: safeRatio(row.spend, row.clicks, 1),
+    cpm: known ? safeRatio(row.spend, row.views, 1000) : null,
+    cr: safeRatio(row.orders, row.clicks),
+    avgPosition: positionBase ? Math.round((positionWeight / positionBase) * 10) / 10 : 0
+  };
 }
 
 // Складывает ответ WB в итог по кампании и в разбивку по артикулам.
 function summarizeKeywords(groups = [], statuses = new Map()) {
-  const total = new Map(); const byNmId = new Map();
+  const total = new Map();
+  const byNmId = new Map();
   // Присылает ли WB показы по этой кампании вообще: тогда у выключенных кластеров показы — честный 0, иначе неизвестны.
   const viewsAvailable = groups.some(group => (group.stats || []).some(row => row.views !== undefined && row.views !== null));
   for (const group of groups) {
@@ -2657,7 +4187,10 @@ function summarizeKeywords(groups = [], statuses = new Map()) {
   // Выключенные и архивные кластеры показов не набирают, поэтому в статистике их нет:
   // добавляем их отдельными строками с нулями, чтобы было видно, что они отключены.
   for (const [nmId, lists] of statuses) {
-    for (const [status, queries] of [['excluded', lists.excluded], ['archived', lists.archived]]) {
+    for (const [status, queries] of [
+      ['excluded', lists.excluded],
+      ['archived', lists.archived]
+    ]) {
       for (const value of queries) {
         const query = String(value || '').trim();
         if (!query) continue;
@@ -2685,7 +4218,11 @@ function keywordsFile(cabinetId, campaignId, from, to) {
 }
 
 function readCampaignKeywords(cabinetId, campaignId, from, to) {
-  try { return JSON.parse(fs.readFileSync(keywordsFile(cabinetId, campaignId, from, to), 'utf8')); } catch { return null; }
+  try {
+    return JSON.parse(fs.readFileSync(keywordsFile(cabinetId, campaignId, from, to), 'utf8'));
+  } catch {
+    return null;
+  }
 }
 
 function saveCampaignKeywords(cabinetId, campaignId, from, to, data) {
@@ -2697,14 +4234,53 @@ function saveCampaignKeywords(cabinetId, campaignId, from, to, data) {
 
 function demoCampaignKeywords(campaignId, from, to) {
   const queries = ['чехол на iphone 17 pro', 'чехол magsafe', 'чехол с кольцом', 'силиконовый чехол'];
-  const groups = [{ nm_id: 4210000, stats: queries.map((query, index) => ({ norm_query: query, views: 4200 - index * 900, clicks: 180 - index * 40,
-    spend: 900 - index * 180, atbs: 40 - index * 8, orders: 12 - index * 3, shks: 8 - index * 2, avg_pos: 3 + index })) },
-  { nm_id: 4210001, stats: queries.slice(0, 2).map((query, index) => ({ norm_query: query, views: 2100 - index * 700, clicks: 90 - index * 30,
-    spend: 480 - index * 140, atbs: 18 - index * 6, orders: 5 - index * 2, shks: 3 - index, avg_pos: 5 + index })) }];
-  const demoStatuses = new Map([['4210000', { active: new Set(queries.slice(0, 2)), excluded: new Set(queries.slice(2, 3)), archived: new Set(queries.slice(3)) }],
-    ['4210001', { active: new Set(queries.slice(0, 1)), excluded: new Set(queries.slice(1, 2)), archived: new Set() }]]);
-  return { demo: true, campaignId, period: { from, to }, updatedAt: new Date().toISOString(), viewsAvailable: true, ...summarizeKeywords(groups, demoStatuses),
-    products: [{ nmId: 4210000, name: 'Демо-товар 1.1', vendorCode: 'DEMO-1', photo: '' }, { nmId: 4210001, name: 'Демо-товар 1.2', vendorCode: 'DEMO-2', photo: '' }], warnings: [] };
+  const groups = [
+    {
+      nm_id: 4210000,
+      stats: queries.map((query, index) => ({
+        norm_query: query,
+        views: 4200 - index * 900,
+        clicks: 180 - index * 40,
+        spend: 900 - index * 180,
+        atbs: 40 - index * 8,
+        orders: 12 - index * 3,
+        shks: 8 - index * 2,
+        avg_pos: 3 + index
+      }))
+    },
+    {
+      nm_id: 4210001,
+      stats: queries
+        .slice(0, 2)
+        .map((query, index) => ({
+          norm_query: query,
+          views: 2100 - index * 700,
+          clicks: 90 - index * 30,
+          spend: 480 - index * 140,
+          atbs: 18 - index * 6,
+          orders: 5 - index * 2,
+          shks: 3 - index,
+          avg_pos: 5 + index
+        }))
+    }
+  ];
+  const demoStatuses = new Map([
+    ['4210000', { active: new Set(queries.slice(0, 2)), excluded: new Set(queries.slice(2, 3)), archived: new Set(queries.slice(3)) }],
+    ['4210001', { active: new Set(queries.slice(0, 1)), excluded: new Set(queries.slice(1, 2)), archived: new Set() }]
+  ]);
+  return {
+    demo: true,
+    campaignId,
+    period: { from, to },
+    updatedAt: new Date().toISOString(),
+    viewsAvailable: true,
+    ...summarizeKeywords(groups, demoStatuses),
+    products: [
+      { nmId: 4210000, name: 'Демо-товар 1.1', vendorCode: 'DEMO-1', photo: '' },
+      { nmId: 4210001, name: 'Демо-товар 1.2', vendorCode: 'DEMO-2', photo: '' }
+    ],
+    warnings: []
+  };
 }
 
 async function campaignKeywords(id, campaignId, from, to, refresh = false) {
@@ -2712,40 +4288,75 @@ async function campaignKeywords(id, campaignId, from, to, refresh = false) {
   if (id === 'demo' || !cabinets().length) return demoCampaignKeywords(campaignId, period.from, period.to);
   if (!/^\d{1,15}$/.test(String(campaignId || ''))) throw apiError(400, 'Некорректный номер кампании');
   const stored = readCampaignKeywords(id, campaignId, period.from, period.to);
-  if (stored?.format === KEYWORDS_FORMAT && !refresh && !funnelRangeNeedsFetch(period.to, stored.updatedAt)) return { ...stored, fromFile: true };
-  const token = tokenFor(id); const warnings = [];
+  if (stored?.format === KEYWORDS_FORMAT && !refresh && !funnelRangeNeedsFetch(period.to, stored.updatedAt))
+    return { ...stored, fromFile: true };
+  const token = tokenFor(id);
+  const warnings = [];
   const campaignData = await cachedAnalytics(`ad-campaigns:${id}`, () => wbRequest(token, AD_CAMPAIGNS_URL), 3 * 60_000);
   const meta = (Array.isArray(campaignData?.adverts) ? campaignData.adverts : []).find(item => String(item.id) === String(campaignId));
   if (!meta) throw apiError(404, 'Кампания не найдена');
   const nmIds = campaignProductIds(meta);
-  if (!nmIds.length) return { demo: false, campaignId, period, updatedAt: new Date().toISOString(), total: [], byNmId: {}, products: [],
-    warnings: ['В кампании нет товаров, по которым WB отдаёт поисковые запросы'] };
+  if (!nmIds.length)
+    return {
+      demo: false,
+      campaignId,
+      period,
+      updatedAt: new Date().toISOString(),
+      total: [],
+      byNmId: {},
+      products: [],
+      warnings: ['В кампании нет товаров, по которым WB отдаёт поисковые запросы']
+    };
   const groups = [];
   for (let offset = 0; offset < nmIds.length; offset += NORMQUERY_CHUNK) {
     const items = nmIds.slice(offset, offset + NORMQUERY_CHUNK).map(nmId => ({ advert_id: Number(campaignId), nm_id: Number(nmId) }));
     try {
       const response = await normqueryRequest(id, token, { from: period.from, to: period.to, items });
       groups.push(...(Array.isArray(response?.stats) ? response.stats : []));
-    } catch (error) { warnings.push(`Ключевые запросы: ${error.message}`); }
+    } catch (error) {
+      warnings.push(`Ключевые запросы: ${error.message}`);
+    }
   }
-  const statuses = await fetchNormqueryStatuses(id, token, campaignId, nmIds)
-    .catch(error => (warnings.push(`Статусы ключевых запросов: ${error.message}`), new Map()));
+  const statuses = await fetchNormqueryStatuses(id, token, campaignId, nmIds).catch(
+    error => (warnings.push(`Статусы ключевых запросов: ${error.message}`), new Map())
+  );
   const cards = await productCards(id, token).catch(() => []);
-  const byNmIdCard = new Map(cards.map(card => [String(card.nmID), { name: card.title || `Товар ${card.nmID}`, vendorCode: card.vendorCode || '', photo: cardPhoto(card) }]));
+  const byNmIdCard = new Map(
+    cards.map(card => [
+      String(card.nmID),
+      { name: card.title || `Товар ${card.nmID}`, vendorCode: card.vendorCode || '', photo: cardPhoto(card) }
+    ])
+  );
   const summary = summarizeKeywords(groups, statuses);
-  const result = { demo: false, format: KEYWORDS_FORMAT, campaignId, period, updatedAt: new Date().toISOString(), ...summary,
+  const result = {
+    demo: false,
+    format: KEYWORDS_FORMAT,
+    campaignId,
+    period,
+    updatedAt: new Date().toISOString(),
+    ...summary,
     viewsAvailable: summary.total.some(row => row.viewsKnown),
-    products: nmIds.map(nmId => ({ nmId, ...(byNmIdCard.get(String(nmId)) || { name: `Товар ${nmId}`, vendorCode: '', photo: '' }) }))
-      .filter(product => summary.byNmId[String(product.nmId)]?.length), warnings };
-  if (!warnings.length) { try { saveCampaignKeywords(id, campaignId, period.from, period.to, result); } catch (error) { warnings.push(`Не удалось сохранить ключевые запросы: ${error.message}`); } }
+    products: nmIds
+      .map(nmId => ({ nmId, ...(byNmIdCard.get(String(nmId)) || { name: `Товар ${nmId}`, vendorCode: '', photo: '' }) }))
+      .filter(product => summary.byNmId[String(product.nmId)]?.length),
+    warnings
+  };
+  if (!warnings.length) {
+    try {
+      saveCampaignKeywords(id, campaignId, period.from, period.to, result);
+    } catch (error) {
+      warnings.push(`Не удалось сохранить ключевые запросы: ${error.message}`);
+    }
+  }
   return result;
 }
 
 // Дни, за которые у кампании может быть статистика: не раньше создания и не позже завершения (см. campaignEndStamp).
 // Даты WB отдаёт по Москве, поэтому день берётся прямо из строки.
 function campaignActivePeriod(campaign = {}, period) {
-  const day = value => /^\d{4}-\d{2}-\d{2}/.test(value || '') ? String(value).slice(0, 10) : '';
-  const created = day(campaign.timestamps?.created), ended = day(campaignEndStamp(campaign));
+  const day = value => (/^\d{4}-\d{2}-\d{2}/.test(value || '') ? String(value).slice(0, 10) : '');
+  const created = day(campaign.timestamps?.created),
+    ended = day(campaignEndStamp(campaign));
   const from = created > period.from ? created : period.from;
   const to = ended && ended < period.to ? ended : period.to;
   return from <= to ? { from, to } : null;
@@ -2756,7 +4367,9 @@ async function advertisingCampaignHistory(id, campaignId, from, to, report = () 
   const demo = id === 'demo' || !cabinets().length;
   if (!demo && !/^\d{1,15}$/.test(String(campaignId || ''))) throw apiError(400, 'Некорректный номер кампании');
   const token = demo ? null : tokenFor(id);
-  let meta = null; let cardsPromise = Promise.resolve([]); let campaign = null;
+  let meta = null;
+  let cardsPromise = Promise.resolve([]);
+  let campaign = null;
   if (!demo) {
     // Карточки нужны только для названий и фото, поэтому грузятся параллельно и не задерживают запросы статистики.
     cardsPromise = productCards(id, token).catch(() => []);
@@ -2771,13 +4384,26 @@ async function advertisingCampaignHistory(id, campaignId, from, to, report = () 
   const stored = demo || !active ? new Map() : loadStoredAdDays(id, campaignId, active.from, active.to);
   const plan = demo ? { missing: dates, chunks: historyChunks(whole) } : planAdFetch(dates, new Set(stored.keys()));
   const storedDays = dates.length - plan.missing.length;
-  report({ type: 'start', chunks: plan.chunks.length, period: whole, activePeriod: active, createdAt: meta?.timestamps?.created || '', days: dates.length, storedDays });
-  const daily = new Map(); const productsByDate = new Map(); const warnings = [];
+  report({
+    type: 'start',
+    chunks: plan.chunks.length,
+    period: whole,
+    activePeriod: active,
+    createdAt: meta?.timestamps?.created || '',
+    days: dates.length,
+    storedDays
+  });
+  const daily = new Map();
+  const productsByDate = new Map();
+  const warnings = [];
   const missing = new Set(plan.missing);
   for (const [date, record] of stored) {
     if (missing.has(date)) continue;
     daily.set(date, record.campaign);
-    productsByDate.set(date, (record.products || []).map(item => ({ ...item, date, advertId: Number(campaignId) })));
+    productsByDate.set(
+      date,
+      (record.products || []).map(item => ({ ...item, date, advertId: Number(campaignId) }))
+    );
   }
   for (const [index, chunk] of plan.chunks.entries()) {
     report({ type: 'request', index, chunks: plan.chunks.length, ...chunk });
@@ -2785,8 +4411,11 @@ async function advertisingCampaignHistory(id, campaignId, from, to, report = () 
     try {
       if (demo) data = demoAds(chunk.from, chunk.to);
       else {
-        const stats = cachedCampaignStats(id, campaignId, chunk.from, chunk.to) || await fullstatsRequest(id, token, String(campaignId), chunk.from, chunk.to,
-          (ms, reason) => report({ type: 'wait', index, chunks: plan.chunks.length, ms, reason }));
+        const stats =
+          cachedCampaignStats(id, campaignId, chunk.from, chunk.to) ||
+          (await fullstatsRequest(id, token, String(campaignId), chunk.from, chunk.to, (ms, reason) =>
+            report({ type: 'wait', index, chunks: plan.chunks.length, ms, reason })
+          ));
         data = summarizeAdStats([meta], Array.isArray(stats) ? stats : [], chunk.from, chunk.to);
       }
     } catch (error) {
@@ -2801,38 +4430,74 @@ async function advertisingCampaignHistory(id, campaignId, from, to, report = () 
     const chunkProducts = campaignProductDaily(data.productDaily || [], campaignId, row?.nmIds || []);
     for (const date of chunkDates) {
       daily.set(date, chunkDays.get(date) || emptyAdDay(date));
-      productsByDate.set(date, chunkProducts.filter(item => item.date === date));
+      productsByDate.set(
+        date,
+        chunkProducts.filter(item => item.date === date)
+      );
     }
     if (!demo) {
-      try { saveAdDays(campaignId, id, meta.settings?.name || row?.name || '', chunkDates, daily, productsByDate); }
-      catch (error) { warnings.push(`Не удалось сохранить статистику ${chunk.from} — ${chunk.to}: ${error.message}`); }
+      try {
+        saveAdDays(campaignId, id, meta.settings?.name || row?.name || '', chunkDates, daily, productsByDate);
+      } catch (error) {
+        warnings.push(`Не удалось сохранить статистику ${chunk.from} — ${chunk.to}: ${error.message}`);
+      }
     }
     report({ type: 'chunk', index, chunks: plan.chunks.length, ok: true });
   }
   if (!campaign) throw apiError(warnings.length ? 502 : 404, warnings[0] || 'Кампания не найдена');
   report({ type: 'finalize' });
   const days = [...daily.values()].filter(hasAdActivity).sort((a, b) => a.date.localeCompare(b.date));
-  const total = emptyAdMetrics(); days.forEach(day => addAdMetrics(total, day));
+  const total = emptyAdMetrics();
+  days.forEach(day => addAdMetrics(total, day));
   const cards = await cardsPromise;
-  const enriched = enrichAdvertising({ campaigns: [{ ...campaign, ...finalizeAdMetrics(total), daily: days }], products: [],
-    productDaily: [...productsByDate.values()].flat() }, cards);
-  return { generatedAt: new Date().toISOString(), cabinet: id, campaignId, period: whole, activePeriod: active, warnings, storedDays, requests: plan.chunks.length,
-    folder: demo ? '' : `data/Ads/${cabinetFolderName(id)}/${campaignId}`, campaign: enriched.campaigns[0], setup: campaignSetup(meta, cards, demo),
-    productDaily: enriched.productDaily.sort((a, b) => `${a.date}:${a.nmId}`.localeCompare(`${b.date}:${b.nmId}`)) };
+  const enriched = enrichAdvertising(
+    {
+      campaigns: [{ ...campaign, ...finalizeAdMetrics(total), daily: days }],
+      products: [],
+      productDaily: [...productsByDate.values()].flat()
+    },
+    cards
+  );
+  return {
+    generatedAt: new Date().toISOString(),
+    cabinet: id,
+    campaignId,
+    period: whole,
+    activePeriod: active,
+    warnings,
+    storedDays,
+    requests: plan.chunks.length,
+    folder: demo ? '' : `data/Ads/${cabinetFolderName(id)}/${campaignId}`,
+    campaign: enriched.campaigns[0],
+    setup: campaignSetup(meta, cards, demo),
+    productDaily: enriched.productDaily.sort((a, b) => `${a.date}:${a.nmId}`.localeCompare(`${b.date}:${b.nmId}`))
+  };
 }
 // Прошлый период той же длины — для изменения в процентах в карточках детализации кампании. Та же выгрузка, только без
 // хода работы: дни берутся из сохранённых файлов (data/Ads/…), недостающие — из WB. Если кампании тогда ещё не было,
 // available: false — сравнивать не с чем. Слишком старый период (раньше, чем WB отдаёт историю) — тоже без сравнения.
 const CAMPAIGN_PREVIOUS_KEYS = ['views', 'clicks', 'orders', 'revenue', 'spend', 'carts', 'canceled', 'ctr', 'cpc', 'drr'];
 async function advertisingCampaignPrevious(id, campaignId, from, to) {
-  const period = historyPeriod(from, to), length = datesBetween(period.from, period.to).length;
+  const period = historyPeriod(from, to),
+    length = datesBetween(period.from, period.to).length;
   const previous = { from: addDays(period.from, -length), to: addDays(period.from, -1) };
-  try { historyPeriod(previous.from, previous.to); } catch (error) { return { period: previous, available: false, reason: error.message }; }
-  return cachedAnalytics(`campaign-previous:${id}:${campaignId}:${previous.from}:${previous.to}`, async () => {
-    const result = await advertisingCampaignHistory(id, campaignId, previous.from, previous.to);
-    return { period: previous, available: Boolean(result.activePeriod),
-      campaign: Object.fromEntries(CAMPAIGN_PREVIOUS_KEYS.map(key => [key, Number(result.campaign?.[key] || 0)])) };
-  }, 10 * 60_000);
+  try {
+    historyPeriod(previous.from, previous.to);
+  } catch (error) {
+    return { period: previous, available: false, reason: error.message };
+  }
+  return cachedAnalytics(
+    `campaign-previous:${id}:${campaignId}:${previous.from}:${previous.to}`,
+    async () => {
+      const result = await advertisingCampaignHistory(id, campaignId, previous.from, previous.to);
+      return {
+        period: previous,
+        available: Boolean(result.activePeriod),
+        campaign: Object.fromEntries(CAMPAIGN_PREVIOUS_KEYS.map(key => [key, Number(result.campaign?.[key] || 0)]))
+      };
+    },
+    10 * 60_000
+  );
 }
 async function advertisingCampaign(id, campaignId, from, to) {
   const summary = await advertising(id, from, to);
@@ -2863,12 +4528,14 @@ function adCampaignMayHaveStats(campaign = {}, from, to) {
 async function advertising(id, from, to, part = 'all') {
   const period = validAdPeriod(from, to);
   if (id === 'demo' || !cabinets().length) return demoAds(period.from, period.to);
-  const token = tokenFor(id); const warnings = []; const partial = part === 'active';
+  const token = tokenFor(id);
+  const warnings = [];
+  const partial = part === 'active';
   const { campaigns, stats } = await loadAdStats(id, token, period, warnings, partial ? 'running' : 'all');
   // Карточки нужны только для фото и названий товаров. Быстрый ответ их не ждёт: если в кэше их нет,
   // загрузка идёт в фоне, и фото с названиями приходят вместе с полным ответом.
   const cardsJob = productCards(id, token);
-  const cards = partial ? (await Promise.race([cardsJob.catch(() => []), wait(0).then(() => null)]) ?? []) : await cardsJob;
+  const cards = partial ? ((await Promise.race([cardsJob.catch(() => []), wait(0).then(() => null)])) ?? []) : await cardsJob;
   const budgets = partial ? new Map() : await advertBudgets(id, token, campaigns, warnings);
   const summary = enrichAdvertising(summarizeAdStats(campaigns, stats, period.from, period.to), cards);
   return { demo: false, partial, ...summary, campaigns: withAdBudgets(summary.campaigns, budgets), warnings };
@@ -2883,7 +4550,10 @@ async function advertisingPrevious(id, from, to) {
   const previous = { from: addDays(period.from, -length), to: addDays(period.from, -1) };
   const pick = campaign => ({ id: campaign.id, ...Object.fromEntries(AD_COMPARE_KEYS.map(key => [key, Number(campaign[key] || 0)])) });
   // totals — для изменения в карточках вкладки «Реклама» (расходы, выручка, ДРР, CTR, CPC, ROAS).
-  if (id === 'demo' || !cabinets().length) { const demo = demoAds(previous.from, previous.to); return { demo: true, period: previous, totals: pick(demo.totals || {}), campaigns: demo.campaigns.map(pick), warnings: [] }; }
+  if (id === 'demo' || !cabinets().length) {
+    const demo = demoAds(previous.from, previous.to);
+    return { demo: true, period: previous, totals: pick(demo.totals || {}), campaigns: demo.campaigns.map(pick), warnings: [] };
+  }
   const warnings = [];
   const { campaigns, stats } = await loadAdStats(id, tokenFor(id), previous, warnings);
   const summary = summarizeAdStats(campaigns, stats, previous.from, previous.to);
@@ -2903,12 +4573,17 @@ async function loadAdStats(id, token, period, warnings = [], part = 'all') {
   const finished = statCampaigns.filter(campaign => Number(campaign.status) === 7);
   for (const group of part === 'running' ? [running] : [running, finished]) {
     for (let offset = 0; offset < group.length; offset += 50) {
-      const ids = group.slice(offset, offset + 50).map(item => item.id).join(',');
+      const ids = group
+        .slice(offset, offset + 50)
+        .map(item => item.id)
+        .join(',');
       if (!ids) continue;
       try {
         const chunk = await fullstatsRequest(id, token, ids, period.from, period.to);
         if (Array.isArray(chunk)) stats.push(...chunk);
-      } catch (error) { warnings.push(`Статистика рекламы: ${error.message}`); }
+      } catch (error) {
+        warnings.push(`Статистика рекламы: ${error.message}`);
+      }
     }
   }
   return { campaigns, stats };
@@ -2922,20 +4597,30 @@ function withAdBudgets(campaigns = [], budgets = new Map()) {
 // в минуту (интервал 3 с). Старый GET /adv/v1/budget?id= WB отключает 16 ноября 2026. Проверено на данных: кампании в других
 // статусах WB просто не возвращает (без ошибки), total совпадает со старым методом.
 async function advertBudgets(id, token, campaigns = [], warnings = []) {
-  const targets = campaigns.filter(item => AD_BUDGET_STATUSES.has(Number(item.status))).map(item => Number(item.id)).filter(Boolean);
+  const targets = campaigns
+    .filter(item => AD_BUDGET_STATUSES.has(Number(item.status)))
+    .map(item => Number(item.id))
+    .filter(Boolean);
   const budgets = new Map();
   let failed = 0;
   for (let offset = 0; offset < targets.length; offset += AD_BUDGET_CHUNK) {
     const chunk = targets.slice(offset, offset + AD_BUDGET_CHUNK);
     try {
-      const data = await cachedAnalytics(`ad-budgets:${id}:${chunk.join(',')}`, async () => {
-        const pause = AD_BUDGET_INTERVAL - (Date.now() - (adBudgetLastCall.get(id) || 0));
-        if (pause > 0) await wait(pause);
-        adBudgetLastCall.set(id, Date.now());
-        return wbRequest(token, AD_BUDGET_URL, { method: 'POST', body: { advertIds: chunk } });
-      }, 60_000);
-      for (const item of Array.isArray(data?.adverts) ? data.adverts : []) if (item?.advertId != null && item.total != null) budgets.set(String(item.advertId), Number(item.total));
-    } catch { failed += chunk.length; }
+      const data = await cachedAnalytics(
+        `ad-budgets:${id}:${chunk.join(',')}`,
+        async () => {
+          const pause = AD_BUDGET_INTERVAL - (Date.now() - (adBudgetLastCall.get(id) || 0));
+          if (pause > 0) await wait(pause);
+          adBudgetLastCall.set(id, Date.now());
+          return wbRequest(token, AD_BUDGET_URL, { method: 'POST', body: { advertIds: chunk } });
+        },
+        60_000
+      );
+      for (const item of Array.isArray(data?.adverts) ? data.adverts : [])
+        if (item?.advertId != null && item.total != null) budgets.set(String(item.advertId), Number(item.total));
+    } catch {
+      failed += chunk.length;
+    }
   }
   if (failed) warnings.push(`Остаток бюджета: WB не ответил по ${failed} кампаниям`);
   return budgets;
@@ -2945,7 +4630,8 @@ async function advertBudgets(id, token, campaigns = [], warnings = []) {
 // WB отдаёт историю воронки только за последние 7 дней, поэтому дни сохраняются
 // в data/Funnel/<кабинет>/<месяц>.json и прошлые периоды берутся оттуда.
 function moscowDate(offsetDays = 0) {
-  const date = new Date(Date.now() + 3 * 3_600_000); date.setUTCDate(date.getUTCDate() + offsetDays);
+  const date = new Date(Date.now() + 3 * 3_600_000);
+  date.setUTCDate(date.getUTCDate() + offsetDays);
   return date.toISOString().slice(0, 10);
 }
 
@@ -2963,24 +4649,36 @@ function funnelDir(cabinetId) {
   const target = path.join(FUNNEL_DIR, cabinetFolderName(cabinetId));
   if (fs.existsSync(target)) return target;
   let entries = [];
-  try { entries = fs.readdirSync(FUNNEL_DIR, { withFileTypes: true }); } catch { return target; }
+  try {
+    entries = fs.readdirSync(FUNNEL_DIR, { withFileTypes: true });
+  } catch {
+    return target;
+  }
   for (const entry of entries) {
     if (!entry.isDirectory()) continue;
     const dir = path.join(FUNNEL_DIR, entry.name);
     try {
-      if (String(JSON.parse(fs.readFileSync(path.join(dir, 'cabinet.json'), 'utf8')).id) === String(cabinetId)) { fs.renameSync(dir, target); break; }
+      if (String(JSON.parse(fs.readFileSync(path.join(dir, 'cabinet.json'), 'utf8')).id) === String(cabinetId)) {
+        fs.renameSync(dir, target);
+        break;
+      }
     } catch {}
   }
   return target;
 }
 
 function readFunnelMonth(cabinetId, month) {
-  try { return JSON.parse(fs.readFileSync(path.join(funnelDir(cabinetId), `${month}.json`), 'utf8')); } catch { return null; }
+  try {
+    return JSON.parse(fs.readFileSync(path.join(funnelDir(cabinetId), `${month}.json`), 'utf8'));
+  } catch {
+    return null;
+  }
 }
 
 function saveFunnelDays(cabinetId, points = []) {
   if (!points.length) return;
-  const dir = funnelDir(cabinetId); const fetchedAt = new Date().toISOString();
+  const dir = funnelDir(cabinetId);
+  const fetchedAt = new Date().toISOString();
   fs.mkdirSync(dir, { recursive: true });
   fs.writeFileSync(path.join(dir, 'cabinet.json'), JSON.stringify({ id: String(cabinetId) }, null, 2));
   const byMonth = new Map();
@@ -2990,7 +4688,8 @@ function saveFunnelDays(cabinetId, points = []) {
   }
   for (const [month, monthPoints] of byMonth) {
     const file = readFunnelMonth(cabinetId, month) || { cabinet: String(cabinetId), month, days: {} };
-    for (const point of monthPoints) file.days[point.date] = { fetchedAt, ...pickFunnelCounts(point), ...(point.products ? { products: point.products } : {}) };
+    for (const point of monthPoints)
+      file.days[point.date] = { fetchedAt, ...pickFunnelCounts(point), ...(point.products ? { products: point.products } : {}) };
     file.days = Object.fromEntries(Object.entries(file.days).sort(([a], [b]) => a.localeCompare(b)));
     Object.assign(file, { name: cabinets().find(item => String(item.id) === String(cabinetId))?.name || '', updatedAt: fetchedAt });
     const target = path.join(dir, `${month}.json`);
@@ -3003,7 +4702,13 @@ function loadFunnelDays(cabinetId, from, to) {
   const days = [];
   for (const month of [...new Set(datesBetween(from, to).map(date => date.slice(0, 7)))]) {
     for (const [date, record] of Object.entries(readFunnelMonth(cabinetId, month)?.days || {})) {
-      if (date >= from && date <= to) days.push({ date, fetchedAt: record.fetchedAt || '', ...pickFunnelCounts(record), ...(record.products ? { products: record.products } : {}) });
+      if (date >= from && date <= to)
+        days.push({
+          date,
+          fetchedAt: record.fetchedAt || '',
+          ...pickFunnelCounts(record),
+          ...(record.products ? { products: record.products } : {})
+        });
     }
   }
   return days.sort((a, b) => a.date.localeCompare(b.date));
@@ -3011,23 +4716,38 @@ function loadFunnelDays(cabinetId, from, to) {
 
 function funnelStoredFrom(cabinetId) {
   try {
-    const months = fs.readdirSync(funnelDir(cabinetId)).filter(name => /^\d{4}-\d{2}\.json$/.test(name)).sort();
+    const months = fs
+      .readdirSync(funnelDir(cabinetId))
+      .filter(name => /^\d{4}-\d{2}\.json$/.test(name))
+      .sort();
     return months.length ? Object.keys(readFunnelMonth(cabinetId, months[0].slice(0, 7))?.days || {}).sort()[0] || '' : '';
-  } catch { return ''; }
+  } catch {
+    return '';
+  }
 }
 
 // Итоги недель и месяцев хранятся отдельно от дней, в periods.json папки кабинета.
 function readFunnelRanges(cabinetId) {
-  try { return JSON.parse(fs.readFileSync(path.join(funnelDir(cabinetId), 'periods.json'), 'utf8')).ranges || {}; } catch { return {}; }
+  try {
+    return JSON.parse(fs.readFileSync(path.join(funnelDir(cabinetId), 'periods.json'), 'utf8')).ranges || {};
+  } catch {
+    return {};
+  }
 }
 
 function saveFunnelRanges(cabinetId, ranges = []) {
   if (!ranges.length) return;
-  const dir = funnelDir(cabinetId); const fetchedAt = new Date().toISOString();
+  const dir = funnelDir(cabinetId);
+  const fetchedAt = new Date().toISOString();
   fs.mkdirSync(dir, { recursive: true });
   fs.writeFileSync(path.join(dir, 'cabinet.json'), JSON.stringify({ id: String(cabinetId) }, null, 2));
   const stored = readFunnelRanges(cabinetId);
-  for (const range of ranges) stored[`${range.from}_${range.to}`] = { fetchedAt, ...pickFunnelCounts(range), ...(range.products ? { products: range.products } : {}) };
+  for (const range of ranges)
+    stored[`${range.from}_${range.to}`] = {
+      fetchedAt,
+      ...pickFunnelCounts(range),
+      ...(range.products ? { products: range.products } : {})
+    };
   const target = path.join(dir, 'periods.json');
   fs.writeFileSync(`${target}.tmp`, JSON.stringify({ cabinet: String(cabinetId), updatedAt: fetchedAt, ranges: stored }, null, 2));
   fs.renameSync(`${target}.tmp`, target);
@@ -3049,9 +4769,15 @@ async function pumpFunnelQueue(id, queue) {
   try {
     while (queue.high.length || queue.low.length) {
       const item = (queue.high.length ? queue.high : queue.low).shift();
-      try { item.resolve(await funnelBucketRequest(id, item.token, item.body)); } catch (error) { item.reject(error); }
+      try {
+        item.resolve(await funnelBucketRequest(id, item.token, item.body));
+      } catch (error) {
+        item.reject(error);
+      }
     }
-  } finally { queue.running = false; }
+  } finally {
+    queue.running = false;
+  }
 }
 async function funnelBucketRequest(id, token, body) {
   let retries = 0;
@@ -3061,10 +4787,14 @@ async function funnelBucketRequest(id, token, body) {
     bucket.tokens = Math.min(FUNNEL_BUCKET_SIZE, bucket.tokens + Math.max(0, now - bucket.updatedAt) / FUNNEL_BUCKET_INTERVAL);
     bucket.updatedAt = now;
     funnelBuckets.set(id, bucket);
-    if (bucket.tokens < 1) { await wait((1 - bucket.tokens) * FUNNEL_BUCKET_INTERVAL); continue; }
+    if (bucket.tokens < 1) {
+      await wait((1 - bucket.tokens) * FUNNEL_BUCKET_INTERVAL);
+      continue;
+    }
     bucket.tokens -= 1;
-    try { return await wbRequest(token, FUNNEL_PRODUCTS_URL, { method: 'POST', body }); }
-    catch (error) {
+    try {
+      return await wbRequest(token, FUNNEL_PRODUCTS_URL, { method: 'POST', body });
+    } catch (error) {
       if (error.status !== 429 || retries >= 3) throw error;
       retries++;
       funnelBuckets.set(id, { tokens: 0, updatedAt: Date.now() });
@@ -3074,13 +4804,17 @@ async function funnelBucketRequest(id, token, body) {
 }
 
 function funnelStatisticValues(statistic = {}) {
-  return FUNNEL_COUNT_KEYS.map(key => Number((key === 'addToWishlistCount' ? statistic?.addToWishlist ?? statistic?.addToWishlistCount : statistic?.[key]) || 0));
+  return FUNNEL_COUNT_KEYS.map(key =>
+    Number((key === 'addToWishlistCount' ? (statistic?.addToWishlist ?? statistic?.addToWishlistCount) : statistic?.[key]) || 0)
+  );
 }
 
 // Итог и разбивка по артикулам; артикулы без активности не сохраняются, чтобы файлы не разрастались.
 function addFunnelStatistic(target, statistic = {}, nmId = '') {
   const values = funnelStatisticValues(statistic);
-  FUNNEL_COUNT_KEYS.forEach((key, index) => { target[key] += values[index]; });
+  FUNNEL_COUNT_KEYS.forEach((key, index) => {
+    target[key] += values[index];
+  });
   if (target.products && nmId && values.some(Boolean)) target.products[nmId] = values;
 }
 
@@ -3092,7 +4826,10 @@ function funnelRecordCounts(record, nmIds = null) {
   const total = pickFunnelCounts();
   for (const nmId of nmIds) {
     const values = record.products[nmId];
-    if (values) FUNNEL_COUNT_KEYS.forEach((key, index) => { total[key] += funnelCount(key, values[index]); });
+    if (values)
+      FUNNEL_COUNT_KEYS.forEach((key, index) => {
+        total[key] += funnelCount(key, values[index]);
+      });
   }
   return total;
 }
@@ -3102,9 +4839,18 @@ async function fetchFunnelRanges(id, token, selected, past = null) {
   const current = { from: selected.from, to: selected.to, ...pickFunnelCounts(), products: {} };
   const previous = past ? { from: past.from, to: past.to, ...pickFunnelCounts(), products: {} } : null;
   for (let offset = 0; ; offset += 1000) {
-    const response = await funnelProductsRequest(id, token, { selectedPeriod: { start: selected.from, end: selected.to },
-      ...(past ? { pastPeriod: { start: past.from, end: past.to } } : {}), nmIds: [], brandNames: [], subjectIds: [], tagIds: [],
-      skipDeletedNm: true, orderBy: { field: 'openCard', mode: 'desc' }, limit: 1000, offset });
+    const response = await funnelProductsRequest(id, token, {
+      selectedPeriod: { start: selected.from, end: selected.to },
+      ...(past ? { pastPeriod: { start: past.from, end: past.to } } : {}),
+      nmIds: [],
+      brandNames: [],
+      subjectIds: [],
+      tagIds: [],
+      skipDeletedNm: true,
+      orderBy: { field: 'openCard', mode: 'desc' },
+      limit: 1000,
+      offset
+    });
     const products = response?.data?.products || response?.products || [];
     for (const item of products) {
       const nmId = String(item.product?.nmId ?? item.nmId ?? '');
@@ -3144,22 +4890,30 @@ function funnelDaysToFetch(dates = [], records = new Map(), now = Date.now(), to
 
 // Пары дней для запросов: сначала самые свежие, более ранний день идёт как прошлый период.
 function pairFunnelDays(dates = []) {
-  const sorted = [...new Set(dates)].sort().reverse(); const pairs = [];
+  const sorted = [...new Set(dates)].sort().reverse();
+  const pairs = [];
   for (let index = 0; index < sorted.length; index += 2) pairs.push({ selected: sorted[index], past: sorted[index + 1] || '' });
   return pairs;
 }
 
 function funnelWeekStart(date) {
-  const value = new Date(`${date}T00:00:00Z`); value.setUTCDate(value.getUTCDate() - (value.getUTCDay() + 6) % 7);
+  const value = new Date(`${date}T00:00:00Z`);
+  value.setUTCDate(value.getUTCDate() - ((value.getUTCDay() + 6) % 7));
   return value.toISOString().slice(0, 10);
 }
 
 // Недели (с понедельника) или календарные месяцы внутри периода; прошлый отрезок сдвинут на длину периода.
 function funnelRangeBuckets(period, grouping) {
-  const buckets = []; const index = new Map(); const length = datesBetween(period.from, period.to).length;
+  const buckets = [];
+  const index = new Map();
+  const length = datesBetween(period.from, period.to).length;
   for (const date of datesBetween(period.from, period.to)) {
     const key = grouping === 'week' ? funnelWeekStart(date) : date.slice(0, 7);
-    if (!index.has(key)) { const bucket = { key, from: date, to: date }; index.set(key, bucket); buckets.push(bucket); }
+    if (!index.has(key)) {
+      const bucket = { key, from: date, to: date };
+      index.set(key, bucket);
+      buckets.push(bucket);
+    }
     index.get(key).to = date;
   }
   return buckets.map(bucket => ({ ...bucket, previous: { from: addDays(bucket.from, -length), to: addDays(bucket.to, -length) } }));
@@ -3178,7 +4932,10 @@ function funnelRangeValues(range, daysByDate, storedRanges, nmIds = null, now = 
   }
   const stored = storedRanges[`${range.from}_${range.to}`];
   if (!stored) return { values: null, fresh: false };
-  return { values: funnelRecordCounts(stored, nmIds), fresh: Boolean(stored.products) && !funnelRangeNeedsFetch(range.to, stored.fetchedAt, now) };
+  return {
+    values: funnelRecordCounts(stored, nmIds),
+    fresh: Boolean(stored.products) && !funnelRangeNeedsFetch(range.to, stored.fetchedAt, now)
+  };
 }
 
 // Кнопка «Перекачать» в воронке: дни выбранного периода (или его недели и месяцы, если график сгруппирован)
@@ -3191,7 +4948,8 @@ function refetchFunnel(id, from, to, grouping = 'day') {
   const earliest = addDays(moscowDate(0), -FUNNEL_MAX_DEPTH_DAYS);
   const job = funnelJobs.get(id);
   if (grouping === 'week' || grouping === 'month') {
-    const ranges = funnelRangeBuckets(periods.current, grouping).filter(bucket => bucket.from >= earliest)
+    const ranges = funnelRangeBuckets(periods.current, grouping)
+      .filter(bucket => bucket.from >= earliest)
       .map(bucket => ({ ...bucket, previous: bucket.previous.from >= earliest ? bucket.previous : null }));
     // Недавние ошибки не должны откладывать явный запрос пользователя.
     ranges.forEach(range => job?.failedAt.delete(`${range.from}_${range.to}`));
@@ -3206,7 +4964,15 @@ function refetchFunnel(id, from, to, grouping = 'day') {
 }
 
 function scheduleFunnelSync(id, dates = [], ranges = []) {
-  const job = funnelJobs.get(id) || { pending: new Set(), ranges: new Map(), current: [], currentRange: '', failedAt: new Map(), running: false, lastError: '' };
+  const job = funnelJobs.get(id) || {
+    pending: new Set(),
+    ranges: new Map(),
+    current: [],
+    currentRange: '',
+    failedAt: new Map(),
+    running: false,
+    lastError: ''
+  };
   funnelJobs.set(id, job);
   const now = Date.now();
   for (const date of dates) {
@@ -3223,18 +4989,25 @@ function scheduleFunnelSync(id, dates = [], ranges = []) {
 }
 
 async function runFunnelSync(id, job) {
-  job.running = true; job.lastError = '';
+  job.running = true;
+  job.lastError = '';
   try {
     const token = tokenFor(id);
     while (job.ranges.size || job.pending.size) {
       if (job.ranges.size) {
         // Недели и месяцы открытого графика идут первыми: их меньше и пользователь ждёт именно их.
         const [key, range] = job.ranges.entries().next().value;
-        job.ranges.delete(key); job.currentRange = key;
-        try { saveFunnelRanges(id, await fetchFunnelRanges(id, token, range, range.previous)); }
-        catch (error) {
-          job.lastError = error.message; job.failedAt.set(key, Date.now());
-          if ([401, 403].includes(error.status)) { job.ranges.clear(); job.pending.clear(); }
+        job.ranges.delete(key);
+        job.currentRange = key;
+        try {
+          saveFunnelRanges(id, await fetchFunnelRanges(id, token, range, range.previous));
+        } catch (error) {
+          job.lastError = error.message;
+          job.failedAt.set(key, Date.now());
+          if ([401, 403].includes(error.status)) {
+            job.ranges.clear();
+            job.pending.clear();
+          }
         }
         job.currentRange = '';
         continue;
@@ -3242,26 +5015,46 @@ async function runFunnelSync(id, job) {
       const [pair] = pairFunnelDays([...job.pending]);
       job.current = [pair.selected, pair.past].filter(Boolean);
       job.current.forEach(date => job.pending.delete(date));
-      try { saveFunnelDays(id, await fetchFunnelDays(id, token, pair.selected, pair.past)); }
-      catch (error) {
-        job.lastError = error.message; job.current.forEach(date => job.failedAt.set(date, Date.now()));
-        if ([401, 403].includes(error.status)) { job.ranges.clear(); job.pending.clear(); }
+      try {
+        saveFunnelDays(id, await fetchFunnelDays(id, token, pair.selected, pair.past));
+      } catch (error) {
+        job.lastError = error.message;
+        job.current.forEach(date => job.failedAt.set(date, Date.now()));
+        if ([401, 403].includes(error.status)) {
+          job.ranges.clear();
+          job.pending.clear();
+        }
       }
       job.current = [];
     }
-  } catch (error) { job.lastError = error.message; job.pending.clear(); job.ranges.clear(); }
-  finally { job.running = false; job.current = []; job.currentRange = ''; }
+  } catch (error) {
+    job.lastError = error.message;
+    job.pending.clear();
+    job.ranges.clear();
+  } finally {
+    job.running = false;
+    job.current = [];
+    job.currentRange = '';
+  }
 }
 
 function funnelSyncStatus(id, dates = [], rangeKeys = []) {
-  const job = funnelJobs.get(id); const inRange = new Set(dates); const keys = new Set(rangeKeys);
+  const job = funnelJobs.get(id);
+  const inRange = new Set(dates);
+  const keys = new Set(rangeKeys);
   const leftDays = job ? [...job.pending, ...job.current].filter(date => inRange.has(date)).length : 0;
   const leftRanges = job ? [...job.ranges.keys(), job.currentRange].filter(key => key && keys.has(key)).length : 0;
   const requests = job ? job.ranges.size + (job.currentRange ? 1 : 0) + Math.ceil((job.pending.size + job.current.length) / 2) : 0;
   const bucket = funnelBuckets.get(id);
-  const tokens = bucket ? Math.min(FUNNEL_BUCKET_SIZE, bucket.tokens + (Date.now() - bucket.updatedAt) / FUNNEL_BUCKET_INTERVAL) : FUNNEL_BUCKET_SIZE;
-  return { pending: rangeKeys.length ? leftRanges : leftDays, running: Boolean(job?.running), lastError: job?.lastError || '',
-    etaSeconds: Math.ceil(Math.max(0, requests - Math.floor(tokens)) * FUNNEL_BUCKET_INTERVAL / 1000 + requests * 2) };
+  const tokens = bucket
+    ? Math.min(FUNNEL_BUCKET_SIZE, bucket.tokens + (Date.now() - bucket.updatedAt) / FUNNEL_BUCKET_INTERVAL)
+    : FUNNEL_BUCKET_SIZE;
+  return {
+    pending: rangeKeys.length ? leftRanges : leftDays,
+    running: Boolean(job?.running),
+    lastError: job?.lastError || '',
+    etaSeconds: Math.ceil((Math.max(0, requests - Math.floor(tokens)) * FUNNEL_BUCKET_INTERVAL) / 1000 + requests * 2)
+  };
 }
 
 function funnelPeriods(from, to) {
@@ -3277,17 +5070,47 @@ function funnelPeriods(from, to) {
 }
 
 function demoFunnelHistory(periods, grouping = 'day') {
-  const make = ({ from, to }, shift) => datesBetween(from, to).map((date, index) => {
-    const open = 900 + ((index * 37 + shift) % 11) * 45; const cart = Math.round(open * (0.05 + ((index + shift) % 4) * 0.006));
-    const orders = Math.round(cart * 0.26); const buyouts = Math.round(orders * 0.62);
-    return { date, openCount: open, cartCount: cart, orderCount: orders, orderSum: orders * 1490, buyoutCount: buyouts, buyoutSum: buyouts * 1490, addToWishlistCount: Math.round(open * 0.012), cancelCount: Math.round(buyouts * (0.12 + ((index + shift) % 5) * 0.04)) };
-  });
-  const current = make(periods.current, 0); const previous = make(periods.previous, 5);
+  const make = ({ from, to }, shift) =>
+    datesBetween(from, to).map((date, index) => {
+      const open = 900 + ((index * 37 + shift) % 11) * 45;
+      const cart = Math.round(open * (0.05 + ((index + shift) % 4) * 0.006));
+      const orders = Math.round(cart * 0.26);
+      const buyouts = Math.round(orders * 0.62);
+      return {
+        date,
+        openCount: open,
+        cartCount: cart,
+        orderCount: orders,
+        orderSum: orders * 1490,
+        buyoutCount: buyouts,
+        buyoutSum: buyouts * 1490,
+        addToWishlistCount: Math.round(open * 0.012),
+        cancelCount: Math.round(buyouts * (0.12 + ((index + shift) % 5) * 0.04))
+      };
+    });
+  const current = make(periods.current, 0);
+  const previous = make(periods.previous, 5);
   const byDate = new Map([...current, ...previous].map(day => [day.date, { ...day, fetchedAt: '2100-01-01T00:00:00Z', products: {} }]));
-  const buckets = grouping === 'day' ? [] : funnelRangeBuckets(periods.current, grouping).map(bucket => ({ ...bucket,
-    values: funnelRangeValues(bucket, byDate, {}).values, previous: { ...bucket.previous, values: funnelRangeValues(bucket.previous, byDate, {}).values } }));
-  return { demo: true, grouping, periods, current, previous, buckets, storedFrom: periods.previous.from,
-    earliestAvailable: addDays(moscowDate(0), -FUNNEL_MAX_DEPTH_DAYS), sync: { pending: 0, running: false, lastError: '', etaSeconds: 0 }, warnings: [] };
+  const buckets =
+    grouping === 'day'
+      ? []
+      : funnelRangeBuckets(periods.current, grouping).map(bucket => ({
+          ...bucket,
+          values: funnelRangeValues(bucket, byDate, {}).values,
+          previous: { ...bucket.previous, values: funnelRangeValues(bucket.previous, byDate, {}).values }
+        }));
+  return {
+    demo: true,
+    grouping,
+    periods,
+    current,
+    previous,
+    buckets,
+    storedFrom: periods.previous.from,
+    earliestAvailable: addDays(moscowDate(0), -FUNNEL_MAX_DEPTH_DAYS),
+    sync: { pending: 0, running: false, lastError: '', etaSeconds: 0 },
+    warnings: []
+  };
 }
 
 function normalizeFunnelNmIds(nmIds) {
@@ -3303,24 +5126,54 @@ async function funnelHistory(id, from, to, grouping = 'day', nmIdsInput = null, 
   tokenFor(id);
   const dates = datesBetween(periods.previous.from, periods.current.to);
   const stored = loadFunnelDays(id, periods.previous.from, periods.current.to);
-  const shown = stored.map(day => { const counts = funnelRecordCounts(day, nmIds); return counts ? { date: day.date, fetchedAt: day.fetchedAt, ...counts } : null; }).filter(Boolean);
+  const shown = stored
+    .map(day => {
+      const counts = funnelRecordCounts(day, nmIds);
+      return counts ? { date: day.date, fetchedAt: day.fetchedAt, ...counts } : null;
+    })
+    .filter(Boolean);
   const inPeriod = ({ from: start, to: end }) => shown.filter(day => day.date >= start && day.date <= end);
-  const base = { demo: false, grouping: safeGrouping, filtered: Boolean(nmIds), productCount: nmIds ? nmIds.length : null, periods, current: inPeriod(periods.current), previous: inPeriod(periods.previous),
-    storedFrom: funnelStoredFrom(id), earliestAvailable: addDays(moscowDate(0), -FUNNEL_MAX_DEPTH_DAYS),
-    folder: `data/Funnel/${cabinetFolderName(id)}`, warnings: [] };
+  const base = {
+    demo: false,
+    grouping: safeGrouping,
+    filtered: Boolean(nmIds),
+    productCount: nmIds ? nmIds.length : null,
+    periods,
+    current: inPeriod(periods.current),
+    previous: inPeriod(periods.previous),
+    storedFrom: funnelStoredFrom(id),
+    earliestAvailable: addDays(moscowDate(0), -FUNNEL_MAX_DEPTH_DAYS),
+    folder: `data/Funnel/${cabinetFolderName(id)}`,
+    warnings: []
+  };
   if (safeGrouping === 'day') {
-    scheduleFunnelSync(id, funnelDaysToFetch(dates, new Map(stored.map(day => [day.date, day])), Date.now(), moscowDate(0), live ? SUMMARY_REFRESH_MS : 0));
+    scheduleFunnelSync(
+      id,
+      funnelDaysToFetch(dates, new Map(stored.map(day => [day.date, day])), Date.now(), moscowDate(0), live ? SUMMARY_REFRESH_MS : 0)
+    );
     return { ...base, buckets: [], sync: funnelSyncStatus(id, dates) };
   }
-  const byDate = new Map(stored.map(day => [day.date, day])); const storedRanges = readFunnelRanges(id);
-  const earliest = base.earliestAvailable; const toFetch = [];
+  const byDate = new Map(stored.map(day => [day.date, day]));
+  const storedRanges = readFunnelRanges(id);
+  const earliest = base.earliestAvailable;
+  const toFetch = [];
   const buckets = funnelRangeBuckets(periods.current, safeGrouping).map(bucket => {
-    const current = funnelRangeValues(bucket, byDate, storedRanges, nmIds); const previous = funnelRangeValues(bucket.previous, byDate, storedRanges, nmIds);
-    if ((!current.fresh || !previous.fresh) && bucket.from >= earliest) toFetch.push({ ...bucket, previous: bucket.previous.from >= earliest ? bucket.previous : null });
+    const current = funnelRangeValues(bucket, byDate, storedRanges, nmIds);
+    const previous = funnelRangeValues(bucket.previous, byDate, storedRanges, nmIds);
+    if ((!current.fresh || !previous.fresh) && bucket.from >= earliest)
+      toFetch.push({ ...bucket, previous: bucket.previous.from >= earliest ? bucket.previous : null });
     return { ...bucket, values: current.values, previous: { ...bucket.previous, values: previous.values } };
   });
   scheduleFunnelSync(id, [], toFetch);
-  return { ...base, buckets, sync: funnelSyncStatus(id, [], buckets.map(bucket => `${bucket.from}_${bucket.to}`)) };
+  return {
+    ...base,
+    buckets,
+    sync: funnelSyncStatus(
+      id,
+      [],
+      buckets.map(bucket => `${bucket.from}_${bucket.to}`)
+    )
+  };
 }
 
 // Матрица «товар × день» для вкладки продаж по дням: значения берутся из сохранённой разбивки по артикулам.
@@ -3343,10 +5196,14 @@ function funnelSalesMatrix(days = [], dates = [], nmIds = null, metric = 'orderC
     }
     for (const product of products.values()) if (product.values[column] === null) product.values[column] = 0;
   });
-  const totals = dates.map((date, column) => byDate.get(date)?.products
-    ? [...products.values()].reduce((sum, product) => sum + Number(product.values[column] || 0), 0) : null);
-  return { products: [...products.values()].sort((a, b) => b.total - a.total || String(a.nmId).localeCompare(String(b.nmId))),
-    totals, total: totals.reduce((sum, value) => sum + Number(value || 0), 0) };
+  const totals = dates.map((date, column) =>
+    byDate.get(date)?.products ? [...products.values()].reduce((sum, product) => sum + Number(product.values[column] || 0), 0) : null
+  );
+  return {
+    products: [...products.values()].sort((a, b) => b.total - a.total || String(a.nmId).localeCompare(String(b.nmId))),
+    totals,
+    total: totals.reduce((sum, value) => sum + Number(value || 0), 0)
+  };
 }
 
 async function funnelSales(id, from, to, nmIdsInput = null, metric = 'orderCount') {
@@ -3356,14 +5213,30 @@ async function funnelSales(id, from, to, nmIdsInput = null, metric = 'orderCount
   const nmIds = normalizeFunnelNmIds(nmIdsInput);
   if (id === 'demo' || !cabinets().length) {
     const demo = demoFunnelHistory(periods, 'day');
-    return { demo: true, period, dates, metric, ...funnelSalesMatrix([], dates, nmIds, metric),
-      sync: { pending: 0, running: false, lastError: '', etaSeconds: 0 }, warnings: ['В демо-режиме продажи по дням не заполняются'], days: demo.current.length };
+    return {
+      demo: true,
+      period,
+      dates,
+      metric,
+      ...funnelSalesMatrix([], dates, nmIds, metric),
+      sync: { pending: 0, running: false, lastError: '', etaSeconds: 0 },
+      warnings: ['В демо-режиме продажи по дням не заполняются'],
+      days: demo.current.length
+    };
   }
   tokenFor(id);
   const stored = loadFunnelDays(id, period.from, period.to);
   scheduleFunnelSync(id, funnelDaysToFetch(dates, new Map(stored.map(day => [day.date, day]))));
-  return { demo: false, period, dates, metric, ...funnelSalesMatrix(stored, dates, nmIds, metric),
-    ready: stored.filter(day => day.products).length, sync: funnelSyncStatus(id, dates), warnings: [] };
+  return {
+    demo: false,
+    period,
+    dates,
+    metric,
+    ...funnelSalesMatrix(stored, dates, nmIds, metric),
+    ready: stored.filter(day => day.products).length,
+    sync: funnelSyncStatus(id, dates),
+    warnings: []
+  };
 }
 
 // --- Таблица «Товары в воронке» ---
@@ -3385,16 +5258,36 @@ const funnelTables = new Map();
 
 function slimFunnelStat(stat) {
   if (!stat) return null;
-  const n = key => Number(stat[key] || 0), c = stat.conversions || {};
-  return { openCount: n('openCount'), cartCount: n('cartCount'), orderCount: n('orderCount'), orderSum: n('orderSum'), buyoutCount: n('buyoutCount'),
-    buyoutSum: n('buyoutSum'), cancelCount: n('cancelCount'), addToWishlist: Number(stat.addToWishlist ?? stat.addToWishlistCount ?? 0),
-    conversions: { addToCartPercent: Number(c.addToCartPercent || 0), cartToOrderPercent: Number(c.cartToOrderPercent || 0), buyoutPercent: Number(c.buyoutPercent || 0) } };
+  const n = key => Number(stat[key] || 0),
+    c = stat.conversions || {};
+  return {
+    openCount: n('openCount'),
+    cartCount: n('cartCount'),
+    orderCount: n('orderCount'),
+    orderSum: n('orderSum'),
+    buyoutCount: n('buyoutCount'),
+    buyoutSum: n('buyoutSum'),
+    cancelCount: n('cancelCount'),
+    addToWishlist: Number(stat.addToWishlist ?? stat.addToWishlistCount ?? 0),
+    conversions: {
+      addToCartPercent: Number(c.addToCartPercent || 0),
+      cartToOrderPercent: Number(c.cartToOrderPercent || 0),
+      buyoutPercent: Number(c.buyoutPercent || 0)
+    }
+  };
 }
 function slimFunnelProduct(item, photos = null) {
-  const product = item.product || item, nmId = product.nmId ?? product.nmID;
+  const product = item.product || item,
+    nmId = product.nmId ?? product.nmID;
   return {
-    product: { nmId, title: product.title || '', vendorCode: product.vendorCode || '', subjectName: product.subjectName || '',
-      photo: photos?.get(String(nmId)) || '', stocks: { wb: Number(product.stocks?.wb || 0), mp: Number(product.stocks?.mp || 0) } },
+    product: {
+      nmId,
+      title: product.title || '',
+      vendorCode: product.vendorCode || '',
+      subjectName: product.subjectName || '',
+      photo: photos?.get(String(nmId)) || '',
+      stocks: { wb: Number(product.stocks?.wb || 0), mp: Number(product.stocks?.mp || 0) }
+    },
     statistic: { selected: slimFunnelStat(item.statistic?.selected), past: slimFunnelStat(item.statistic?.past) }
   };
 }
@@ -3402,10 +5295,16 @@ const funnelTableDir = id => path.join(funnelDir(id), 'tables');
 const funnelTableFile = (id, period) => path.join(funnelTableDir(id), `${period.from}_${period.to}.json`);
 function readFunnelTable(id, period) {
   // photosPending из файла не берём: после перезапуска сервера фото уже никто не подставит.
-  try { const table = JSON.parse(fs.readFileSync(funnelTableFile(id, period), 'utf8')); return Array.isArray(table.products) ? { ...table, photosPending: false } : null; } catch { return null; }
+  try {
+    const table = JSON.parse(fs.readFileSync(funnelTableFile(id, period), 'utf8'));
+    return Array.isArray(table.products) ? { ...table, photosPending: false } : null;
+  } catch {
+    return null;
+  }
 }
 function saveFunnelTable(id, period, table) {
-  const dir = funnelTableDir(id), target = funnelTableFile(id, period);
+  const dir = funnelTableDir(id),
+    target = funnelTableFile(id, period);
   fs.mkdirSync(dir, { recursive: true });
   fs.writeFileSync(`${target}.tmp`, JSON.stringify(table));
   fs.renameSync(`${target}.tmp`, target);
@@ -3414,7 +5313,8 @@ function funnelTableFresh(table, period, now = Date.now()) {
   if (!table) return false;
   // «Сегодня» по Москве — от того же now, что и возраст таблицы (иначе проверка зависела от настоящей даты).
   const today = new Date(now + 3 * 3_600_000).toISOString().slice(0, 10);
-  const age = now - (Date.parse(table.fetchedAt || '') || 0), final = period.to < addDays(today, -FUNNEL_FINAL_AFTER_DAYS);
+  const age = now - (Date.parse(table.fetchedAt || '') || 0),
+    final = period.to < addDays(today, -FUNNEL_FINAL_AFTER_DAYS);
   return age < (final ? FUNNEL_TABLE_FINAL_TTL : FUNNEL_TABLE_TTL);
 }
 function funnelTableEntry(id, periods) {
@@ -3426,21 +5326,48 @@ function startFunnelTableJob(id, periods, entry) {
   const token = tokenFor(id);
   // Прошлый период той же длины нужен для изменений в процентах; старше года WB его не отдаёт.
   const past = periods.previous.from >= addDays(moscowDate(0), -FUNNEL_MAX_DEPTH_DAYS) ? periods.previous : null;
-  let firstPage; const job = { version: Date.now().toString(36), products: [], periods: { current: periods.current, previous: past }, firstPage: new Promise(resolve => { firstPage = resolve; }) };
-  entry.job = job; entry.error = '';
+  let firstPage;
+  const job = {
+    version: Date.now().toString(36),
+    products: [],
+    periods: { current: periods.current, previous: past },
+    firstPage: new Promise(resolve => {
+      firstPage = resolve;
+    })
+  };
+  entry.job = job;
+  entry.error = '';
   // Фото — из карточек товаров (свой лимит у Контента): не ждём их ради первой страницы. Пришли позже — фото
   // проставляются всем загруженным строкам, а новая version заставляет сайт взять список целиком.
   let photos = null;
-  const cards = productCards(id, token).catch(() => []).then(list => {
-    photos = new Map(list.map(card => [String(card.nmID), cardPhoto(card)]));
-    if (job.products.length) { job.products.forEach(item => { item.product.photo = photos.get(String(item.product.nmId)) || ''; }); job.version = `${job.version}p`; }
-  });
+  const cards = productCards(id, token)
+    .catch(() => [])
+    .then(list => {
+      photos = new Map(list.map(card => [String(card.nmID), cardPhoto(card)]));
+      if (job.products.length) {
+        job.products.forEach(item => {
+          item.product.photo = photos.get(String(item.product.nmId)) || '';
+        });
+        job.version = `${job.version}p`;
+      }
+    });
   job.promise = (async () => {
     try {
       for (let offset = 0; ; offset += FUNNEL_TABLE_PAGE) {
-        const response = await funnelProductsRequest(id, token, { selectedPeriod: { start: periods.current.from, end: periods.current.to },
-          ...(past ? { pastPeriod: { start: past.from, end: past.to } } : {}), nmIds: [], skipDeletedNm: true,
-          orderBy: { field: 'openCard', mode: 'desc' }, limit: FUNNEL_TABLE_PAGE, offset }, 'high');
+        const response = await funnelProductsRequest(
+          id,
+          token,
+          {
+            selectedPeriod: { start: periods.current.from, end: periods.current.to },
+            ...(past ? { pastPeriod: { start: past.from, end: past.to } } : {}),
+            nmIds: [],
+            skipDeletedNm: true,
+            orderBy: { field: 'openCard', mode: 'desc' },
+            limit: FUNNEL_TABLE_PAGE,
+            offset
+          },
+          'high'
+        );
         const page = response?.data?.products || response?.products || [];
         job.products.push(...page.map(item => slimFunnelProduct(item, photos)));
         firstPage();
@@ -3448,12 +5375,35 @@ function startFunnelTableJob(id, periods, entry) {
       }
       // Строки готовы — таблица готова; фото, если карточки ещё грузятся (тысячи карточек — минута-две), подставятся следом:
       // photosPending держит сайт на опросе, новая version отдаст ему список с фото.
-      const table = { version: job.version, fetchedAt: new Date().toISOString(), periods: job.periods, products: job.products, photosPending: !photos };
-      const save = () => { try { saveFunnelTable(id, periods.current, table); } catch (error) { console.error('Воронка: таблица не сохранена', error.message); } };
-      entry.cache = table; save();
-      if (!photos) cards.then(() => { table.version = `${table.version}p`; table.photosPending = false; if (entry.cache === table) save(); });
-    } catch (error) { entry.error = error.message; entry.failedAt = Date.now(); }
-    finally { firstPage(); entry.job = null; }
+      const table = {
+        version: job.version,
+        fetchedAt: new Date().toISOString(),
+        periods: job.periods,
+        products: job.products,
+        photosPending: !photos
+      };
+      const save = () => {
+        try {
+          saveFunnelTable(id, periods.current, table);
+        } catch (error) {
+          console.error('Воронка: таблица не сохранена', error.message);
+        }
+      };
+      entry.cache = table;
+      save();
+      if (!photos)
+        cards.then(() => {
+          table.version = `${table.version}p`;
+          table.photosPending = false;
+          if (entry.cache === table) save();
+        });
+    } catch (error) {
+      entry.error = error.message;
+      entry.failedAt = Date.now();
+    } finally {
+      firstPage();
+      entry.job = null;
+    }
     return entry.cache;
   })();
   return job;
@@ -3462,24 +5412,58 @@ function startFunnelTableJob(id, periods, entry) {
 // done — таблица собрана целиком; refreshing — на экране прежняя таблица, новая собирается в фоне.
 async function funnelTable(id, from, to, { version = '', offset = 0, force = false } = {}) {
   const periods = funnelPeriods(from, to);
-  if (id === 'demo' || !cabinets().length) return { demo: true, version: 'demo', offset: 0, loaded: 0, done: true, refreshing: false, products: [], periods, history: [], groupedHistory: [] };
+  if (id === 'demo' || !cabinets().length)
+    return {
+      demo: true,
+      version: 'demo',
+      offset: 0,
+      loaded: 0,
+      done: true,
+      refreshing: false,
+      products: [],
+      periods,
+      history: [],
+      groupedHistory: []
+    };
   tokenFor(id);
-  const entry = funnelTableEntry(id, periods), now = Date.now();
-  if (!entry.job && (force || !funnelTableFresh(entry.cache, periods.current, now)) && (force || now - entry.failedAt > FUNNEL_TABLE_RETRY_MS)) startFunnelTableJob(id, periods, entry);
+  const entry = funnelTableEntry(id, periods),
+    now = Date.now();
+  if (
+    !entry.job &&
+    (force || !funnelTableFresh(entry.cache, periods.current, now)) &&
+    (force || now - entry.failedAt > FUNNEL_TABLE_RETRY_MS)
+  )
+    startFunnelTableJob(id, periods, entry);
   // Показать ещё нечего — ждём первую страницу, чтобы не отвечать пустой таблицей.
   if (!entry.cache && entry.job && !entry.job.products.length) await Promise.race([entry.job.firstPage, wait(FUNNEL_TABLE_FIRST_WAIT_MS)]);
   const shown = entry.cache || entry.job;
   if (!shown) throw apiError(502, entry.error || 'Не удалось загрузить воронку');
   const start = version && version === shown.version ? Math.max(0, Math.min(Number(offset) || 0, shown.products.length)) : 0;
-  return { demo: false, version: shown.version, offset: start, loaded: shown.products.length, products: shown.products.slice(start),
-    done: shown === entry.cache, refreshing: Boolean(entry.cache && entry.job), photosPending: Boolean(shown.photosPending), fetchedAt: entry.cache?.fetchedAt || null, error: entry.error || '',
-    periods: shown.periods, history: [], groupedHistory: [] };
+  return {
+    demo: false,
+    version: shown.version,
+    offset: start,
+    loaded: shown.products.length,
+    products: shown.products.slice(start),
+    done: shown === entry.cache,
+    refreshing: Boolean(entry.cache && entry.job),
+    photosPending: Boolean(shown.photosPending),
+    fetchedAt: entry.cache?.fetchedAt || null,
+    error: entry.error || '',
+    periods: shown.periods,
+    history: [],
+    groupedHistory: []
+  };
 }
 // Вся таблица периода (для заказов воронки во вкладке «Реклама»): готовая — сразу, иначе ждём сборку.
 async function funnelDetails(id, from, to) {
   if (id === 'demo' || !cabinets().length) return { products: [], history: [], groupedHistory: [] };
-  const periods = funnelPeriods(from, to), entry = funnelTableEntry(id, periods);
-  if (!funnelTableFresh(entry.cache, periods.current)) { const job = entry.job || startFunnelTableJob(id, periods, entry); await job.promise; }
+  const periods = funnelPeriods(from, to),
+    entry = funnelTableEntry(id, periods);
+  if (!funnelTableFresh(entry.cache, periods.current)) {
+    const job = entry.job || startFunnelTableJob(id, periods, entry);
+    await job.promise;
+  }
   if (!entry.cache) throw apiError(502, entry.error || 'Не удалось загрузить воронку');
   return { periods: entry.cache.periods, products: entry.cache.products, history: [], groupedHistory: [] };
 }
@@ -3489,7 +5473,9 @@ async function funnelDetails(id, from, to) {
 function funnelOrdersByNmId(products = []) {
   const orders = {};
   for (const item of products) {
-    const product = item.product || item, stats = item.statistic?.selected || item.history?.[0] || item, nmId = product.nmId ?? product.nmID;
+    const product = item.product || item,
+      stats = item.statistic?.selected || item.history?.[0] || item,
+      nmId = product.nmId ?? product.nmID;
     if (nmId != null) orders[nmId] = (orders[nmId] || 0) + Number(stats.orderCount || 0);
   }
   return orders;
@@ -3497,7 +5483,11 @@ function funnelOrdersByNmId(products = []) {
 async function funnelOrders(id, from, to) {
   const periods = funnelPeriods(from, to);
   if (id === 'demo' || !cabinets().length) return { demo: true, period: periods.current, orders: { 4210000: 412, 4210001: 268 } };
-  const details = await cachedAnalytics(`funnel-orders:${id}:${periods.current.from}:${periods.current.to}`, () => funnelDetails(id, from, to), 5 * 60_000);
+  const details = await cachedAnalytics(
+    `funnel-orders:${id}:${periods.current.from}:${periods.current.to}`,
+    () => funnelDetails(id, from, to),
+    5 * 60_000
+  );
   return { demo: false, period: periods.current, orders: funnelOrdersByNmId(details.products) };
 }
 
@@ -3520,8 +5510,15 @@ function summaryProducts(current = {}, previous = null, cards = []) {
   const ids = new Set([...Object.keys(current?.products || {}), ...Object.keys(previous?.products || {})]);
   return [...ids].map(nmId => {
     const card = byNmId.get(nmId) || {};
-    return { nmId: Number(nmId), name: card.title || `Товар ${nmId}`, vendorCode: card.vendorCode || '', subjectName: card.subjectName || '',
-      photo: cardPhoto(card), current: funnelCountsFromValues(current?.products?.[nmId]), previous: funnelCountsFromValues(previous?.products?.[nmId]) };
+    return {
+      nmId: Number(nmId),
+      name: card.title || `Товар ${nmId}`,
+      vendorCode: card.vendorCode || '',
+      subjectName: card.subjectName || '',
+      photo: cardPhoto(card),
+      current: funnelCountsFromValues(current?.products?.[nmId]),
+      previous: funnelCountsFromValues(previous?.products?.[nmId])
+    };
   });
 }
 
@@ -3533,50 +5530,100 @@ function productBrief(product) {
 function summaryTopProducts(products = [], limit = SUMMARY_TOP_PRODUCTS) {
   const total = products.reduce((sum, item) => sum + item.current.orderSum, 0);
   const previousTotal = products.reduce((sum, item) => sum + item.previous.orderSum, 0);
-  const share = (value, base) => base ? value / base * 100 : 0;
-  const sorted = products.filter(item => item.current.orderSum > 0).sort((a, b) => b.current.orderSum - a.current.orderSum || a.nmId - b.nmId);
-  const items = sorted.slice(0, limit).map(item => ({ ...productBrief(item), orderSum: item.current.orderSum, orderCount: item.current.orderCount,
-    share: share(item.current.orderSum, total), previousShare: share(item.previous.orderSum, previousTotal) }));
+  const share = (value, base) => (base ? (value / base) * 100 : 0);
+  const sorted = products
+    .filter(item => item.current.orderSum > 0)
+    .sort((a, b) => b.current.orderSum - a.current.orderSum || a.nmId - b.nmId);
+  const items = sorted
+    .slice(0, limit)
+    .map(item => ({
+      ...productBrief(item),
+      orderSum: item.current.orderSum,
+      orderCount: item.current.orderCount,
+      share: share(item.current.orderSum, total),
+      previousShare: share(item.previous.orderSum, previousTotal)
+    }));
   const rest = sorted.slice(limit);
   const restSum = rest.reduce((sum, item) => sum + item.current.orderSum, 0);
   const restPrevious = previousTotal - items.reduce((sum, item) => sum + products.find(p => p.nmId === item.nmId).previous.orderSum, 0);
-  return { total, previousTotal, items, other: rest.length ? { count: rest.length, orderSum: restSum,
-    orderCount: rest.reduce((sum, item) => sum + item.current.orderCount, 0), share: share(restSum, total), previousShare: share(restPrevious, previousTotal) } : null };
+  return {
+    total,
+    previousTotal,
+    items,
+    other: rest.length
+      ? {
+          count: rest.length,
+          orderSum: restSum,
+          orderCount: rest.reduce((sum, item) => sum + item.current.orderCount, 0),
+          share: share(restSum, total),
+          previousShare: share(restPrevious, previousTotal)
+        }
+      : null
+  };
 }
 
 // Товар попадает в просадки, если заказы, переходы или конверсия в заказ упали на 30% и больше.
 // Пороги по количеству отсекают шум: падение с 2 заказов до 1 ничего не значит.
 function summaryDrops(products = [], limit = SUMMARY_DROP_LIMIT) {
-  const change = (from, to) => from ? (to - from) / from * 100 : 0;
+  const change = (from, to) => (from ? ((to - from) / from) * 100 : 0);
   const drops = [];
   for (const product of products) {
-    const now = product.current, before = product.previous, reasons = [];
+    const now = product.current,
+      before = product.previous,
+      reasons = [];
     if (before.orderCount >= DROP_MIN_ORDERS && now.orderCount <= before.orderCount * DROP_RATIO) {
-      reasons.push({ metric: 'orderCount', label: 'Заказы', from: before.orderCount, to: now.orderCount, change: change(before.orderCount, now.orderCount) });
+      reasons.push({
+        metric: 'orderCount',
+        label: 'Заказы',
+        from: before.orderCount,
+        to: now.orderCount,
+        change: change(before.orderCount, now.orderCount)
+      });
     }
     if (before.openCount >= DROP_MIN_OPENS && now.openCount <= before.openCount * DROP_RATIO) {
-      reasons.push({ metric: 'openCount', label: 'Переходы', from: before.openCount, to: now.openCount, change: change(before.openCount, now.openCount) });
+      reasons.push({
+        metric: 'openCount',
+        label: 'Переходы',
+        from: before.openCount,
+        to: now.openCount,
+        change: change(before.openCount, now.openCount)
+      });
     }
     if (before.openCount >= DROP_MIN_OPENS && now.openCount >= DROP_MIN_OPENS && before.orderCount >= DROP_MIN_ORDERS) {
-      const was = before.orderCount / before.openCount * 100, is = now.orderCount / now.openCount * 100;
-      if (is <= was * DROP_RATIO) reasons.push({ metric: 'orderConversion', label: 'Конв. в заказ', from: was, to: is, change: change(was, is), unit: '%' });
+      const was = (before.orderCount / before.openCount) * 100,
+        is = (now.orderCount / now.openCount) * 100;
+      if (is <= was * DROP_RATIO)
+        reasons.push({ metric: 'orderConversion', label: 'Конв. в заказ', from: was, to: is, change: change(was, is), unit: '%' });
     }
     if (!reasons.length) continue;
     const worst = Math.min(...reasons.map(reason => reason.change));
-    drops.push({ ...productBrief(product), severity: worst <= -60 ? 'high' : worst <= -45 ? 'medium' : 'low', worst,
-      lostSum: Math.max(0, before.orderSum - now.orderSum), reasons: reasons.sort((a, b) => a.change - b.change) });
+    drops.push({
+      ...productBrief(product),
+      severity: worst <= -60 ? 'high' : worst <= -45 ? 'medium' : 'low',
+      worst,
+      lostSum: Math.max(0, before.orderSum - now.orderSum),
+      reasons: reasons.sort((a, b) => a.change - b.change)
+    });
   }
   drops.sort((a, b) => b.lostSum - a.lostSum || a.worst - b.worst);
   return { total: drops.length, items: drops.slice(0, limit) };
 }
 
 async function summaryFunnelRanges(id, token, periods, refresh = false) {
-  const now = Date.now(); const stored = readFunnelRanges(id);
+  const now = Date.now();
+  const stored = readFunnelRanges(id);
   const withPrevious = periods.previous.from >= addDays(moscowDate(0), -FUNNEL_MAX_DEPTH_DAYS);
-  const pick = range => { const record = stored[`${range.from}_${range.to}`]; return record?.products ? record : null; };
-  const fresh = (record, range) => Boolean(record) && (refresh ? now - Date.parse(record.fetchedAt || '') < SUMMARY_REFRESH_MS : !funnelRangeNeedsFetch(range.to, record.fetchedAt, now));
-  const current = pick(periods.current), previous = withPrevious ? pick(periods.previous) : null;
-  if (fresh(current, periods.current) && (!withPrevious || fresh(previous, periods.previous))) return { current, previous, fetchedAt: current.fetchedAt };
+  const pick = range => {
+    const record = stored[`${range.from}_${range.to}`];
+    return record?.products ? record : null;
+  };
+  const fresh = (record, range) =>
+    Boolean(record) &&
+    (refresh ? now - Date.parse(record.fetchedAt || '') < SUMMARY_REFRESH_MS : !funnelRangeNeedsFetch(range.to, record.fetchedAt, now));
+  const current = pick(periods.current),
+    previous = withPrevious ? pick(periods.previous) : null;
+  if (fresh(current, periods.current) && (!withPrevious || fresh(previous, periods.previous)))
+    return { current, previous, fetchedAt: current.fetchedAt };
   try {
     const [loaded, loadedPrevious = null] = await fetchFunnelRanges(id, token, periods.current, withPrevious ? periods.previous : null);
     saveFunnelRanges(id, [loaded, loadedPrevious].filter(Boolean));
@@ -3589,48 +5636,86 @@ async function summaryFunnelRanges(id, token, periods, refresh = false) {
 
 function summaryPayload(periods, current, previous, products, history) {
   const day = item => ({ date: item.date, ...pickFunnelCounts(item) });
-  return { periods, totals: { current: pickFunnelCounts(current), previous: previous ? pickFunnelCounts(previous) : null },
-    daily: { current: (history.current || []).map(day), previous: (history.previous || []).map(day) }, sync: history.sync,
-    top: summaryTopProducts(products), drops: previous ? summaryDrops(products) : { total: 0, items: [] },
-    productCount: products.filter(item => item.current.orderCount || item.current.openCount).length };
+  return {
+    periods,
+    totals: { current: pickFunnelCounts(current), previous: previous ? pickFunnelCounts(previous) : null },
+    daily: { current: (history.current || []).map(day), previous: (history.previous || []).map(day) },
+    sync: history.sync,
+    top: summaryTopProducts(products),
+    drops: previous ? summaryDrops(products) : { total: 0, items: [] },
+    productCount: products.filter(item => item.current.orderCount || item.current.openCount).length
+  };
 }
 
 const DEMO_SUMMARY_PRODUCTS = [
-  ['Худи оверсайз с капюшоном', 'HOODIE-01', .26, .22], ['Футболка базовая хлопок', 'TEE-BASE', .19, .17], ['Свитшот с начёсом', 'SWEAT-02', .14, .10],
-  ['Джоггеры утеплённые', 'JOG-05', .11, .09], ['Лонгслив в рубчик', 'LONG-11', .08, .15], ['Шорты спортивные', 'SHORT-07', .07, .06],
-  ['Кепка с вышивкой', 'CAP-03', .06, .05], ['Носки, набор 5 пар', 'SOCKS-5', .05, .12], ['Панама хлопковая', 'PANAMA-1', .04, .04]
+  ['Худи оверсайз с капюшоном', 'HOODIE-01', 0.26, 0.22],
+  ['Футболка базовая хлопок', 'TEE-BASE', 0.19, 0.17],
+  ['Свитшот с начёсом', 'SWEAT-02', 0.14, 0.1],
+  ['Джоггеры утеплённые', 'JOG-05', 0.11, 0.09],
+  ['Лонгслив в рубчик', 'LONG-11', 0.08, 0.15],
+  ['Шорты спортивные', 'SHORT-07', 0.07, 0.06],
+  ['Кепка с вышивкой', 'CAP-03', 0.06, 0.05],
+  ['Носки, набор 5 пар', 'SOCKS-5', 0.05, 0.12],
+  ['Панама хлопковая', 'PANAMA-1', 0.04, 0.04]
 ];
 
 function demoSummary(periods) {
   const history = demoFunnelHistory(periods, 'day');
-  const sum = days => { const total = pickFunnelCounts(); days.forEach(item => FUNNEL_COUNT_KEYS.forEach(key => { total[key] += Number(item[key] || 0); })); return total; };
-  const current = sum(history.current), previous = sum(history.previous);
+  const sum = days => {
+    const total = pickFunnelCounts();
+    days.forEach(item =>
+      FUNNEL_COUNT_KEYS.forEach(key => {
+        total[key] += Number(item[key] || 0);
+      })
+    );
+    return total;
+  };
+  const current = sum(history.current),
+    previous = sum(history.previous);
   const part = (total, weight) => Object.fromEntries(FUNNEL_COUNT_KEYS.map(key => [key, Math.round(total[key] * weight)]));
-  const products = DEMO_SUMMARY_PRODUCTS.map(([name, vendorCode, now, before], index) => ({ nmId: 100001 + index, name, vendorCode, subjectName: '', photo: '',
-    current: part(current, now), previous: part(previous, before) }));
-  return { demo: true, ...summaryPayload(periods, current, previous, products, history), fetchedAt: new Date().toISOString(), warnings: [] };
+  const products = DEMO_SUMMARY_PRODUCTS.map(([name, vendorCode, now, before], index) => ({
+    nmId: 100001 + index,
+    name,
+    vendorCode,
+    subjectName: '',
+    photo: '',
+    current: part(current, now),
+    previous: part(previous, before)
+  }));
+  return {
+    demo: true,
+    ...summaryPayload(periods, current, previous, products, history),
+    fetchedAt: new Date().toISOString(),
+    warnings: []
+  };
 }
 
 async function summary(id, from, to, refresh = false) {
   const periods = funnelPeriods(from, to);
   if (id === 'demo' || !cabinets().length) return demoSummary(periods);
-  const token = tokenFor(id); const warnings = [];
+  const token = tokenFor(id);
+  const warnings = [];
   // Запрос итогов ставится в очередь воронки раньше догрузки дней, чтобы карточки появились первыми.
   const rangesJob = summaryFunnelRanges(id, token, periods, refresh);
   rangesJob.catch(() => {});
   const history = await funnelHistory(id, periods.current.from, periods.current.to, 'day', null, refresh);
-  const cards = await productCards(id, token)
-    .catch(error => (warnings.push(`Карточки товаров: ${error.message}`), []));
+  const cards = await productCards(id, token).catch(error => (warnings.push(`Карточки товаров: ${error.message}`), []));
   const ranges = await rangesJob;
   if (ranges.staleError) warnings.push(`Воронка: ${ranges.staleError}. Показаны сохранённые данные`);
   if (!ranges.previous) warnings.push('WB отдаёт воронку только за последний год, поэтому сравнения с прошлым периодом нет');
   const products = summaryProducts(ranges.current, ranges.previous, cards);
-  return { demo: false, ...summaryPayload(periods, ranges.current, ranges.previous, products, history), fetchedAt: ranges.fetchedAt, warnings };
+  return {
+    demo: false,
+    ...summaryPayload(periods, ranges.current, ranges.previous, products, history),
+    fetchedAt: ranges.fetchedAt,
+    warnings
+  };
 }
 
 function summaryAdPeriod(days = [], range) {
   const daily = days.filter(day => day.date >= range.from && day.date <= range.to);
-  const total = emptyAdMetrics(); daily.forEach(day => addAdMetrics(total, day));
+  const total = emptyAdMetrics();
+  daily.forEach(day => addAdMetrics(total, day));
   return { totals: finalizeAdMetrics(total), daily };
 }
 
@@ -3639,16 +5724,36 @@ function summaryAdPeriod(days = [], range) {
 async function summaryAds(id, from, to) {
   const periods = funnelPeriods(from, to);
   const length = datesBetween(periods.current.from, periods.current.to).length;
-  if (length > 31) return { available: false, periods, reason: 'Реклама в сводке доступна за период до 31 дня — это ограничение WB API', warnings: [] };
+  if (length > 31)
+    return { available: false, periods, reason: 'Реклама в сводке доступна за период до 31 дня — это ограничение WB API', warnings: [] };
   const ranges = [periods.current, periods.previous];
-  const demo = id === 'demo' || !cabinets().length; const warnings = []; const days = [];
+  const demo = id === 'demo' || !cabinets().length;
+  const warnings = [];
+  const days = [];
   for (const range of ranges) {
     // Демо-реклама рассчитана на вкладку «Реклама» и крупнее демо-воронки, поэтому для сводки она уменьшена.
-    if (demo) { days.push(...demoAds(range.from, range.to).daily.map(day => finalizeAdMetrics({ ...day, ...Object.fromEntries(['views', 'clicks', 'spend', 'orders', 'revenue', 'carts', 'sales'].map(key => [key, day[key] * 0.08])) }))); continue; }
+    if (demo) {
+      days.push(
+        ...demoAds(range.from, range.to).daily.map(day =>
+          finalizeAdMetrics({
+            ...day,
+            ...Object.fromEntries(['views', 'clicks', 'spend', 'orders', 'revenue', 'carts', 'sales'].map(key => [key, day[key] * 0.08]))
+          })
+        )
+      );
+      continue;
+    }
     const { campaigns, stats } = await loadAdStats(id, tokenFor(id), range, warnings);
     days.push(...summarizeAdStats(campaigns, stats, range.from, range.to).daily);
   }
-  return { demo, available: true, periods, current: summaryAdPeriod(days, periods.current), previous: summaryAdPeriod(days, periods.previous), warnings };
+  return {
+    demo,
+    available: true,
+    periods,
+    current: summaryAdPeriod(days, periods.current),
+    previous: summaryAdPeriod(days, periods.previous),
+    warnings
+  };
 }
 
 // --- Оценки товаров: /api/analytics/v2/item-rating — рейтинг по отзывам, новые отзывы по звёздам, сравнение с конкурентами ---
@@ -3661,33 +5766,69 @@ const ITEM_RATING_PAGE = 1000;
 const ITEM_RATING_INTERVAL = 21_000;
 const itemRatingAttempts = new Map();
 function itemRatingPeriods(from, to) {
-  const yesterday = moscowDate(-1), earliest = addDays(yesterday, -364), valid = value => /^\d{4}-\d{2}-\d{2}$/.test(value || '');
+  const yesterday = moscowDate(-1),
+    earliest = addDays(yesterday, -364),
+    valid = value => /^\d{4}-\d{2}-\d{2}$/.test(value || '');
   const end = valid(to) && to < yesterday ? (to < earliest ? earliest : to) : yesterday;
   let start = valid(from) ? from : addDays(end, -6);
   if (start > end) start = end;
   if (start < earliest) start = earliest;
-  const length = datesBetween(start, end).length, pastStart = addDays(start, -length);
-  return { current: { start, end }, past: pastStart >= earliest ? { start: pastStart, end: addDays(start, -1) } : null, endClamped: valid(to) && to > end };
+  const length = datesBetween(start, end).length,
+    pastStart = addDays(start, -length);
+  return {
+    current: { start, end },
+    past: pastStart >= earliest ? { start: pastStart, end: addDays(start, -1) } : null,
+    endClamped: valid(to) && to > end
+  };
 }
 function normalizeItemRatings(pages = [], cards = []) {
-  const byNmId = new Map(cards.map(card => [String(card.nmID), card])), first = pages[0] || {}, increase = first.feedbackIncrease || {};
-  const delta = value => value == null ? null : Number(value);
+  const byNmId = new Map(cards.map(card => [String(card.nmID), card])),
+    first = pages[0] || {},
+    increase = first.feedbackIncrease || {};
+  const delta = value => (value == null ? null : Number(value));
   const STAR_KEYS = { 5: 'fiveStar', 4: 'fourStar', 3: 'threeStar', 2: 'twoStar', 1: 'oneStar' };
-  const items = pages.flatMap(page => page.items || []).map(item => {
-    const card = byNmId.get(String(item.nmId)) || {};
-    return { nmId: item.nmId, title: item.title || card.title || `Товар ${item.nmId}`, vendorCode: item.vendorCode || card.vendorCode || '',
-      subjectName: item.subjectName || '', brandName: item.brandName || '', photo: cardPhoto(card),
-      cardRating: item.rating == null ? null : Number(item.rating),
-      feedbackRating: item.feedbackRating?.current == null ? null : Number(item.feedbackRating.current), feedbackRatingDelta: delta(item.feedbackRating?.dynamics),
-      percentile: item.feedbackRating?.percentile == null ? null : Number(item.feedbackRating.percentile),
-      newFeedbacks: Number(item.feedbackCount?.current || 0), newFeedbacksDelta: delta(item.feedbackCount?.dynamics),
-      stars: Object.fromEntries(Object.entries(STAR_KEYS).map(([star, key]) => [star, { count: Number(item[key]?.current || 0), delta: delta(item[key]?.dynamics) }])),
-      disqualified: Number(item.disqualified || 0), pinned: Boolean(item.pinnedFeedback), shadowed: Boolean(item.isShadowed) };
-  });
+  const items = pages
+    .flatMap(page => page.items || [])
+    .map(item => {
+      const card = byNmId.get(String(item.nmId)) || {};
+      return {
+        nmId: item.nmId,
+        title: item.title || card.title || `Товар ${item.nmId}`,
+        vendorCode: item.vendorCode || card.vendorCode || '',
+        subjectName: item.subjectName || '',
+        brandName: item.brandName || '',
+        photo: cardPhoto(card),
+        cardRating: item.rating == null ? null : Number(item.rating),
+        feedbackRating: item.feedbackRating?.current == null ? null : Number(item.feedbackRating.current),
+        feedbackRatingDelta: delta(item.feedbackRating?.dynamics),
+        percentile: item.feedbackRating?.percentile == null ? null : Number(item.feedbackRating.percentile),
+        newFeedbacks: Number(item.feedbackCount?.current || 0),
+        newFeedbacksDelta: delta(item.feedbackCount?.dynamics),
+        stars: Object.fromEntries(
+          Object.entries(STAR_KEYS).map(([star, key]) => [
+            star,
+            { count: Number(item[key]?.current || 0), delta: delta(item[key]?.dynamics) }
+          ])
+        ),
+        disqualified: Number(item.disqualified || 0),
+        pinned: Boolean(item.pinnedFeedback),
+        shadowed: Boolean(item.isShadowed)
+      };
+    });
   return {
-    seller: { rating: first.sellerRating?.current ?? null, ratingDelta: delta(first.sellerRating?.dynamics),
-      newFeedbacks: Number(increase.current || 0), newFeedbacksDelta: delta(increase.dynamics), totalFeedbacks: Number(increase.total || 0),
-      stars: Object.fromEntries(Object.entries(STAR_KEYS).map(([star, key]) => [star, { count: Number(increase[key]?.current || 0), delta: delta(increase[key]?.dynamics), total: Number(increase[key]?.total || 0) }])) },
+    seller: {
+      rating: first.sellerRating?.current ?? null,
+      ratingDelta: delta(first.sellerRating?.dynamics),
+      newFeedbacks: Number(increase.current || 0),
+      newFeedbacksDelta: delta(increase.dynamics),
+      totalFeedbacks: Number(increase.total || 0),
+      stars: Object.fromEntries(
+        Object.entries(STAR_KEYS).map(([star, key]) => [
+          star,
+          { count: Number(increase[key]?.current || 0), delta: delta(increase[key]?.dynamics), total: Number(increase[key]?.total || 0) }
+        ])
+      )
+    },
     items
   };
 }
@@ -3699,41 +5840,89 @@ function demoItemRatings() {
     ['Чехол для iPhone 17 Pro Max', 4.88, 0.02, 81.3, 9.1, [25, 2, 0, 0, 0], -3, 1, false],
     ['Кабель USB-C 2 м', 3.92, -0.12, 3.1, 6.4, [5, 1, 1, 2, 3], 4, 0, true]
   ].map(([title, rating, ratingDelta, percentile, cardRating, stars, countDelta, disqualified, shadowed], index) => ({
-    nmId: 4210000 + index, title, vendorCode: `DEMO-${index + 1}`, subjectName: 'Демо', brandName: 'Demo', rating: cardRating,
-    feedbackRating: { current: rating, dynamics: ratingDelta, percentile }, feedbackCount: { current: stars.reduce((sum, value) => sum + value, 0), dynamics: countDelta },
-    fiveStar: { current: stars[0] }, fourStar: { current: stars[1] }, threeStar: { current: stars[2] }, twoStar: { current: stars[3] }, oneStar: { current: stars[4] },
-    disqualified, pinnedFeedback: index === 0, isShadowed: shadowed }));
-  return { sellerRating: { current: 4.31, dynamics: 0.02 }, feedbackIncrease: { current: 131, total: 40746, dynamics: 31,
-    fiveStar: { current: 107, total: 29818 }, fourStar: { current: 10, total: 2400 }, threeStar: { current: 3, total: 1500 }, twoStar: { current: 3, total: 1487 }, oneStar: { current: 10, total: 5541 } }, items };
+    nmId: 4210000 + index,
+    title,
+    vendorCode: `DEMO-${index + 1}`,
+    subjectName: 'Демо',
+    brandName: 'Demo',
+    rating: cardRating,
+    feedbackRating: { current: rating, dynamics: ratingDelta, percentile },
+    feedbackCount: { current: stars.reduce((sum, value) => sum + value, 0), dynamics: countDelta },
+    fiveStar: { current: stars[0] },
+    fourStar: { current: stars[1] },
+    threeStar: { current: stars[2] },
+    twoStar: { current: stars[3] },
+    oneStar: { current: stars[4] },
+    disqualified,
+    pinnedFeedback: index === 0,
+    isShadowed: shadowed
+  }));
+  return {
+    sellerRating: { current: 4.31, dynamics: 0.02 },
+    feedbackIncrease: {
+      current: 131,
+      total: 40746,
+      dynamics: 31,
+      fiveStar: { current: 107, total: 29818 },
+      fourStar: { current: 10, total: 2400 },
+      threeStar: { current: 3, total: 1500 },
+      twoStar: { current: 3, total: 1487 },
+      oneStar: { current: 10, total: 5541 }
+    },
+    items
+  };
 }
 async function itemRatings(id, from, to) {
   const periods = itemRatingPeriods(from, to);
   if (id === 'demo' || !cabinets().length) return { demo: true, periods, ...normalizeItemRatings([demoItemRatings()]) };
   const token = tokenFor(id);
-  const pages = await cachedAnalytics(`item-rating:${id}:${periods.current.start}:${periods.current.end}`, async () => {
-    const result = [];
-    for (let offset = 0; offset < 20 * ITEM_RATING_PAGE; offset += ITEM_RATING_PAGE) {
-      // Не чаще одного запроса в 21 секунду на кабинет — лимит WB 3 в минуту.
-      const wait = ITEM_RATING_INTERVAL - (Date.now() - (itemRatingAttempts.get(id) || 0));
-      if (wait > 0) await new Promise(resolve => setTimeout(resolve, wait));
-      itemRatingAttempts.set(id, Date.now());
-      const response = await wbRequest(token, ITEM_RATING_URL, { method: 'POST', body: { currentPeriod: periods.current, ...(periods.past ? { pastPeriod: periods.past } : {}),
-        orderBy: { field: 'feedbackCount', mode: 'desc' }, limit: ITEM_RATING_PAGE, offset } }).catch(error => {
-        if (error.status === 429) throw apiError(429, `WB ограничил частоту запросов оценок (3 в минуту) — повторите через ${error.retryAfter || 20} сек`);
-        throw error;
-      });
-      const data = response?.data || {};
-      result.push(data);
-      if ((data.items || []).length < ITEM_RATING_PAGE) break;
-    }
-    return result;
-  }, 30 * 60_000);
+  const pages = await cachedAnalytics(
+    `item-rating:${id}:${periods.current.start}:${periods.current.end}`,
+    async () => {
+      const result = [];
+      for (let offset = 0; offset < 20 * ITEM_RATING_PAGE; offset += ITEM_RATING_PAGE) {
+        // Не чаще одного запроса в 21 секунду на кабинет — лимит WB 3 в минуту.
+        const wait = ITEM_RATING_INTERVAL - (Date.now() - (itemRatingAttempts.get(id) || 0));
+        if (wait > 0) await new Promise(resolve => setTimeout(resolve, wait));
+        itemRatingAttempts.set(id, Date.now());
+        const response = await wbRequest(token, ITEM_RATING_URL, {
+          method: 'POST',
+          body: {
+            currentPeriod: periods.current,
+            ...(periods.past ? { pastPeriod: periods.past } : {}),
+            orderBy: { field: 'feedbackCount', mode: 'desc' },
+            limit: ITEM_RATING_PAGE,
+            offset
+          }
+        }).catch(error => {
+          if (error.status === 429)
+            throw apiError(429, `WB ограничил частоту запросов оценок (3 в минуту) — повторите через ${error.retryAfter || 20} сек`);
+          throw error;
+        });
+        const data = response?.data || {};
+        result.push(data);
+        if ((data.items || []).length < ITEM_RATING_PAGE) break;
+      }
+      return result;
+    },
+    30 * 60_000
+  );
   const cards = await productCards(id, token).catch(() => []);
   const result = { demo: false, periods, ...normalizeItemRatings(pages, cards) };
   // «Всего оценок» — с открытых данных отзывов WB по склейкам (glue-ratings.js): отчёт WB даёт только прирост за период.
   const imtByNm = new Map(cards.map(card => [Number(card.nmID), card.imtID]));
-  for (const item of result.items) { const stats = glueRatings.item(id, imtByNm.get(Number(item.nmId)), Number(item.nmId)); item.totalFeedbacks = stats ? stats.count : null; }
-  glueRatings.refresh(id, cards.map(card => card.imtID), result.items.slice(0, 200).map(item => imtByNm.get(Number(item.nmId))).filter(Boolean));
+  for (const item of result.items) {
+    const stats = glueRatings.item(id, imtByNm.get(Number(item.nmId)), Number(item.nmId));
+    item.totalFeedbacks = stats ? stats.count : null;
+  }
+  glueRatings.refresh(
+    id,
+    cards.map(card => card.imtID),
+    result.items
+      .slice(0, 200)
+      .map(item => imtByNm.get(Number(item.nmId)))
+      .filter(Boolean)
+  );
   result.feedbacksLoading = glueRatings.status(id).loading;
   return result;
 }
@@ -3749,7 +5938,8 @@ const ITEM_RETURNS_PAGE = 1000;
 const ITEM_RETURNS_ACTIVE_DAYS = 93;
 const ITEM_RETURNS_MAX_DAYS = 366;
 function itemReturnsPeriod(from, to) {
-  const today = moscowDate(), valid = value => /^\d{4}-\d{2}-\d{2}$/.test(value || '');
+  const today = moscowDate(),
+    valid = value => /^\d{4}-\d{2}-\d{2}$/.test(value || '');
   const end = valid(to) && to < today ? to : today;
   let start = valid(from) && from <= end ? from : addDays(end, -29);
   if (start < addDays(end, -(ITEM_RETURNS_MAX_DAYS - 1))) start = addDays(end, -(ITEM_RETURNS_MAX_DAYS - 1));
@@ -3764,18 +5954,38 @@ function returnStatusGroup(status, active) {
   if (text.includes('отмен')) return 'cancel';
   return active ? 'transit' : 'other';
 }
-const wbDateTime = value => value ? String(value).trim().replace(' ', 'T') : null;
+const wbDateTime = value => (value ? String(value).trim().replace(' ', 'T') : null);
 function normalizeItemReturns(rows = [], cards = [], active = false) {
   const byNmId = new Map(cards.map(card => [String(card.nmID), card]));
   return rows.map(item => {
     const card = byNmId.get(String(item.nmId)) || {};
-    return { id: `${item.srid || ''}:${item.shkId || ''}`, srid: item.srid || '', shkId: item.shkId ? String(item.shkId) : '', stickerId: item.stickerId ? String(item.stickerId) : '',
-      orderId: Number(item.orderId) || null, nmId: item.nmId, sku: item.sku || '', techSize: item.techSize && item.techSize !== '0' ? String(item.techSize) : '',
-      brand: item.brand || card.brand || '', subjectName: item.subjectName || card.subjectName || '', title: card.title || item.subjectName || `Товар ${item.nmId}`,
-      vendorCode: card.vendorCode || '', photo: cardPhoto(card), kiz: item.kiz || '',
-      returnType: item.returnType || '—', returnReason: item.returnReason || '', returnStatus: item.returnStatus || '—', status: returnStatusGroup(item.returnStatus, active), active,
-      orderDt: item.orderDt || null, readyAt: wbDateTime(item.readyToReturnDt), expiresAt: wbDateTime(item.expiredDt), completedAt: wbDateTime(item.completedDt),
-      officeId: item.dstOfficeId || null, officeAddress: String(item.dstOfficeAddress || '').trim() };
+    return {
+      id: `${item.srid || ''}:${item.shkId || ''}`,
+      srid: item.srid || '',
+      shkId: item.shkId ? String(item.shkId) : '',
+      stickerId: item.stickerId ? String(item.stickerId) : '',
+      orderId: Number(item.orderId) || null,
+      nmId: item.nmId,
+      sku: item.sku || '',
+      techSize: item.techSize && item.techSize !== '0' ? String(item.techSize) : '',
+      brand: item.brand || card.brand || '',
+      subjectName: item.subjectName || card.subjectName || '',
+      title: card.title || item.subjectName || `Товар ${item.nmId}`,
+      vendorCode: card.vendorCode || '',
+      photo: cardPhoto(card),
+      kiz: item.kiz || '',
+      returnType: item.returnType || '—',
+      returnReason: item.returnReason || '',
+      returnStatus: item.returnStatus || '—',
+      status: returnStatusGroup(item.returnStatus, active),
+      active,
+      orderDt: item.orderDt || null,
+      readyAt: wbDateTime(item.readyToReturnDt),
+      expiresAt: wbDateTime(item.expiredDt),
+      completedAt: wbDateTime(item.completedDt),
+      officeId: item.dstOfficeId || null,
+      officeAddress: String(item.dstOfficeAddress || '').trim()
+    };
   });
 }
 async function itemReturnsRequest(token, params) {
@@ -3784,51 +5994,105 @@ async function itemReturnsRequest(token, params) {
       return await wbRequest(token, `${ITEM_RETURNS_URL}?${new URLSearchParams(params)}`);
     } catch (error) {
       if (error.status !== 429) throw error;
-      if (attempt >= 2) throw apiError(429, `WB ограничил частоту запросов возвратов (10 в минуту) — повторите через ${error.retryAfter || 60} сек`);
+      if (attempt >= 2)
+        throw apiError(429, `WB ограничил частоту запросов возвратов (10 в минуту) — повторите через ${error.retryAfter || 60} сек`);
       await wait(Math.min(65, error.retryAfter || 10) * 1000 + 300);
     }
   }
 }
 async function itemReturnsChunk(id, token, status, chunk) {
-  return cachedAnalytics(`item-returns:${id}:${status}:${chunk.from}:${chunk.to}`, async () => {
-    const rows = [];
-    for (let offset = 0; offset < 20 * ITEM_RETURNS_PAGE; offset += ITEM_RETURNS_PAGE) {
-      const response = await itemReturnsRequest(token, { dateFrom: chunk.from, dateTo: chunk.to, status, limit: ITEM_RETURNS_PAGE, offset });
-      const report = Array.isArray(response?.report) ? response.report : [];
-      rows.push(...report);
-      if (report.length < ITEM_RETURNS_PAGE || rows.length >= Number(response?.count || 0)) break;
-    }
-    return rows;
-  }, 10 * 60_000);
+  return cachedAnalytics(
+    `item-returns:${id}:${status}:${chunk.from}:${chunk.to}`,
+    async () => {
+      const rows = [];
+      for (let offset = 0; offset < 20 * ITEM_RETURNS_PAGE; offset += ITEM_RETURNS_PAGE) {
+        const response = await itemReturnsRequest(token, {
+          dateFrom: chunk.from,
+          dateTo: chunk.to,
+          status,
+          limit: ITEM_RETURNS_PAGE,
+          offset
+        });
+        const report = Array.isArray(response?.report) ? response.report : [];
+        rows.push(...report);
+        if (report.length < ITEM_RETURNS_PAGE || rows.length >= Number(response?.count || 0)) break;
+      }
+      return rows;
+    },
+    10 * 60_000
+  );
 }
 function demoItemReturns(period) {
   const offices = ['Москва, Профсоюзная улица 56', 'Москва, улица Тверская 18к1', 'Химки, Ленинградское шоссе 2'];
-  const items = [['Возврат брака', 'Готов к выдаче', 0, 2], ['Возврат брака', 'Готов к выдаче', 0, 6], ['Возврат неверного вложения', 'Готов к выдаче', 1, 1],
-    ['Возврат брака', 'В пути в пвз', 1, null], ['Возврат товара, который приехал по МП, продавцу', 'Погружен в машину до СЦ/РЦ', 2, null],
-    ['Возврат брака', 'Выдано', 0, null], ['Возврат брака', 'Выдано', 1, null], ['Возврат неверного вложения', 'Выдано', 0, null],
-    ['Возврат брака', 'Истек срок хранения на пвз', 2, null], ['Возврат товара, который приехал по МП, продавцу', 'Выдано', 2, null], ['Возврат брака', 'Отмена по задержке', 1, null]];
-  const now = Date.now(), at = days => new Date(now + days * 864e5 + 3 * 3_600_000).toISOString().slice(0, 19);
+  const items = [
+    ['Возврат брака', 'Готов к выдаче', 0, 2],
+    ['Возврат брака', 'Готов к выдаче', 0, 6],
+    ['Возврат неверного вложения', 'Готов к выдаче', 1, 1],
+    ['Возврат брака', 'В пути в пвз', 1, null],
+    ['Возврат товара, который приехал по МП, продавцу', 'Погружен в машину до СЦ/РЦ', 2, null],
+    ['Возврат брака', 'Выдано', 0, null],
+    ['Возврат брака', 'Выдано', 1, null],
+    ['Возврат неверного вложения', 'Выдано', 0, null],
+    ['Возврат брака', 'Истек срок хранения на пвз', 2, null],
+    ['Возврат товара, который приехал по МП, продавцу', 'Выдано', 2, null],
+    ['Возврат брака', 'Отмена по задержке', 1, null]
+  ];
+  const now = Date.now(),
+    at = days => new Date(now + days * 864e5 + 3 * 3_600_000).toISOString().slice(0, 19);
   const rows = items.map(([returnType, returnStatus, office, expiresIn], index) => {
-    const active = !/выдано|истек|отмена/i.test(returnStatus), orderDt = addDays(period.to, -(2 + index * 2));
-    return { active, row: { sku: `20400000000${index}`, brand: 'Demo', nmId: 4210000 + index % 5, subjectName: 'Демо-товар', techSize: index % 3 ? 'M' : '0',
-      srid: `demo-return-${index}`, shkId: 5220000000 + index, stickerId: `5126800${index}`, orderId: 0, orderDt, returnType, returnStatus,
-      dstOfficeId: 100 + office, dstOfficeAddress: offices[office], kiz: index === 2 ? '0102900000376311210DEMO' : null,
-      readyToReturnDt: /Готов|Выдано|Истек/.test(returnStatus) ? at(-(index + 1)) : null, expiredDt: expiresIn != null ? at(expiresIn) : null,
-      completedDt: returnStatus === 'Выдано' ? at(-index) : null } };
+    const active = !/выдано|истек|отмена/i.test(returnStatus),
+      orderDt = addDays(period.to, -(2 + index * 2));
+    return {
+      active,
+      row: {
+        sku: `20400000000${index}`,
+        brand: 'Demo',
+        nmId: 4210000 + (index % 5),
+        subjectName: 'Демо-товар',
+        techSize: index % 3 ? 'M' : '0',
+        srid: `demo-return-${index}`,
+        shkId: 5220000000 + index,
+        stickerId: `5126800${index}`,
+        orderId: 0,
+        orderDt,
+        returnType,
+        returnStatus,
+        dstOfficeId: 100 + office,
+        dstOfficeAddress: offices[office],
+        kiz: index === 2 ? '0102900000376311210DEMO' : null,
+        readyToReturnDt: /Готов|Выдано|Истек/.test(returnStatus) ? at(-(index + 1)) : null,
+        expiredDt: expiresIn != null ? at(expiresIn) : null,
+        completedDt: returnStatus === 'Выдано' ? at(-index) : null
+      }
+    };
   });
   return { active: rows.filter(x => x.active).map(x => x.row), archive: rows.filter(x => !x.active).map(x => x.row) };
 }
 async function itemReturns(id, from, to) {
-  const period = itemReturnsPeriod(from, to), activeWindow = { from: addDays(moscowDate(), -(ITEM_RETURNS_ACTIVE_DAYS - 1)), to: moscowDate() };
+  const period = itemReturnsPeriod(from, to),
+    activeWindow = { from: addDays(moscowDate(), -(ITEM_RETURNS_ACTIVE_DAYS - 1)), to: moscowDate() };
   const pack = (active, archive, cards, demo) => {
-    const archived = normalizeItemReturns(archive, cards, false), archivedIds = new Set(archived.map(item => item.id));
+    const archived = normalizeItemReturns(archive, cards, false),
+      archivedIds = new Set(archived.map(item => item.id));
     // Возврат, который успели выдать между запросами, может попасть в оба списка — оставляем архивную запись.
-    return { demo, period, activeWindow, active: normalizeItemReturns(active, cards, true).filter(item => !archivedIds.has(item.id)), archive: archived, fetchedAt: new Date().toISOString() };
+    return {
+      demo,
+      period,
+      activeWindow,
+      active: normalizeItemReturns(active, cards, true).filter(item => !archivedIds.has(item.id)),
+      archive: archived,
+      fetchedAt: new Date().toISOString()
+    };
   };
-  if (id === 'demo' || !cabinets().length) { const demo = demoItemReturns(period); return pack(demo.active, demo.archive, [], true); }
-  const token = tokenFor(id), active = [], archive = [];
-  for (const chunk of historyChunks(activeWindow)) active.push(...await itemReturnsChunk(id, token, 'active', chunk));
-  for (const chunk of historyChunks(period)) archive.push(...await itemReturnsChunk(id, token, 'archive', chunk));
+  if (id === 'demo' || !cabinets().length) {
+    const demo = demoItemReturns(period);
+    return pack(demo.active, demo.archive, [], true);
+  }
+  const token = tokenFor(id),
+    active = [],
+    archive = [];
+  for (const chunk of historyChunks(activeWindow)) active.push(...(await itemReturnsChunk(id, token, 'active', chunk)));
+  for (const chunk of historyChunks(period)) archive.push(...(await itemReturnsChunk(id, token, 'archive', chunk)));
   const cards = await productCards(id, token).catch(() => []);
   return pack(active, archive, cards, false);
 }
@@ -3841,25 +6105,39 @@ const ORDER_FEED_INTERVAL = 61_000;
 const orderFeedAttempts = new Map();
 async function orderFeedMonth(id, token) {
   const today = moscowDate();
-  return cachedAnalytics(`order-feed-31:${id}`, async () => {
-    const wait = ORDER_FEED_INTERVAL - (Date.now() - (orderFeedAttempts.get(id) || 0));
-    if (wait > 0) throw apiError(429, `WB отдаёт ленту заказов не чаще 1 раза в минуту — повторите через ${Math.ceil(wait / 1000)} сек`);
-    orderFeedAttempts.set(id, Date.now());
-    try {
-      const feed = await wbRequest(token, 'https://seller-analytics-api.wildberries.ru/api/analytics/v1/order-feed', { method: 'POST', body: {
-        // Без пагинации WB отдаёт только 50 последних событий, поэтому запрашиваем максимум за один раз.
-        selectedPeriod: { start: `${addDays(today, -30)}T00:00:00Z`, end: `${today}T23:59:59Z` }, pagination: { limit: ORDER_FEED_LIMIT } } });
-      return { feed, fetchedAt: new Date().toISOString() };
-    } catch (error) {
-      if (error.status === 429) throw apiError(429, `WB ограничил частоту запросов ленты заказов (1 в минуту) — повторите через ${error.retryAfter || 60} сек`);
-      throw error;
-    }
-  }, 90_000);
+  return cachedAnalytics(
+    `order-feed-31:${id}`,
+    async () => {
+      const wait = ORDER_FEED_INTERVAL - (Date.now() - (orderFeedAttempts.get(id) || 0));
+      if (wait > 0) throw apiError(429, `WB отдаёт ленту заказов не чаще 1 раза в минуту — повторите через ${Math.ceil(wait / 1000)} сек`);
+      orderFeedAttempts.set(id, Date.now());
+      try {
+        const feed = await wbRequest(token, 'https://seller-analytics-api.wildberries.ru/api/analytics/v1/order-feed', {
+          method: 'POST',
+          body: {
+            // Без пагинации WB отдаёт только 50 последних событий, поэтому запрашиваем максимум за один раз.
+            selectedPeriod: { start: `${addDays(today, -30)}T00:00:00Z`, end: `${today}T23:59:59Z` },
+            pagination: { limit: ORDER_FEED_LIMIT }
+          }
+        });
+        return { feed, fetchedAt: new Date().toISOString() };
+      } catch (error) {
+        if (error.status === 429)
+          throw apiError(429, `WB ограничил частоту запросов ленты заказов (1 в минуту) — повторите через ${error.retryAfter || 60} сек`);
+        throw error;
+      }
+    },
+    90_000
+  );
 }
 // Период списка заказов — по времени текущего статуса события, как фильтрует сам WB.
 function orderFeedPeriod(feed, from, to) {
-  const start = Date.parse(`${from}T00:00:00Z`), end = Date.parse(`${to}T23:59:59Z`);
-  const orders = (feed?.data?.orders || []).filter(order => { const at = Date.parse(order.updatedAt || order.createdAt); return at >= start && at <= end; });
+  const start = Date.parse(`${from}T00:00:00Z`),
+    end = Date.parse(`${to}T23:59:59Z`);
+  const orders = (feed?.data?.orders || []).filter(order => {
+    const at = Date.parse(order.updatedAt || order.createdAt);
+    return at >= start && at <= end;
+  });
   return { ...feed, data: { ...(feed?.data || {}), orders } };
 }
 
@@ -3879,13 +6157,18 @@ function summarizeHourlyOrders(orders = [], today, nowMinutes, offsetHours = HOU
   const place = time => {
     const at = new Date(time);
     if (Number.isNaN(at.getTime())) return null;
-    const local = new Date(at.getTime() + offsetHours * 3_600_000), day = days.get(local.toISOString().slice(0, 10));
+    const local = new Date(at.getTime() + offsetHours * 3_600_000),
+      day = days.get(local.toISOString().slice(0, 10));
     return day ? { day, hour: local.getUTCHours(), beforeNow: local.getUTCHours() * 60 + local.getUTCMinutes() <= nowMinutes } : null;
   };
   const add = (slot, countKey, sumKey, price) => {
     if (!slot) return;
-    slot.day.hours[slot.hour][countKey] += 1; slot.day.hours[slot.hour][sumKey] += price;
-    if (slot.beforeNow) { slot.day.byNow[countKey] += 1; slot.day.byNow[sumKey] += price; }
+    slot.day.hours[slot.hour][countKey] += 1;
+    slot.day.hours[slot.hour][sumKey] += price;
+    if (slot.beforeNow) {
+      slot.day.byNow[countKey] += 1;
+      slot.day.byNow[sumKey] += price;
+    }
   };
   const seen = new Set();
   for (const order of orders) {
@@ -3904,52 +6187,100 @@ function demoHourlyOrders(today, nowMinutes) {
     const date = addDays(today, -back);
     for (let hour = 0; hour < 24; hour++) {
       // Вечерний пик и ночной провал, как у типичного магазина.
-      const count = Math.max(0, Math.round([0, 0, 0, 0, 0, 0, 1, 1, 2, 2, 3, 3, 3, 3, 3, 3, 3, 4, 4, 5, 6, 6, 4, 2][hour] * (1 + ((back * 7 + hour * 3) % 5 - 2) * 0.15)));
+      const count = Math.max(
+        0,
+        Math.round(
+          [0, 0, 0, 0, 0, 0, 1, 1, 2, 2, 3, 3, 3, 3, 3, 3, 3, 4, 4, 5, 6, 6, 4, 2][hour] * (1 + (((back * 7 + hour * 3) % 5) - 2) * 0.15)
+        )
+      );
       for (let n = 0; n < count; n++) {
-        const at = new Date(Date.parse(`${date}T${String(hour).padStart(2, '0')}:${String((n * 13) % 60).padStart(2, '0')}:00Z`) - HOURLY_TIMEZONE.offsetHours * 3_600_000);
-        if (back === 0 && hour * 60 + (n * 13) % 60 > nowMinutes) continue;
+        const at = new Date(
+          Date.parse(`${date}T${String(hour).padStart(2, '0')}:${String((n * 13) % 60).padStart(2, '0')}:00Z`) -
+            HOURLY_TIMEZONE.offsetHours * 3_600_000
+        );
+        if (back === 0 && hour * 60 + ((n * 13) % 60) > nowMinutes) continue;
         // Часть заказов выкуплена примерно через сутки — в часы, когда забирают из пунктов выдачи.
-        const bought = back > 0 && (n + hour) % 3 !== 0, boughtAt = new Date(at.getTime() + (20 + (hour * 5 + n) % 10) * 3_600_000);
-        orders.push({ id: `demo-${date}-${hour}-${n}`, orderedAt: at.toISOString(), price: (900 + ((hour + n) % 4) * 350) * 100,
-          ...(bought && boughtAt.getTime() <= Date.now() ? { rawStatus: 'buyout', createdAt: boughtAt.toISOString() } : { createdAt: at.toISOString() }) });
+        const bought = back > 0 && (n + hour) % 3 !== 0,
+          boughtAt = new Date(at.getTime() + (20 + ((hour * 5 + n) % 10)) * 3_600_000);
+        orders.push({
+          id: `demo-${date}-${hour}-${n}`,
+          orderedAt: at.toISOString(),
+          price: (900 + ((hour + n) % 4) * 350) * 100,
+          ...(bought && boughtAt.getTime() <= Date.now()
+            ? { rawStatus: 'buyout', createdAt: boughtAt.toISOString() }
+            : { createdAt: at.toISOString() })
+        });
       }
     }
   }
   return orders;
 }
 async function hourlyOrders(id) {
-  const now = new Date(Date.now() + HOURLY_TIMEZONE.offsetHours * 3_600_000), today = now.toISOString().slice(0, 10), nowMinutes = now.getUTCHours() * 60 + now.getUTCMinutes();
+  const now = new Date(Date.now() + HOURLY_TIMEZONE.offsetHours * 3_600_000),
+    today = now.toISOString().slice(0, 10),
+    nowMinutes = now.getUTCHours() * 60 + now.getUTCMinutes();
   const meta = { today, now: { hour: now.getUTCHours(), minute: now.getUTCMinutes() }, currency: 'RUB', timezone: HOURLY_TIMEZONE };
-  if (id === 'demo' || !cabinets().length) return { demo: true, ...meta, days: summarizeHourlyOrders(demoHourlyOrders(today, nowMinutes), today, nowMinutes) };
+  if (id === 'demo' || !cabinets().length)
+    return { demo: true, ...meta, days: summarizeHourlyOrders(demoHourlyOrders(today, nowMinutes), today, nowMinutes) };
   // Та же лента за 31 день, что и у списка заказов; лишнее отсекается по времени оформления.
   const { feed, fetchedAt } = await orderFeedMonth(id, tokenFor(id));
-  return { demo: false, ...meta, fetchedAt, currency: feed?.data?.currency || 'RUB', days: summarizeHourlyOrders(normalizeOrderFeed(feed), today, nowMinutes),
-    warnings: (feed?.data?.orders || []).length >= ORDER_FEED_LIMIT ? [`WB отдал только первые ${ORDER_FEED_LIMIT} событий за 31 день — часть заказов могла не попасть`] : [] };
+  return {
+    demo: false,
+    ...meta,
+    fetchedAt,
+    currency: feed?.data?.currency || 'RUB',
+    days: summarizeHourlyOrders(normalizeOrderFeed(feed), today, nowMinutes),
+    warnings:
+      (feed?.data?.orders || []).length >= ORDER_FEED_LIMIT
+        ? [`WB отдал только первые ${ORDER_FEED_LIMIT} событий за 31 день — часть заказов могла не попасть`]
+        : []
+  };
 }
 
 async function dashboard(id, from, to) {
   if (id === 'demo' || !cabinets().length) return demoDashboard();
-  const token = tokenFor(id); const warnings = [];
+  const token = tokenFor(id);
+  const warnings = [];
   const safeFrom = /^\d{4}-\d{2}-\d{2}$/.test(from || '') ? from : dateDaysAgo(6);
   const safeTo = /^\d{4}-\d{2}-\d{2}$/.test(to || '') ? to : dateDaysAgo(0);
   const jobs = [
-    wbRequest(token, 'https://marketplace-api.wildberries.ru/api/v3/orders/new').catch(e => (warnings.push(`FBS: ${e.message}`), { orders: [] })),
-    orderFeedMonth(id, token).then(({ feed }) => feed).catch(e => (warnings.push(`Лента заказов: ${e.message}`), { data: { orders: [] } })),
-    productCards(id, token)
-      .catch(e => (warnings.push(`Карточки товаров: ${e.message}`), [])),
-    cachedAnalytics(`balance:${id}`, () => wbRequest(token, 'https://finance-api.wildberries.ru/api/v1/account/balance'), 60_000)
-      .catch(e => (warnings.push(`Баланс: ${e.message}`), null))
+    wbRequest(token, 'https://marketplace-api.wildberries.ru/api/v3/orders/new').catch(
+      e => (warnings.push(`FBS: ${e.message}`), { orders: [] })
+    ),
+    orderFeedMonth(id, token)
+      .then(({ feed }) => feed)
+      .catch(e => (warnings.push(`Лента заказов: ${e.message}`), { data: { orders: [] } })),
+    productCards(id, token).catch(e => (warnings.push(`Карточки товаров: ${e.message}`), [])),
+    cachedAnalytics(`balance:${id}`, () => wbRequest(token, 'https://finance-api.wildberries.ru/api/v1/account/balance'), 60_000).catch(
+      e => (warnings.push(`Баланс: ${e.message}`), null)
+    )
   ];
   const [fbs, orderFeed, cards, balance] = await Promise.all(jobs);
   if ((orderFeed?.data?.orders || []).length >= ORDER_FEED_LIMIT) {
     warnings.push(`Лента заказов: WB отдал только первые ${ORDER_FEED_LIMIT} событий за 31 день — часть заказов могла не попасть`);
   }
-  if (safeFrom < addDays(moscowDate(), -30)) warnings.push('Лента заказов: WB отдаёт события только за последние 31 день — более ранних заказов в списке нет');
-  const balanceHistory = balance ? saveBalanceSnapshot(id, balance) : (readBalanceHistory()[id] || []);
+  if (safeFrom < addDays(moscowDate(), -30))
+    warnings.push('Лента заказов: WB отдаёт события только за последние 31 день — более ранних заказов в списке нет');
+  const balanceHistory = balance ? saveBalanceSnapshot(id, balance) : readBalanceHistory()[id] || [];
   // Новые FBS-задания в строки ленты не входят — для счётчика «Новые FBS» их число отдаётся отдельно.
-  return { demo: false, orders: enrichOrders(normalizeOrders(fbs, orderFeedPeriod(orderFeed, safeFrom, safeTo)), cards), fbsNew: (fbs?.orders || []).length, funnel: extractFunnel({ data: { products: [] } }), funnelProducts: [], funnelHistory: [], funnelGroupedHistory: [],
-    balance: balance ? { currency: balance.currency || 'RUB', current: Number(balance.current || 0),
-      forWithdraw: Number(balance.for_withdraw || 0), history: balanceHistory } : null, warnings };
+  return {
+    demo: false,
+    orders: enrichOrders(normalizeOrders(fbs, orderFeedPeriod(orderFeed, safeFrom, safeTo)), cards),
+    fbsNew: (fbs?.orders || []).length,
+    funnel: extractFunnel({ data: { products: [] } }),
+    funnelProducts: [],
+    funnelHistory: [],
+    funnelGroupedHistory: [],
+    balance: balance
+      ? {
+          currency: balance.currency || 'RUB',
+          current: Number(balance.current || 0),
+          forWithdraw: Number(balance.for_withdraw || 0),
+          history: balanceHistory
+        }
+      : null,
+    warnings
+  };
 }
 
 function stickerType(value) {
@@ -3964,7 +6295,8 @@ function chunkOrders(orders = [], size = ORDER_STICKER_CHUNK) {
 }
 
 function demoStickerFile(title, subtitle) {
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="219" height="151" viewBox="0 0 219 151">` +
+  const svg =
+    `<svg xmlns="http://www.w3.org/2000/svg" width="219" height="151" viewBox="0 0 219 151">` +
     `<rect width="219" height="151" fill="#ffffff" stroke="#1b1b1f"/>` +
     `<text x="14" y="36" font-family="Arial, sans-serif" font-size="17" font-weight="bold">${title}</text>` +
     `<text x="14" y="58" font-family="Arial, sans-serif" font-size="11">${subtitle}</text>` +
@@ -3975,89 +6307,157 @@ function demoStickerFile(title, subtitle) {
 
 function normalizeNewOrders(orders = [], cards = []) {
   const byChrt = stockCardIndex(cards);
-  const rows = orders.map(order => {
-    const meta = byChrt.get(String(order.chrtId)) || {};
-    return {
-      id: Number(order.id) || 0,
-      rid: order.rid || '',
-      orderUid: order.orderUid || '',
-      nmId: Number(order.nmId || meta.nmId || 0) || '',
-      chrtId: Number(order.chrtId || 0) || '',
-      vendorCode: order.article || meta.vendorCode || '',
-      name: meta.name || `Товар ${order.nmId || order.chrtId || ''}`,
-      category: meta.category || 'Без категории',
-      size: meta.size || '—',
-      sku: (Array.isArray(order.skus) ? order.skus[0] : '') || meta.sku || '',
-      photo: meta.photo || '',
-      warehouseId: order.warehouseId || '',
-      supplyId: order.supplyId || '',
-      createdAt: order.createdAt || '',
-      price: Number(order.convertedPrice ?? order.price ?? 0),
-      currencyCode: Number(order.convertedCurrencyCode || order.currencyCode || 643),
-      cargoType: Number(order.cargoType || 0),
-      cargoTypeName: CARGO_TYPES[Number(order.cargoType || 0)] || 'Не указан',
-      isZeroOrder: Boolean(order.isZeroOrder),
-      isLargeVolume: Boolean(order.isLargeVolume),
-      deliveryType: order.deliveryType || 'fbs'
-    };
-  }).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt) || b.id - a.id);
+  const rows = orders
+    .map(order => {
+      const meta = byChrt.get(String(order.chrtId)) || {};
+      return {
+        id: Number(order.id) || 0,
+        rid: order.rid || '',
+        orderUid: order.orderUid || '',
+        nmId: Number(order.nmId || meta.nmId || 0) || '',
+        chrtId: Number(order.chrtId || 0) || '',
+        vendorCode: order.article || meta.vendorCode || '',
+        name: meta.name || `Товар ${order.nmId || order.chrtId || ''}`,
+        category: meta.category || 'Без категории',
+        size: meta.size || '—',
+        sku: (Array.isArray(order.skus) ? order.skus[0] : '') || meta.sku || '',
+        photo: meta.photo || '',
+        warehouseId: order.warehouseId || '',
+        supplyId: order.supplyId || '',
+        createdAt: order.createdAt || '',
+        price: Number(order.convertedPrice ?? order.price ?? 0),
+        currencyCode: Number(order.convertedCurrencyCode || order.currencyCode || 643),
+        cargoType: Number(order.cargoType || 0),
+        cargoTypeName: CARGO_TYPES[Number(order.cargoType || 0)] || 'Не указан',
+        isZeroOrder: Boolean(order.isZeroOrder),
+        isLargeVolume: Boolean(order.isLargeVolume),
+        deliveryType: order.deliveryType || 'fbs'
+      };
+    })
+    .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt) || b.id - a.id);
   const categories = [...new Set(rows.map(row => row.category).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'ru'));
-  const warehouses = [...new Map(rows.filter(row => row.warehouseId)
-    .map(row => [String(row.warehouseId), { id: row.warehouseId, name: `Склад ${row.warehouseId}` }])).values()]
-    .sort((a, b) => String(a.name).localeCompare(String(b.name), 'ru'));
-  return { rows, categories, warehouses,
-    totals: { orders: rows.length, products: new Set(rows.map(row => String(row.nmId || row.chrtId))).size,
-      amount: rows.reduce((sum, row) => sum + row.price, 0), assembled: rows.filter(row => row.supplyId).length,
-      free: rows.filter(row => !row.supplyId).length } };
+  const warehouses = [
+    ...new Map(
+      rows.filter(row => row.warehouseId).map(row => [String(row.warehouseId), { id: row.warehouseId, name: `Склад ${row.warehouseId}` }])
+    ).values()
+  ].sort((a, b) => String(a.name).localeCompare(String(b.name), 'ru'));
+  return {
+    rows,
+    categories,
+    warehouses,
+    totals: {
+      orders: rows.length,
+      products: new Set(rows.map(row => String(row.nmId || row.chrtId))).size,
+      amount: rows.reduce((sum, row) => sum + row.price, 0),
+      assembled: rows.filter(row => row.supplyId).length,
+      free: rows.filter(row => !row.supplyId).length
+    }
+  };
 }
 
 function demoNewOrders() {
   const now = Date.now();
   const cards = [
-    { nmID: 100001, vendorCode: 'TSHIRT-BLACK', title: 'Футболка базовая', subjectName: 'Одежда', sizes: [{ chrtID: 501, techSize: 'M', skus: ['460000000001'] }] },
-    { nmID: 100002, vendorCode: 'MUG-THERMO', title: 'Термокружка', subjectName: 'Посуда', sizes: [{ chrtID: 502, techSize: '500 мл', skus: ['460000000002'] }] },
-    { nmID: 100003, vendorCode: 'HOODIE-GREEN', title: 'Худи Oversize', subjectName: 'Одежда', sizes: [{ chrtID: 503, techSize: 'L', skus: ['460000000003'] }] }
+    {
+      nmID: 100001,
+      vendorCode: 'TSHIRT-BLACK',
+      title: 'Футболка базовая',
+      subjectName: 'Одежда',
+      sizes: [{ chrtID: 501, techSize: 'M', skus: ['460000000001'] }]
+    },
+    {
+      nmID: 100002,
+      vendorCode: 'MUG-THERMO',
+      title: 'Термокружка',
+      subjectName: 'Посуда',
+      sizes: [{ chrtID: 502, techSize: '500 мл', skus: ['460000000002'] }]
+    },
+    {
+      nmID: 100003,
+      vendorCode: 'HOODIE-GREEN',
+      title: 'Худи Oversize',
+      subjectName: 'Одежда',
+      sizes: [{ chrtID: 503, techSize: 'L', skus: ['460000000003'] }]
+    }
   ];
   const orders = Array.from({ length: 7 }, (_, index) => ({
-    id: 9100500 + index, rid: `rid-demo-${index}`, orderUid: `uid-demo-${index}`,
-    nmId: [100001, 100002, 100003][index % 3], chrtId: [501, 502, 503][index % 3],
-    article: ['TSHIRT-BLACK', 'MUG-THERMO', 'HOODIE-GREEN'][index % 3], skus: [`46000000000${(index % 3) + 1}`],
-    warehouseId: index % 2 ? 'demo-2' : 'demo-1', supplyId: index === 0 ? 'WB-GI-DEMO-1' : '',
-    createdAt: new Date(now - index * 2_700_000).toISOString(), price: 129900 + index * 15000,
-    convertedPrice: 129900 + index * 15000, currencyCode: 643, convertedCurrencyCode: 643, cargoType: 1
+    id: 9100500 + index,
+    rid: `rid-demo-${index}`,
+    orderUid: `uid-demo-${index}`,
+    nmId: [100001, 100002, 100003][index % 3],
+    chrtId: [501, 502, 503][index % 3],
+    article: ['TSHIRT-BLACK', 'MUG-THERMO', 'HOODIE-GREEN'][index % 3],
+    skus: [`46000000000${(index % 3) + 1}`],
+    warehouseId: index % 2 ? 'demo-2' : 'demo-1',
+    supplyId: index === 0 ? 'WB-GI-DEMO-1' : '',
+    createdAt: new Date(now - index * 2_700_000).toISOString(),
+    price: 129900 + index * 15000,
+    convertedPrice: 129900 + index * 15000,
+    currencyCode: 643,
+    convertedCurrencyCode: 643,
+    cargoType: 1
   }));
   return { demo: true, ...normalizeNewOrders(orders, cards), warnings: [] };
 }
 
 async function newFbsOrders(id) {
   if (id === 'demo' || !cabinets().length) return demoNewOrders();
-  const token = tokenFor(id); const warnings = [];
+  const token = tokenFor(id);
+  const warnings = [];
   const response = await wbRequest(token, `${MARKETPLACE_API}/api/v3/orders/new`);
   const orders = Array.isArray(response?.orders) ? response.orders : [];
-  const cards = await productCards(id, token)
-    .catch(error => (warnings.push(`Карточки товаров: ${error.message}`), []));
+  const cards = await productCards(id, token).catch(error => (warnings.push(`Карточки товаров: ${error.message}`), []));
   return { demo: false, ...normalizeNewOrders(orders, cards), warnings };
 }
 
 function summarizeSupplies(supplies = []) {
-  const rows = supplies.map(supply => ({
-    id: supply.id || '', name: supply.name || 'Без названия', done: Boolean(supply.done),
-    createdAt: supply.createdAt || '', closedAt: supply.closedAt || '', scanDt: supply.scanDt || '',
-    cargoType: Number(supply.cargoType || 0), cargoTypeName: CARGO_TYPES[Number(supply.cargoType || 0)] || 'Не указан'
-  })).sort((a, b) => Number(a.done) - Number(b.done) || new Date(b.createdAt) - new Date(a.createdAt));
-  return { rows, totals: { supplies: rows.length, open: rows.filter(row => !row.done).length, closed: rows.filter(row => row.done).length } };
+  const rows = supplies
+    .map(supply => ({
+      id: supply.id || '',
+      name: supply.name || 'Без названия',
+      done: Boolean(supply.done),
+      createdAt: supply.createdAt || '',
+      closedAt: supply.closedAt || '',
+      scanDt: supply.scanDt || '',
+      cargoType: Number(supply.cargoType || 0),
+      cargoTypeName: CARGO_TYPES[Number(supply.cargoType || 0)] || 'Не указан'
+    }))
+    .sort((a, b) => Number(a.done) - Number(b.done) || new Date(b.createdAt) - new Date(a.createdAt));
+  return {
+    rows,
+    totals: { supplies: rows.length, open: rows.filter(row => !row.done).length, closed: rows.filter(row => row.done).length }
+  };
 }
 
 function demoSupplies() {
-  return { demo: true, ...summarizeSupplies([
-    { id: 'WB-GI-DEMO-1', name: 'Поставка на сегодня', done: false, createdAt: new Date(Date.now() - 3_600_000).toISOString(), cargoType: 1 },
-    { id: 'WB-GI-DEMO-2', name: 'Вчерашняя отгрузка', done: true, createdAt: new Date(Date.now() - 90_000_000).toISOString(), closedAt: new Date(Date.now() - 86_400_000).toISOString(), cargoType: 1 }
-  ]) };
+  return {
+    demo: true,
+    ...summarizeSupplies([
+      {
+        id: 'WB-GI-DEMO-1',
+        name: 'Поставка на сегодня',
+        done: false,
+        createdAt: new Date(Date.now() - 3_600_000).toISOString(),
+        cargoType: 1
+      },
+      {
+        id: 'WB-GI-DEMO-2',
+        name: 'Вчерашняя отгрузка',
+        done: true,
+        createdAt: new Date(Date.now() - 90_000_000).toISOString(),
+        closedAt: new Date(Date.now() - 86_400_000).toISOString(),
+        cargoType: 1
+      }
+    ])
+  };
 }
 
 async function supplyList(id) {
   if (id === 'demo' || !cabinets().length) return demoSupplies();
-  const token = tokenFor(id); const limit = 1000; const collected = []; let next = 0;
+  const token = tokenFor(id);
+  const limit = 1000;
+  const collected = [];
+  let next = 0;
   for (let page = 0; page < 20; page++) {
     const response = await wbRequest(token, `${MARKETPLACE_API}/api/v3/supplies?limit=${limit}&next=${next}`);
     const batch = Array.isArray(response?.supplies) ? response.supplies : [];
@@ -4069,10 +6469,11 @@ async function supplyList(id) {
 }
 
 function normalizeTrbxes(trbxes = []) {
-  return trbxes.map(trbx => {
-    const list = Array.isArray(trbx.orderIds) ? trbx.orderIds : Array.isArray(trbx.orders) ? trbx.orders : [];
-    return { id: trbx.id || '', orderIds: list.map(item => Number(item?.id ?? item)).filter(Number.isInteger) };
-  })
+  return trbxes
+    .map(trbx => {
+      const list = Array.isArray(trbx.orderIds) ? trbx.orderIds : Array.isArray(trbx.orders) ? trbx.orders : [];
+      return { id: trbx.id || '', orderIds: list.map(item => Number(item?.id ?? item)).filter(Number.isInteger) };
+    })
     .sort((a, b) => String(a.id).localeCompare(String(b.id), 'ru', { numeric: true }));
 }
 
@@ -4081,29 +6482,50 @@ async function supplyDetails(id, supplyId) {
   if (id === 'demo' || !cabinets().length) {
     const supply = demoSupplies().rows.find(row => row.id === supplyId) || { id: supplyId, name: 'Демо-поставка', done: false };
     const orders = demoNewOrders().rows.filter(row => row.supplyId === supplyId);
-    return { demo: true, supply, orders, trbxes: normalizeTrbxes([{ id: 'WB-TRBX-DEMO-1', orderIds: orders.map(order => order.id) }]), warnings: [] };
+    return {
+      demo: true,
+      supply,
+      orders,
+      trbxes: normalizeTrbxes([{ id: 'WB-TRBX-DEMO-1', orderIds: orders.map(order => order.id) }]),
+      warnings: []
+    };
   }
-  const token = tokenFor(id); const warnings = [];
+  const token = tokenFor(id);
+  const warnings = [];
   const supply = await wbRequest(token, `${MARKETPLACE_API}/api/v3/supplies/${encodeURIComponent(supplyId)}`);
   // Старый метод списка заданий поставки WB удалил: теперь поставка отдаёт только номера заданий,
   // а сами задания ищутся в списке сборочных заданий за последние 30 дней.
   const orderIds = await wbRequest(token, `${MARKETPLACE_API}/api/marketplace/v3/supplies/${encodeURIComponent(supplyId)}/order-ids`)
     .then(response => [...new Set((Array.isArray(response?.orderIds) ? response.orderIds : []).map(Number).filter(Number.isInteger))])
     .catch(error => (warnings.push(`Задания поставки: ${error.message}`), []));
-  const foundOrders = orderIds.length ? await ordersByIds(token, orderIds).catch(error => (warnings.push(`Данные заданий: ${error.message}`), [])) : [];
-  const trbxResponse = await wbRequest(token, `${MARKETPLACE_API}/api/v3/supplies/${encodeURIComponent(supplyId)}/trbx`)
-    .catch(error => (warnings.push(`Грузоместа: ${error.message}`), { trbxes: [] }));
+  const foundOrders = orderIds.length
+    ? await ordersByIds(token, orderIds).catch(error => (warnings.push(`Данные заданий: ${error.message}`), []))
+    : [];
+  const trbxResponse = await wbRequest(token, `${MARKETPLACE_API}/api/v3/supplies/${encodeURIComponent(supplyId)}/trbx`).catch(
+    error => (warnings.push(`Грузоместа: ${error.message}`), { trbxes: [] })
+  );
   const cards = await productCards(id, token).catch(() => []);
   const byId = new Map(foundOrders.map(order => [String(order.id), order]));
-  const orders = normalizeNewOrders(orderIds.map(orderId => byId.get(String(orderId)) || { id: orderId, supplyId }), cards).rows
-    .map(row => byId.has(String(row.id)) ? row : { ...row, name: `Задание ${row.id}`, detailsMissing: true });
-  if (orderIds.length > foundOrders.length) warnings.push(`Для ${orderIds.length - foundOrders.length} заданий WB не вернул данные: они старше 30 дней. Стикеры для них скачать можно.`);
-  return { demo: false, supply: summarizeSupplies([supply]).rows[0], orders,
-    trbxes: normalizeTrbxes(Array.isArray(trbxResponse?.trbxes) ? trbxResponse.trbxes : []), warnings };
+  const orders = normalizeNewOrders(
+    orderIds.map(orderId => byId.get(String(orderId)) || { id: orderId, supplyId }),
+    cards
+  ).rows.map(row => (byId.has(String(row.id)) ? row : { ...row, name: `Задание ${row.id}`, detailsMissing: true }));
+  if (orderIds.length > foundOrders.length)
+    warnings.push(
+      `Для ${orderIds.length - foundOrders.length} заданий WB не вернул данные: они старше 30 дней. Стикеры для них скачать можно.`
+    );
+  return {
+    demo: false,
+    supply: summarizeSupplies([supply]).rows[0],
+    orders,
+    trbxes: normalizeTrbxes(Array.isArray(trbxResponse?.trbxes) ? trbxResponse.trbxes : []),
+    warnings
+  };
 }
 
 async function ordersByIds(token, ids = []) {
-  const wanted = new Set(ids.map(String)); const found = [];
+  const wanted = new Set(ids.map(String));
+  const found = [];
   for (let next = 0, page = 0; wanted.size && page < ORDERS_LOOKUP_MAX_PAGES; page++) {
     if (page) await wait(250);
     const response = await wbRequest(token, `${MARKETPLACE_API}/api/v3/orders?limit=1000&next=${next}`);
@@ -4117,7 +6539,9 @@ async function ordersByIds(token, ids = []) {
 
 async function createSupply(body) {
   const token = tokenFor(body.cabinet);
-  const name = String(body.name || '').trim().slice(0, 128);
+  const name = String(body.name || '')
+    .trim()
+    .slice(0, 128);
   if (!name) throw apiError(400, 'Введите название поставки');
   const response = await wbRequest(token, `${MARKETPLACE_API}/api/v3/supplies`, { method: 'POST', body: { name } });
   return { ok: true, id: response?.id || '', name };
@@ -4146,14 +6570,20 @@ async function assembleOrders(body) {
   const orders = [...new Set((body.orders || []).map(Number).filter(Number.isInteger))];
   if (!orders.length) throw apiError(400, 'Выберите хотя бы одно сборочное задание');
   // WB принимает до 100 заданий за один запрос; старый метод по одному заданию удалён.
-  const failed = []; let added = 0;
+  const failed = [];
+  let added = 0;
   for (let offset = 0; offset < orders.length; offset += SUPPLY_ORDERS_CHUNK) {
     if (offset) await wait(250);
     const chunk = orders.slice(offset, offset + SUPPLY_ORDERS_CHUNK);
     try {
-      await wbRequest(token, `${MARKETPLACE_API}/api/marketplace/v3/supplies/${encodeURIComponent(supplyId)}/orders`, { method: 'PATCH', body: { orders: chunk } });
+      await wbRequest(token, `${MARKETPLACE_API}/api/marketplace/v3/supplies/${encodeURIComponent(supplyId)}/orders`, {
+        method: 'PATCH',
+        body: { orders: chunk }
+      });
       added += chunk.length;
-    } catch (error) { chunk.forEach(orderId => failed.push({ orderId, message: error.message })); }
+    } catch (error) {
+      chunk.forEach(orderId => failed.push({ orderId, message: error.message }));
+    }
   }
   if (!added) throw apiError(400, `Ни одно задание не добавлено. ${failed[0]?.message || ''}`.trim());
   return { ok: true, supplyId, created, added, failed };
@@ -4173,7 +6603,10 @@ async function createTrbx(body) {
   const amount = Number(body.amount);
   if (!body.supplyId) throw apiError(400, 'Не указана поставка');
   if (!Number.isInteger(amount) || amount < 1 || amount > 1000) throw apiError(400, 'Количество грузомест — целое число от 1 до 1000');
-  const response = await wbRequest(token, `${MARKETPLACE_API}/api/v3/supplies/${encodeURIComponent(body.supplyId)}/trbx`, { method: 'POST', body: { amount } });
+  const response = await wbRequest(token, `${MARKETPLACE_API}/api/v3/supplies/${encodeURIComponent(body.supplyId)}/trbx`, {
+    method: 'POST',
+    body: { amount }
+  });
   return { ok: true, trbxIds: Array.isArray(response?.trbxIds) ? response.trbxIds : [] };
 }
 
@@ -4181,7 +6614,10 @@ async function deleteTrbx(body) {
   const token = tokenFor(body.cabinet);
   const trbxIds = (Array.isArray(body.trbxIds) ? body.trbxIds : []).map(String).filter(Boolean);
   if (!body.supplyId || !trbxIds.length) throw apiError(400, 'Выберите грузоместа для удаления');
-  await wbRequest(token, `${MARKETPLACE_API}/api/v3/supplies/${encodeURIComponent(body.supplyId)}/trbx`, { method: 'DELETE', body: { trbxIds } });
+  await wbRequest(token, `${MARKETPLACE_API}/api/v3/supplies/${encodeURIComponent(body.supplyId)}/trbx`, {
+    method: 'DELETE',
+    body: { trbxIds }
+  });
   return { ok: true, removed: trbxIds.length };
 }
 
@@ -4190,7 +6626,11 @@ async function fillTrbx(body) {
   const orderIds = [...new Set((body.orders || []).map(Number).filter(Number.isInteger))];
   if (!body.supplyId || !body.trbxId) throw apiError(400, 'Не указано грузоместо');
   if (!orderIds.length) throw apiError(400, 'Выберите задания для грузоместа');
-  await wbRequest(token, `${MARKETPLACE_API}/api/v3/supplies/${encodeURIComponent(body.supplyId)}/trbx/${encodeURIComponent(body.trbxId)}`, { method: 'PATCH', body: { orderIds } });
+  await wbRequest(
+    token,
+    `${MARKETPLACE_API}/api/v3/supplies/${encodeURIComponent(body.supplyId)}/trbx/${encodeURIComponent(body.trbxId)}`,
+    { method: 'PATCH', body: { orderIds } }
+  );
   return { ok: true, trbxId: body.trbxId, added: orderIds.length };
 }
 
@@ -4202,7 +6642,11 @@ async function trbxStickers(body) {
     return { type: 'svg', stickers: trbxIds.map(trbxId => ({ trbxId, file: demoStickerFile(trbxId, 'QR-код грузоместа') })) };
   }
   const token = tokenFor(body.cabinet);
-  const data = await wbRequest(token, `${MARKETPLACE_API}/api/v3/supplies/${encodeURIComponent(body.supplyId)}/trbx/stickers?type=${type}`, { method: 'POST', body: { trbxIds } });
+  const data = await wbRequest(
+    token,
+    `${MARKETPLACE_API}/api/v3/supplies/${encodeURIComponent(body.supplyId)}/trbx/stickers?type=${type}`,
+    { method: 'POST', body: { trbxIds } }
+  );
   return { type, stickers: Array.isArray(data?.stickers) ? data.stickers : [] };
 }
 
@@ -4211,72 +6655,168 @@ async function orderStickers(body) {
   const chunks = chunkOrders(body.orders);
   if (!chunks.length) throw apiError(400, 'Выберите хотя бы одно сборочное задание');
   if (body.cabinet === 'demo' || !cabinets().length) {
-    return { type: 'svg', stickers: chunks.flat().map(orderId => ({ orderId, file: demoStickerFile(`Задание ${orderId}`, 'Стикер товара') })) };
+    return {
+      type: 'svg',
+      stickers: chunks.flat().map(orderId => ({ orderId, file: demoStickerFile(`Задание ${orderId}`, 'Стикер товара') }))
+    };
   }
-  const token = tokenFor(body.cabinet); const stickers = [];
+  const token = tokenFor(body.cabinet);
+  const stickers = [];
   for (const [index, chunk] of chunks.entries()) {
     if (index) await wait(400);
-    const data = await wbRequest(token, `${MARKETPLACE_API}/api/v3/orders/stickers?type=${type}&width=58&height=40`, { method: 'POST', body: { orders: chunk } });
+    const data = await wbRequest(token, `${MARKETPLACE_API}/api/v3/orders/stickers?type=${type}&width=58&height=40`, {
+      method: 'POST',
+      body: { orders: chunk }
+    });
     stickers.push(...(Array.isArray(data?.stickers) ? data.stickers : []));
   }
   return { type, stickers };
 }
 
 // Раздел «Карточки товаров» — отдельный модуль (content-cards.js), маршруты /api/card и /api/cards/*.
-const contentCards = require('./content-cards')({ wbRequest, tokenFor, cabinets, cachedAnalytics, analyticsCache, apiError, readJson, send, localPhoto, productCards, refreshProductCards, productCardsChanged, productCardsStatus, glueRatings });
+const contentCards = require('./content-cards')({
+  wbRequest,
+  tokenFor,
+  cabinets,
+  cachedAnalytics,
+  analyticsCache,
+  apiError,
+  readJson,
+  send,
+  localPhoto,
+  productCards,
+  refreshProductCards,
+  productCardsChanged,
+  productCardsStatus,
+  glueRatings
+});
 // Раздел «Сообщения» — отдельный модуль (communications.js), маршруты /api/messages/*. События чатов — в data/Chats
 // (для тестового сервера — WB_CHATS_DIR, чтобы не трогать копию на компьютере).
 const CHATS_DIR = process.env.WB_CHATS_DIR ? path.resolve(process.env.WB_CHATS_DIR) : path.join(ROOT, 'data', 'Chats');
-const communications = require('./communications')({ wbRequest, tokenFor, cabinets, cachedAnalytics, analyticsCache, apiError, readJson, send, chatsDir: CHATS_DIR });
+const communications = require('./communications')({
+  wbRequest,
+  tokenFor,
+  cabinets,
+  cachedAnalytics,
+  analyticsCache,
+  apiError,
+  readJson,
+  send,
+  chatsDir: CHATS_DIR
+});
 // Раздел «Цены Сималенда» — отдельный модуль (sima-land.js), маршруты /api/sima/*: раз в час загружает оптовые цены
 // Сималенда в отдельную Google Таблицу (google-sheets/sima-land) и держит копию их истории в data/Sima.
 const simaLand = require('./sima-land')({ send, apiError, readJson, root: ROOT });
 // Оптовые цены Lenardi из загруженного отчёта xlsx (lenardi.js), маршруты /api/lenardi.
 const lenardi = require('./lenardi')({ send, apiError, readJson, root: ROOT });
 // Раздел «Прибыль Сималенда» (sima-profit.js), маршрут /api/sima-profit: оптовые цены Сималенда и Lenardi против цен на WB.
-const simaProfit = require('./sima-profit')({ send, apiError, readJson, cabinets, tokenFor, wbRequest, cachedAnalytics, analyticsCache, productCards, loadPriceGoods, cardPhoto, simaLand, lenardi,
-  root: ROOT, pricesChanged: id => forgetList(`prices:${id}`) });
+const simaProfit = require('./sima-profit')({
+  send,
+  apiError,
+  readJson,
+  cabinets,
+  tokenFor,
+  wbRequest,
+  cachedAnalytics,
+  analyticsCache,
+  productCards,
+  loadPriceGoods,
+  cardPhoto,
+  simaLand,
+  lenardi,
+  root: ROOT,
+  pricesChanged: id => forgetList(`prices:${id}`)
+});
 
 async function handleApi(req, res, url) {
   if (req.method === 'GET' && url.pathname.startsWith('/api/photo/')) return servePhoto(res, url);
-  if (url.pathname.startsWith('/api/card') && await contentCards.handle(req, res, url)) return;
-  if (url.pathname.startsWith('/api/messages/') && await communications.handle(req, res, url)) return;
-  if (url.pathname.startsWith('/api/sima/') && await simaLand.handle(req, res, url)) return;
-  if (url.pathname.startsWith('/api/sima-profit') && await simaProfit.handle(req, res, url)) return;
-  if (url.pathname.startsWith('/api/lenardi') && await lenardi.handle(req, res, url)) return;
-  if (req.method === 'GET' && url.pathname === '/api/cabinets') return send(res, 200, { cabinets: publicCabinets(), demo: !cabinets().length });
+  if (url.pathname.startsWith('/api/card') && (await contentCards.handle(req, res, url))) return;
+  if (url.pathname.startsWith('/api/messages/') && (await communications.handle(req, res, url))) return;
+  if (url.pathname.startsWith('/api/sima/') && (await simaLand.handle(req, res, url))) return;
+  if (url.pathname.startsWith('/api/sima-profit') && (await simaProfit.handle(req, res, url))) return;
+  if (url.pathname.startsWith('/api/lenardi') && (await lenardi.handle(req, res, url))) return;
+  if (req.method === 'GET' && url.pathname === '/api/cabinets')
+    return send(res, 200, { cabinets: publicCabinets(), demo: !cabinets().length });
   if (req.method === 'PATCH' && /^\/api\/cabinets\/[^/]+$/.test(url.pathname)) {
     const id = decodeURIComponent(url.pathname.split('/').pop());
     if (!cabinets().some(c => c.id === id)) throw apiError(404, 'Кабинет не найден');
-    const { name } = await readJson(req); const clean = String(name || '').trim().slice(0, 60);
+    const { name } = await readJson(req);
+    const clean = String(name || '')
+      .trim()
+      .slice(0, 60);
     if (!clean) throw apiError(400, 'Введите название кабинета');
-    const aliases = readAliases(); aliases[id] = clean;
-    fs.mkdirSync(path.dirname(DATA_FILE), { recursive: true }); fs.writeFileSync(DATA_FILE, JSON.stringify(aliases, null, 2));
+    const aliases = readAliases();
+    aliases[id] = clean;
+    fs.mkdirSync(path.dirname(DATA_FILE), { recursive: true });
+    fs.writeFileSync(DATA_FILE, JSON.stringify(aliases, null, 2));
     return send(res, 200, { id, name: clean });
   }
   if (req.method === 'GET' && url.pathname === '/api/dashboard') {
-    return send(res, 200, await dashboard(url.searchParams.get('cabinet') || 'demo', url.searchParams.get('from'), url.searchParams.get('to')));
+    return send(
+      res,
+      200,
+      await dashboard(url.searchParams.get('cabinet') || 'demo', url.searchParams.get('from'), url.searchParams.get('to'))
+    );
   }
   if (req.method === 'GET' && url.pathname === '/api/returns') {
-    return send(res, 200, await itemReturns(url.searchParams.get('cabinet') || 'demo', url.searchParams.get('from'), url.searchParams.get('to')));
+    return send(
+      res,
+      200,
+      await itemReturns(url.searchParams.get('cabinet') || 'demo', url.searchParams.get('from'), url.searchParams.get('to'))
+    );
   }
   if (req.method === 'GET' && url.pathname === '/api/ratings') {
-    return send(res, 200, await itemRatings(url.searchParams.get('cabinet') || 'demo', url.searchParams.get('from'), url.searchParams.get('to')));
+    return send(
+      res,
+      200,
+      await itemRatings(url.searchParams.get('cabinet') || 'demo', url.searchParams.get('from'), url.searchParams.get('to'))
+    );
   }
   if (req.method === 'GET' && url.pathname === '/api/orders/hourly') {
     return send(res, 200, await hourlyOrders(url.searchParams.get('cabinet') || 'demo'));
   }
   if (req.method === 'GET' && url.pathname === '/api/summary') {
-    return send(res, 200, await summary(url.searchParams.get('cabinet') || 'demo', url.searchParams.get('from'), url.searchParams.get('to'), url.searchParams.get('refresh') === '1'));
+    return send(
+      res,
+      200,
+      await summary(
+        url.searchParams.get('cabinet') || 'demo',
+        url.searchParams.get('from'),
+        url.searchParams.get('to'),
+        url.searchParams.get('refresh') === '1'
+      )
+    );
   }
   if (req.method === 'GET' && url.pathname === '/api/summary/ads') {
-    return send(res, 200, await summaryAds(url.searchParams.get('cabinet') || 'demo', url.searchParams.get('from'), url.searchParams.get('to')));
+    return send(
+      res,
+      200,
+      await summaryAds(url.searchParams.get('cabinet') || 'demo', url.searchParams.get('from'), url.searchParams.get('to'))
+    );
   }
   if (req.method === 'GET' && url.pathname === '/api/advertising/campaign') {
-    return send(res, 200, await advertisingCampaign(url.searchParams.get('cabinet') || 'demo', url.searchParams.get('id'), url.searchParams.get('from'), url.searchParams.get('to')));
+    return send(
+      res,
+      200,
+      await advertisingCampaign(
+        url.searchParams.get('cabinet') || 'demo',
+        url.searchParams.get('id'),
+        url.searchParams.get('from'),
+        url.searchParams.get('to')
+      )
+    );
   }
   if (req.method === 'GET' && url.pathname === '/api/advertising/campaign/positions') {
-    return send(res, 200, await campaignPositions(url.searchParams.get('cabinet') || 'demo', url.searchParams.get('id'), url.searchParams.get('from'), url.searchParams.get('to')));
+    return send(
+      res,
+      200,
+      await campaignPositions(
+        url.searchParams.get('cabinet') || 'demo',
+        url.searchParams.get('id'),
+        url.searchParams.get('from'),
+        url.searchParams.get('to')
+      )
+    );
   }
   if (req.method === 'GET' && url.pathname === '/api/keyword-tags') {
     return send(res, 200, keywordTags(url.searchParams.get('cabinet') || 'demo', url.searchParams.get('id')));
@@ -4286,10 +6826,31 @@ async function handleApi(req, res, url) {
     return send(res, 200, setKeywordTag(body.cabinet || 'demo', body.id, body));
   }
   if (req.method === 'GET' && url.pathname === '/api/product-detail') {
-    return send(res, 200, await productDetail(url.searchParams.get('cabinet') || 'demo', url.searchParams.get('nmId'), url.searchParams.get('from'), url.searchParams.get('to'), url.searchParams.get('live') === '1'));
+    return send(
+      res,
+      200,
+      await productDetail(
+        url.searchParams.get('cabinet') || 'demo',
+        url.searchParams.get('nmId'),
+        url.searchParams.get('from'),
+        url.searchParams.get('to'),
+        url.searchParams.get('live') === '1'
+      )
+    );
   }
   if (req.method === 'GET' && url.pathname === '/api/sheet-history') {
-    return send(res, 200, await sheetHistory(url.searchParams.get('id'), url.searchParams.get('sections'), url.searchParams.get('days'), url.searchParams.get('source'), url.searchParams.get('all') === '1', url.searchParams.get('cabinet') || ''));
+    return send(
+      res,
+      200,
+      await sheetHistory(
+        url.searchParams.get('id'),
+        url.searchParams.get('sections'),
+        url.searchParams.get('days'),
+        url.searchParams.get('source'),
+        url.searchParams.get('all') === '1',
+        url.searchParams.get('cabinet') || ''
+      )
+    );
   }
   if (req.method === 'POST' && url.pathname === '/api/advertising/campaign/rename') {
     const body = await readJson(req);
@@ -4312,13 +6873,23 @@ async function handleApi(req, res, url) {
     return send(res, 200, await depositCampaignBudget(body.cabinet || 'demo', body.id, body));
   }
   if (req.method === 'GET' && url.pathname === '/api/advertising/campaign/zones') {
-    return send(res, 200, campaignZones(url.searchParams.get('cabinet') || 'demo', url.searchParams.get('id'), url.searchParams.get('from'), url.searchParams.get('to')));
+    return send(
+      res,
+      200,
+      campaignZones(
+        url.searchParams.get('cabinet') || 'demo',
+        url.searchParams.get('id'),
+        url.searchParams.get('from'),
+        url.searchParams.get('to')
+      )
+    );
   }
   // Присылает расширение Chrome. Принимается только от расширения или с самого сайта: обычная страница в браузере
   // могла бы отправить сюда запрос без предварительной проверки CORS и подложить чужие цифры.
   if (req.method === 'POST' && url.pathname === '/api/advertising/campaign/zones') {
     const origin = String(req.headers.origin || '');
-    if (origin && !origin.startsWith('chrome-extension://') && origin !== `http://${req.headers.host}`) throw apiError(403, 'Запрос не от расширения');
+    if (origin && !origin.startsWith('chrome-extension://') && origin !== `http://${req.headers.host}`)
+      throw apiError(403, 'Запрос не от расширения');
     return send(res, 200, await saveCampaignZones(await readJson(req, 30_000_000)));
   }
   if (req.method === 'POST' && url.pathname === '/api/advertising/campaign/placements') {
@@ -4362,26 +6933,61 @@ async function handleApi(req, res, url) {
     const body = await readJson(req);
     const result = await campaignMinus(body.cabinet || 'demo', body.id, body.action, body.queries, body.nmIds);
     const changed = [...new Set(result.results.filter(item => item.ok && item.changed).flatMap(item => item.queries))];
-    try { recordKeywordStatus(body.cabinet || 'demo', body.id, result.action, changed); } catch (error) { console.error('История статусов фраз не записалась:', error.message); }
+    try {
+      recordKeywordStatus(body.cabinet || 'demo', body.id, result.action, changed);
+    } catch (error) {
+      console.error('История статусов фраз не записалась:', error.message);
+    }
     return send(res, 200, result);
   }
   if (req.method === 'GET' && url.pathname === '/api/advertising/campaign/keywords') {
-    return send(res, 200, await campaignKeywords(url.searchParams.get('cabinet') || 'demo', url.searchParams.get('id'),
-      url.searchParams.get('from'), url.searchParams.get('to'), url.searchParams.get('refresh') === '1'));
+    return send(
+      res,
+      200,
+      await campaignKeywords(
+        url.searchParams.get('cabinet') || 'demo',
+        url.searchParams.get('id'),
+        url.searchParams.get('from'),
+        url.searchParams.get('to'),
+        url.searchParams.get('refresh') === '1'
+      )
+    );
   }
   if (req.method === 'GET' && url.pathname === '/api/advertising/campaign/previous') {
-    return send(res, 200, await advertisingCampaignPrevious(url.searchParams.get('cabinet') || 'demo', url.searchParams.get('id'), url.searchParams.get('from'), url.searchParams.get('to')));
+    return send(
+      res,
+      200,
+      await advertisingCampaignPrevious(
+        url.searchParams.get('cabinet') || 'demo',
+        url.searchParams.get('id'),
+        url.searchParams.get('from'),
+        url.searchParams.get('to')
+      )
+    );
   }
   if (req.method === 'GET' && url.pathname === '/api/advertising/campaign/history') {
     // Ответ идёт построчно: события прогресса, затем итог или ошибка.
     res.writeHead(200, { 'Content-Type': 'application/x-ndjson; charset=utf-8', 'Cache-Control': 'no-store' });
     const write = event => res.write(`${JSON.stringify(event)}\n`);
     try {
-      const result = await advertisingCampaignHistory(url.searchParams.get('cabinet') || 'demo', url.searchParams.get('id'),
-        url.searchParams.get('from'), url.searchParams.get('to'), write);
+      const result = await advertisingCampaignHistory(
+        url.searchParams.get('cabinet') || 'demo',
+        url.searchParams.get('id'),
+        url.searchParams.get('from'),
+        url.searchParams.get('to'),
+        write
+      );
       let activity = null;
-      try { activity = campaignActivity(result.campaign?.id ?? url.searchParams.get('id'), result.period, result.campaign?.daily, result.campaign?.status); }
-      catch (error) { console.error('Детализация кампании: дни работы не посчитаны', error.message); }
+      try {
+        activity = campaignActivity(
+          result.campaign?.id ?? url.searchParams.get('id'),
+          result.period,
+          result.campaign?.daily,
+          result.campaign?.status
+        );
+      } catch (error) {
+        console.error('Детализация кампании: дни работы не посчитаны', error.message);
+      }
       write({ type: 'result', ...result, activity });
     } catch (error) {
       write({ type: 'error', error: error.message || 'Не удалось выгрузить статистику' });
@@ -4389,10 +6995,23 @@ async function handleApi(req, res, url) {
     return res.end();
   }
   if (req.method === 'GET' && url.pathname === '/api/advertising/previous') {
-    return send(res, 200, await advertisingPrevious(url.searchParams.get('cabinet') || 'demo', url.searchParams.get('from'), url.searchParams.get('to')));
+    return send(
+      res,
+      200,
+      await advertisingPrevious(url.searchParams.get('cabinet') || 'demo', url.searchParams.get('from'), url.searchParams.get('to'))
+    );
   }
   if (req.method === 'GET' && url.pathname === '/api/advertising') {
-    return send(res, 200, await advertising(url.searchParams.get('cabinet') || 'demo', url.searchParams.get('from'), url.searchParams.get('to'), url.searchParams.get('part') || 'all'));
+    return send(
+      res,
+      200,
+      await advertising(
+        url.searchParams.get('cabinet') || 'demo',
+        url.searchParams.get('from'),
+        url.searchParams.get('to'),
+        url.searchParams.get('part') || 'all'
+      )
+    );
   }
   if (req.method === 'POST' && url.pathname === '/api/funnel/sales') {
     const body = await readJson(req);
@@ -4407,14 +7026,34 @@ async function handleApi(req, res, url) {
     return send(res, 200, refetchFunnel(body.cabinet || 'demo', body.from, body.to, body.grouping));
   }
   if (req.method === 'GET' && url.pathname === '/api/funnel/history') {
-    return send(res, 200, await funnelHistory(url.searchParams.get('cabinet') || 'demo', url.searchParams.get('from'), url.searchParams.get('to'), url.searchParams.get('grouping')));
+    return send(
+      res,
+      200,
+      await funnelHistory(
+        url.searchParams.get('cabinet') || 'demo',
+        url.searchParams.get('from'),
+        url.searchParams.get('to'),
+        url.searchParams.get('grouping')
+      )
+    );
   }
   if (req.method === 'GET' && url.pathname === '/api/funnel/orders') {
-    return send(res, 200, await funnelOrders(url.searchParams.get('cabinet') || 'demo', url.searchParams.get('from'), url.searchParams.get('to')));
+    return send(
+      res,
+      200,
+      await funnelOrders(url.searchParams.get('cabinet') || 'demo', url.searchParams.get('from'), url.searchParams.get('to'))
+    );
   }
   if (req.method === 'GET' && url.pathname === '/api/funnel') {
-    return send(res, 200, await funnelTable(url.searchParams.get('cabinet') || 'demo', url.searchParams.get('from'), url.searchParams.get('to'),
-      { version: url.searchParams.get('version') || '', offset: url.searchParams.get('offset'), force: url.searchParams.get('force') === '1' }));
+    return send(
+      res,
+      200,
+      await funnelTable(url.searchParams.get('cabinet') || 'demo', url.searchParams.get('from'), url.searchParams.get('to'), {
+        version: url.searchParams.get('version') || '',
+        offset: url.searchParams.get('offset'),
+        force: url.searchParams.get('force') === '1'
+      })
+    );
   }
   if (req.method === 'GET' && url.pathname === '/api/fbs-stocks') {
     return send(res, 200, await fbsStocks(url.searchParams.get('cabinet') || 'demo', url.searchParams.get('force') === '1'));
@@ -4484,7 +7123,11 @@ async function handleApi(req, res, url) {
     return send(res, 200, await supplyDetails(url.searchParams.get('cabinet') || 'demo', url.searchParams.get('id')));
   }
   if (req.method === 'GET' && url.pathname === '/api/supplies/barcode') {
-    return send(res, 200, await supplyBarcode(url.searchParams.get('cabinet') || 'demo', url.searchParams.get('id'), url.searchParams.get('type')));
+    return send(
+      res,
+      200,
+      await supplyBarcode(url.searchParams.get('cabinet') || 'demo', url.searchParams.get('id'), url.searchParams.get('type'))
+    );
   }
   if (req.method === 'POST' && url.pathname === '/api/supplies') {
     const body = await readJson(req);
@@ -4530,8 +7173,16 @@ async function handleApi(req, res, url) {
 function serveStatic(req, res, url) {
   const requested = url.pathname === '/' ? '/index.html' : url.pathname;
   const file = path.resolve(PUBLIC_DIR, '.' + decodeURIComponent(requested));
-  if (!file.startsWith(PUBLIC_DIR) || !fs.existsSync(file) || !fs.statSync(file).isFile()) { res.writeHead(404); return res.end('Not found'); }
-  const types = { '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.svg': 'image/svg+xml' };
+  if (!file.startsWith(PUBLIC_DIR) || !fs.existsSync(file) || !fs.statSync(file).isFile()) {
+    res.writeHead(404);
+    return res.end('Not found');
+  }
+  const types = {
+    '.html': 'text/html; charset=utf-8',
+    '.css': 'text/css; charset=utf-8',
+    '.js': 'text/javascript; charset=utf-8',
+    '.svg': 'image/svg+xml'
+  };
   res.writeHead(200, { 'Content-Type': types[path.extname(file)] || 'application/octet-stream', 'Cache-Control': 'no-cache' });
   fs.createReadStream(file).pipe(res);
 }
@@ -4539,24 +7190,101 @@ function serveStatic(req, res, url) {
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
   try {
-    if (url.pathname.startsWith('/api/')) await handleApi(req, res, url); else serveStatic(req, res, url);
+    if (url.pathname.startsWith('/api/')) await handleApi(req, res, url);
+    else serveStatic(req, res, url);
   } catch (error) {
     console.error(`[${new Date().toISOString()}] ${req.method} ${url.pathname}: ${error.message}`);
     send(res, error.status || 500, { error: error.message || 'Внутренняя ошибка', details: error.details });
   }
 });
 
-if (require.main === module) server.listen(PORT, '127.0.0.1', () => {
-  console.log(`WB Analytics: http://127.0.0.1:${PORT}`);
-  // Копия Google Таблицы на компьютере: старая раскладка — по кабинетам, дозагрузка вскоре после запуска и дальше раз в час.
-  splitSheetByCabinet();
-  if (sheetConfigured()) { setTimeout(syncSheet, 20_000); setInterval(syncSheet, SHEET_SYNC_EVERY); }
-  simaLand.start();
-});
+if (require.main === module)
+  server.listen(PORT, '127.0.0.1', () => {
+    console.log(`WB Analytics: http://127.0.0.1:${PORT}`);
+    // Копия Google Таблицы на компьютере: старая раскладка — по кабинетам, дозагрузка вскоре после запуска и дальше раз в час.
+    splitSheetByCabinet();
+    if (sheetConfigured()) {
+      setTimeout(syncSheet, 20_000);
+      setInterval(syncSheet, SHEET_SYNC_EVERY);
+    }
+    simaLand.start();
+  });
 
-module.exports = { server, wbErrorText, loadProductCards, readBackFbsStocks, depositCampaignBudget, mergeCampaignZones, campaignZones, setCampaignStatus, setCampaignPlacements, slimFunnelProduct, funnelTableFresh, campaignActivePeriod,productCampaignTimeline, mergeSheetRows, saveSheetRows, saveSheetCurrent, readSheetHistory, sheetCabinetSince, sheetSiteCabinet, sheetCabinetFilter, withoutClubPriceRepeats,mergeMinusList, minusPlan, archivedPresetsFromError, todoNmId, todoFields, productAdDays, productDetailPeriod, funnelOrdersByNmId, summarizeHourlyOrders, orderFeedPeriod, itemRatingPeriods, normalizeItemRatings, itemReturnsPeriod, normalizeItemReturns, returnStatusGroup, summarizeKeywordDaily, summarizePositionDaily, normalizeOrders, normalizeOrderFeed, enrichOrders, extractFunnel, summarizeAdStats, campaignProductDaily, withAdBudgets, summarizeKeywords, normalizeStockPreset, normalizePricePreset, adCampaignMayHaveStats, validAdPeriod, historyPeriod, historyChunks, planAdFetch, datesBetween, safeFolderName, funnelDaysToFetch, pairFunnelDays, funnelPeriods, funnelRangeBuckets, funnelRecordCounts, funnelRangeValues, funnelSalesMatrix, summaryTopProducts, summaryDrops, summaryProducts, normalizeFbsStocks, normalizeFbwStocks, normalizePrices, summarizeStockTotals, normalizeNewOrders, summarizeSupplies, normalizeTrbxes, chunkOrders, stickerType, localPhoto, WB_HOSTS };
-
-
-
-
-
+module.exports = {
+  server,
+  wbErrorText,
+  loadProductCards,
+  readBackFbsStocks,
+  depositCampaignBudget,
+  mergeCampaignZones,
+  campaignZones,
+  setCampaignStatus,
+  setCampaignPlacements,
+  slimFunnelProduct,
+  funnelTableFresh,
+  campaignActivePeriod,
+  productCampaignTimeline,
+  mergeSheetRows,
+  saveSheetRows,
+  saveSheetCurrent,
+  readSheetHistory,
+  sheetCabinetSince,
+  sheetSiteCabinet,
+  sheetCabinetFilter,
+  withoutClubPriceRepeats,
+  mergeMinusList,
+  minusPlan,
+  archivedPresetsFromError,
+  todoNmId,
+  todoFields,
+  productAdDays,
+  productDetailPeriod,
+  funnelOrdersByNmId,
+  summarizeHourlyOrders,
+  orderFeedPeriod,
+  itemRatingPeriods,
+  normalizeItemRatings,
+  itemReturnsPeriod,
+  normalizeItemReturns,
+  returnStatusGroup,
+  summarizeKeywordDaily,
+  summarizePositionDaily,
+  normalizeOrders,
+  normalizeOrderFeed,
+  enrichOrders,
+  extractFunnel,
+  summarizeAdStats,
+  campaignProductDaily,
+  withAdBudgets,
+  summarizeKeywords,
+  normalizeStockPreset,
+  normalizePricePreset,
+  adCampaignMayHaveStats,
+  validAdPeriod,
+  historyPeriod,
+  historyChunks,
+  planAdFetch,
+  datesBetween,
+  safeFolderName,
+  funnelDaysToFetch,
+  pairFunnelDays,
+  funnelPeriods,
+  funnelRangeBuckets,
+  funnelRecordCounts,
+  funnelRangeValues,
+  funnelSalesMatrix,
+  summaryTopProducts,
+  summaryDrops,
+  summaryProducts,
+  normalizeFbsStocks,
+  normalizeFbwStocks,
+  normalizePrices,
+  summarizeStockTotals,
+  normalizeNewOrders,
+  summarizeSupplies,
+  normalizeTrbxes,
+  chunkOrders,
+  stickerType,
+  localPhoto,
+  WB_HOSTS
+};

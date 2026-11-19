@@ -6,14 +6,20 @@
 // выбор. Страница может перерисовать таблицу после каждого нажатия, поэтому галочки ищутся заново по своему признаку.
 (() => {
   const BOX = 'input[type="checkbox"]';
-  let anchor = null, busy = false;
+  let anchor = null,
+    busy = false;
 
-  const dataAttr = input => [...input.attributes].map(attr => attr.name).find(name => name.startsWith('data-') && input.getAttribute(name) !== '');
+  const dataAttr = input =>
+    [...input.attributes].map(attr => attr.name).find(name => name.startsWith('data-') && input.getAttribute(name) !== '');
   // Вид галочки — селектор, общий для всего списка, и признак, по которому её можно найти после перерисовки.
   function kindOf(input) {
     const attr = dataAttr(input);
     if (attr) return { list: `${BOX}[${attr}]`, one: `${BOX}[${attr}="${CSS.escape(input.getAttribute(attr))}"]` };
-    if (input.name) return { list: `${BOX}[name="${CSS.escape(input.name)}"]`, one: input.value ? `${BOX}[name="${CSS.escape(input.name)}"][value="${CSS.escape(input.value)}"]` : null };
+    if (input.name)
+      return {
+        list: `${BOX}[name="${CSS.escape(input.name)}"]`,
+        one: input.value ? `${BOX}[name="${CSS.escape(input.name)}"][value="${CSS.escape(input.value)}"]` : null
+      };
     // Без признаков — пункты одного блока (фильтр «Наличие», «Статусы»…): блок — ближайший предок с id.
     const holder = input.closest('[id]');
     if (!holder || !input.value || input.id) return null;
@@ -24,28 +30,44 @@
   const rootOf = input => input.closest('table, .modal, [role="dialog"], [id]') || document.body;
   const listOf = (input, kind) => [...rootOf(input).querySelectorAll(kind.list)].filter(box => box.offsetParent !== null || box === input);
 
-  document.addEventListener('click', event => {
-    const input = event.target;
-    if (busy || !(input instanceof HTMLInputElement) || input.type !== 'checkbox' || input.disabled) return;
-    const kind = kindOf(input);
-    if (!kind?.one) { anchor = null; return; }
-    const previous = anchor;
-    anchor = { kind, one: kind.one };
-    if (!event.shiftKey || !previous || previous.kind.list !== kind.list || previous.one === kind.one) return;
-    const list = listOf(input, kind), from = list.findIndex(box => box.matches(previous.one)), to = list.indexOf(input);
-    if (from < 0 || to < 0) return;
-    // Shift+клик по подписи у некоторых браузеров выделяет текст — снимаем выделение.
-    window.getSelection?.().removeAllRanges();
-    const checked = input.checked, targets = list.slice(Math.min(from, to), Math.max(from, to) + 1).filter(box => box !== input).map(box => kindOf(box)?.one).filter(Boolean);
-    // После того как страница обработает саму нажатую галочку (она может перерисовать таблицу).
-    setTimeout(() => {
-      busy = true;
-      try {
-        for (const selector of targets) {
-          const box = document.querySelector(selector);
-          if (box && !box.disabled && box.checked !== checked) box.click();
+  document.addEventListener(
+    'click',
+    event => {
+      const input = event.target;
+      if (busy || !(input instanceof HTMLInputElement) || input.type !== 'checkbox' || input.disabled) return;
+      const kind = kindOf(input);
+      if (!kind?.one) {
+        anchor = null;
+        return;
+      }
+      const previous = anchor;
+      anchor = { kind, one: kind.one };
+      if (!event.shiftKey || !previous || previous.kind.list !== kind.list || previous.one === kind.one) return;
+      const list = listOf(input, kind),
+        from = list.findIndex(box => box.matches(previous.one)),
+        to = list.indexOf(input);
+      if (from < 0 || to < 0) return;
+      // Shift+клик по подписи у некоторых браузеров выделяет текст — снимаем выделение.
+      window.getSelection?.().removeAllRanges();
+      const checked = input.checked,
+        targets = list
+          .slice(Math.min(from, to), Math.max(from, to) + 1)
+          .filter(box => box !== input)
+          .map(box => kindOf(box)?.one)
+          .filter(Boolean);
+      // После того как страница обработает саму нажатую галочку (она может перерисовать таблицу).
+      setTimeout(() => {
+        busy = true;
+        try {
+          for (const selector of targets) {
+            const box = document.querySelector(selector);
+            if (box && !box.disabled && box.checked !== checked) box.click();
+          }
+        } finally {
+          busy = false;
         }
-      } finally { busy = false; }
-    });
-  }, true);
+      });
+    },
+    true
+  );
 })();

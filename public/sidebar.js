@@ -7,36 +7,85 @@
 (() => {
   'use strict';
   const SVG = paths => `<svg viewBox="0 0 24 24">${paths}</svg>`;
-  const BOXES = '<rect x="8" y="4.5" width="8" height="7.5" rx="1.2"/><rect x="3.5" y="12.5" width="8" height="7.5" rx="1.2"/><rect x="12.5" y="12.5" width="8" height="7.5" rx="1.2"/><path d="M12 4.5v2.5M7.5 12.5V15M16.5 12.5V15"/>';
+  const BOXES =
+    '<rect x="8" y="4.5" width="8" height="7.5" rx="1.2"/><rect x="3.5" y="12.5" width="8" height="7.5" rx="1.2"/><rect x="12.5" y="12.5" width="8" height="7.5" rx="1.2"/><path d="M12 4.5v2.5M7.5 12.5V15M16.5 12.5V15"/>';
   const SIDEBAR_SECTIONS = [
     { page: 'summary', label: 'Сводка', icon: '◎' },
-    { page: 'orders', label: 'Лента заказов', icon: SVG('<path d="M6 3.5h12v17l-2-1.4-2 1.4-2-1.4-2 1.4-2-1.4-2 1.4z"/><path d="M9 8h6M9 11.5h6M9 15h3.5"/>') },
-    { page: 'fbs-orders', label: 'Новые заказы', icon: SVG('<path d="M11.3 10.5l.2-3h9l.8 11h-6.3M13.6 7.5V6.6a2.4 2.4 0 0 1 4.8 0v.9"/><path d="M4.5 10.5h9.6l.8 10H3.7z"/><path d="M7 10.5V9.4a2.3 2.3 0 0 1 4.6 0v1.1"/>'), badge: 'fbsBadge' },
+    {
+      page: 'orders',
+      label: 'Лента заказов',
+      icon: SVG('<path d="M6 3.5h12v17l-2-1.4-2 1.4-2-1.4-2 1.4-2-1.4-2 1.4z"/><path d="M9 8h6M9 11.5h6M9 15h3.5"/>')
+    },
+    {
+      page: 'fbs-orders',
+      label: 'Новые заказы',
+      icon: SVG(
+        '<path d="M11.3 10.5l.2-3h9l.8 11h-6.3M13.6 7.5V6.6a2.4 2.4 0 0 1 4.8 0v.9"/><path d="M4.5 10.5h9.6l.8 10H3.7z"/><path d="M7 10.5V9.4a2.3 2.3 0 0 1 4.6 0v1.1"/>'
+      ),
+      badge: 'fbsBadge'
+    },
     { page: 'fbw-stocks', label: 'Остатки FBW', icon: SVG(BOXES) },
     { page: 'stocks', label: 'Остатки FBS', icon: SVG(BOXES) },
     { page: 'returns', label: 'Возвраты', icon: SVG('<path d="M9 13.5L4.5 9 9 4.5"/><path d="M4.5 9H14a5.5 5.5 0 0 1 0 11h-4"/>') },
     { page: 'prices', label: 'Цены и скидки', icon: '₽' },
     // Футболка — карточки товаров.
-    { page: 'cards', label: 'Карточки товаров', icon: SVG('<path d="M8.6 4L3 6.9l1.9 3.8 2.4-1.1V20h9.4V9.6l2.4 1.1L21 6.9 15.4 4c-.7 1.6-1.9 2.4-3.4 2.4S9.3 5.6 8.6 4z"/>') },
-    { page: 'funnel', label: 'Воронка', icon: SVG('<path d="M3.5 3.5v17h17"/><path d="M7 15.5l4-4.5 3 3 5.5-6.5"/><path d="M16 7.5h3.5V11"/>') },
-    { page: 'ratings', label: 'Оценки товаров', icon: SVG('<path d="M12 3.6l2.6 5.3 5.8.8-4.2 4.1 1 5.8-5.2-2.7-5.2 2.7 1-5.8-4.2-4.1 5.8-.8z"/>') },
+    {
+      page: 'cards',
+      label: 'Карточки товаров',
+      icon: SVG('<path d="M8.6 4L3 6.9l1.9 3.8 2.4-1.1V20h9.4V9.6l2.4 1.1L21 6.9 15.4 4c-.7 1.6-1.9 2.4-3.4 2.4S9.3 5.6 8.6 4z"/>')
+    },
+    {
+      page: 'funnel',
+      label: 'Воронка',
+      icon: SVG('<path d="M3.5 3.5v17h17"/><path d="M7 15.5l4-4.5 3 3 5.5-6.5"/><path d="M16 7.5h3.5V11"/>')
+    },
+    {
+      page: 'ratings',
+      label: 'Оценки товаров',
+      icon: SVG('<path d="M12 3.6l2.6 5.3 5.8.8-4.2 4.1 1 5.8-5.2-2.7-5.2 2.7 1-5.8-4.2-4.1 5.8-.8z"/>')
+    },
     { page: 'ads', label: 'Реклама', icon: 'ADS', iconClass: 'nav-icon-ads' },
-    { page: 'todo', label: 'Дела', icon: SVG('<path d="M4 6.5l1.6 1.6L8.6 5"/><path d="M4 12.5l1.6 1.6 3-3.1"/><path d="M4 18.5l1.6 1.6 3-3.1"/><path d="M12 7h8M12 13h8M12 19h8"/>') },
+    {
+      page: 'todo',
+      label: 'Дела',
+      icon: SVG(
+        '<path d="M4 6.5l1.6 1.6L8.6 5"/><path d="M4 12.5l1.6 1.6 3-3.1"/><path d="M4 18.5l1.6 1.6 3-3.1"/><path d="M12 7h8M12 13h8M12 19h8"/>'
+      )
+    },
     // Часы со стрелкой вокруг — история изменений из Google Таблицы.
-    { page: 'history', label: 'История изменений', icon: SVG('<path d="M3.5 12A8.5 8.5 0 1 0 6 6L3.5 8.5"/><path d="M3.5 4v4.5H8"/><path d="M12 7.5V12l3 2"/>') },
+    {
+      page: 'history',
+      label: 'История изменений',
+      icon: SVG('<path d="M3.5 12A8.5 8.5 0 1 0 6 6L3.5 8.5"/><path d="M3.5 4v4.5H8"/><path d="M12 7.5V12l3 2"/>')
+    },
     // Коробка со стрелкой цены — оптовые цены Сималенда (отдельная Google Таблица).
-    { page: 'sima', label: 'Цены Сималенда', icon: SVG('<path d="M4 8.5L12 4.5l8 4v8l-8 4-8-4z"/><path d="M4 8.5l8 4 8-4M12 12.5v8"/><path d="M15.5 6.3L8 10.2"/>') },
+    {
+      page: 'sima',
+      label: 'Цены Сималенда',
+      icon: SVG('<path d="M4 8.5L12 4.5l8 4v8l-8 4-8-4z"/><path d="M4 8.5l8 4 8-4M12 12.5v8"/><path d="M15.5 6.3L8 10.2"/>')
+    },
     // Знак процента — прибыль с товаров Сималенда на WB.
-    { page: 'sima-profit', label: 'Прибыль Сималенда', icon: SVG('<path d="M18 6L6 18"/><circle cx="7.5" cy="7.5" r="2.5"/><circle cx="16.5" cy="16.5" r="2.5"/>') }
+    {
+      page: 'sima-profit',
+      label: 'Прибыль Сималенда',
+      icon: SVG('<path d="M18 6L6 18"/><circle cx="7.5" cy="7.5" r="2.5"/><circle cx="16.5" cy="16.5" r="2.5"/>')
+    }
   ];
-  const sidebar = document.querySelector('.sidebar'), toggle = document.querySelector('.sidebar-toggle'), nav = sidebar?.querySelector('nav');
+  const sidebar = document.querySelector('.sidebar'),
+    toggle = document.querySelector('.sidebar-toggle'),
+    nav = sidebar?.querySelector('nav');
   if (!sidebar || !toggle || !nav) return;
   // Пункты — ссылки: их можно открыть в новой вкладке колесом мыши, Ctrl+кликом или через контекстное меню.
   // Счётчики (новые заказы) обновляет только основной сайт — на страницах детализации их не рисуем.
-  const active = sidebar.dataset.active || '', live = Boolean(sidebar.querySelector('.cabinet-wrap'));
-  nav.innerHTML = SIDEBAR_SECTIONS.map(item => `<a class="nav-item${item.page === active ? ' active' : ''}" href="/?page=${item.page}" data-page="${item.page}">` +
-    `<span class="nav-icon${item.iconClass ? ` ${item.iconClass}` : ''}" aria-hidden="true">${item.icon}</span><span class="nav-label">${item.label}</span>${item.badge && live ? `<b id="${item.badge}">0</b>` : ''}</a>`).join('');
-  const brand = sidebar.querySelector('.brand'); if (brand) brand.href = '/';
+  const active = sidebar.dataset.active || '',
+    live = Boolean(sidebar.querySelector('.cabinet-wrap'));
+  nav.innerHTML = SIDEBAR_SECTIONS.map(
+    item =>
+      `<a class="nav-item${item.page === active ? ' active' : ''}" href="/?page=${item.page}" data-page="${item.page}">` +
+      `<span class="nav-icon${item.iconClass ? ` ${item.iconClass}` : ''}" aria-hidden="true">${item.icon}</span><span class="nav-label">${item.label}</span>${item.badge && live ? `<b id="${item.badge}">0</b>` : ''}</a>`
+  ).join('');
+  const brand = sidebar.querySelector('.brand');
+  if (brand) brand.href = '/';
 
   // Страница детализации: внизу — кабинет из ссылки (название берём у сервера, пока грузится — номер).
   const cabinetId = new URLSearchParams(location.search).get('cabinet');
@@ -44,10 +93,21 @@
     const block = document.createElement('div');
     block.className = 'sidebar-cabinet';
     block.title = 'Кабинет, из которого открыта страница';
-    const paint = name => { block.innerHTML = `<span class="avatar" aria-hidden="true"></span><span><strong></strong><small>Кабинет</small></span>`; block.querySelector('.avatar').textContent = (name || '?').trim().charAt(0).toUpperCase(); block.querySelector('strong').textContent = name; };
+    const paint = name => {
+      block.innerHTML = `<span class="avatar" aria-hidden="true"></span><span><strong></strong><small>Кабинет</small></span>`;
+      block.querySelector('.avatar').textContent = (name || '?').trim().charAt(0).toUpperCase();
+      block.querySelector('strong').textContent = name;
+    };
     paint(cabinetId === 'demo' ? 'Демо-кабинет' : `Кабинет ${cabinetId}`);
     sidebar.append(block);
-    if (cabinetId !== 'demo') fetch('/api/cabinets').then(response => response.json()).then(data => { const found = (data.cabinets || []).find(item => String(item.id) === cabinetId); if (found?.name) paint(found.name); }).catch(() => {});
+    if (cabinetId !== 'demo')
+      fetch('/api/cabinets')
+        .then(response => response.json())
+        .then(data => {
+          const found = (data.cabinets || []).find(item => String(item.id) === cabinetId);
+          if (found?.name) paint(found.name);
+        })
+        .catch(() => {});
   }
 
   const backdrop = document.createElement('div');
@@ -62,11 +122,13 @@
     toggle.setAttribute('aria-label', open ? 'Свернуть меню' : 'Развернуть меню');
     toggle.title = open ? 'Свернуть меню' : 'Развернуть меню';
     // В свёрнутом меню название пункта видно в подсказке при наведении на иконку.
-    items.forEach(([item, label]) => open ? item.removeAttribute('title') : item.setAttribute('title', label));
+    items.forEach(([item, label]) => (open ? item.removeAttribute('title') : item.setAttribute('title', label)));
   }
   toggle.addEventListener('click', () => setOpen(!isOpen()));
   backdrop.addEventListener('click', () => setOpen(false));
-  document.addEventListener('keydown', event => { if (event.key === 'Escape' && isOpen()) setOpen(false); });
+  document.addEventListener('keydown', event => {
+    if (event.key === 'Escape' && isOpen()) setOpen(false);
+  });
   sidebar.addEventListener('click', event => {
     if (event.target.closest('.nav-item') && !event.ctrlKey && !event.metaKey && !event.shiftKey) setOpen(false);
   });
