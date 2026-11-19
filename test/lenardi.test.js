@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const zlib = require('node:zlib');
-const createLenardi = require('../lenardi');
+const createLenardi = require('../server/sima/lenardi');
 const { parseReport, readXlsx } = createLenardi;
 
 // Небольшой xlsx: zip из файлов книги (один — сжатый, как обычно у Excel, остальные — без сжатия).

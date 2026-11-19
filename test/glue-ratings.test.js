@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const createGlueRatings = require('../glue-ratings');
+const createGlueRatings = require('../server/cards/glue-ratings');
 const { parseGlue, averageOf } = createGlueRatings;
 
 // Сокращённый ответ feedbacks1.wb.ru/feedbacks/v2/193227360 (склейка зарядок, 19.11.2026).

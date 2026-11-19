@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { donorArticle, donorArticles, draftFromDonor } = require('../wb-donor');
+const { donorArticle, donorArticles, draftFromDonor } = require('../server/cards/wb-donor');
 
 test('артикул WB из ссылок и текста', () => {
   assert.equal(donorArticle('https://www.wildberries.ru/catalog/200724819/detail.aspx?size=324428113'), 200724819);

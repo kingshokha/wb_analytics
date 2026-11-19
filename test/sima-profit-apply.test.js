@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const createSimaProfit = require('../sima-profit');
+const createSimaProfit = require('../server/sima/sima-profit');
 const { listPrice, nextPrice } = createSimaProfit;
 
 test('применение цен: цена до скидки — целая, со скидкой не ниже нужной; снижение — не больше 30% за загрузку', () => {

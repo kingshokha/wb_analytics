@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const os = require('node:os');
 const path = require('node:path');
 const fs = require('node:fs');
-const createCommunications = require('../communications');
+const createCommunications = require('../server/messages/communications');
 
 // Модуль на заглушках: только демо-кабинет, запросы в WB запрещены.
 function setup() {

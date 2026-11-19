@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const createContentCards = require('../content-cards');
+const createContentCards = require('../server/cards/content-cards');
 
 const apiError = (status, message) => Object.assign(new Error(message), { status });
 const cards = createContentCards({

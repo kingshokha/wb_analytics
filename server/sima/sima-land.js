@@ -234,16 +234,14 @@ module.exports = function createSimaLand({
       const month = String(item?.at || '').slice(0, 7);
       if (!/^\d{4}-\d{2}$/.test(month)) continue;
       if (!byMonth.has(month)) byMonth.set(month, []);
-      byMonth
-        .get(month)
-        .push({
-          at: item.at,
-          id: String(item.id ?? ''),
-          title: String(item.title ?? ''),
-          what: String(item.what ?? ''),
-          before: item.before ?? '',
-          after: item.after ?? ''
-        });
+      byMonth.get(month).push({
+        at: item.at,
+        id: String(item.id ?? ''),
+        title: String(item.title ?? ''),
+        what: String(item.what ?? ''),
+        before: item.before ?? '',
+        after: item.after ?? ''
+      });
     }
     let added = 0;
     for (const [month, rows] of byMonth) {

@@ -4,7 +4,7 @@ const os = require('node:os');
 const path = require('node:path');
 const fs = require('node:fs');
 const vm = require('node:vm');
-const createSimaLand = require('../sima-land');
+const createSimaLand = require('../server/sima/sima-land');
 
 // Скрипт таблицы (google-sheets/sima-land/sima-sheets.gs) — в песочнице с заглушками Google: в сеть он не ходит.
 function sheetScript(globals = {}) {

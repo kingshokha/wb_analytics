@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
-const createSimaProfit = require('../sima-profit');
+const createSimaProfit = require('../server/sima/sima-profit');
 const { simaSid, boxTariff, profitRows } = createSimaProfit;
 
 // public/sima-profit.js — скрипт страницы: запускается в отдельном контексте, из него берутся функции расчёта.
