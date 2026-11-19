@@ -1,4 +1,4 @@
-/* Указатель разделов справа (public/scroll-index.js) — по мотивам Scroll Index из Kokonut UI (MIT). */
+/* Указатель разделов справа (public/js/common/scroll-index.js) — по мотивам Scroll Index из Kokonut UI (MIT). */
 .scroll-index {
   position: fixed;
   z-index: 30;

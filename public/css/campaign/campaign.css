@@ -2199,7 +2199,7 @@ tbody tr.total-row:hover td {
   font-size: 13px;
   line-height: 1.6;
 }
-/* Откуда данные: копия с компьютера или дозагрузка из Google Таблицы (public/sheet-sync.js) */
+/* Откуда данные: копия с компьютера или дозагрузка из Google Таблицы (public/js/common/sheet-sync.js) */
 .sheet-hint {
   margin: 10px 20px 0;
   padding: 7px 10px;

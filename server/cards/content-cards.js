@@ -275,7 +275,7 @@ module.exports = function createContentCards({
     const values = Array.isArray(charc?.value) ? charc.value : charc?.value != null ? [charc.value] : [];
     return [...new Set(values.map(value => String(value).trim().toLowerCase()).filter(Boolean))];
   }
-  // Оценки с витрины WB (glue-ratings.js): у товара — число оценок, средняя и разбивка по звёздам, у склейки — её оценка
+  // Оценки с витрины WB (server/cards/glue-ratings.js): у товара — число оценок, средняя и разбивка по звёздам, у склейки — её оценка
   // и число оценок. null — ещё не загружены (или демо-кабинет).
   function feedbackOf(id, card) {
     if (!glueRatings || isDemo(id) || !id)
@@ -593,7 +593,7 @@ module.exports = function createContentCards({
         if (index >= 0) cached.value[index] = card;
       }
     }
-    // Оценки склейки и её карточек — с витрины WB (glue-ratings.js); склейки нет в файле — загружается сейчас.
+    // Оценки склейки и её карточек — с витрины WB (server/cards/glue-ratings.js); склейки нет в файле — загружается сейчас.
     let feedback = null;
     if (glueRatings && !isDemo(id) && !trashed && card.imtID) {
       const glue = await glueRatings.glueNow(id, card.imtID).catch(() => null);
@@ -996,7 +996,7 @@ module.exports = function createContentCards({
     }
     // Новый imtID отсоединённой карточки WB сообщит при перечитывании; до тех пор — свой, отрицательный, чтобы она была отдельно.
     forgetCards(id, list => list.map(card => (nmIds.includes(card.nmID) ? { ...card, imtID: targetIMT ?? -card.nmID } : card)));
-    // Оценки склеек — сразу и ещё раз позже (glue-ratings.js): отзывы на WB общие для склейки и после переноса меняются.
+    // Оценки склеек — сразу и ещё раз позже (server/cards/glue-ratings.js): отзывы на WB общие для склейки и после переноса меняются.
     glueRatings?.recheck(
       id,
       [targetIMT, ...fromImts].filter(imt => imt != null)
@@ -1402,7 +1402,7 @@ module.exports = function createContentCards({
     return jobView(job);
   }
 
-  // --- Парсер витрины: новые карточки по ссылкам на чужие товары WB (разбор — wb-donor.js) ---
+  // --- Парсер витрины: новые карточки по ссылкам на чужие товары WB (разбор — server/cards/wb-donor.js) ---
   // 1. POST /api/cards/parse { cabinet, text } — разбор ссылок и артикулов: черновики запоминаются на час, страница
   //    получает предпросмотр — что перенесётся, что нет, подсказки ТН ВЭД и НДС (на витрине их нет).
   // 2. POST /api/cards/parse/create { cabinet, confirm, items: [{ nmId, vendorCode, price, brand, title, tnved, vat,

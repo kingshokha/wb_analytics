@@ -476,7 +476,7 @@ async function productDetail(id, nmIdInput, from, to, live = false) {
     warnings: [...warnings, ...(funnel.warnings || [])]
   };
 }
-// Оценка и число оценок товара и его склейки (glue-ratings.js). Склейки нет в файле — загружается сейчас (меньше секунды);
+// Оценка и число оценок товара и его склейки (server/cards/glue-ratings.js). Склейки нет в файле — загружается сейчас (меньше секунды);
 // не загрузилась — null, страница просто не покажет оценку.
 async function productFeedback(id, card) {
   if (!card?.imtID) return null;

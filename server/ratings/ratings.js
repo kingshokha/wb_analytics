@@ -157,7 +157,7 @@ async function itemRatings(id, from, to) {
   );
   const cards = await productCards(id, token).catch(() => []);
   const result = { demo: false, periods, ...normalizeItemRatings(pages, cards) };
-  // «Всего оценок» — с открытых данных отзывов WB по склейкам (glue-ratings.js): отчёт WB даёт только прирост за период.
+  // «Всего оценок» — с открытых данных отзывов WB по склейкам (server/cards/glue-ratings.js): отчёт WB даёт только прирост за период.
   const imtByNm = new Map(cards.map(card => [Number(card.nmID), card.imtID]));
   for (const item of result.items) {
     const stats = glueRatings.item(id, imtByNm.get(Number(item.nmId)), Number(item.nmId));

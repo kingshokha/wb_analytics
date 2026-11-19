@@ -247,7 +247,7 @@ function bind() {
   bindFbsOrders();
 }
 
-// Ширина столбцов всех таблиц — общий модуль public/column-widths.js.
+// Ширина столбцов всех таблиц — общий модуль public/js/common/column-widths.js.
 async function init() {
   setDates();
   bind();

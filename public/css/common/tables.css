@@ -47,7 +47,7 @@ table td:not(:first-child) {
   padding-right: 10px;
 }
 
-/* Ручка изменения ширины у правого края заголовка (public/column-widths.js). */
+/* Ручка изменения ширины у правого края заголовка (public/js/common/column-widths.js). */
 .resizable-table th {
   position: relative;
 }

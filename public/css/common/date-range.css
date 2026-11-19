@@ -1,4 +1,4 @@
-/* Календарь выбора периода (public/date-range.js) — в духе Range Calendar из shadcn/ui */
+/* Календарь выбора периода (public/js/common/date-range.js) — в духе Range Calendar из shadcn/ui */
 .drp > input[type='date'],
 .drp > b {
   display: none !important;

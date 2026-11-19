@@ -1,4 +1,4 @@
-/* «Цены Сималенда» (public/sima-land.js) и «Прибыль Сималенда» (public/sima-profit.js). Таблица истории и строки —
+/* «Цены Сималенда» (public/js/sima/sima-land.js) и «Прибыль Сималенда» (public/js/sima/sima-profit.js). Таблица истории и строки —
    общие стили «Истории изменений» (change-*), таблица прибыли — общие стили таблиц остатков и цен (stock-*). */
 .sima-profit-settings {
   display: flex;

@@ -1,5 +1,5 @@
 // --- «Карточки товаров»: все карточки кабинета, корзина и ошибки сохранения ---
-// Данные — /api/cards (сервер: content-cards.js, метод WB «Список карточек товаров»), /api/cards/trash, /api/cards/errors.
+// Данные — /api/cards (сервер: server/cards/content-cards.js, метод WB «Список карточек товаров»), /api/cards/trash, /api/cards/errors.
 // Карточка открывается на отдельной странице card.html — там её данные можно изменить. Здесь же — ярлыки продавца
 // (создать, переименовать, удалить), восстановление карточек из корзины, склейка по 30 и копии выбранных карточек
 // («Дублировать»). Новые карточки с нуля сайт не создаёт — так задумано.
@@ -296,7 +296,7 @@ function loadCardPrices(key, force) {
       if (state.activePage === 'cards') renderCards();
     });
 }
-// Оценки с витрины WB (сервер: glue-ratings.js) — число оценок товара, разбивка по звёздам, оценка склейки.
+// Оценки с витрины WB (сервер: server/cards/glue-ratings.js) — число оценок товара, разбивка по звёздам, оценка склейки.
 // Общие форматы оценок — js/common/ratings-format.js.
 const cardStarsTitle = stars => WBRatings.starsTitle(stars);
 const cardRatingWord = count => WBRatings.word(count);

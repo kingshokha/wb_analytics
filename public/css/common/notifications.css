@@ -1,4 +1,4 @@
-/* Уведомления раздела: колокольчик справа от «Обновить» (public/notifications.js) */
+/* Уведомления раздела: колокольчик справа от «Обновить» (public/js/common/notifications.js) */
 .notice-wrap {
   position: relative;
   display: flex;

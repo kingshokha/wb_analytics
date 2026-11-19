@@ -1,4 +1,4 @@
-/* «Цены и скидки», окно товара: карточка «История цены» (public/price-metric.js) — по мотивам Metric Card из Kokonut UI. */
+/* «Цены и скидки», окно товара: карточка «История цены» (public/js/prices/price-metric.js) — по мотивам Metric Card из Kokonut UI. */
 .pm-card {
   padding: 18px 18px 10px;
   border: 1px solid var(--line);

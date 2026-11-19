@@ -82,7 +82,7 @@ const { saveTodo, todos } = require('./todo/todo');
 const { itemRatings } = require('./ratings/ratings');
 const { itemReturns } = require('./returns/returns');
 
-// Раздел «Карточки товаров» — отдельный модуль (content-cards.js), маршруты /api/card и /api/cards/*.
+// Раздел «Карточки товаров» — отдельный модуль (server/cards/content-cards.js), маршруты /api/card и /api/cards/*.
 const contentCards = require('./cards/content-cards')({
   wbRequest,
   tokenFor,
@@ -99,7 +99,7 @@ const contentCards = require('./cards/content-cards')({
   productCardsStatus,
   glueRatings
 });
-// Раздел «Сообщения» — отдельный модуль (communications.js), маршруты /api/messages/*. События чатов — в data/Chats
+// Раздел «Сообщения» — отдельный модуль (server/messages/communications.js), маршруты /api/messages/*. События чатов — в data/Chats
 // (для тестового сервера — WB_CHATS_DIR, чтобы не трогать копию на компьютере).
 const CHATS_DIR = process.env.WB_CHATS_DIR ? path.resolve(process.env.WB_CHATS_DIR) : path.join(ROOT, 'data', 'Chats');
 const communications = require('./messages/communications')({
@@ -113,12 +113,12 @@ const communications = require('./messages/communications')({
   send,
   chatsDir: CHATS_DIR
 });
-// Раздел «Цены Сималенда» — отдельный модуль (sima-land.js), маршруты /api/sima/*: раз в час загружает оптовые цены
+// Раздел «Цены Сималенда» — отдельный модуль (server/sima/sima-land.js), маршруты /api/sima/*: раз в час загружает оптовые цены
 // Сималенда в отдельную Google Таблицу (google-sheets/sima-land) и держит копию их истории в data/Sima.
 const simaLand = require('./sima/sima-land')({ send, apiError, readJson, root: ROOT });
-// Оптовые цены Lenardi из загруженного отчёта xlsx (lenardi.js), маршруты /api/lenardi.
+// Оптовые цены Lenardi из загруженного отчёта xlsx (server/sima/lenardi.js), маршруты /api/lenardi.
 const lenardi = require('./sima/lenardi')({ send, apiError, readJson, root: ROOT });
-// Раздел «Прибыль Сималенда» (sima-profit.js), маршрут /api/sima-profit: оптовые цены Сималенда и Lenardi против цен на WB.
+// Раздел «Прибыль Сималенда» (server/sima/sima-profit.js), маршрут /api/sima-profit: оптовые цены Сималенда и Lenardi против цен на WB.
 const simaProfit = require('./sima/sima-profit')({
   send,
   apiError,

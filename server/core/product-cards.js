@@ -28,7 +28,7 @@ const productCardsGen = new Map();
 const productCardsPatches = new Map();
 const productCardsKey = id => `product-cards:${id}`;
 const productCardsDir = id => path.join(CARDS_DIR, cabinetFolderName(id));
-// Оценки склеек и число оценок товаров с открытых данных отзывов WB (модуль glue-ratings.js), файл — рядом с карточками.
+// Оценки склеек и число оценок товаров с открытых данных отзывов WB (модуль server/cards/glue-ratings.js), файл — рядом с карточками.
 const glueRatings = require('../cards/glue-ratings')({ dirFor: productCardsDir });
 function readProductCardsCopy(id) {
   const dir = productCardsDir(id);
