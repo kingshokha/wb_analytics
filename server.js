@@ -329,6 +329,8 @@ const productCardsGen = new Map();
 const productCardsPatches = new Map();
 const productCardsKey = id => `product-cards:${id}`;
 const productCardsDir = id => path.join(CARDS_DIR, cabinetFolderName(id));
+// Оценки склеек и число оценок товаров с открытых данных отзывов WB (модуль glue-ratings.js), файл — рядом с карточками.
+const glueRatings = require('./glue-ratings')({ dirFor: productCardsDir });
 function readProductCardsCopy(id) {
   const dir = productCardsDir(id);
   try {
@@ -1555,8 +1557,19 @@ async function productDetail(id, nmIdInput, from, to, live = false) {
       removed: !inSettings.has(campaignId), ...finalizeAdMetrics(metrics), activeDays: days.filter(day => day.campaigns.includes(Number(campaignId))).length };
   }).filter(item => item.activeDays || item.spend || item.views || item.orders).sort((a, b) => b.spend - a.spend);
   return { demo: false, period, fetchedAt: new Date().toISOString(),
-    product: { nmId: Number(nmId), name: card?.title || `Товар ${nmId}`, vendorCode: card?.vendorCode || '', brand: card?.brand || '', subject: card?.subjectName || '', photo: card ? cardPhoto(card) : '' },
+    product: { nmId: Number(nmId), name: card?.title || `Товар ${nmId}`, vendorCode: card?.vendorCode || '', brand: card?.brand || '', subject: card?.subjectName || '', photo: card ? cardPhoto(card) : '', feedback: await productFeedback(id, card) },
     days, campaigns, tracking: sheet.tracking, priceChanges: sheet.priceChanges, sync: funnel.sync || { pending: 0 }, warnings: [...warnings, ...(funnel.warnings || [])] };
+}
+// Оценка и число оценок товара и его склейки (glue-ratings.js). Склейки нет в файле — загружается сейчас (меньше секунды);
+// не загрузилась — null, страница просто не покажет оценку.
+async function productFeedback(id, card) {
+  if (!card?.imtID) return null;
+  try {
+    const glue = await glueRatings.glueNow(id, card.imtID);
+    if (!glue?.stars) return null;
+    const item = glueRatings.item(id, card.imtID, Number(card.nmID));
+    return { ...item, glueRating: glue.rating, glueCount: glue.count };
+  } catch { return null; }
 }
 // Отметки на графике товара: data/product-notes.json, { "кабинет:артикул": [{ id, date, text, at }] } — свои заметки
 // продавца: смена цены или СПП, ставки, акция. WB историю этого не отдаёт, поэтому их вносят вручную.
@@ -3631,7 +3644,13 @@ async function itemRatings(id, from, to) {
     return result;
   }, 30 * 60_000);
   const cards = await productCards(id, token).catch(() => []);
-  return { demo: false, periods, ...normalizeItemRatings(pages, cards) };
+  const result = { demo: false, periods, ...normalizeItemRatings(pages, cards) };
+  // «Всего оценок» — с открытых данных отзывов WB по склейкам (glue-ratings.js): отчёт WB даёт только прирост за период.
+  const imtByNm = new Map(cards.map(card => [Number(card.nmID), card.imtID]));
+  for (const item of result.items) { const stats = glueRatings.item(id, imtByNm.get(Number(item.nmId)), Number(item.nmId)); item.totalFeedbacks = stats ? stats.count : null; }
+  glueRatings.refresh(id, cards.map(card => card.imtID), result.items.slice(0, 200).map(item => imtByNm.get(Number(item.nmId))).filter(Boolean));
+  result.feedbacksLoading = glueRatings.status(id).loading;
+  return result;
 }
 
 // --- Возвраты и перемещения: /api/analytics/v1/item-returns — возвраты товаров продавцу в ПВЗ ---
@@ -4119,7 +4138,7 @@ async function orderStickers(body) {
 }
 
 // Раздел «Карточки товаров» — отдельный модуль (content-cards.js), маршруты /api/card и /api/cards/*.
-const contentCards = require('./content-cards')({ wbRequest, tokenFor, cabinets, cachedAnalytics, analyticsCache, apiError, readJson, send, localPhoto, productCards, refreshProductCards, productCardsChanged, productCardsStatus });
+const contentCards = require('./content-cards')({ wbRequest, tokenFor, cabinets, cachedAnalytics, analyticsCache, apiError, readJson, send, localPhoto, productCards, refreshProductCards, productCardsChanged, productCardsStatus, glueRatings });
 // Раздел «Сообщения» — отдельный модуль (communications.js), маршруты /api/messages/*. События чатов — в data/Chats
 // (для тестового сервера — WB_CHATS_DIR, чтобы не трогать копию на компьютере).
 const CHATS_DIR = process.env.WB_CHATS_DIR ? path.resolve(process.env.WB_CHATS_DIR) : path.join(ROOT, 'data', 'Chats');

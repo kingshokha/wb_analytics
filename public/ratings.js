@@ -1,10 +1,13 @@
 // --- Оценки товаров: рейтинг продавца, новые оценки по звёздам, товары, которым нужно внимание, таблица товаров ---
 // Данные — /api/ratings (метод WB item-rating, обновляется раз в час). Период заканчивается не позже вчерашнего дня.
+// «Всего оценок» — не из item-rating (там только прирост за период), а с открытых данных отзывов WB по склейке
+// (glue-ratings.js на сервере): пока они грузятся, в столбце «…».
 // Динамика везде — разница с прошлым периодом той же длины (+18 отзывов, −0,49 рейтинга), а не проценты.
 const ratings={data:null,key:'',error:'',search:'',filter:'',sort:{key:'newFeedbacks',dir:'desc'},page:1,pageSize:pageSizeFor('ratings'),request:0};
 const RATING_COLUMNS=[
   {key:'title',label:'Товар',width:300},
   {key:'feedbackRating',label:'Рейтинг',hint:'Рейтинг товара по отзывам и изменение к прошлому периоду',width:110},
+  {key:'totalFeedbacks',label:'Всего оценок',hint:'Все оценки товара на WB, за всё время — как видит покупатель (с открытых данных отзывов WB по склейке; обновляются раз в 6 часов)',width:110},
   {key:'percentile',label:'Лучше конкурентов',hint:'У скольких процентов товаров этого предмета у других продавцов рейтинг ниже',width:150},
   {key:'newFeedbacks',label:'Новые отзывы',hint:'Отзывы за период и изменение к прошлому периоду',width:120},
   {key:'s5',label:'5★',width:62},{key:'s4',label:'4★',width:62},{key:'s3',label:'3★',width:62},{key:'s2',label:'2★',width:62},{key:'s1',label:'1★',width:62},
@@ -48,16 +51,19 @@ function ratingRows(){
   const compare=(a,b)=>key==='title'?String(a.title).localeCompare(String(b.title),'ru')*factor:(Number(a[key])-Number(b[key]))*factor;
   return [...filtered.filter(item=>item[key]!=null).sort(compare),...filtered.filter(item=>item[key]==null)];
 }
-async function loadRatings(force=false){
+// silent — тихо перечитать, пока «Всего оценок» грузятся с WB: страница и сортировка остаются.
+async function loadRatings(force=false,silent=false){
   const key=[state.cabinet,$('#dateFrom').value,$('#dateTo').value].join(':');
-  if(!force&&ratings.key===key&&ratings.data){renderRatings();return}
+  clearTimeout(ratings.poll);
+  if(!force&&!silent&&ratings.key===key&&ratings.data){renderRatings();return}
   const request=++ratings.request,btn=$('#refresh');
   if(ratings.key.split(':')[0]!==state.cabinet){ratings.data=null;ratings.error='';renderRatings()}
-  btn.classList.add('loading');
+  if(!silent)btn.classList.add('loading');
   try{
     const data=await api('/api/ratings?'+new URLSearchParams({cabinet:state.cabinet,from:$('#dateFrom').value,to:$('#dateTo').value}));
     if(request!==ratings.request)return;
-    Object.assign(ratings,{data,key,error:'',page:1});state.demo=data.demo;renderRatings();
+    Object.assign(ratings,{data,key,error:''},silent?{}:{page:1});state.demo=data.demo;renderRatings();
+    if(data.feedbacksLoading)ratings.poll=setTimeout(()=>{if(state.activePage==='ratings'&&ratings.key===key)loadRatings(false,true)},15000);
   }catch(e){if(request!==ratings.request)return;ratings.error=e.message;renderRatings();toast(e.message);addNotice('ratings',`Ошибка загрузки оценок: ${e.message}`)}
   finally{if(request===ratings.request)btn.classList.remove('loading')}
 }
@@ -98,6 +104,7 @@ function ratingCell(item,key){
   if(key==='percentile'){if(item.percentile==null)return '<td title="WB не сравнил товар с конкурентами">—</td>';const level=item.percentile<25?'bad':item.percentile<50?'warn':'good';
     return `<td><span class="rating-percentile ${level}"><b>${Math.round(item.percentile)}%</b><span><i style="width:${Math.max(2,item.percentile)}%"></i></span></span></td>`}
   if(key==='newFeedbacks')return `<td><strong>${fmtNum(item.newFeedbacks)}</strong>${countDelta(item.newFeedbacksDelta)}</td>`;
+  if(key==='totalFeedbacks')return item.totalFeedbacks==null?`<td class="muted"${ratings.data?.feedbacksLoading?' title="Загружаются с WB…"':''}>${ratings.data?.feedbacksLoading?'…':'—'}</td>`:`<td><strong>${fmtNum(item.totalFeedbacks)}</strong></td>`;
   if(/^s[1-5]$/.test(key)){const star=Number(key[1]),s=item.stars[star];return `<td class="${star<=2&&s.count?'rating-negative':''}" title="${s.delta==null?'':`К прошлому периоду: ${s.delta>0?'+':''}${s.delta}`}">${s.count?fmtNum(s.count):'<span class="muted">0</span>'}</td>`}
   if(key==='negativeShare')return `<td>${item.negativeShare==null?'—':`<span class="${item.negativeShare>=20?'rating-negative':''}">${Math.round(item.negativeShare)}%</span>`}</td>`;
   if(key==='cardRating')return `<td>${item.cardRating==null?'—':`<strong>${ratingFixed(item.cardRating,1)}</strong><small class="muted"> / 10</small>`}</td>`;

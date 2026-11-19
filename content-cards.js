@@ -24,7 +24,7 @@ const TAG_COLORS = ['D1CFD7', 'FEE0E0', 'ECDAFF', 'E4EAFF', 'DEF1DD', 'FFECC7'];
 const DOCUMENT_TYPES = [1, 2, 3, 4, 5, 7, 8, 9];
 const MEDIA_MAX_BYTES = 50 * 1024 * 1024;
 
-module.exports = function createContentCards({ wbRequest, tokenFor, cabinets, cachedAnalytics, analyticsCache, apiError, readJson, send, localPhoto, productCards, refreshProductCards, productCardsChanged, productCardsStatus }) {
+module.exports = function createContentCards({ wbRequest, tokenFor, cabinets, cachedAnalytics, analyticsCache, apiError, readJson, send, localPhoto, productCards, refreshProductCards, productCardsChanged, productCardsStatus, glueRatings = null }) {
   const isDemo = id => id === 'demo' || !cabinets().length;
   const cardsKey = id => `product-cards:${id}`;
   // Список карточек хранится на сервере и на диске (productCards в server.js). После изменения он поправляется
@@ -117,20 +117,35 @@ module.exports = function createContentCards({ wbRequest, tokenFor, cabinets, ca
   const missingDocsOf = card => [...new Set((card.documents?.issues || []).filter(issue => issue.code === 'document_missing').flatMap(issue => issue.documentTypes || []))];
   // Цвета — характеристика «Цвет» (id 14177449); значение — массив строк, у части карточек — одна строка.
   const COLOR_CHARC = 14177449;
+  // ТН ВЭД — характеристика «ТНВЭД» (id 15000001). Фильтра по ней в методе списка карточек нет, поэтому «Без ТН ВЭД»
+  // отбирается на сайте: характеристики нет или она пустая. Пометку WB tnved_missing в проверке документов не берём —
+  // на деле (19.11.2026, все кабинеты) её нет ни у одной карточки, хотя карточек без кода сотни.
+  const noTnvedOf = card => {
+    const value = (card.characteristics || []).find(item => Number(item?.id) === donorParser.TNVED_ID)?.value;
+    return !(Array.isArray(value) ? value.some(item => String(item ?? '').trim()) : String(value ?? '').trim());
+  };
   function colorsOf(card) {
     const charc = (card.characteristics || []).find(item => Number(item?.id) === COLOR_CHARC || item?.name === 'Цвет');
     const values = Array.isArray(charc?.value) ? charc.value : charc?.value != null ? [charc.value] : [];
     return [...new Set(values.map(value => String(value).trim().toLowerCase()).filter(Boolean))];
   }
-  function listItem(card, groupSizes) {
+  // Оценки с витрины WB (glue-ratings.js): у товара — число оценок, средняя и разбивка по звёздам, у склейки — её оценка
+  // и число оценок. null — ещё не загружены (или демо-кабинет).
+  function feedbackOf(id, card) {
+    if (!glueRatings || isDemo(id) || !id) return { feedbacks: null, fbAvg: null, fbStars: null, glueRating: null, glueCount: null, glueStars: null };
+    const item = glueRatings.item(id, card.imtID, card.nmID), glue = glueRatings.glue(id, card.imtID);
+    return { feedbacks: item ? item.count : null, fbAvg: item?.avg ?? null, fbStars: item?.stars || null, glueRating: glue?.rating ?? null, glueCount: glue ? glue.count : null, glueStars: glue?.stars || null };
+  }
+  function listItem(card, groupSizes, id = '') {
     const photo = card.photos?.[0] || {};
     return {
+      ...feedbackOf(id, card),
       nmID: card.nmID, imtID: card.imtID, vendorCode: card.vendorCode || '', title: card.title || '', brand: card.brand || '', subjectID: card.subjectID, subjectName: card.subjectName || '',
       photo: localPhoto(photo.c246x328 || photo.tm || photo.square || photo.big || ''), photos: (card.photos || []).length, video: Boolean(card.video),
       sizes: (card.sizes || []).map(size => ({ techSize: size.techSize || '', wbSize: size.wbSize || '', skus: size.skus || [] })),
       tags: card.tags || [], needKiz: Boolean(card.needKiz), kizMarked: Boolean(card.kizMarked), dimensions: card.dimensions || null,
       documents: (card.documents?.items || []).length, verdict: verdictOf(card), docErrors: docErrorsOf(card), missingDocs: missingDocsOf(card), descriptionLength: String(card.description || '').length,
-      characteristics: (card.characteristics || []).length, colors: colorsOf(card), groupSize: groupSizes.get(card.imtID) || 1, createdAt: card.createdAt || '', updatedAt: card.updatedAt || '', trashedAt: card.trashedAt || ''
+      characteristics: (card.characteristics || []).length, colors: colorsOf(card), noTnved: noTnvedOf(card), groupSize: groupSizes.get(card.imtID) || 1, createdAt: card.createdAt || '', updatedAt: card.updatedAt || '', trashedAt: card.trashedAt || ''
     };
   }
   // refreshing — из WB как раз грузится свежий список: страница спросит ещё раз и покажет его. loading — самой первой
@@ -150,8 +165,15 @@ module.exports = function createContentCards({ wbRequest, tokenFor, cabinets, ca
     }
     const groupSizes = new Map();
     cards.forEach(card => groupSizes.set(card.imtID, (groupSizes.get(card.imtID) || 0) + 1));
-    return { demo: isDemo(id), cards: cards.map(card => listItem(card, groupSizes)), tags, warnings, fetchedAt: new Date(status.savedAt || Date.now()).toISOString(),
-      refreshing: status.refreshing, loading: !status.savedAt && status.refreshing, loaded: status.loaded || 0,
+    // Оценки склеек — в фоне; склейки страницы, которую сейчас видно (imts), — первыми.
+    let feedbacks = { loading: false };
+    if (glueRatings && !isDemo(id) && status.savedAt && cards.length) {
+      const priority = String(filter.imts || '').split(',').map(Number).filter(Number.isInteger).slice(0, 200);
+      glueRatings.refresh(id, [...groupSizes.keys()], priority);
+      feedbacks = glueRatings.status(id);
+    }
+    return { demo: isDemo(id), cards: cards.map(card => listItem(card, groupSizes, id)), tags, warnings, fetchedAt: new Date(status.savedAt || Date.now()).toISOString(),
+      refreshing: status.refreshing, loading: !status.savedAt && status.refreshing, loaded: status.loaded || 0, feedbacks,
       priority: first ? { state: first.error ? 'error' : first.running ? 'loading' : 'done', count: first.cards.size, error: first.error || '' } : null };
   }
   // --- Сначала — карточки по фильтру ---
@@ -293,11 +315,18 @@ module.exports = function createContentCards({ wbRequest, tokenFor, cabinets, ca
     ]);
     // Свежая карточка заменяет её же в кэше списка — список сразу показывает новые данные.
     if (!trashed && !isDemo(id)) { const cached = analyticsCache.get(cardsKey(id)); if (cached?.value) { const index = cached.value.findIndex(item => item.nmID === nmId); if (index >= 0) cached.value[index] = card; } }
-    const group = trashed ? [] : cards.filter(item => item.imtID === card.imtID && item.nmID !== nmId).map(item => ({ nmID: item.nmID, vendorCode: item.vendorCode, title: item.title, photo: localPhoto(item.photos?.[0]?.tm || item.photos?.[0]?.c246x328 || '') }));
+    // Оценки склейки и её карточек — с витрины WB (glue-ratings.js); склейки нет в файле — загружается сейчас.
+    let feedback = null;
+    if (glueRatings && !isDemo(id) && !trashed && card.imtID) {
+      const glue = await glueRatings.glueNow(id, card.imtID).catch(() => null);
+      if (glue?.stars) feedback = { ...glueRatings.item(id, card.imtID, nmId), glueRating: glue.rating, glueCount: glue.count, glueStars: glue.stars };
+    }
+    const itemFeedback = nm => feedback ? glueRatings.item(id, card.imtID, nm) : null;
+    const group = trashed ? [] : cards.filter(item => item.imtID === card.imtID && item.nmID !== nmId).map(item => ({ nmID: item.nmID, vendorCode: item.vendorCode, title: item.title, photo: localPhoto(item.photos?.[0]?.tm || item.photos?.[0]?.c246x328 || ''), feedback: itemFeedback(item.nmID) }));
     const groupSizes = new Map(); cards.forEach(item => groupSizes.set(item.imtID, (groupSizes.get(item.imtID) || 0) + 1));
     const sameSubject = trashed ? [] : cards.filter(item => item.subjectID === card.subjectID && item.imtID !== card.imtID).map(item => ({ nmID: item.nmID, imtID: item.imtID, vendorCode: item.vendorCode, title: item.title,
       photo: localPhoto(item.photos?.[0]?.tm || item.photos?.[0]?.c246x328 || ''), groupSize: groupSizes.get(item.imtID) || 1 }));
-    return { demo: isDemo(id), trashed, card, charcs, dictionaries: dicts, tags, group, sameSubject, errors: (errors.items || []).filter(item => item.vendorCode === card.vendorCode), warnings, fetchedAt: new Date().toISOString() };
+    return { demo: isDemo(id), trashed, card, feedback, charcs, dictionaries: dicts, tags, group, sameSubject, errors: (errors.items || []).filter(item => item.vendorCode === card.vendorCode), warnings, fetchedAt: new Date().toISOString() };
   }
 
   // --- Изменения ---
@@ -807,7 +836,7 @@ module.exports = function createContentCards({ wbRequest, tokenFor, cabinets, ca
   async function handle(req, res, url) {
     const cabinet = () => url.searchParams.get('cabinet') || 'demo';
     if (req.method === 'GET' && url.pathname === '/api/cards') {
-      const filter = { subjectID: url.searchParams.get('subjectID'), brand: url.searchParams.get('brand'), tagID: url.searchParams.get('tagID') };
+      const filter = { subjectID: url.searchParams.get('subjectID'), brand: url.searchParams.get('brand'), tagID: url.searchParams.get('tagID'), imts: url.searchParams.get('imts') };
       send(res, 200, await cardsList(cabinet(), url.searchParams.get('force') === '1', filter)); return true;
     }
     if (req.method === 'GET' && url.pathname === '/api/cards/trash') { send(res, 200, await trashList(cabinet())); return true; }

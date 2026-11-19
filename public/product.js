@@ -118,14 +118,26 @@
     renderNotes(); if (view.data) { renderMain(); renderMinis(); }
   }
 
-  function render() { renderHead(); renderSwitch(); renderMain(); renderNotes(); renderMinis(); renderCampaigns(); }
+  // Оценка товара на WB и число оценок (сервер — открытые данные отзывов по склейке, glue-ratings.js); в подсказке —
+  // по звёздам и оценка всей склейки, если товар склеен.
+  function feedbackText(fb) {
+    if (!fb) return '';
+    const num = value => Number(value || 0).toLocaleString('ru-RU'), word = count => { const a = count % 100, b = count % 10; return a > 10 && a < 20 ? 'оценок' : b === 1 ? 'оценка' : b > 1 && b < 5 ? 'оценки' : 'оценок'; };
+    const star = value => Number(value).toLocaleString('ru-RU', { minimumFractionDigits: value >= 10 ? 0 : 1, maximumFractionDigits: 2 });
+    const total = fb.count || 0, stars = fb.stars || [0, 0, 0, 0, 0];
+    const lines = total ? [5, 4, 3, 2, 1].map(s => `${s}★ — ${num(stars[s - 1])} (${Math.round(stars[s - 1] / total * 100)}%)`) : [];
+    if (fb.glueRating != null && fb.glueCount !== total) lines.push(`Склейка: ★ ${star(fb.glueRating)} · ${num(fb.glueCount)} ${word(fb.glueCount || 0)}`);
+    const title = lines.length ? ` title="${esc(lines.join('\n'))}"` : '';
+    return total ? `<b class="product-rating"${title}>★ ${star(fb.avg)} · ${num(total)} ${word(total)}</b>` : `<span${title}>оценок нет</span>`;
+  }
+  function render() { renderHead();renderSwitch(); renderMain(); renderNotes(); renderMinis(); renderCampaigns(); }
   function renderHead() {
     const { product, demo } = view.data;
     document.title = `${product.name} — WB Pulse`;
     $('#productTitle').textContent = product.name;
     const photo = $('#productPhoto'); if (product.photo) photo.src = product.photo; else photo.removeAttribute('src');
     $('#productMeta').innerHTML = [product.vendorCode ? `<b>${esc(product.vendorCode)}</b>` : '', `<a href="https://www.wildberries.ru/catalog/${encodeURIComponent(product.nmId)}/detail.aspx" target="_blank" rel="noopener noreferrer" title="Открыть товар на WB">nmID ${esc(product.nmId)}</a>`,
-      product.subject ? esc(product.subject) : '', product.brand ? esc(product.brand) : '', demo ? 'демо-данные' : ''].filter(Boolean).map(item => `<span>${item}</span>`).join('');
+      product.subject ? esc(product.subject) : '', product.brand ? esc(product.brand) : '', feedbackText(product.feedback), demo ? 'демо-данные' : ''].filter(Boolean).map(item => `<span>${item}</span>`).join('');
     // Предупреждения WB и ошибки — в колокольчике (notifications.js), как на основном сайте.
     setNotices('product', 'load', view.data.warnings || []);
     setNotices('product', 'sync', view.data.sync?.lastError ? [`Догрузка воронки из WB: ${view.data.sync.lastError}`] : [], 'error');

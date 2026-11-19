@@ -143,6 +143,17 @@
     .group-item img{width:28px;height:37px;border-radius:6px;object-fit:cover;background:#eef0ee}
     .group-item a{font-weight:700;text-decoration:none;color:var(--ink)}
     .group-item a:hover{color:var(--purple)}
+    .group-item .rating{margin-left:auto;white-space:nowrap;font-weight:700}
+    .group-item .rating small{font-weight:500;color:var(--muted)}
+    .group-item .rating.low{color:#b84949}
+    /* Оценка товара у наименования: звёзды, число оценок, полоска по звёздам, оценка склейки */
+    .card-rating-line{display:flex;align-items:center;flex-wrap:wrap;gap:6px 12px;margin-top:6px;font-size:13px}
+    .card-rating-line:empty{display:none}
+    .card-rating-line b{font-size:15px}
+    .card-rating-line .muted{color:var(--muted)}
+    .stars-bar{display:flex;width:180px;height:8px;border-radius:5px;overflow:hidden;background:#eef0ee}
+    .stars-bar i{display:block;height:100%}
+    .stars-bar .s5{background:#318f68}.stars-bar .s4{background:#8cc56b}.stars-bar .s3{background:#f0c24b}.stars-bar .s2{background:#f0a04b}.stars-bar .s1{background:#e76464}
     .row-actions{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
     .row-actions select{height:34px;max-width:100%;padding:0 10px;border:1px solid var(--line);border-radius:9px;font-size:12px;font-weight:600}
     /* Нижняя панель сохранения */
@@ -194,7 +205,7 @@
     <header class="page-head">
       <div class="card-head">
         <img class="card-photo" id="cardPhoto" alt="">
-        <div><h1 id="cardTitle">Карточка товара</h1><p class="card-meta" id="cardMeta"></p></div>
+        <div><h1 id="cardTitle">Карточка товара</h1><p class="card-meta" id="cardMeta"></p><div class="card-rating-line" id="cardRating"></div></div>
       </div>
       <div class="head-actions">
         <button type="button" class="btn" id="reloadButton" title="Загрузить карточку из WB заново">↻ Обновить</button>

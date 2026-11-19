@@ -137,10 +137,24 @@
       `<a href="/product.html?${new URLSearchParams({ cabinet, nmId: card.nmID })}" target="_blank" rel="noopener noreferrer">детализация товара ↗</a>`,
       `<a href="/?page=cards">все карточки</a>`].filter(Boolean).join(' · ');
     renderBanners();
-    const dirs = Object.entries(data.dictionaries || {}).map(([name, values]) => `<datalist id="dl-${name}">${values.map(value => `<option value="${esc(value)}">`).join('')}</datalist>`).join('');
+    renderRating();
+    const dirs =Object.entries(data.dictionaries || {}).map(([name, values]) => `<datalist id="dl-${name}">${values.map(value => `<option value="${esc(value)}">`).join('')}</datalist>`).join('');
     $('#content').innerHTML = `${dirs}<div class="layout"><div class="col">${data.trashed ? '' : panelMain() + panelCharcs() + panelDims() + panelSizes() + panelDocs()}</div><div class="col">${panelMedia()}${data.trashed ? '' : panelTags() + panelGroup()}${panelTrash()}</div></div>`;
     if (view.focus) { const field = $(view.focus); if (field) { field.focus(); view.focus = null; } }
     updateSavebar();
+  }
+  // Оценки — как их видит покупатель на WB (сервер берёт их с открытых данных отзывов по склейке, glue-ratings.js):
+  // у товара — средняя, число оценок и полоска по звёздам (подробно — в подсказке), рядом — оценка всей склейки.
+  const ratingWord = count => { const a = count % 100, b = count % 10; return a > 10 && a < 20 ? 'оценок' : b === 1 ? 'оценка' : b > 1 && b < 5 ? 'оценки' : 'оценок'; };
+  const fmtCount = value => Number(value || 0).toLocaleString('ru-RU');
+  const fmtStar = value => Number(value).toLocaleString('ru-RU', { minimumFractionDigits: value >= 10 ? 0 : 1, maximumFractionDigits: 2 });
+  const starsTitle = stars => { const total = stars.reduce((sum, value) => sum + value, 0); return total ? [5, 4, 3, 2, 1].map(star => `${star}★ — ${fmtCount(stars[star - 1])} (${Math.round(stars[star - 1] / total * 100)}%)`).join('\n') : ''; };
+  function renderRating() {
+    const fb = view.data.feedback, box = $('#cardRating');
+    if (!fb) { box.innerHTML = ''; return; }
+    const total = fb.count || 0, bar = total ? `<span class="stars-bar" title="${esc(`Оценки товара по звёздам:\n${starsTitle(fb.stars)}`)}">${[5, 4, 3, 2, 1].map(star => fb.stars[star - 1] ? `<i class="s${star}" style="width:${fb.stars[star - 1] / total * 100}%"></i>` : '').join('')}</span>` : '';
+    const glue = (view.data.group || []).length && fb.glueRating != null ? `<span class="muted" title="${esc(`На WB отзывы склеенных карточек общие — покупатель видит оценку всей склейки.\nОценки склейки по звёздам:\n${starsTitle(fb.glueStars || [0, 0, 0, 0, 0])}`)}">склейка: ★ ${fmtStar(fb.glueRating)} · ${fmtCount(fb.glueCount)} ${ratingWord(fb.glueCount || 0)}</span>` : '';
+    box.innerHTML = total ? `<b>★ ${fmtStar(fb.avg)}</b><span>${fmtCount(total)} ${ratingWord(total)}</span>${bar}${glue}` : `<span class="muted">У товара пока нет оценок</span>${glue}`;
   }
   function renderBanners() {
     const data = view.data, card = data.card, list = [];
@@ -238,8 +252,12 @@
   function panelGroup() {
     const data = view.data, card = data.card, group = data.group || [], same = data.sameSubject || [];
     const free = 30 - group.length - 1;
-    return `<section class="panel"><div class="panel-head"><h2>Склейка</h2><span class="hint">imtID ${card.imtID}</span></div><div class="panel-body">
-      ${group.length ? `<p class="hint" style="margin-bottom:8px">Вместе с этой карточкой (покупатель видит их как варианты одного товара):</p><div class="group-list">${group.map(item => `<div class="group-item">${item.photo ? `<img src="${esc(item.photo)}" alt="">` : ''}<a href="/card.html?${new URLSearchParams({ cabinet, nmId: item.nmID })}">${esc(item.vendorCode)}</a><span class="hint">${esc(short(item.title, 40))}</span></div>`).join('')}</div>
+    // Оценка склейки и каждой карточки: видно, какая тянет оценку склейки вниз (средняя ниже склейки — красным).
+    const fb = data.feedback, glueRating = fb?.glueRating;
+    const itemRating = item => !item.feedback ? '' : item.feedback.count ? `<span class="rating${glueRating != null && item.feedback.avg != null && item.feedback.avg < glueRating - 0.05 ? ' low' : ''}" title="${esc(`Оценки по звёздам:\n${starsTitle(item.feedback.stars)}`)}">★ ${fmtStar(item.feedback.avg)} <small>${fmtCount(item.feedback.count)}</small></span>` : '<span class="rating"><small>нет оценок</small></span>';
+    const head = group.length && glueRating != null ? `<span class="hint">★ ${fmtStar(glueRating)} · ${fmtCount(fb.glueCount)} ${ratingWord(fb.glueCount || 0)} у склейки</span>` : '';
+    return `<section class="panel"><div class="panel-head"><h2>Склейка</h2>${head}</div><div class="panel-body">
+      ${group.length ? `<p class="hint" style="margin-bottom:8px">Вместе с этой карточкой (покупатель видит их как варианты одного товара, отзывы и оценка у них общие):</p><div class="group-list">${fb ? `<div class="group-item"><b>Эта карточка</b>${itemRating({ feedback: fb })}</div>` : ''}${group.map(item => `<div class="group-item">${item.photo ? `<img src="${esc(item.photo)}" alt="">` : ''}<a href="/card.html?${new URLSearchParams({ cabinet, nmId: item.nmID })}">${esc(item.vendorCode)}</a><span class="hint">${esc(short(item.title, 40))}</span>${itemRating(item)}</div>`).join('')}</div>
       <div class="row-actions"><button type="button" class="btn small" data-action="unmerge">Отсоединить эту карточку</button></div>` : '<p class="hint" style="margin-bottom:8px">Карточка не объединена с другими.</p>'}
       ${data.trashed ? '' : `<div class="row-actions" style="margin-top:10px"><button type="button" class="btn small primary" data-action="glue-open"${same.length && free > 0 ? '' : ' disabled'}>Добавить в карточку другие товары</button></div>`}
       <p class="hint" style="margin-top:8px">Объединять можно только карточки одного предмета, до 30 в группе${group.length ? ` (свободно ${Math.max(0, free)})` : ''}.</p></div></section>`;
