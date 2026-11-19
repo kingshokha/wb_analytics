@@ -135,14 +135,68 @@ module.exports = function createContentCards({ wbRequest, tokenFor, cabinets, ca
   }
   // refreshing — из WB как раз грузится свежий список: страница спросит ещё раз и покажет его. loading — самой первой
   // загрузки ещё нет на диске: в cards то, что уже пришло, loaded — сколько.
-  async function cardsList(id, force) {
-    const cards = await allCards(id, force, false), groupSizes = new Map();
-    cards.forEach(card => groupSizes.set(card.imtID, (groupSizes.get(card.imtID) || 0) + 1));
+  // filter — фильтры страницы (предмет, бренд, ярлык): пока весь список грузится из WB, карточки по ним грузятся отдельно
+  // и сразу (см. «Сначала — карточки по фильтру»).
+  async function cardsList(id, force, filter = {}) {
+    let cards = await allCards(id, force, false);
     const warnings = [];
     const tags = await tagsOf(id).catch(error => (warnings.push(`Ярлыки: ${error.message}`), []));
     const status = isDemo(id) ? { savedAt: Date.now(), refreshing: false } : productCardsStatus(id);
+    const first = priorityCards(id, filter, status);
+    if (first?.cards.size) {
+      const seen = new Set();
+      cards = cards.map(card => { seen.add(card.nmID); return first.cards.get(card.nmID) || card; });
+      for (const card of first.cards.values()) if (!seen.has(card.nmID)) cards.push(card);
+    }
+    const groupSizes = new Map();
+    cards.forEach(card => groupSizes.set(card.imtID, (groupSizes.get(card.imtID) || 0) + 1));
     return { demo: isDemo(id), cards: cards.map(card => listItem(card, groupSizes)), tags, warnings, fetchedAt: new Date(status.savedAt || Date.now()).toISOString(),
-      refreshing: status.refreshing, loading: !status.savedAt && status.refreshing, loaded: status.loaded || 0 };
+      refreshing: status.refreshing, loading: !status.savedAt && status.refreshing, loaded: status.loaded || 0,
+      priority: first ? { state: first.error ? 'error' : first.running ? 'loading' : 'done', count: first.cards.size, error: first.error || '' } : null };
+  }
+  // --- Сначала — карточки по фильтру ---
+  // Полный список у кабинета с 15 000 карточек грузится из WB минуту-две. Пока он грузится, карточки по фильтрам страницы
+  // (предмет → objectIDs, бренд → brands, ярлык → tagIDs; метод тот же, POST /content/v2/get/cards/list) грузятся
+  // отдельным коротким списком и сразу подменяют свои строки в ответе. Когда полный список загрузится позже них, отдельный
+  // больше не нужен. Поиск по тексту сюда не входит: textSearch WB ищет только по артикулам и баркоду, и ненадёжно.
+  const priorityJobs = new Map();
+  const PRIORITY_MAX_PAGES = 50;
+  function wbCardsFilter(filter) {
+    const result = {}, subjectID = Number(filter.subjectID), tagID = Number(filter.tagID), brand = String(filter.brand || '').trim();
+    if (Number.isInteger(subjectID) && subjectID > 0) result.objectIDs = [subjectID];
+    if (brand) result.brands = [brand];
+    if (Number.isInteger(tagID) && tagID > 0) result.tagIDs = [tagID];
+    return Object.keys(result).length ? result : null;
+  }
+  function priorityCards(id, filter, status) {
+    let job = priorityJobs.get(id);
+    // Полный список загрузился после отдельного — отдельный больше не нужен.
+    if (job && !job.running && status.savedAt >= job.at) { priorityJobs.delete(id); job = null; }
+    const wbFilter = isDemo(id) ? null : wbCardsFilter(filter);
+    if (!wbFilter || !(status.refreshing || job)) return job?.key === JSON.stringify(wbFilter) ? job : null;
+    const key = JSON.stringify(wbFilter);
+    if (job?.key === key) return job;
+    if (!status.refreshing) return null;
+    job = { key, at: Date.now(), running: true, cards: new Map(), error: '' };
+    priorityJobs.set(id, job);
+    const current = job;
+    (async () => {
+      const token = tokenFor(id);
+      let cursor = { limit: 100 };
+      for (let page = 0; page < PRIORITY_MAX_PAGES && priorityJobs.get(id) === current; page++) {
+        let response;
+        for (let retry = 0; ; retry++) {
+          try { response = await content(token, '/content/v2/get/cards/list', { method: 'POST', body: { settings: { sort: { ascending: false }, cursor, filter: { withPhoto: -1, ...wbFilter } } } }); break; }
+          catch (error) { if (error.status !== 429 || retry >= 3) throw error; await sleep(Math.max(1000, (error.retryAfter || 0) * 1000)); }
+        }
+        const batch = Array.isArray(response?.cards) ? response.cards : [];
+        batch.forEach(card => current.cards.set(card.nmID, card));
+        if (batch.length < 100 || !response?.cursor?.updatedAt || !response?.cursor?.nmID) break;
+        cursor = { limit: 100, updatedAt: response.cursor.updatedAt, nmID: response.cursor.nmID };
+        if ((page + 1) % 5 === 0) await sleep(650);
+      }
+    })().catch(error => { current.error = error.message; }).finally(() => { current.running = false; current.at = Date.now(); });
+    return job;
   }
   async function trashList(id) {
     if (isDemo(id)) { demoCards(); return { demo: true, cards: demo.trash.map(card => listItem(card, new Map())) }; }
@@ -752,7 +806,10 @@ module.exports = function createContentCards({ wbRequest, tokenFor, cabinets, ca
   // Маршруты раздела. Возвращает true, если запрос обработан.
   async function handle(req, res, url) {
     const cabinet = () => url.searchParams.get('cabinet') || 'demo';
-    if (req.method === 'GET' && url.pathname === '/api/cards') { send(res, 200, await cardsList(cabinet(), url.searchParams.get('force') === '1')); return true; }
+    if (req.method === 'GET' && url.pathname === '/api/cards') {
+      const filter = { subjectID: url.searchParams.get('subjectID'), brand: url.searchParams.get('brand'), tagID: url.searchParams.get('tagID') };
+      send(res, 200, await cardsList(cabinet(), url.searchParams.get('force') === '1', filter)); return true;
+    }
     if (req.method === 'GET' && url.pathname === '/api/cards/trash') { send(res, 200, await trashList(cabinet())); return true; }
     if (req.method === 'GET' && url.pathname === '/api/cards/errors') { send(res, 200, await errorsList(cabinet())); return true; }
     if (req.method === 'GET' && url.pathname === '/api/cards/duplicate') { send(res, 200, duplicateStatus(cabinet(), url.searchParams.get('job') || '')); return true; }

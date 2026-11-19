@@ -463,9 +463,11 @@ tr.rating-row-attention td:first-child{box-shadow:inset 3px 0 0 var(--red)}
 #cardSelectAll{display:inline-block;margin-right:8px;vertical-align:middle}
 /* «Проверка»: причины ошибок длинные — переносятся внутри столбца, а не обрезаются общим правилом таблиц с изменяемой шириной. */
 .cards-table td:nth-child(7){white-space:normal!important}
-.cards-select-bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:10px 20px;background:#f6f4fd;border-bottom:1px solid #e3dcfb;font-size:12px}
-.cards-select-bar span{margin-right:auto}
-.cards-select-bar .primary{width:auto;margin:0;padding:9px 14px}
+/* «Склеить» выбранные карточки */
+.card-merge-warn{margin:12px 0 0;padding:10px 12px;border-radius:9px;background:#fff6e5;color:#7a4b00;font-size:12.5px;line-height:1.45}
+.card-merge-problem{margin:12px 0 0;padding:10px 12px;border-radius:9px;background:#fff0f0;color:#b84949;font-size:12.5px;font-weight:700}
+.card-merge-list{max-height:260px;overflow:auto;margin:12px 0 0;padding-left:18px;font-size:12px;line-height:1.6}
+.card-merge-list small{color:var(--muted)}
 .card-dup-suffix{display:flex;align-items:center;gap:10px;margin:12px 0 8px;font-size:12px;font-weight:700}
 .card-dup-suffix input{width:140px}
 .card-dup-list{max-height:380px;overflow:auto;margin:6px 0 10px;border:1px solid var(--line);border-radius:9px}
@@ -496,7 +498,6 @@ tr.rating-row-attention td:first-child{box-shadow:inset 3px 0 0 var(--red)}
 .card-parse-footer{margin-top:10px}
 .card-parse-footer>.muted{font-size:12px;margin:6px 0 0}
 @media (max-width:640px){.card-parse-charcs ul{columns:1}}
-.cards-select-bar .ghost{height:33px;padding:0 12px;border:1px solid var(--line);border-radius:8px;background:white;font:700 12px Manrope;cursor:pointer}
 .card-glue-options{display:flex;flex-wrap:wrap;gap:6px 16px;margin:12px 0 4px;font-size:12px;font-weight:700}
 .card-glue-options label{display:flex;align-items:center;gap:6px;cursor:pointer}
 .modal-card .card-glue-options input{width:auto;margin:0;padding:0;accent-color:var(--purple)}

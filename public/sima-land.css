@@ -54,3 +54,11 @@ small.sima-profit-mark{display:block;margin-top:2px;font-size:11px;font-weight:8
   #page-sima .stock-filters .search,#page-sima .stock-filters .preset-button{grid-column:1/-1}
   #page-sima .stock-filters select{width:100%;min-width:0}
 }
+
+/* «Прибыль Сималенда»: цена WB открывает окно цены товара; «С отличием > 0,2%» */
+.sima-price-open{padding:0;border:0;border-bottom:1px dashed #b8a6f5;background:none;color:var(--ink);font-family:inherit;font-size:inherit;font-weight:800;cursor:pointer;white-space:nowrap}
+.sima-price-open:hover{color:var(--purple);border-bottom-color:var(--purple)}
+.sima-diff-only{display:inline-flex;align-items:center;gap:7px;height:35px;padding:0 11px;border:1px solid var(--line);border-radius:8px;background:#fafbfa;font:600 11px Manrope;white-space:nowrap;cursor:pointer}
+.sima-diff-only input{width:15px;height:15px;margin:0;accent-color:var(--purple)}
+/* «Цены Сималенда»: столбцы «Арт. WB» и «Поставщик» */
+#page-sima .change-table td.change-object small[title]{cursor:help}

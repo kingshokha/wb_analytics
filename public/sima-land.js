@@ -2,7 +2,8 @@
 // Данные — /api/sima/history?days= (модуль sima-land.js): сервер раз в час загружает цены с Сималенда в таблицу
 // google-sheets/sima-land, она записывает изменения цены и цены по акции «Опт», а ещё добавленные и убранные артикулы
 // и товары, которых нет на Сималенде. Сначала копия с компьютера (data/Sima), потом дозагрузка из таблицы (SheetSync).
-// «Загрузить цены сейчас» — POST /api/sima/refresh, не дожидаясь часа. Раздел не зависит от кабинета WB.
+// «Загрузить цены сейчас» — POST /api/sima/refresh, не дожидаясь часа. История не зависит от кабинета WB; от него —
+// только столбец «Арт. WB»: товары выбранного кабинета с этим артикулом Сималенда (/api/sima-profit/links).
 // Устроен как «История изменений»: дни отделены строкой с датой, время — местное (Душанбе, функции change-history.js),
 // поиск по артикулу и названию, вид изменения (по умолчанию — цена по акции «Опт») и свой период (по умолчанию
 // 14 дней); вид и период запоминаются в браузере; при одном виде колонка «Что изменилось» скрыта. Над таблицей —
@@ -73,12 +74,30 @@ async function refreshSimaPrices(){
 }
 function simaObject(item){
   const title=String(item.title||'')||`Артикул ${item.id}`;
-  return `<a class="change-link" href="https://www.sima-land.ru/${encodeURIComponent(item.id)}/" target="_blank" rel="noopener noreferrer" title="Открыть товар на Сималенде">${escapeHtml(title)}</a><small>Артикул ${escapeHtml(item.id)}</small>`;
+  return `<a class="change-link" href="https://www.sima-land.ru/${encodeURIComponent(item.id)}/" target="_blank" rel="noopener noreferrer" title="Открыть товар на Сималенде">${escapeHtml(title)}</a>`;
 }
+// «Арт. WB» и «Поставщик» — как в «Прибыли Сималенда». Товары WB — выбранного кабинета, у которых артикул продавца
+// начинается с артикула Сималенда (/api/sima-profit/links); их может быть несколько — первый и «ещё N» в подсказке.
+const simaLinks={key:'',data:null,request:0};
+function loadSimaLinks(){
+  const key=state.cabinet;if(simaLinks.key===key&&simaLinks.data)return;
+  const request=++simaLinks.request;Object.assign(simaLinks,{key,data:null});
+  api(`/api/sima-profit/links?cabinet=${encodeURIComponent(key)}`).then(data=>{if(request!==simaLinks.request)return;simaLinks.data=data.links||{};if(state.activePage==='sima')renderSimaHistory()})
+    .catch(()=>{if(request===simaLinks.request){simaLinks.data={};if(state.activePage==='sima')renderSimaHistory()}});
+}
+function simaWbCell(item){
+  if(!simaLinks.data)return '<td class="change-muted">…</td>';
+  const list=simaLinks.data[item.id]||[];
+  if(!list.length)return '<td class="change-muted" title="В выбранном кабинете нет товара с этим артикулом Сималенда">—</td>';
+  const [first,...rest]=list;
+  return `<td class="change-object"><a class="change-link" href="https://www.wildberries.ru/catalog/${first.nmId}/detail.aspx" target="_blank" rel="noopener noreferrer" title="Открыть на WB"><strong>${first.nmId}</strong></a><small>${escapeHtml(first.vendorCode)}</small>${rest.length?`<small title="${escapeHtml(rest.map(entry=>`${entry.nmId} · ${entry.vendorCode}`).join('\n'))}">ещё ${fmtNum(rest.length)}</small>`:''}</td>`;
+}
+const simaSupplierCell=item=>`<td><a class="change-link" href="https://www.sima-land.ru/${encodeURIComponent(item.id)}/" target="_blank" rel="noopener noreferrer" title="Открыть товар на Сималенде"><strong>${escapeHtml(item.id)}</strong></a></td>`;
 
 function renderSimaHistory(){
   const v=simaView,data=v.data,body=$('#simaBody');
   if(!body)return;
+  loadSimaLinks();
   $('#simaPeriod').innerHTML=SIMA_PERIODS.map(([days,label])=>`<option value="${days}"${days===v.days?' selected':''}>${label}</option>`).join('');
   const empty=text=>{body.innerHTML='';$('#simaKind').innerHTML='<option value="">Все изменения</option>';$('#simaHint').textContent=v.hint;$('#emptySimaText').textContent=text;$('#emptySima').classList.toggle('hidden',!text);$('#simaPagination').classList.add('hidden')};
   if(!data){$('#simaCount').textContent=v.error?`Не удалось загрузить историю: ${v.error}`:'Загрузка истории…';return empty('')}
@@ -86,7 +105,8 @@ function renderSimaHistory(){
   const all=data.items||[],term=v.search.trim().toLowerCase();
   const kinds=[...new Set([...all.map(item=>item.kind),v.kind].filter(Boolean))].sort((a,b)=>a.localeCompare(b,'ru'));
   $('#simaKind').innerHTML=`<option value="">Все изменения</option>${kinds.map(kind=>`<option value="${escapeHtml(kind)}"${kind===v.kind?' selected':''}>${escapeHtml(kind)}</option>`).join('')}`;
-  const rows=all.filter(item=>(!v.kind||item.kind===v.kind)&&(!term||item.text.includes(term))),pageCount=Math.ceil(rows.length/v.pageSize);
+  const wbText=item=>(simaLinks.data?.[item.id]||[]).map(entry=>`${entry.nmId} ${entry.vendorCode}`).join(' ').toLowerCase();
+  const rows=all.filter(item=>(!v.kind||item.kind===v.kind)&&(!term||item.text.includes(term)||wbText(item).includes(term))),pageCount=Math.ceil(rows.length/v.pageSize);
   v.page=Math.min(Math.max(1,v.page),Math.max(1,pageCount));
   $('#simaCount').textContent=`${fmtNum(rows.length)} из ${fmtNum(all.length)} за период${data.truncated?' · показаны 200 000 самых новых — сократите период':''}`;
   // Выбран один вид изменения — колонка «Что изменилось» везде одинаковая, её не видно.
@@ -94,8 +114,8 @@ function renderSimaHistory(){
   $('#simaHint').textContent=[v.hint,simaStatusText(data)].filter(Boolean).join(' · ');
   let lastDay='';
   body.innerHTML=rows.slice((v.page-1)*v.pageSize,v.page*v.pageSize).map(item=>{
-    const head=item.day!==lastDay?`<tr class="change-day-row"><td colspan="${v.kind?4:5}">${escapeHtml(changeDayTitle(item.at))}</td></tr>`:'';lastDay=item.day;
-    return `${head}<tr><td class="change-when">${escapeHtml(changeClock(item.at))}</td><td class="change-object">${simaObject(item)}</td><td class="change-what">${escapeHtml(item.kind)}</td>`+
+    const head=item.day!==lastDay?`<tr class="change-day-row"><td colspan="${v.kind?6:7}">${escapeHtml(changeDayTitle(item.at))}</td></tr>`:'';lastDay=item.day;
+    return `${head}<tr><td class="change-when">${escapeHtml(changeClock(item.at))}</td><td class="change-object">${simaObject(item)}</td>${simaWbCell(item)}${simaSupplierCell(item)}<td class="change-what">${escapeHtml(item.kind)}</td>`+
       `<td class="change-value">${simaValue(item,item.before)}</td><td class="change-value">${simaValue(item,item.after)}${simaDelta(item)}</td></tr>`}).join('');
   $('#emptySimaText').textContent=all.length?'Измените поиск или вид изменения.':'Таблица проверяет цены раз в час — за этот период изменений нет. Выберите период длиннее.';
   $('#emptySima').classList.toggle('hidden',rows.length>0);

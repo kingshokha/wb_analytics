@@ -180,6 +180,8 @@ function bindPriceEditForm(row){
       catch(error){toast(error.message);return preview()}
       $('#productPriceActions').innerHTML=`<p class="price-edit-done">Загрузка создана в WB: ${fmtRub(value.price)}, скидка ${fmtPercent(value.discount)}. Таблица обновится, когда WB применит цену.</p>`;
       toast('Цена отправлена в WB');
+      // Другие разделы (например, «Прибыль Сималенда») сразу показывают новую цену.
+      document.dispatchEvent(new CustomEvent('wb-price-sent',{detail:{nmId:row.nmId,cabinet:state.cabinet,price:value.price,discount:value.discount,discounted:value.discounted}}));
       // В истории сразу видно, что и когда отправлено. Когда список цен перечитается, окно берёт свежую строку товара:
       // плитки сверху и «сейчас» на графике — то, что уже применил WB.
       const request=priceProduct.request;priceProduct.sent={nmId:row.nmId,at:Date.now(),price:value.price,discount:value.discount,discounted:value.discounted};renderPriceHistory();

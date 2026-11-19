@@ -10,6 +10,8 @@
 //   цены; если знаменатель ≤ 0 — «недостижимо»; отличие = цена для нужной прибыли / текущая цена − 1.
 // Желаемая прибыль, налог, сборка и чем считать закупку (оптовой или обычной ценой; обычной есть только у Сималенда)
 // запоминаются в браузере.
+// «С отличием > 0,2%» — только товары, где цена для нужной прибыли отличается от текущей больше чем на 0,2% (запоминается).
+// «Цена WB» — кнопка: окно цены товара из «Цен и скидок» (история и изменение, price-product.js).
 // «Применить цены» — выбранным галочками товарам ставит цену со скидкой, равную цене для нужной прибыли
 // (POST /api/sima-profit/apply; скидка не меняется, большое снижение — ступенями по 30%), окно показывает ход и итог.
 // Файл подключается до app.js: $, escapeHtml и прочее из app.js используются только внутри функций.
@@ -25,7 +27,12 @@ try{
   const saved=JSON.parse(localStorage.getItem('wb-sima-profit')||'{}');
   for(const key of ['target','tax','assembly'])if(Number.isFinite(saved[key]))simaProfit.settings[key]=saved[key];
   if(['wholesale','retail'].includes(saved.cost))simaProfit.settings.cost=saved.cost;
+  simaProfit.diffOnly=localStorage.getItem('wb-sima-profit-diff')==='1';
 }catch{/* настройки по умолчанию */}
+// «С отличием > 0,2%»: цена для нужной прибыли отличается от текущей больше чем на 0,2% в любую сторону. Без расчёта
+// (нет оптовой цены, «недостижимо») — не показываются: применить к ним цену нельзя.
+const SIMA_DIFF_MIN=0.2;
+const simaHasDiff=calc=>calc.diff!=null&&Math.abs(calc.diff)>SIMA_DIFF_MIN;
 const simaRub=new Intl.NumberFormat('ru-RU',{maximumFractionDigits:0});
 const simaKopecks=new Intl.NumberFormat('ru-RU',{maximumFractionDigits:2});
 const simaPercent=new Intl.NumberFormat('ru-RU',{maximumFractionDigits:1});
@@ -76,7 +83,7 @@ function simaProfitRows(){
     noCost:({calc})=>calc.cost==null,notListed:({row})=>row.supplier.status==='notListed',noStock:({row})=>row.supplier.inStock===false}[v.filter];
   const value={name:({row})=>row.name,nmId:({row})=>row.nmId,article:({row})=>`${row.supplier.source} ${row.article}`,price:({row})=>row.price,cost:({calc})=>calc.cost,commission:({row})=>row.commission,
     tax:({calc})=>calc.tax,logistics:({calc})=>calc.logistics,profit:({calc})=>calc.profit,margin:({calc})=>calc.margin,need:({calc})=>calc.need==='unreachable'?Infinity:calc.need,diff:({calc})=>calc.diff==null&&calc.need==='unreachable'?Infinity:calc.diff}[v.sort.key]||(()=>null);
-  const rows=all.filter(item=>(!v.supplier||item.row.supplier.source===v.supplier)&&(!test||test(item))&&(!term||[item.row.name,item.row.nmId,item.row.vendorCode,item.row.article,item.row.subject].join(' ').toLowerCase().includes(term)));
+  const rows=all.filter(item=>(!v.supplier||item.row.supplier.source===v.supplier)&&(!test||test(item))&&(!v.diffOnly||simaHasDiff(item.calc))&&(!term||[item.row.name,item.row.nmId,item.row.vendorCode,item.row.article,item.row.subject].join(' ').toLowerCase().includes(term)));
   rows.sort((a,b)=>{const x=value(a),y=value(b);if(x==null||y==null)return x==null&&y==null?0:x==null?1:-1;const result=typeof x==='number'?x-y:String(x).localeCompare(String(y),'ru',{numeric:true});return v.sort.dir==='asc'?result:-result});
   return {all,rows};
 }
@@ -94,7 +101,7 @@ function simaProfitCells({row,calc}){
   return `<td><div class="sima-profit-product">${row.photo?`<img class="stock-product-photo" src="${escapeHtml(row.photo)}" alt="" loading="lazy">`:''}<span><strong title="${escapeHtml(row.name)}">${escapeHtml(row.name)}</strong><small>${escapeHtml(row.subject||'')}</small></span></div></td>`+
     `<td><a class="change-link" href="https://www.wildberries.ru/catalog/${row.nmId}/detail.aspx" target="_blank" rel="noopener noreferrer" title="Открыть на WB">${row.nmId}</a><small class="sima-profit-sub">${escapeHtml(row.vendorCode)}</small></td>`+
     `<td>${article}${status?`<small class="sima-profit-sub sima-profit-mark ${supplier.status==='ok'?'warn':'down'}" title="${escapeHtml(status)}">${escapeHtml(status)}</small>`:''}</td>`+
-    `<td><strong>${simaMoney(row.price)}</strong></td>`+
+    `<td>${row.price?`<button type="button" class="sima-price-open" data-sima-price="${row.nmId}" title="История цены и изменение — как в «Ценах и скидках»">${simaMoney(row.price)}</button>`:`<strong>${simaMoney(row.price)}</strong>`}</td>`+
     `<td><strong>${simaMoney(calc.cost,simaKopecks)}</strong></td>`+
     `<td>${row.commission==null?'<span class="change-muted">—</span>':`${simaPercent.format(row.commission)}%`}${calc.fee!=null?`<small class="sima-profit-sub">${simaRub.format(calc.fee)} ₽</small>`:''}</td>`+
     `<td>${simaMoney(calc.tax)}</td>`+
@@ -124,6 +131,7 @@ function renderSimaProfit(){
   for(const [id,key] of [['#simaProfitTarget','target'],['#simaProfitTax','tax'],['#simaProfitAssembly','assembly']]){const input=$(id);if(document.activeElement!==input)input.value=String(v.settings[key])}
   $('#simaProfitCost').value=v.settings.cost;
   $('#simaProfitFilter').innerHTML=SIMA_PROFIT_FILTERS.map(([value,label])=>`<option value="${value}"${value===v.filter?' selected':''}>${label}</option>`).join('');
+  $('#simaProfitDiffOnly').checked=Boolean(v.diffOnly);
   $('#simaProfitSupplier').innerHTML=SIMA_PROFIT_SUPPLIERS.map(([value,label])=>`<option value="${value}"${value===v.supplier?' selected':''}>${label}</option>`).join('');
   $$('#page-sima-profit [data-sima-sort]').forEach(th=>{const active=th.dataset.simaSort===v.sort.key;th.classList.toggle('sorted',active);th.dataset.label??=th.textContent;th.textContent=`${th.dataset.label} ${active?(v.sort.dir==='asc'?'↑':'↓'):'↕'}`});
   const empty=(count,text)=>{body.innerHTML='';$('#simaProfitCount').textContent=count;$('#simaProfitHint').textContent='';$('#emptySimaProfitText').textContent=text;$('#emptySimaProfit').classList.toggle('hidden',!text);$('#simaProfitPagination').classList.add('hidden');$('#simaProfitActions').classList.add('hidden')};
@@ -246,7 +254,23 @@ async function uploadLenardi(input){
   finally{label.classList.remove('busy')}
 }
 
+// «Цена WB» — окно товара из «Цен и скидок» (price-product.js): история цены и изменение. Окну нужен список цен
+// кабинета — если «Цены и скидки» ещё не загружались, сначала загружаем их.
+async function openSimaPrice(nmId){
+  const cabinet=state.cabinet;
+  if(state.pricesKey!==cabinet||!state.prices||state.prices.partial){toast('Загружаем цены кабинета…');await loadPrices();if(state.cabinet!==cabinet)return}
+  if(!(state.prices?.rows||[]).some(row=>String(row.nmId)===String(nmId)))return toast('Товара нет в «Ценах и скидках» — обновите раздел');
+  openPriceProduct(nmId);
+}
+// Цену изменили в окне товара: строка сразу показывает новую цену со скидкой (WB применит её через несколько минут).
+document.addEventListener('wb-price-sent',event=>{
+  const {nmId,cabinet,discounted}=event.detail||{},v=simaProfit;
+  if(v.key!==cabinet||!v.data)return;
+  const row=(v.data.rows||[]).find(item=>String(item.nmId)===String(nmId));
+  if(row&&discounted>0){row.price=discounted;if(state.activePage==='sima-profit')renderSimaProfit()}
+});
 document.addEventListener('click',event=>{
+  const price=event.target.closest('[data-sima-price]');if(price)return openSimaPrice(price.dataset.simaPrice);
   if(event.target.closest('#simaProfitExport'))return exportSimaProfit();
   if(event.target.closest('#simaProfitApply'))return openSimaApply();
   if(event.target.closest('#simaProfitClear')){simaProfit.selected.clear();return renderSimaProfit()}
@@ -266,6 +290,7 @@ document.addEventListener('change',event=>{
   const v=simaProfit;
   if(event.target.id==='simaProfitFilter'){v.filter=event.target.value;v.page=1;renderSimaProfit()}
   if(event.target.id==='simaProfitSupplier'){v.supplier=event.target.value;v.page=1;renderSimaProfit()}
+  if(event.target.id==='simaProfitDiffOnly'){v.diffOnly=event.target.checked;v.page=1;try{localStorage.setItem('wb-sima-profit-diff',v.diffOnly?'1':'0')}catch{/* без сохранения */}renderSimaProfit()}
   if(event.target.id==='lenardiFile')uploadLenardi(event.target);
   if(event.target.id==='simaProfitCost'){v.settings.cost=event.target.value==='retail'?'retail':'wholesale';saveSimaProfitSettings();renderSimaProfit()}
   if(event.target.dataset?.simaSelect){const id=event.target.dataset.simaSelect;if(event.target.checked)v.selected.add(id);else v.selected.delete(id);renderSimaProfit()}

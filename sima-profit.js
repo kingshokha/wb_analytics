@@ -19,6 +19,7 @@
 //   - цены Сималенда — последняя загрузка модуля sima-land.js (data/Sima/prices.json);
 //   - опт Lenardi — последний загруженный на странице отчёт (модуль lenardi.js, data/Sima/lenardi.json).
 // Маршрут: GET /api/sima-profit?cabinet=ID[&force=1] — force заново берёт цены WB.
+// GET /api/sima-profit/links?cabinet=ID — товары кабинета по артикулам Сималенда (для раздела «Цены Сималенда»).
 //
 // «Применить цены»: POST /api/sima-profit/apply { cabinet, items: [{ nmId, target }], confirm: true } — target — нужная
 // цена со скидкой («Цена для нужной прибыли» страницы). Скидка продавца не меняется: цена до скидки — целая (WB
@@ -253,7 +254,22 @@ module.exports = function createSimaProfit({ send, apiError, readJson, cabinets,
     return { demo: false, configured: simaLand.configured(), rows: profitRows(cards, goods, commission, sima, cardPhoto, lenardi.prices()), cards: cards.length,
       simaAt: sima?.at || null, simaArticles: sima?.sids?.length || 0, simaRefreshing: simaLand.refreshing(), lenardi: lenardi.info(), tariff: { ...tariff, small: SMALL_LITERS, warehouse: WAREHOUSE }, warnings };
   }
+  // Товары кабинета по артикулам Сималенда — для столбцов «Арт. WB» и «Поставщик» раздела «Цены Сималенда»:
+  // { links: { '11023345': [{ nmId, vendorCode }] } }. Только карточки кабинета, без цен WB — отвечает сразу.
+  async function links(id) {
+    if (id === 'demo' || !cabinets().length) return { demo: true, links: {} };
+    const result = {};
+    for (const card of await productCards(id, tokenFor(id))) {
+      const sid = simaSid(card.vendorCode);
+      if (sid) (result[sid] ||= []).push({ nmId: Number(card.nmID), vendorCode: card.vendorCode || '' });
+    }
+    return { demo: false, links: result };
+  }
   async function handle(req, res, target) {
+    if (req.method === 'GET' && target.pathname === '/api/sima-profit/links') {
+      send(res, 200, await links(target.searchParams.get('cabinet') || 'demo'));
+      return true;
+    }
     if (req.method === 'GET' && target.pathname === '/api/sima-profit') {
       send(res, 200, await profit(target.searchParams.get('cabinet') || 'demo', target.searchParams.get('force') === '1'));
       return true;
