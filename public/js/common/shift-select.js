@@ -13,6 +13,8 @@
     [...input.attributes].map(attr => attr.name).find(name => name.startsWith('data-') && input.getAttribute(name) !== '');
   // Вид галочки — селектор, общий для всего списка, и признак, по которому её можно найти после перерисовки.
   function kindOf(input) {
+    // Галочки «Карточек товаров» выбирают диапазон сами (через все страницы по фильтрам, js/cards/cards.js) — не трогаем.
+    if (input.matches('[data-card-select]')) return null;
     const attr = dataAttr(input);
     if (attr) return { list: `${BOX}[${attr}]`, one: `${BOX}[${attr}="${CSS.escape(input.getAttribute(attr))}"]` };
     if (input.name)

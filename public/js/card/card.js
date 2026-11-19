@@ -317,19 +317,8 @@
   }
   // Оценки — как их видит покупатель на WB (сервер берёт их с открытых данных отзывов по склейке, glue-ratings.js):
   // у товара — средняя, число оценок и полоска по звёздам (подробно — в подсказке), рядом — оценка всей склейки.
-  const ratingWord = count => {
-    const a = count % 100,
-      b = count % 10;
-    return a > 10 && a < 20 ? 'оценок' : b === 1 ? 'оценка' : b > 1 && b < 5 ? 'оценки' : 'оценок';
-  };
-  const fmtCount = value => Number(value || 0).toLocaleString('ru-RU');
-  const fmtStar = value => Number(value).toLocaleString('ru-RU', { minimumFractionDigits: value >= 10 ? 0 : 1, maximumFractionDigits: 2 });
-  const starsTitle = stars => {
-    const total = stars.reduce((sum, value) => sum + value, 0);
-    return total
-      ? [5, 4, 3, 2, 1].map(star => `${star}★ — ${fmtCount(stars[star - 1])} (${Math.round((stars[star - 1] / total) * 100)}%)`).join('\n')
-      : '';
-  };
+  // Общие форматы оценок — js/common/ratings-format.js.
+  const { word: ratingWord, number: fmtCount, star: fmtStar, starsTitle } = window.WBRatings;
   function renderRating() {
     const fb = view.data.feedback,
       box = $('#cardRating');

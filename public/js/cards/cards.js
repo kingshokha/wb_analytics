@@ -297,15 +297,10 @@ function loadCardPrices(key, force) {
     });
 }
 // Оценки с витрины WB (сервер: glue-ratings.js) — число оценок товара, разбивка по звёздам, оценка склейки.
-const cardStarsTitle = stars => {
-  const total = stars.reduce((sum, value) => sum + value, 0);
-  return total
-    ? [5, 4, 3, 2, 1].map(star => `${star}★ — ${fmtNum(stars[star - 1])} (${Math.round((stars[star - 1] / total) * 100)}%)`).join('\n')
-    : '';
-};
-const cardRatingWord = count => pluralRu(count, ['оценка', 'оценки', 'оценок']);
-const cardRatingNum = value =>
-  Number(value).toLocaleString('ru-RU', { minimumFractionDigits: value >= 10 ? 0 : 1, maximumFractionDigits: 2 });
+// Общие форматы оценок — js/common/ratings-format.js.
+const cardStarsTitle = stars => WBRatings.starsTitle(stars);
+const cardRatingWord = count => WBRatings.word(count);
+const cardRatingNum = value => WBRatings.star(value);
 // «Оценка»: рейтинг товара из отчёта WB «Оценки товаров», под ним — сколько всего оценок; при наведении — по звёздам.
 // Рейтинга в отчёте нет, а оценки на витрине есть — средняя по ним.
 function cardRatingCell(card) {
@@ -335,16 +330,13 @@ const cardGlueRating = (card, withCount) =>
 // Ячейка оценки или цены: пока грузится — «…», ошибка — «—» с причиной в подсказке.
 function cardExtraCell(card, kind) {
   if (kind === 'rating') return cardRatingCell(card);
-  const x = cardsView.extras,
-    map = kind === 'rating' ? x.ratings : x.prices,
-    error = kind === 'rating' ? x.ratingsError : x.pricesError,
-    value = card[kind];
-  if (!map) return error ? `<td class="muted" title="${escapeHtml(error)}">—</td>` : '<td class="muted" title="Загружается…">…</td>';
-  if (value == null)
-    return `<td class="muted"${kind === 'rating' ? ' title="Нет отзывов или товара нет в отчёте WB «Оценки товаров»"' : ' title="Нет цены в «Ценах и скидках»"'}>—</td>`;
-  return kind === 'rating'
-    ? `<td><strong class="card-rating">★ ${value.toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></td>`
-    : `<td><strong class="card-price">${fmtRub(value)}</strong></td>`;
+  const x = cardsView.extras;
+  if (!x.prices)
+    return x.pricesError
+      ? `<td class="muted" title="${escapeHtml(x.pricesError)}">—</td>`
+      : '<td class="muted" title="Загружается…">…</td>';
+  if (card.price == null) return '<td class="muted" title="Нет цены в «Ценах и скидках»">—</td>';
+  return `<td><strong class="card-price">${fmtRub(card.price)}</strong></td>`;
 }
 // Фильтры страницы для сервера: пока весь список грузится из WB, карточки по ним он грузит отдельно и отдаёт первыми.
 // Предмет на странице выбран по названию — серверу нужен его номер (subjectID).

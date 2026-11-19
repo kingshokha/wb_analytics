@@ -212,16 +212,11 @@
   // по звёздам и оценка всей склейки, если товар склеен.
   function feedbackText(fb) {
     if (!fb) return '';
-    const num = value => Number(value || 0).toLocaleString('ru-RU'),
-      word = count => {
-        const a = count % 100,
-          b = count % 10;
-        return a > 10 && a < 20 ? 'оценок' : b === 1 ? 'оценка' : b > 1 && b < 5 ? 'оценки' : 'оценок';
-      };
-    const star = value => Number(value).toLocaleString('ru-RU', { minimumFractionDigits: value >= 10 ? 0 : 1, maximumFractionDigits: 2 });
+    // Общие форматы оценок — js/common/ratings-format.js.
+    const { number: num, word, star, starsTitle } = window.WBRatings;
     const total = fb.count || 0,
       stars = fb.stars || [0, 0, 0, 0, 0];
-    const lines = total ? [5, 4, 3, 2, 1].map(s => `${s}★ — ${num(stars[s - 1])} (${Math.round((stars[s - 1] / total) * 100)}%)`) : [];
+    const lines = total ? starsTitle(stars).split('\n') : [];
     if (fb.glueRating != null && fb.glueCount !== total)
       lines.push(`Склейка: ★ ${star(fb.glueRating)} · ${num(fb.glueCount)} ${word(fb.glueCount || 0)}`);
     const title = lines.length ? ` title="${esc(lines.join('\n'))}"` : '';

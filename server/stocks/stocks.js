@@ -47,20 +47,23 @@ function normalizeFbsStocks(warehouses = [], stockResponses = [], cards = []) {
       });
     })
   );
-  const totalAmount = rows.reduce((sum, row) => sum + row.amount, 0);
   const categories = [...new Set(rows.map(row => row.category).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'ru'));
   return {
     rows: rows.sort((a, b) => b.amount - a.amount || String(a.name).localeCompare(String(b.name), 'ru')),
     warehouses: warehouses.map(item => ({ id: item.id, name: item.name || `Склад ${item.id}`, officeId: item.officeId })),
     categories,
-    totals: {
-      rows: rows.length,
-      products: new Set(rows.map(row => String(row.nmId || row.chrtId))).size,
-      warehouses: new Set(rows.map(row => String(row.warehouseId))).size,
-      amount: totalAmount,
-      zero: rows.filter(row => row.amount === 0).length,
-      positive: rows.filter(row => row.amount > 0).length
-    }
+    totals: stockTotals(rows)
+  };
+}
+// Итоги таблицы остатков (FBS и FBW): позиций, товаров, складов, единиц, нулевых и в наличии.
+function stockTotals(rows) {
+  return {
+    rows: rows.length,
+    products: new Set(rows.map(row => String(row.nmId || row.chrtId))).size,
+    warehouses: new Set(rows.map(row => String(row.warehouseId))).size,
+    amount: rows.reduce((sum, row) => sum + row.amount, 0),
+    zero: rows.filter(row => row.amount === 0).length,
+    positive: rows.filter(row => row.amount > 0).length
   };
 }
 
@@ -202,14 +205,7 @@ function normalizeFbwStocks(items = [], cards = []) {
     rows: rows.sort((a, b) => b.amount - a.amount || String(a.name).localeCompare(String(b.name), 'ru')),
     warehouses,
     categories,
-    totals: {
-      rows: rows.length,
-      products: new Set(rows.map(row => String(row.nmId || row.chrtId))).size,
-      warehouses: new Set(rows.map(row => String(row.warehouseId))).size,
-      amount: rows.reduce((sum, row) => sum + row.amount, 0),
-      zero: rows.filter(row => row.amount === 0).length,
-      positive: rows.filter(row => row.amount > 0).length
-    }
+    totals: stockTotals(rows)
   };
 }
 
@@ -360,24 +356,34 @@ async function readBackFbsStocks(token, grouped) {
 }
 
 async function updateFbsStocks(body) {
-  const token = tokenFor(body.cabinet);
   const grouped = groupStockUpdates(body.items);
   if (!grouped.size) throw apiError(400, 'Выберите хотя бы один товар и укажите корректный остаток');
-  const results = [];
-  for (const [warehouseId, stocks] of grouped) {
-    const response = await wbRequest(token, `https://marketplace-api.wildberries.ru/api/v3/stocks/${encodeURIComponent(warehouseId)}`, {
-      method: 'PUT',
-      body: { stocks }
-    });
-    results.push({ warehouseId, count: stocks.length, response: response || null });
-  }
-  forgetList(`fbs-stocks:${body.cabinet}`);
+  return writeFbsStocks(String(body.cabinet || 'demo'), grouped);
+}
+// Запись остатков FBS — общая для «Задать остаток», «Скопировать на склады», шаблонов и «Добавить вручную»: по складу,
+// до 1000 размеров за запрос. Ни одна позиция не принята — ошибка с причинами; часть — остальное записано, причины
+// отказа — в предупреждениях (страница показывает их сообщением). Принятые перечитываются у WB.
+async function writeFbsStocks(id, grouped) {
+  const token = tokenFor(id),
+    { accepted, failed } = await putFbsStocks(token, grouped);
+  forgetList(`fbs-stocks:${id}`);
+  const added = [...accepted.values()].reduce((sum, list) => sum + list.length, 0);
+  if (!added && failed.length) throw apiError(409, `WB не принял остатки: ${failedSummary(failed)}`);
+  const readBack = accepted.size ? await readBackFbsStocks(token, accepted) : { stocks: [], warnings: [] };
   return {
     ok: true,
-    updated: results.reduce((sum, item) => sum + item.count, 0),
-    warehouses: results,
-    ...(await readBackFbsStocks(token, grouped))
+    updated: added,
+    added,
+    failed,
+    stocks: readBack.stocks,
+    warnings: [...(failed.length ? [`WB не принял ${failed.length} поз.: ${failedSummary(failed)}`] : []), ...readBack.warnings]
   };
+}
+// «склад не подходит для крупногабаритных товаров — 3; в карточке нет кода ТНВЭД — 1»
+function failedSummary(failed) {
+  const counts = new Map();
+  failed.forEach(item => counts.set(item.text, (counts.get(item.text) || 0) + 1));
+  return [...counts].map(([text, count]) => `${text} — ${count}`).join('; ');
 }
 
 // «Добавить вручную»: товары кабинета для поиска в окне — по размерам (chrtId), из сохранённого списка карточек.
@@ -471,8 +477,11 @@ async function addFbsStocks(body) {
       stocks: [...grouped].flatMap(([warehouseId, list]) => list.map(item => ({ warehouseId, ...item }))),
       warnings: []
     };
-  const token = tokenFor(id),
-    failed = [],
+  return writeFbsStocks(id, grouped);
+}
+// PUT /api/v3/stocks/{warehouseId}: { accepted: Map(склад → принятые позиции), failed: [{ warehouseId, chrtId, text }] }.
+async function putFbsStocks(token, grouped) {
+  const failed = [],
     accepted = new Map();
   for (const [warehouseId, list] of grouped) {
     for (let offset = 0; offset < list.length; offset += 1000) {
@@ -508,13 +517,10 @@ async function addFbsStocks(body) {
       await wait(220);
     }
   }
-  forgetList(`fbs-stocks:${id}`);
-  const readBack = accepted.size ? await readBackFbsStocks(token, accepted) : { stocks: [], warnings: [] };
-  return { ok: true, added: [...accepted.values()].reduce((sum, list) => sum + list.length, 0), failed, ...readBack };
+  return { accepted, failed };
 }
 
 async function copyFbsStocks(body) {
-  const token = tokenFor(body.cabinet);
   const targetWarehouseIds = [
     ...new Set(
       (Array.isArray(body.targetWarehouseIds) ? body.targetWarehouseIds : [body.targetWarehouseId])
@@ -526,24 +532,8 @@ async function copyFbsStocks(body) {
     .map(item => ({ chrtId: Number(item.chrtId), amount: Math.floor(Number(item.amount)) }))
     .filter(item => Number.isInteger(item.chrtId) && Number.isFinite(item.amount) && item.amount >= 0);
   if (!targetWarehouseIds.length || !stocks.length) throw apiError(400, 'Выберите хотя бы один целевой склад и товары для копирования');
-  const results = [];
-  for (const targetWarehouseId of targetWarehouseIds) {
-    const response = await wbRequest(
-      token,
-      `https://marketplace-api.wildberries.ru/api/v3/stocks/${encodeURIComponent(targetWarehouseId)}`,
-      { method: 'PUT', body: { stocks } }
-    );
-    results.push({ targetWarehouseId, count: stocks.length, response: response || null });
-  }
-  forgetList(`fbs-stocks:${body.cabinet}`);
   const grouped = new Map(targetWarehouseIds.map(warehouseId => [warehouseId, stocks]));
-  return {
-    ok: true,
-    updated: stocks.length * results.length,
-    warehouses: results,
-    targetWarehouseIds,
-    ...(await readBackFbsStocks(token, grouped))
-  };
+  return { ...(await writeFbsStocks(String(body.cabinet || 'demo'), grouped)), targetWarehouseIds };
 }
 
 module.exports = {
