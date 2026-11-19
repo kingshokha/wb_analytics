@@ -106,7 +106,20 @@ module.exports = function createGlueRatings({ dirFor }) {
     };
     Promise.all(Array.from({ length: CONCURRENCY }, worker)).finally(() => { entry.job = null; if (entry.dirty) save(id); });
   }
+  // После склейки и отсоединения оценки затронутых склеек перечитываются сразу, а не через RATINGS_TTL, и ещё раз через
+  // RECHECK_LATER: WB переносит отзывы между склейками с задержкой (19.11.2026: новая склейка из 9 карточек сразу после
+  // объединения показывала на витрине 0 оценок, хотя у перенесённой карточки оценки были). Прежние данные склейки
+  // видны, пока не придут новые.
+  const RECHECK_LATER = [15 * 60_000, 60 * 60_000];
+  function recheck(id, imtIDs) {
+    const list = [...new Set(imtIDs.map(Number).filter(imt => Number.isInteger(imt) && imt > 0))];
+    if (!list.length) return;
+    const mark = () => { const entry = store(id); for (const imt of list) if (entry.groups[imt]) entry.groups[imt].at = 0; refresh(id, [], list); };
+    mark();
+    for (const delay of RECHECK_LATER) setTimeout(mark, delay).unref?.();
+  }
   return {
+    recheck,
     // Склейка сейчас (страница карточки): из файла, а если её нет или она устарела — загрузить и подождать.
     async glueNow(id, imtID) {
       const entry = store(id), group = entry.groups[imtID];

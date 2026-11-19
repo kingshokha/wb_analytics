@@ -855,6 +855,67 @@ async function updateFbsStocks(body) {
   return { ok: true, updated: results.reduce((sum, item) => sum + item.count, 0), warehouses: results, ...await readBackFbsStocks(token, grouped) };
 }
 
+// «Добавить вручную»: товары кабинета для поиска в окне — по размерам (chrtId), из сохранённого списка карточек.
+async function fbsStockProducts(id) {
+  if (id === 'demo' || !cabinets().length) return { demo: true, products: [
+    { nmId: 100001, vendorCode: 'TSHIRT-BLACK', name: 'Футболка базовая', category: 'Одежда', brand: 'Demo', photo: '', sizes: [{ chrtId: 501, size: 'M', sku: '460000000001' }] },
+    { nmId: 100002, vendorCode: 'MUG-THERMO', name: 'Термокружка', category: 'Посуда', brand: 'Demo', photo: '', sizes: [{ chrtId: 502, size: '500 мл', sku: '460000000002' }] },
+    { nmId: 100003, vendorCode: 'HOODIE-GREEN', name: 'Худи Oversize', category: 'Одежда', brand: 'Demo', photo: '', sizes: [{ chrtId: 503, size: 'L', sku: '460000000003' }] }] };
+  const cards = await productCards(id, tokenFor(id));
+  return { demo: false, products: cards.map(card => ({ nmId: card.nmID, vendorCode: card.vendorCode || '', name: card.title || `Товар ${card.nmID}`, category: card.subjectName || '', brand: card.brand || '', photo: cardPhoto(card),
+    sizes: (card.sizes || []).map(size => ({ chrtId: Number(size.chrtID || size.chrtId), size: size.techSize && size.techSize !== '0' ? size.techSize : size.wbSize || '', sku: (size.skus || [])[0] || '' })).filter(size => Number.isInteger(size.chrtId) && size.chrtId > 0) }))
+    .filter(product => product.sizes.length) };
+}
+// Причины, по которым WB не принимает остаток (409 и 406 метода PUT /api/v3/stocks/{warehouseId}, документация
+// «Остатки на складах продавца», 02-items.yaml).
+const STOCK_ERRORS = {
+  UploadDataLimit: 'превышен лимит загружаемых данных', NotFound: 'размер не найден', StoreIsProcessing: 'склад обновляется или удаляется — повторите через несколько секунд',
+  CargoWarehouseRestrictionMGT: 'склад не подходит для малогабаритных товаров', CargoWarehouseRestrictionSGT: 'склад не подходит для сверхгабаритных товаров',
+  CargoWarehouseRestrictionSGTKGTPlus: 'склад не подходит для сверх- и крупногабаритных товаров', CargoWarehouseRestrictionKGTPlus: 'склад не подходит для крупногабаритных товаров',
+  DeliveryTypeRestriction: 'этот тип доставки недоступен для предмета товара', SubjectRestriction: 'продажа с этого склада недоступна для предмета товара',
+  TnvedRequired: 'в карточке нет кода ТНВЭД', StocksUpdateBlock: 'обновление остатков ограничено из-за блокировки продавца', WarehouseStocksUpdateBlock: 'технические работы на складе — повторите позже'
+};
+// Остатки новых товаров на складах: по складу, до 1000 размеров за запрос (лимит метода — 300 запросов в минуту, 4XX
+// считается за 10). На 409 WB перечисляет размеры, которые не принял, — их откладываем с причиной, остальные отправляем
+// ещё раз (до 3 раз). Принятые перечитываются у WB, как после «Задать остаток».
+async function addFbsStocks(body) {
+  const id = String(body.cabinet || 'demo'), grouped = groupStockUpdates(body.items);
+  if (!grouped.size) throw apiError(400, 'Выберите товары, склады и укажите остаток');
+  const count = [...grouped.values()].reduce((sum, list) => sum + list.length, 0);
+  if (count > 20_000) throw apiError(400, `Слишком много позиций за раз: ${count}, можно до 20 000`);
+  if (id === 'demo' || !cabinets().length) return { ok: true, demo: true, added: count, failed: [], stocks: [...grouped].flatMap(([warehouseId, list]) => list.map(item => ({ warehouseId, ...item }))), warnings: [] };
+  const token = tokenFor(id), failed = [], accepted = new Map();
+  for (const [warehouseId, list] of grouped) {
+    for (let offset = 0; offset < list.length; offset += 1000) {
+      let chunk = list.slice(offset, offset + 1000);
+      for (let attempt = 0; chunk.length && attempt < 3; attempt++) {
+        try {
+          await wbRequest(token, `https://marketplace-api.wildberries.ru/api/v3/stocks/${encodeURIComponent(warehouseId)}`, { method: 'PUT', body: { stocks: chunk } });
+          if (!accepted.has(warehouseId)) accepted.set(warehouseId, []);
+          accepted.get(warehouseId).push(...chunk);
+          break;
+        } catch (error) {
+          const reasons = Array.isArray(error.details) ? error.details : [], rejected = new Map();
+          for (const reason of reasons) for (const item of Array.isArray(reason?.data) ? reason.data : []) rejected.set(Number(item.chrtId), STOCK_ERRORS[reason.code] || reason.message || reason.code || error.message);
+          // Не 409 со списком размеров — отклонена вся порция.
+          if (error.status !== 409 || !rejected.size) {
+            const text = STOCK_ERRORS[reasons[0]?.code || error.details?.code] || error.message;
+            chunk.forEach(item => failed.push({ warehouseId, chrtId: item.chrtId, text }));
+            break;
+          }
+          chunk.filter(item => rejected.has(item.chrtId)).forEach(item => failed.push({ warehouseId, chrtId: item.chrtId, text: rejected.get(item.chrtId) }));
+          chunk = chunk.filter(item => !rejected.has(item.chrtId));
+        }
+        await wait(220);
+      }
+      await wait(220);
+    }
+  }
+  forgetList(`fbs-stocks:${id}`);
+  const readBack = accepted.size ? await readBackFbsStocks(token, accepted) : { stocks: [], warnings: [] };
+  return { ok: true, added: [...accepted.values()].reduce((sum, list) => sum + list.length, 0), failed, ...readBack };
+}
+
 async function copyFbsStocks(body) {
   const token = tokenFor(body.cabinet);
   const targetWarehouseIds = [...new Set((Array.isArray(body.targetWarehouseIds) ? body.targetWarehouseIds : [body.targetWarehouseId]).map(value => String(value || '')).filter(Boolean))];
@@ -4396,6 +4457,14 @@ async function handleApi(req, res, url) {
     const body = await readJson(req);
     if (!body.confirm) throw apiError(400, 'Подтвердите изменение остатков');
     return send(res, 200, await updateFbsStocks(body));
+  }
+  if (req.method === 'GET' && url.pathname === '/api/fbs-stocks/products') {
+    return send(res, 200, await fbsStockProducts(url.searchParams.get('cabinet') || 'demo'));
+  }
+  if (req.method === 'POST' && url.pathname === '/api/fbs-stocks/add') {
+    const body = await readJson(req, 5_000_000);
+    if (!body.confirm) throw apiError(400, 'Подтвердите добавление остатков');
+    return send(res, 200, await addFbsStocks(body));
   }
   if (req.method === 'POST' && url.pathname === '/api/fbs-stocks/copy') {
     const body = await readJson(req);

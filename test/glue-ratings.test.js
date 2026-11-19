@@ -30,6 +30,24 @@ test('ответ отзывов витрины: оценка склейки и �
   assert.deepEqual(empty.stars, [0, 0, 0, 0, 0]);
 });
 
+test('после склейки оценки склейки перечитываются, даже если свежие', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'glue-ratings-'));
+  fs.writeFileSync(path.join(dir, 'Оценки склеек.json'), JSON.stringify({ groups: { 777: parseGlue({ valuation: '', feedbackCount: 0 }, Date.now()) } }));
+  const realFetch = global.fetch, realTimeout = global.setTimeout, asked = [];
+  global.fetch = async url => { asked.push(String(url)); return { ok: true, json: async () => sample }; };
+  global.setTimeout = (fn, ms) => ms >= 60_000 ? { unref() {} } : realTimeout(fn, ms);
+  try {
+    const ratings = createGlueRatings({ dirFor: () => dir });
+    assert.equal(ratings.glue('1', 777).count, 0);
+    ratings.refresh('1', [777]);
+    assert.equal(asked.length, 0, 'свежие данные без recheck не перечитываются');
+    ratings.recheck('1', [777, null]);
+    for (let i = 0; i < 20 && ratings.status('1').loading; i++) await new Promise(resolve => realTimeout(resolve, 10));
+    assert.deepEqual(asked, ['https://feedbacks1.wb.ru/feedbacks/v2/777']);
+    assert.equal(ratings.glue('1', 777).count, 32262);
+  } finally { global.fetch = realFetch; global.setTimeout = realTimeout; fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
 test('оценки товара и склейки из сохранённого файла', () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'glue-ratings-'));
   fs.writeFileSync(path.join(dir, 'Оценки склеек.json'), JSON.stringify({ groups: { 193227360: parseGlue(sample, Date.now()) } }));

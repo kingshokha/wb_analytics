@@ -436,9 +436,14 @@
     });
   }
 
+  // Окно закрывается по фону, только если и нажали, и отпустили на фоне: при выделении текста кнопку мыши отпускают
+  // за краем окна, и браузер засчитывает такой клик фону — окно закрывалось посреди выделения.
+  let pressOnOverlay = false;
+  document.addEventListener('pointerdown', event => { pressOnOverlay = event.target === $('#overlay'); });
   document.addEventListener('click', event => {
-    const target = event.target;
-    if (target.closest('[data-dialog-close]') || target === $('#overlay')) { closeDialog(); return; }
+    const target = event.target, onOverlay = target === $('#overlay') && pressOnOverlay;
+    pressOnOverlay = false;
+    if (target.closest('[data-dialog-close]') || onOverlay) { closeDialog(); return; }
     if (target.closest('#glueRun')) { runGlue(); return; }
     const copy = target.closest('[data-copy]');
     if (copy) { navigator.clipboard?.writeText(copy.dataset.copy).then(() => status(`Скопировано: ${copy.dataset.copy}`)).catch(() => {}); return; }

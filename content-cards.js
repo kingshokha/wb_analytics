@@ -508,6 +508,8 @@ module.exports = function createContentCards({ wbRequest, tokenFor, cabinets, ca
     if (nmIds.length > 30) throw apiError(400, 'Объединить можно не больше 30 карточек');
     if (targetIMT !== null && !Number.isInteger(targetIMT)) throw apiError(400, 'Некорректный imtID');
     if (targetIMT === null && nmIds.length > 1) throw apiError(400, 'Отсоединять карточки нужно по одной');
+    // Склейки, откуда уходят карточки, — чтобы после переноса перечитать их оценки.
+    const fromImts = (await allCards(id).catch(() => [])).filter(card => nmIds.includes(card.nmID)).map(card => card.imtID);
     if (targetIMT !== null) {
       const cards = await allCards(id).catch(() => []), group = cards.filter(card => card.imtID === targetIMT);
       if (group.length) {
@@ -526,6 +528,8 @@ module.exports = function createContentCards({ wbRequest, tokenFor, cabinets, ca
     }
     // Новый imtID отсоединённой карточки WB сообщит при перечитывании; до тех пор — свой, отрицательный, чтобы она была отдельно.
     forgetCards(id, list => list.map(card => nmIds.includes(card.nmID) ? { ...card, imtID: targetIMT ?? -card.nmID } : card));
+    // Оценки склеек — сразу и ещё раз позже (glue-ratings.js): отзывы на WB общие для склейки и после переноса меняются.
+    glueRatings?.recheck(id, [targetIMT, ...fromImts].filter(imt => imt != null));
     return { ok: true, moved: nmIds.length };
   }
   async function barcodes(body) {
