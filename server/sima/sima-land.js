@@ -343,7 +343,31 @@ module.exports = function createSimaLand({
       refresh: { ...readJsonFile(refreshFile, {}), running: Boolean(state.refreshing) }
     };
   }
+  // История оптовой цены (цена по акции «Опт») артикула — для графика цены товара: { current, points: [{ at, value }] }
+  // по возрастанию времени, at: null — значение до первого записанного изменения. Изменения — строки истории
+  // «Цена по акции «Опт», ₽»; текущая — из последней загрузки цен. Строки «Добавлен в список» и прочие не берём:
+  // до 19.11.2026 в них писалась розничная цена.
+  function wholesale(sidInput) {
+    const sid = String(sidInput || '').trim();
+    if (!/^\d{1,12}$/.test(sid)) throw apiError(400, 'Некорректный артикул Сималенда');
+    const num = value => {
+      const number = Number(value);
+      return Number.isFinite(number) && number > 0 ? number : null;
+    };
+    const changes = readHistory(0)
+      .filter(item => String(item.id) === sid && /Опт/.test(String(item.what || '')))
+      .reverse();
+    const loaded = prices(),
+      points = changes.length
+        ? [{ at: null, value: num(changes[0].before) }, ...changes.map(item => ({ at: item.at, value: num(item.after) }))]
+        : [];
+    return { sid, current: num(loaded?.found?.[sid]?.wholesale_price), points, loadedAt: loaded?.at || null };
+  }
   async function handle(req, res, target) {
+    if (req.method === 'GET' && target.pathname === '/api/sima/wholesale') {
+      send(res, 200, wholesale(target.searchParams.get('id')));
+      return true;
+    }
     if (req.method === 'GET' && target.pathname === '/api/sima/history') {
       send(res, 200, await history(target.searchParams.get('days'), target.searchParams.get('source')));
       return true;
@@ -383,6 +407,7 @@ module.exports = function createSimaLand({
     saveRows,
     readHistory,
     history,
+    wholesale,
     configured,
     prices,
     refreshing: () => Boolean(state.refreshing)

@@ -76,12 +76,31 @@ const savePriceView = () => {
   }
 };
 
+// Опт Сималенда для графика: у товаров, чей артикул продавца начинается с артикула Сималенда (6938164/125/ШДФ → 6938164,
+// как в «Прибыли Сималенда»). Пришёл — график перерисовывается с пунктиром опта.
+function loadPriceWholesale(row, request) {
+  const sid = String(row.vendorCode || '')
+    .trim()
+    .match(/^(\d{4,10})(?:\/|$)/)?.[1];
+  if (!sid || state.demo) return;
+  priceProduct.wholesale = { loading: true, data: null };
+  api(`/api/sima/wholesale?id=${encodeURIComponent(sid)}`)
+    .then(data => {
+      if (request !== priceProduct.request) return;
+      priceProduct.wholesale = { loading: false, data: data.current != null || data.points?.length ? data : null };
+      if (priceProduct.model && $('#priceHistoryChart')) renderPriceHistoryChart();
+    })
+    .catch(() => {
+      if (request === priceProduct.request) priceProduct.wholesale = { loading: false, data: null };
+    });
+}
 function openPriceProduct(nmId) {
   const row = (state.prices?.rows || []).find(item => String(item.nmId) === String(nmId));
   if (!row) return;
   clearTimeout(priceProduct.pollTimer);
-  Object.assign(priceProduct, { nmId: row.nmId, row, data: null, key: '', model: null, orders: null });
+  Object.assign(priceProduct, { nmId: row.nmId, row, data: null, key: '', model: null, orders: null, wholesale: null });
   const request = ++priceProduct.request;
+  loadPriceWholesale(row, request);
   openModal(
     `<div class="price-product">
     <div class="price-product-head">${row.photo ? `<img class="price-product-photo" src="${escapeHtml(row.photo)}" alt="">` : ''}<div><p class="eyebrow">Цена товара</p><h2>${escapeHtml(row.name)}</h2><p>${escapeHtml(row.vendorCode || '—')} · nmID ${row.nmId} · ${escapeHtml(row.category)} · ${escapeHtml(row.brand)}</p></div></div>

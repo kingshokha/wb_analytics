@@ -64,11 +64,22 @@
 }
 /* Сильнее общего .stock-table td:nth-child(2) strong{display:inline-block}: товар — 2-я колонка, после галочки. */
 .sima-profit-table td .sima-profit-product strong,
+.sima-profit-product .sima-profit-name,
 .sima-profit-product small {
   display: block;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+/* Название — ссылка на страницу карточки (card.html) в новой вкладке. */
+.sima-profit-name {
+  font-weight: 800;
+  color: var(--ink);
+  text-decoration: none;
+}
+.sima-profit-name:hover {
+  color: var(--purple);
+  text-decoration: underline;
 }
 .sima-profit-product small {
   margin-top: 2px;

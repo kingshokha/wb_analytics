@@ -53,6 +53,28 @@ function pmLastChange(model, key, t, end) {
   if (model.unrecorded && t >= end) step(end, pmNum(model.current[key]));
   return last;
 }
+// Опт Сималенда в момент t: последнее записанное изменение не позже t (at: null — значение до первого изменения);
+// у правого края — опт последней загрузки цен. Изменений нет — всё время текущий опт.
+function pmWholesaleAt(data, t, end) {
+  if (!data) return null;
+  if (t >= end && data.current != null) return data.current;
+  let value = data.points.length ? null : data.current;
+  for (const point of data.points) {
+    if (point.at == null || Date.parse(point.at) <= t) value = point.value;
+    else break;
+  }
+  return value;
+}
+// Ступеньки опта за период [from, to] для pmPaths: начало, каждое изменение внутри периода, текущий опт у правого края.
+function pmWholesaleSeq(data, from, to) {
+  const seq = [{ t: from, v: pmWholesaleAt(data, from, to) }];
+  for (const point of data.points) {
+    const t = point.at == null ? null : Date.parse(point.at);
+    if (t != null && t > from && t < to) seq.push({ t, v: point.value });
+  }
+  seq.push({ t: to, v: pmWholesaleAt(data, to, to) });
+  return seq;
+}
 // Ступенчатая линия и заливка под ней по точкам {x,y}: значение держится до следующей точки, y = null — разрыв.
 function pmPaths(seq, endX, bottom) {
   let line = '',
@@ -137,6 +159,12 @@ function renderPriceHistoryChart() {
     prevSeq = back ? seqOf(from - back, from, key, false) : [];
   const hasPrev = prevSeq.some(item => item.v != null);
   const known = [...nowSeq, ...(hasPrev ? prevSeq : [])].map(item => item.v).filter(value => value != null);
+  // Опт Сималенда (товары с артикулом Сималенда, /api/sima/wholesale): пунктирная ступенька поверх линии цены — видно,
+  // сколько остаётся между ценой и закупкой. Для «Скидки продавца» (проценты) не рисуется; кнопка в списке скрывает её.
+  const wholesaleData = priceProduct.wholesale?.data,
+    wholesaleOn = Boolean(wholesaleData) && !focus.pct && priceView.wholesale !== false;
+  const wholesaleSeq = wholesaleOn ? pmWholesaleSeq(wholesaleData, from, to) : [];
+  if (wholesaleOn) known.push(...wholesaleSeq.map(item => item.v).filter(value => value != null));
   priceProduct.chartWidth = el.clientWidth;
   if (!known.length) {
     el.innerHTML = '<p class="price-product-note">За этот период цены в таблице нет.</p>';
@@ -278,12 +306,24 @@ function renderPriceHistoryChart() {
       <svg viewBox="0 0 ${W} ${H}" height="${H}" aria-hidden="true"><defs><clipPath id="pmLit"><rect class="pm-lit" x="0" y="${top - 10}" width="${W}" height="${lineH + 20}"/></clipPath></defs>
         ${gaps}<line class="pm-base" x1="${padL}" x2="${W - padR}" y1="${lineBottom}" y2="${lineBottom}"/>${guides}
         <path class="pm-prev" d="${exact.prev}"/><path class="pm-area" clip-path="url(#pmLit)" d="${exact.now.area}"/><path class="pm-dim" d="${exact.now.line}"/><path class="pm-line" clip-path="url(#pmLit)" d="${exact.now.line}"/>
+        ${
+          wholesaleOn
+            ? `<path class="pm-wholesale" d="${
+                pmPaths(
+                  wholesaleSeq.map(item => ({ x: x(item.t), y: item.v == null ? null : y(item.v) })),
+                  x(to),
+                  lineBottom
+                ).line
+              }"/>`
+            : ''
+        }
         ${pins.map(pin => `<g class="pm-pin"><line x1="${x(pin.t)}" x2="${x(pin.t)}" y1="${top}" y2="${lineBottom}"/><circle cx="${x(pin.t)}" cy="${lineBottom}" r="3"/></g>`).join('')}${strip}
         <line class="pm-cursor-line hidden" y1="${top}" y2="${orders ? stripBottom : lineBottom}"/><line class="pm-range-line a hidden" y1="${top}" y2="${orders ? stripBottom : lineBottom}"/><line class="pm-range-line b hidden" y1="${top}" y2="${orders ? stripBottom : lineBottom}"/>
         <circle class="pm-prev-dot hidden" r="3.5"/><circle class="pm-dot hidden" r="4.5"/><circle class="pm-dot pm-today" cx="${x(to)}" cy="${endValue == null ? lineBottom : y(endValue)}" r="4" ${endValue == null ? 'opacity="0"' : ''}/>
       </svg></div>
     <div class="pm-axis"><span>${priceDay(from)}</span>${hasPrev ? `<span class="pm-prev-key"><i></i>прошлые ${priceView.days} дн.</span>` : ''}<span>сейчас</span></div>
     <ul class="pm-list">${series.map(item => `<li><button type="button" data-pm-series="${item.key}" aria-pressed="${item.key === key}" title="${item.key === key ? 'Эта линия на графике' : 'Показать эту линию на графике'}"><i class="sw"></i><span class="nm">${item.label}</span><span class="v"></span><span class="c"></span></button></li>`).join('')}
+      ${wholesaleData ? `<li><button type="button" class="wholesale" data-pm-wholesale aria-pressed="${wholesaleOn}" title="${focus.pct ? 'Опт Сималенда — на линиях цены, не на скидке' : `${wholesaleOn ? 'Скрыть' : 'Показать'} опт Сималенда на графике (артикул ${escapeHtml(wholesaleData.sid)})`}"><i class="sw"></i><span class="nm">Опт Сималенда</span><span class="v"></span><span class="c"></span></button></li>` : ''}
       ${state.demo ? '' : `<li><button type="button" class="orders" data-pm-orders aria-pressed="${orders}" title="${orders ? 'Скрыть' : 'Показать'} заказы по дням под графиком — из воронки продаж, сутки по Москве"><i class="sw"></i><span class="nm">Заказы</span><span class="v"></span><span class="c"></span></button></li>`}</ul>`;
 
   const chart = el.querySelector('.pm-chart'),
@@ -420,6 +460,15 @@ function renderPriceHistoryChart() {
       cell.textContent = c.text === 'без изменений' ? '' : c.text;
       cell.className = `c ${c.cls}`;
     });
+    // Опт: значение в точке чтения и разница с выбранной ценой.
+    const wholesaleButton = el.querySelector('[data-pm-wholesale]');
+    if (wholesaleButton) {
+      const opt = pmWholesaleAt(wholesaleData, b, to);
+      wholesaleButton.querySelector('.v').textContent = opt == null ? '—' : priceRub(opt);
+      wholesaleButton.querySelector('.c').textContent =
+        opt != null && value != null && !focus.pct ? `${value >= opt ? '+' : '−'}${priceRub(Math.abs(value - opt))}` : '';
+      wholesaleButton.querySelector('.c').className = 'c pm-flat';
+    }
     const ordersButton = el.querySelector('[data-pm-orders]');
     if (ordersButton) {
       const list = !orders ? [] : mode === 'day' ? days.filter(day => b >= day.start && b < day.end) : daysIn(a, b);
@@ -526,6 +575,13 @@ function renderPriceHistoryChart() {
         renderPriceHistoryChart();
       })
   );
+  const wholesaleToggle = el.querySelector('[data-pm-wholesale]');
+  if (wholesaleToggle && !focus.pct)
+    wholesaleToggle.onclick = () => {
+      priceView.wholesale = priceView.wholesale === false;
+      savePriceView();
+      renderPriceHistoryChart();
+    };
   const ordersButton = el.querySelector('[data-pm-orders]');
   if (ordersButton)
     ordersButton.onclick = () => {

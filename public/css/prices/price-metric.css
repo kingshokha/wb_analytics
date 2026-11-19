@@ -349,6 +349,30 @@
 .pm-list .orders .c {
   color: var(--muted);
 }
+/* Опт Сималенда: пунктир поверх линии цены и его строка в списке */
+.pm-wholesale {
+  fill: none;
+  stroke: #c27b1c;
+  stroke-width: 1.6;
+  stroke-dasharray: 5 4;
+}
+.pm-list .wholesale .sw {
+  border-radius: 2px;
+  background: repeating-linear-gradient(90deg, #c27b1c 0 5px, transparent 5px 8px);
+  height: 2px;
+}
+.pm-list .wholesale[aria-pressed='false'] {
+  opacity: 0.55;
+}
+.pm-list .wholesale[aria-pressed='true'] {
+  background: none;
+}
+.pm-list .wholesale[aria-pressed='true']:hover {
+  background: #f7f8f6;
+}
+.pm-list .wholesale .c {
+  color: var(--muted);
+}
 @media (prefers-reduced-motion: reduce) {
   .pm-pill,
   .pm-wheel,

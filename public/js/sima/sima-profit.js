@@ -223,7 +223,7 @@ function simaProfitCells({ row, calc }) {
       ? '<span class="change-muted">—</span>'
       : `<strong class="sima-profit-mark ${calc.diff > 0 ? 'down' : 'up'}">${calc.diff > 0 ? '+' : calc.diff < 0 ? '−' : ''}${simaPercent.format(Math.abs(calc.diff))}%</strong>`;
   return (
-    `<td><div class="sima-profit-product">${row.photo ? `<img class="stock-product-photo" src="${escapeHtml(row.photo)}" alt="" loading="lazy">` : ''}<span><strong title="${escapeHtml(row.name)}">${escapeHtml(row.name)}</strong><small>${escapeHtml(row.subject || '')}</small></span></div></td>` +
+    `<td><div class="sima-profit-product">${row.photo ? `<img class="stock-product-photo" src="${escapeHtml(row.photo)}" alt="" loading="lazy">` : ''}<span><a class="sima-profit-name" href="/card.html?${new URLSearchParams({ cabinet: state.cabinet, nmId: row.nmId })}" target="_blank" rel="noopener noreferrer" title="Открыть карточку товара: ${escapeHtml(row.name)}">${escapeHtml(row.name)}</a><small>${escapeHtml(row.subject || '')}</small></span></div></td>` +
     `<td><a class="change-link" href="https://www.wildberries.ru/catalog/${row.nmId}/detail.aspx" target="_blank" rel="noopener noreferrer" title="Открыть на WB">${row.nmId}</a><small class="sima-profit-sub">${escapeHtml(row.vendorCode)}</small></td>` +
     `<td>${article}${status ? `<small class="sima-profit-sub sima-profit-mark ${supplier.status === 'ok' ? 'warn' : 'down'}" title="${escapeHtml(status)}">${escapeHtml(status)}</small>` : ''}</td>` +
     `<td>${row.price ? `<button type="button" class="sima-price-open" data-sima-price="${row.nmId}" title="История цены и изменение — как в «Ценах и скидках»">${simaMoney(row.price)}</button>` : `<strong>${simaMoney(row.price)}</strong>`}</td>` +
@@ -335,8 +335,13 @@ function renderSimaProfit() {
         `<tr><td class="check-col"><input type="checkbox" data-sima-select="${item.row.nmId}" aria-label="Выбрать товар"${v.selected.has(String(item.row.nmId)) ? ' checked' : ''}></td>${simaProfitCells(item)}</tr>`
     )
     .join('');
-  $('#simaProfitSelectAll').checked = pageRows.length > 0 && pageRows.every(item => v.selected.has(String(item.row.nmId)));
+  // Галочка в заголовке — все отобранные товары (по поиску и фильтрам, на всех страницах), а не только видимая страница.
   v.filtered = rows.map(item => String(item.row.nmId));
+  const picked = v.filtered.filter(id => v.selected.has(id)).length,
+    selectAll = $('#simaProfitSelectAll');
+  selectAll.checked = v.filtered.length > 0 && picked === v.filtered.length;
+  selectAll.indeterminate = picked > 0 && picked < v.filtered.length;
+  selectAll.title = `Выбрать все отобранные: ${fmtNum(v.filtered.length)}`;
   renderSimaProfitActions();
   $$('#simaProfitBody .stock-product-photo').forEach(image => {
     if (image.dataset.previewBound) return;
@@ -682,9 +687,9 @@ document.addEventListener('change', event => {
     renderSimaProfit();
   }
   if (event.target.id === 'simaProfitSelectAll') {
-    for (const input of $$('#simaProfitBody [data-sima-select]')) {
-      if (event.target.checked) v.selected.add(input.dataset.simaSelect);
-      else v.selected.delete(input.dataset.simaSelect);
+    for (const id of v.filtered || []) {
+      if (event.target.checked) v.selected.add(id);
+      else v.selected.delete(id);
     }
     renderSimaProfit();
   }

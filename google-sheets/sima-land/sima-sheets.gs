@@ -175,7 +175,7 @@ function articlesSheet(book) {
 // обновлении (или после смены столбцов) он пуст, и «История» не пишется — сравнивать не с чем.
 //   Артикул не загрузился (failed) — строка остаётся прежней, без записи в «Историю».
 //   Товара нет в ответе — «Нет на Сималенде» (один раз, пока он не вернётся), вернулся — «Снова есть на Сималенде».
-//   Артикул добавлен в список — «Добавлен в список», убран из списка — «Убран из списка артикулов».
+//   Артикул добавлен в список — «Добавлен в список» (с оптовой ценой), убран из списка — «Убран из списка артикулов».
 //   Цена или цена по акции «Опт» изменилась — строка на каждое из двух полей. Цена 0 — «нет цены» (пустая ячейка).
 function priceChanges(sids, found, failed, old, now) {
   const oldBySid = {}, listed = {}, rows = [], history = [];
@@ -191,7 +191,7 @@ function priceChanges(sids, found, failed, old, now) {
     if (failed[sid]) { rows.push(before || [Number(sid), '', '', '', STATUS.failed, now]); return; }
     if (!good) {
       const row = [Number(sid), before ? before[1] : '', '', '', STATUS.missing, now];
-      if (here(before)) record(row, STATUS.missing, display(before[2]), '—');
+      if (here(before)) record(row, STATUS.missing, display(before[3]), '—');
       rows.push(row);
       return;
     }
@@ -201,12 +201,14 @@ function priceChanges(sids, found, failed, old, now) {
     const row = [Number(sid), String(good.name || ''), price(good.price), price(good.wholesale_price), stock, now];
     rows.push(row);
     if (firstRun) return;
-    if (!before) { record(row, 'Добавлен в список', '—', display(row[2])); return; }
+    // Появился (добавлен или снова есть на Сималенде) — в «стало», пропал или убран — в «было» оптовая цена (цена по
+    // акции «Опт»), а не розничная.
+    if (!before) { record(row, 'Добавлен в список', '—', display(row[3])); return; }
     if (!known(before)) return;
-    if (before[4] === STATUS.missing) { record(row, 'Снова есть на Сималенде', '—', display(row[2])); return; }
+    if (before[4] === STATUS.missing) { record(row, 'Снова есть на Сималенде', '—', display(row[3])); return; }
     PRICE_TRACKED.forEach(function (index) { if (!same(before[index], row[index])) record(row, PRICE_HEADERS[index], display(before[index]), display(row[index])); });
   });
-  if (!firstRun) old.forEach(function (row) { if (!listed[String(row[0])] && known(row)) record(row, 'Убран из списка артикулов', here(row) ? display(row[2]) : '—', '—'); });
+  if (!firstRun) old.forEach(function (row) { if (!listed[String(row[0])] && known(row)) record(row, 'Убран из списка артикулов', here(row) ? display(row[3]) : '—', '—'); });
   return { rows: rows, history: history };
 }
 function same(a, b) { return normalize(a) === normalize(b); }
