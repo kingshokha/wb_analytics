@@ -1,0 +1,57 @@
+/* Ячейка товара в таблицах цен и воронки */
+
+.price-product-cell {
+  display: flex;
+  align-items: center;
+}
+.price-product-cell > span {
+  display: block;
+  min-width: 0;
+}
+.price-product-cell strong {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.funnel-products-table th {
+  font-size: 12px !important;
+}
+.funnel-products-table td,
+.funnel-products-table td strong {
+  font-size: 12px;
+}
+.funnel-product-cell {
+  min-width: 250px;
+}
+.funnel-product-cell .stock-product-photo {
+  display: inline-block;
+  vertical-align: middle;
+}
+.funnel-product-cell strong {
+  display: inline-block;
+  vertical-align: middle;
+  max-width: calc(100% - 52px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* Стрелка детализации, фото и название товара — в одну строку; длинное название обрезается многоточием. */
+.funnel-product-name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.funnel-product-name .stock-product-photo {
+  flex: 0 0 auto;
+  margin: 0;
+}
+.funnel-product-name strong {
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: none !important;
+}
+.funnel-product-open {
+  flex: 0 0 28px;
+}

@@ -1,0 +1,143 @@
+/* «Склеить» выбранные карточки */
+.card-merge-warn {
+  margin: 12px 0 0;
+  padding: 10px 12px;
+  border-radius: 9px;
+  background: #fff6e5;
+  color: #7a4b00;
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+.card-merge-problem {
+  margin: 12px 0 0;
+  padding: 10px 12px;
+  border-radius: 9px;
+  background: #fff0f0;
+  color: #b84949;
+  font-size: 12.5px;
+  font-weight: 700;
+}
+.card-merge-list {
+  max-height: 260px;
+  overflow: auto;
+  margin: 12px 0 0;
+  padding-left: 18px;
+  font-size: 12px;
+  line-height: 1.6;
+}
+.card-merge-list small {
+  color: var(--muted);
+}
+.card-merge-rating {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin: 12px 0 0;
+}
+.card-merge-rating > div {
+  display: grid;
+  gap: 3px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+}
+.card-merge-rating span {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--muted);
+}
+.card-merge-rating b {
+  font:
+    700 17px Unbounded,
+    sans-serif;
+}
+.card-merge-rating small {
+  font-size: 11px;
+  color: var(--muted);
+}
+.card-merge-estimate.up {
+  color: #277653;
+}
+.card-merge-estimate.down {
+  color: #b84949;
+}
+.card-merge-note {
+  font-size: 11.5px;
+  margin: 8px 0 0;
+  line-height: 1.45;
+}
+@media (max-width: 640px) {
+  .card-merge-rating {
+    grid-template-columns: 1fr;
+  }
+}
+/* «Оценка»: сортировка по числу оценок */
+.card-sort-alt {
+  margin-left: 6px;
+  padding: 1px 6px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: white;
+  color: #8a938f;
+  font: 700 10px Manrope;
+  text-transform: none;
+  letter-spacing: 0;
+  cursor: pointer;
+}
+.card-sort-alt.active,
+.card-sort-alt:hover {
+  border-color: #cfc2fa;
+  color: var(--purple);
+}
+.card-rating-count {
+  display: block;
+  white-space: nowrap;
+}
+.card-dup-suffix {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 12px 0 8px;
+  font-size: 12px;
+  font-weight: 700;
+}
+.card-dup-suffix input {
+  width: 140px;
+}
+.card-dup-list {
+  max-height: 380px;
+  overflow: auto;
+  margin: 6px 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+}
+.card-dup-list table {
+  width: 100% !important;
+  min-width: 0 !important;
+  table-layout: fixed;
+}
+.card-dup-list th:nth-child(1) {
+  width: 45%;
+}
+.card-dup-list th:nth-child(2) {
+  width: 30%;
+}
+.card-dup-list th,
+.card-dup-list td {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  vertical-align: top;
+}
+.card-dup-list td small {
+  display: block;
+  color: var(--muted);
+  font-size: 11px;
+  white-space: normal;
+}
+.card-dup-list td small.card-warn {
+  color: #c24141;
+}
+.card-dup-code {
+  width: 100%;
+  min-width: 180px;
+}

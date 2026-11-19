@@ -1,0 +1,227 @@
+/* Выбор и порядок столбцов таблицы кампаний */
+.column-filter > div {
+  min-width: 280px;
+  max-height: 380px;
+}
+.column-option {
+  gap: 8px !important;
+}
+.column-option.dragging {
+  opacity: 0.45;
+}
+.column-option.drop-before {
+  box-shadow: inset 0 2px 0 var(--purple);
+}
+.column-option.drop-after {
+  box-shadow: inset 0 -2px 0 var(--purple);
+}
+.column-grip {
+  color: #aab1ad;
+  cursor: grab;
+  letter-spacing: -2px;
+  font-size: 12px;
+  user-select: none;
+}
+.column-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.column-name small {
+  margin-left: 6px;
+  color: var(--muted);
+}
+.column-move {
+  display: flex;
+  gap: 3px;
+}
+.column-move button {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: white;
+  color: var(--ink);
+  font: 700 12px Manrope;
+  cursor: pointer;
+}
+.column-move button:hover:not(:disabled) {
+  border-color: var(--purple);
+  color: var(--purple);
+}
+.column-move button:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+.column-reset {
+  width: 100%;
+  margin-top: 4px;
+  padding: 9px 7px;
+  border: 0;
+  border-top: 1px solid var(--line);
+  background: none;
+  color: var(--muted);
+  font: 700 11px Manrope;
+  text-align: left;
+  cursor: pointer;
+}
+.column-reset:hover {
+  color: var(--purple);
+}
+#adCampaignsTable td > small:not(.sales-delta) {
+  display: block;
+  margin-top: 2px;
+  color: var(--muted);
+}
+/* Заголовки рекламных таблиц с подсказкой о формуле */
+th.has-tip {
+  text-decoration: underline dotted;
+  text-underline-offset: 3px;
+}
+/* Изменения к прошлому периоду в «Рекламных кампаниях» */
+#adCampaignsTable .sales-delta {
+  font-size: 11px;
+}
+/* «Итого по товарам» в «Товарах в воронке» */
+.funnel-products-table tbody tr.funnel-total-row td {
+  background: #f4f2ff;
+  font-weight: 700;
+  vertical-align: top;
+}
+.funnel-total-row td small:not(.sales-delta) {
+  display: block;
+  margin-top: 2px;
+  font-weight: 500;
+  color: var(--muted);
+}
+.funnel-products-table .sales-delta {
+  font-size: 11px;
+}
+/* «Перекачать» в шапке воронки — второстепенная кнопка рядом с «Обновить» */
+.refresh.refetch {
+  background: white;
+  color: var(--ink);
+}
+.refresh.refetch:hover {
+  border-color: var(--purple);
+  color: var(--purple);
+}
+/* Пункты меню — ссылки, выглядят как раньше */
+a.nav-item {
+  text-decoration: none;
+}
+a.nav-item:focus-visible {
+  outline: 2px solid var(--lime);
+  outline-offset: -2px;
+}
+/* Название кампании — ссылка в кабинет WB */
+.campaign-wb-link {
+  color: inherit;
+  text-decoration: none;
+}
+.campaign-wb-link:hover,
+.campaign-wb-link:focus-visible {
+  color: var(--purple);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  outline: 0;
+}
+/* Кнопка детализации кампании слева от названия */
+.campaign-open {
+  flex: 0 0 28px;
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: white;
+  color: var(--muted);
+  transition:
+    color 0.15s,
+    border-color 0.15s,
+    background 0.15s;
+}
+.campaign-open:hover,
+.campaign-open:focus-visible {
+  color: var(--purple);
+  border-color: var(--purple);
+  background: #f6f4fd;
+  outline: 0;
+}
+.campaign-open svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.ad-product-toggle,
+.ad-product-toggle-stub {
+  flex: 0 0 22px;
+  width: 22px;
+  height: 22px;
+}
+.ad-product-toggle {
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  transition:
+    transform 0.18s ease,
+    color 0.15s,
+    background 0.15s;
+}
+.ad-product-toggle:hover,
+.ad-product-toggle:focus-visible {
+  color: var(--purple);
+  background: #f6f4fd;
+  outline: 0;
+}
+.ad-product-toggle[aria-expanded='true'] {
+  transform: rotate(90deg);
+  color: var(--purple);
+}
+.ad-product-toggle svg {
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.ad-product-campaign td {
+  background: #fafbfa;
+  font-size: 13px;
+}
+.ad-product-campaign-name {
+  padding-left: 31px;
+  min-width: 220px;
+}
+.ad-product-campaign-name a {
+  color: inherit;
+  text-decoration: none;
+}
+.ad-product-campaign-name a:hover {
+  color: var(--purple);
+  text-decoration: underline;
+}
+.ad-product-campaign-name small {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+}
+.ad-product-campaign-name .status {
+  padding: 2px 7px;
+  font-size: 11px;
+}

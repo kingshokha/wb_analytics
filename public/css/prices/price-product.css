@@ -1,0 +1,208 @@
+/* Окно товара в «Ценах и скидках»: текущие цены, история по снимкам, изменение (public/price-product.js) */
+.modal-card.modal-wide {
+  width: min(880px, 100%);
+}
+#pricesBody td[data-price-open] {
+  cursor: pointer;
+}
+#pricesBody td[data-price-open]:hover strong {
+  color: var(--purple);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.price-product-head {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding-right: 24px;
+}
+.price-product-head h2 {
+  margin: 2px 0 4px;
+  font-size: 18px;
+}
+.price-product-head p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+.price-product-photo {
+  width: 64px;
+  height: 84px;
+  flex: 0 0 64px;
+  border-radius: 10px;
+  object-fit: cover;
+  background: #f1f2f0;
+}
+.price-product-now {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px;
+  margin: 16px 0 4px;
+}
+.price-product-now div {
+  display: grid;
+  gap: 3px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+.price-product-now span {
+  color: var(--muted);
+  font-size: 11px;
+}
+.price-product-now strong {
+  font-size: 14px;
+}
+.price-product-section {
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+.price-product-section h3 {
+  margin: 0 0 8px;
+  font-size: 14px;
+}
+.price-product-note {
+  margin: 6px 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+.price-product-note.error,
+.price-down {
+  color: #b84949;
+}
+.price-up {
+  color: var(--green);
+}
+.price-down,
+.price-up {
+  font-size: 11px;
+  font-weight: 800;
+}
+/* История цены в окне товара (данные из Google Таблицы) */
+.price-history-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 12px;
+  margin-bottom: 8px;
+}
+.price-history-head h3 {
+  margin: 0;
+}
+.price-history-stats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.price-history-stats div {
+  display: grid;
+  align-content: start;
+  gap: 3px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: #f7f8f6;
+}
+.price-history-stats span,
+.price-history-stats small {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.35;
+}
+.price-history-stats strong {
+  font-size: 15px;
+}
+/* График истории — карточка в price-metric.css */
+.price-history-table {
+  max-height: 240px;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+.price-history-table table {
+  width: 100%;
+  min-width: 0 !important;
+  table-layout: auto;
+}
+.price-history-table table th,
+.price-history-table table td {
+  padding: 7px 12px;
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: visible;
+}
+.price-history-table td strong {
+  display: inline;
+  font-size: inherit;
+}
+.price-history-table td small {
+  margin-left: 4px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
+}
+.price-history-table tr.price-history-now td {
+  background: #f6f4fd;
+  font-weight: 700;
+}
+.price-edit {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.price-edit-preview {
+  margin: 8px 0;
+  font-size: 13px;
+}
+.price-edit-confirm {
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: #faf9ff;
+  border: 1px solid #e6defd;
+}
+.price-edit-confirm p {
+  margin: 0 0 8px;
+  font-size: 13px;
+  line-height: 1.7;
+}
+.price-edit-done {
+  margin: 6px 0;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: #e7f5ee;
+  color: #277653;
+  font-size: 12px;
+  font-weight: 700;
+}
+@media (max-width: 680px) {
+  .price-product-now,
+  .price-history-stats {
+    grid-template-columns: 1fr 1fr;
+  }
+  .price-edit {
+    grid-template-columns: 1fr;
+  }
+  .price-history-table table th,
+  .price-history-table table td,
+  .price-history-table table th:not(:first-child),
+  .price-history-table table td:not(:first-child) {
+    padding: 6px 5px;
+    font-size: 11px;
+  }
+  .price-history-table table th,
+  .price-history-table table td:first-child {
+    white-space: normal;
+  }
+  .price-history-table table th {
+    vertical-align: bottom;
+  }
+  .price-history-table td small,
+  .price-history-table td .price-down,
+  .price-history-table td .price-up {
+    display: block;
+    margin-left: 0;
+  }
+}

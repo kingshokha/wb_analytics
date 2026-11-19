@@ -1,0 +1,17 @@
+/* Изменение к прошлому периоду в карточках вкладки «Реклама» */
+.metric .metric-delta {
+  display: block;
+  margin-top: 4px;
+  font-size: 11px !important;
+}
+.metric .metric-delta span {
+  color: var(--muted);
+  font-weight: 600;
+}
+/* «Заказы, воронка» во вкладке «Реклама»: доля рекламных заказов под числом */
+.ad-funnel-share {
+  display: block;
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 11px;
+}

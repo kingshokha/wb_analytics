@@ -1,0 +1,139 @@
+/* «Карточки товаров» (public/cards.js): таблица карточек, корзина, ошибки, ярлыки */
+.cards-table {
+  min-width: 1200px;
+}
+.cards-table td {
+  vertical-align: middle;
+}
+.cards-table td small {
+  display: block;
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 11px;
+}
+.cards-table td,
+.cards-alt-table td {
+  white-space: normal;
+}
+.cards-alt-table {
+  width: 100%;
+  min-width: 760px;
+}
+.cards-alt-table td small {
+  display: block;
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 11px;
+}
+.card-cell {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  white-space: normal;
+}
+.card-cell > span {
+  min-width: 0;
+}
+.card-title-link {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  color: var(--ink);
+  font-weight: 800;
+  text-decoration: none;
+  line-height: 1.3;
+}
+.card-title-link:hover {
+  color: var(--purple);
+  text-decoration: underline;
+}
+.card-nophoto {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 48px;
+  flex: 0 0 36px;
+  border-radius: 7px;
+  background: #fdecec;
+  color: #b84949;
+  font-size: 11px;
+  font-weight: 800;
+  text-align: center;
+  line-height: 1.1;
+}
+.card-tag {
+  display: inline-block;
+  margin: 1px 2px 1px 0;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--tag);
+  color: var(--ink);
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.card-warn {
+  color: #b84949 !important;
+  font-weight: 700;
+}
+.card-rating,
+.card-price {
+  white-space: nowrap;
+}
+.card-errors div {
+  margin: 2px 0;
+  white-space: normal;
+  line-height: 1.4;
+}
+/* Склейка: карточки одной группы подряд, над ними строка группы, слева — цветная полоса группы. */
+.cards-table tr.card-glue-head td {
+  padding: 8px 12px;
+  background: #f6f4fd;
+  color: #5b36c8;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  border-top: 2px solid #e3dcfb;
+}
+.cards-table tr.card-glue-head small {
+  display: inline;
+  margin-left: 8px;
+  color: var(--muted);
+  font-weight: 600;
+  letter-spacing: 0;
+}
+.cards-table tr.card-glued td:first-child {
+  box-shadow: inset 3px 0 0 var(--glue, #9d77ff);
+}
+.card-glue-chip {
+  display: inline-block;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: #ece5ff;
+  color: #5b36c8;
+  font-weight: 700;
+}
+/* Галочки карточек: «Дублировать» и «Объединить по 30 шт». */
+.card-select {
+  flex: 0 0 auto;
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: var(--purple);
+  cursor: pointer;
+}
+.card-select:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+#cardSelectAll {
+  display: inline-block;
+  margin-right: 8px;
+  vertical-align: middle;
+}
+/* «Проверка»: причины ошибок длинные — переносятся внутри столбца, а не обрезаются общим правилом таблиц с изменяемой шириной. */
+.cards-table td:nth-child(7) {
+  white-space: normal !important;
+}

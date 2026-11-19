@@ -1,0 +1,14 @@
+/* Боковое меню — в sidebar.css (общее для всех страниц); здесь — только переключатель кабинета основного сайта */
+/* Окна истории из Google Таблицы: откуда данные — копия с компьютера или дозагрузка (public/sheet-sync.js) */
+.sheet-hint {
+  margin: 0 0 10px;
+  padding: 7px 10px;
+  border-radius: 8px;
+  background: #f5f6f3;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+.sheet-hint:empty {
+  display: none;
+}

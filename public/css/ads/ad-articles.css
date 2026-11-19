@@ -1,0 +1,19 @@
+/* «Реклама», столбец «Артикулы»: число товаров в кампании и сколько с показами за период */
+.ad-articles {
+  display: grid;
+  gap: 2px;
+  cursor: help;
+}
+.ad-articles strong {
+  font-size: 13px;
+}
+.ad-articles small {
+  color: var(--green);
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.ad-articles small.muted {
+  color: var(--muted);
+  font-weight: 600;
+}

@@ -1,0 +1,66 @@
+/* «Воронка»: вкладки и продажи по товарам */
+
+.funnel-tabs {
+  display: flex;
+  gap: 8px;
+  margin: 15px 0 0;
+}
+.funnel-tab {
+  height: 36px;
+  padding: 0 16px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fff;
+  color: var(--ink);
+  font: 700 12px Manrope;
+  cursor: pointer;
+}
+.funnel-tab:hover {
+  border-color: var(--purple);
+  color: var(--purple);
+}
+.funnel-tab.active {
+  border-color: var(--purple);
+  background: var(--purple);
+  color: #fff;
+}
+.funnel-sales-panel {
+  margin-top: 15px;
+}
+.funnel-sales-table {
+  min-width: 1100px;
+}
+.funnel-sales-table th,
+.funnel-sales-table td {
+  white-space: nowrap;
+}
+.funnel-sales-table th:nth-child(1),
+.funnel-sales-table td:nth-child(1) {
+  min-width: 230px;
+}
+.funnel-sales-table td {
+  vertical-align: top;
+}
+.sales-delta {
+  display: block;
+  margin-top: 2px;
+  font-size: 11px;
+  font-weight: 700;
+}
+.sales-delta.up {
+  color: #2f8f62;
+}
+.sales-delta.down {
+  color: #e05c4b;
+}
+.sales-delta.flat {
+  color: var(--muted);
+}
+.funnel-sales-table tbody tr.sales-total-row td {
+  background: #f4f2ff;
+  font-weight: 700;
+}
+.status-return {
+  background: #fff1e3;
+  color: #b56a20;
+}

@@ -1,0 +1,204 @@
+/* «Остатки FBS» → «Добавить вручную» */
+.stock-add-search {
+  display: flex;
+  height: 40px;
+  margin: 12px 0 8px;
+}
+.stock-add-search input {
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font: 500 12px Manrope;
+  outline: 0;
+}
+.stock-add-found-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin: 4px 0 6px;
+  font-size: 12px;
+}
+.stock-add-found-head label {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.stock-add-list {
+  max-height: 300px;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+}
+.stock-add-item {
+  display: grid;
+  grid-template-columns: auto auto 1fr;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 10px;
+  border-top: 1px solid #edf0ee;
+  cursor: pointer;
+  font-size: 12px;
+}
+.stock-add-item:first-child {
+  border-top: 0;
+}
+.stock-add-item:hover {
+  background: #f6f4fd;
+}
+.stock-add-item input,
+.stock-add-found-head input,
+.stock-add-warehouses input {
+  width: 15px;
+  height: 15px;
+  margin: 0;
+  accent-color: var(--purple);
+}
+.stock-add-item img,
+.stock-add-nophoto {
+  width: 30px;
+  height: 40px;
+  border-radius: 6px;
+  object-fit: cover;
+  background: #eef0ee;
+}
+.stock-add-item > span {
+  min-width: 0;
+}
+.stock-add-item b {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.stock-add-item small {
+  display: block;
+  color: var(--muted);
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+.stock-add-chosen {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin: 10px 0 0;
+  font-size: 12px;
+}
+.stock-add-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 4px 3px 9px;
+  border-radius: 999px;
+  background: #ece5ff;
+  color: #5b36c8;
+  font-weight: 700;
+}
+.stock-add-chip button {
+  border: 0;
+  background: none;
+  color: inherit;
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  padding: 0 4px;
+}
+.stock-add-clear {
+  border: 0;
+  background: none;
+  color: var(--muted);
+  text-decoration: underline;
+  cursor: pointer;
+  font-size: 12px;
+}
+.stock-add-section {
+  display: grid;
+  gap: 7px;
+  margin-top: 14px;
+  font-size: 12px;
+}
+.stock-add-warehouses {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.stock-add-warehouses label {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 11px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: 600;
+}
+.stock-add-warehouses label:has(input:checked) {
+  border-color: #cfc2fa;
+  background: #f6f4fd;
+  color: var(--purple);
+}
+.stock-add-amount {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+.stock-add-amount input {
+  width: 120px;
+  height: 36px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font: 600 12px Manrope;
+  margin: 0;
+}
+.stock-add-amount button {
+  height: 36px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: white;
+  font: 700 11px Manrope;
+  cursor: pointer;
+}
+.stock-add-amount button.active {
+  border-color: var(--purple);
+  color: var(--purple);
+  background: #f6f4fd;
+}
+.stock-add-keep {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 14px 0 0;
+  font-size: 12px;
+  cursor: pointer;
+}
+.stock-add-keep input {
+  width: 15px;
+  height: 15px;
+  margin: 0;
+  accent-color: var(--purple);
+}
+.stock-add-total {
+  margin: 10px 0 0;
+  font-size: 12.5px;
+}
+.stock-add-result p {
+  font-size: 12.5px;
+  margin: 10px 0 0;
+}
+.stock-add-failed {
+  max-height: 180px;
+  overflow: auto;
+  margin: 6px 0 0;
+  padding-left: 18px;
+  font-size: 12px;
+  line-height: 1.5;
+}

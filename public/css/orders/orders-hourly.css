@@ -1,0 +1,155 @@
+/* Лента заказов: заказы по часам (public/orders-hourly.js) */
+.orders-hourly-panel {
+  margin-bottom: 15px;
+}
+.hourly-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.hourly-switch {
+  display: flex;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  background: #fafbfa;
+}
+.hourly-switch .funnel-metric {
+  padding: 7px 11px;
+  white-space: nowrap;
+}
+.hourly-insights {
+  display: grid;
+  gap: 10px;
+  padding: 14px 20px 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.55;
+}
+.hourly-insights p {
+  margin: 0;
+}
+.hourly-insights b {
+  color: var(--ink);
+}
+/* Карточки «к этому времени»: сегодня против вчера и среднего за 7 дней; активная — та, что на графике */
+.hourly-cards {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+.hourly-card {
+  display: grid;
+  align-content: start;
+  gap: 3px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: white;
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.hourly-card:hover {
+  border-color: #cfc3f7;
+}
+.hourly-card.active {
+  border-color: var(--purple);
+  box-shadow: inset 0 0 0 1px var(--purple);
+  background: #faf9ff;
+}
+.hourly-card > span:first-child {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.hourly-card strong {
+  font:
+    700 19px Unbounded,
+    sans-serif;
+}
+.hourly-card small {
+  color: var(--muted);
+  font-size: 11px;
+}
+.hourly-compare {
+  display: grid;
+  gap: 2px;
+  margin-top: 6px;
+  padding-top: 7px;
+  border-top: 1px solid var(--line);
+  font-size: 11px;
+  line-height: 1.5;
+}
+.hourly-compare b {
+  font-weight: 800;
+}
+@media (max-width: 980px) {
+  .hourly-cards {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+.hourly-up {
+  color: var(--green);
+  font-weight: 700;
+}
+.hourly-down {
+  color: var(--red);
+  font-weight: 700;
+}
+.hourly-bar {
+  fill: var(--purple);
+  transition: fill 0.12s;
+}
+.hourly-bar.partial {
+  fill: #b9a8f4;
+}
+.hourly-bar.active {
+  fill: #5b36c8;
+}
+.hourly-bar.partial.active {
+  fill: #9a83ee;
+}
+.hourly-legend {
+  padding: 0 20px 12px;
+}
+.legend-bar {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  background: var(--purple);
+}
+.legend-bar.partial {
+  background: #b9a8f4;
+}
+.hourly-legend-note {
+  margin-left: auto;
+}
+.hourly-table {
+  border-top: 1px solid var(--line);
+}
+.hourly-table summary {
+  padding: 11px 20px;
+  color: var(--purple);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.hourly-table table {
+  min-width: 0;
+}
+.hourly-table th,
+.hourly-table td {
+  padding: 7px 20px;
+  font-size: 12px;
+}
+.hourly-table tr.hourly-now td {
+  background: #f6f4fd;
+  font-weight: 700;
+}

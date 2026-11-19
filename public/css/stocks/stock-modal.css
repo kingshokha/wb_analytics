@@ -1,0 +1,31 @@
+/* Окно «Задать остаток»: быстрые количества */
+
+.stock-quick-amounts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+.stock-quick-amounts button {
+  flex: 1 1 0;
+  min-width: 64px;
+  height: 36px;
+  margin: 0;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: #fff;
+  color: var(--ink);
+  font: 700 12px Manrope;
+  cursor: pointer;
+  transition:
+    border-color 0.15s,
+    color 0.15s,
+    background 0.15s;
+}
+.stock-quick-amounts button:hover,
+.stock-quick-amounts button.active {
+  border-color: var(--purple);
+  color: var(--purple);
+  background: #f4f2ff;
+}

@@ -1,0 +1,776 @@
+/* Страница product.html: свои стили (раньше были внутри страницы). */
+/* Оформление — как у детализации кампании: те же цвета, шрифты, панели и боковое меню. */
+:root {
+  --ink: #17211d;
+  --muted: #6f7974;
+  --line: #e4e8e5;
+  --grid: #eef1ee;
+  --bg: #f5f6f3;
+  --purple: #7651e5;
+  --violet: #9d77ff;
+  --lime: #c9f27c;
+  --red: #e76464;
+  --green: #318f68;
+  --shadow: 0 15px 50px rgba(29, 42, 35, 0.07);
+  --organic: #2f6fd8;
+  --ads: #ee6a2c;
+}
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+  min-width: 320px;
+  background: var(--bg);
+  color: var(--ink);
+  font:
+    500 13px Manrope,
+    Arial,
+    sans-serif;
+}
+button,
+input,
+select {
+  font-family: Manrope, Arial, sans-serif;
+}
+/* Боковое меню — общее для всех страниц: sidebar.css и sidebar.js */
+main {
+  grid-column: 2;
+  min-width: 0;
+  padding: 30px 42px 90px;
+}
+h1 {
+  margin: 0 0 8px;
+  font:
+    700 23px Unbounded,
+    sans-serif;
+  letter-spacing: -0.03em;
+  line-height: 1.3;
+}
+h2 {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 800;
+}
+p {
+  margin: 0;
+  color: var(--muted);
+}
+/* Шапка: фото, название, артикулы; период справа */
+.page-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 20px;
+  margin-bottom: 18px;
+}
+.product-head {
+  display: flex;
+  gap: 16px;
+  min-width: 0;
+}
+.product-photo {
+  width: 64px;
+  height: 85px;
+  flex: 0 0 64px;
+  border-radius: 12px;
+  object-fit: cover;
+  background: #eef0ee;
+}
+.product-photo:not([src]) {
+  visibility: hidden;
+}
+.product-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 12px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.product-meta a {
+  color: var(--purple);
+  font-weight: 700;
+  text-decoration: none;
+}
+.product-meta a:hover {
+  text-decoration: underline;
+}
+.product-meta b {
+  color: var(--ink);
+}
+.period-controls {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+.period-controls select {
+  height: 40px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  background: white;
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 700;
+}
+.export-range {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 40px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  background: white;
+}
+.export-range span {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.export-range input {
+  width: 118px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 700;
+}
+.export-range b {
+  color: #bbc1bd;
+  font-weight: 400;
+}
+.status-line {
+  flex-basis: 100%;
+  text-align: right;
+  font-size: 11px;
+  color: var(--muted);
+}
+.status-line.error {
+  color: #b84949;
+}
+.panel {
+  margin-bottom: 16px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: white;
+  box-shadow: var(--shadow);
+}
+.panel-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 16px;
+  padding: 18px 20px 12px;
+}
+.panel-body {
+  padding: 0 20px 18px;
+}
+/* Колокольчик уведомлений — как на основном сайте (notifications.js) */
+.notice-wrap {
+  position: relative;
+  display: flex;
+}
+.notice-bell {
+  position: relative;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  background: white;
+  color: var(--ink);
+  cursor: pointer;
+}
+.notice-bell:hover,
+.notice-bell[aria-expanded='true'] {
+  border-color: var(--purple);
+  color: var(--purple);
+}
+.notice-bell svg {
+  width: 20px;
+  height: 20px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.notice-bell b {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 5px;
+  border: 2px solid var(--bg);
+  border-radius: 10px;
+  background: #b5bcb8;
+  color: white;
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 16px;
+  text-align: center;
+}
+.notice-bell b.error {
+  background: var(--red);
+}
+.notice-bell b.warning {
+  background: #f0a04b;
+}
+.notice-bell b[hidden] {
+  display: none;
+}
+.notice-panel {
+  position: absolute;
+  right: 0;
+  top: 48px;
+  z-index: 60;
+  width: min(400px, calc(100vw - 32px));
+  max-height: min(70vh, 560px);
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: white;
+  box-shadow: 0 18px 50px #17211d29;
+}
+.notice-panel[hidden] {
+  display: none;
+}
+.notice-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+.notice-head strong {
+  font-size: 13px;
+}
+.notice-clear {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--purple);
+  font: 700 11px Manrope;
+  cursor: pointer;
+}
+.notice-list {
+  display: grid;
+  gap: 6px;
+}
+.notice-item {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 8px;
+  padding: 9px 10px;
+  border-radius: 10px;
+  background: #fff7ec;
+}
+.notice-item.error {
+  background: #fdecec;
+}
+.notice-item.info {
+  background: #f0ebff;
+}
+.notice-item i {
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: #f0a04b;
+  color: white;
+  font-style: normal;
+  font-size: 12px;
+  font-weight: 800;
+}
+.notice-item.error i {
+  background: var(--red);
+}
+.notice-item.info i {
+  background: var(--purple);
+}
+.notice-item p {
+  margin: 2px 0 0;
+  color: var(--ink);
+  font-size: 12px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+.notice-item small {
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 11px;
+}
+.notice-empty {
+  margin: 6px 0 2px;
+  color: var(--muted);
+  font-size: 12px;
+}
+/* Переключатель показателя и легенда */
+.seg {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.seg button {
+  height: 32px;
+  padding: 0 13px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: white;
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.seg button:hover {
+  border-color: var(--purple);
+  color: var(--purple);
+}
+.seg button[aria-pressed='true'] {
+  border-color: var(--ink);
+  background: var(--ink);
+  color: white;
+}
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 16px;
+  font-size: 12px;
+  color: var(--ink);
+}
+.legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.legend i {
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+}
+.legend .legend-mark {
+  width: 0;
+  height: 13px;
+  border-left: 2px dashed #555b66;
+  border-radius: 0;
+}
+.legend .legend-flag {
+  width: auto;
+  height: auto;
+  padding: 0 5px;
+  border-radius: 4px;
+  background: #555b66;
+  color: white;
+  font-size: 11px;
+  font-style: normal;
+  line-height: 15px;
+}
+.main-chart {
+  position: relative;
+  min-width: 0;
+}
+.main-chart svg {
+  display: block;
+  width: 100%;
+  overflow: visible;
+}
+.axis {
+  fill: var(--muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.gridline {
+  stroke: var(--grid);
+  stroke-width: 1;
+}
+.baseline {
+  stroke: #d3d9d5;
+  stroke-width: 1;
+}
+.flag-text {
+  fill: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  pointer-events: none;
+}
+.note-num {
+  fill: #fff;
+  font-size: 11px;
+  font-weight: 800;
+  pointer-events: none;
+}
+/* Флажки кампаний кликабельны (детализация кампании в новой вкладке). Наведение на флажок или строку кампании —
+   её дни закрашиваются её цветом, остальные флажки бледнеют, как в примере «Заказы и рекламные периоды». */
+.camp {
+  transition: opacity 0.15s;
+  cursor: pointer;
+}
+.camp:focus-visible {
+  outline: 2px solid var(--purple);
+}
+.main-chart.focus .camp:not(.on),
+.main-chart.focus .price-flag {
+  opacity: 0.18;
+}
+.price-flag {
+  transition: opacity 0.15s;
+  cursor: help;
+}
+.legend .legend-price {
+  background: #17211d;
+  border-radius: 8px;
+}
+.fillrect {
+  opacity: 0;
+  transition: opacity 0.15s;
+  pointer-events: none;
+}
+.main-chart.focus .fillrect.on {
+  opacity: 0.16;
+}
+.flag-menu {
+  position: absolute;
+  z-index: 6;
+  min-width: 220px;
+  max-width: 320px;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  background: white;
+  box-shadow: 0 14px 40px #17211d29;
+}
+.flag-menu[hidden] {
+  display: none;
+}
+.flag-menu p {
+  margin: 2px 6px 6px;
+  font-size: 11px;
+  font-weight: 800;
+  color: var(--muted);
+}
+.flag-menu a {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 8px;
+  border-radius: 8px;
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 700;
+  text-decoration: none;
+}
+.flag-menu a:hover,
+.flag-menu a:focus-visible {
+  background: #f6f4fd;
+  color: var(--purple);
+  outline: 0;
+}
+.flag-menu a i {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  flex: 0 0 10px;
+}
+.chart-tooltip {
+  position: absolute;
+  z-index: 4;
+  min-width: 200px;
+  max-width: 290px;
+  padding: 11px 12px;
+  border-radius: 11px;
+  background: #17211df2;
+  color: white;
+  box-shadow: 0 12px 35px #17211d38;
+  pointer-events: none;
+  font-size: 11px;
+  line-height: 1.4;
+}
+.chart-tooltip[hidden] {
+  display: none;
+}
+.chart-tooltip strong {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 12px;
+}
+.chart-tooltip .row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 2px 0;
+  color: #cbd3cf;
+}
+.chart-tooltip .row i {
+  width: 9px;
+  height: 9px;
+  border-radius: 2px;
+  flex: 0 0 auto;
+}
+.chart-tooltip .row b {
+  margin-left: auto;
+  padding-left: 12px;
+  color: white;
+  white-space: nowrap;
+}
+.chart-tooltip .sep {
+  margin: 6px 0 4px;
+  border-top: 1px solid #ffffff26;
+}
+.chart-tooltip .muted {
+  color: #9aa6a0;
+}
+.chart-empty {
+  padding: 60px 0;
+  text-align: center;
+  color: var(--muted);
+}
+/* Отметки под графиком: номер, дата, текст; добавить / изменить / удалить */
+.notes {
+  display: grid;
+  gap: 6px;
+  margin-top: 10px;
+}
+.note {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.note .num {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  flex: 0 0 20px;
+  border-radius: 50%;
+  background: var(--ink);
+  color: white;
+  font-size: 11px;
+  font-weight: 800;
+}
+.note .date {
+  font-weight: 800;
+  white-space: nowrap;
+}
+.note .text {
+  min-width: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.note .actions {
+  margin-left: auto;
+  display: flex;
+  gap: 4px;
+  flex: 0 0 auto;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+.note:hover .actions,
+.note:focus-within .actions {
+  opacity: 1;
+}
+.icon-btn {
+  height: 24px;
+  padding: 0 8px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: white;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.icon-btn:hover {
+  border-color: var(--purple);
+  color: var(--purple);
+}
+.icon-btn.danger:hover {
+  border-color: var(--red);
+  color: #b84949;
+}
+.note-add {
+  justify-self: start;
+  margin-top: 2px;
+  height: 30px;
+  padding: 0 12px;
+  border: 1px dashed #c3cac6;
+  border-radius: 9px;
+  background: white;
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.note-add:hover {
+  border-color: var(--purple);
+  color: var(--purple);
+}
+.note-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  background: #fafbfa;
+}
+.note-form input {
+  height: 34px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: white;
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 600;
+}
+.note-form input[type='date'] {
+  width: 150px;
+}
+.note-form input[type='text'] {
+  flex: 1 1 260px;
+  min-width: 0;
+}
+.note-form button {
+  height: 34px;
+  padding: 0 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: white;
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.note-form button.primary {
+  border-color: var(--purple);
+  background: var(--purple);
+  color: white;
+}
+.hint {
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.5;
+}
+/* Кампании товара */
+.table-wrap {
+  overflow: auto;
+}
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+th,
+td {
+  height: 42px;
+  padding: 9px 12px;
+  border-bottom: 1px solid #eef0ee;
+  white-space: nowrap;
+  font-size: 12px;
+  text-align: right;
+}
+th {
+  background: #fafbfa;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+th:first-child,
+td:first-child {
+  text-align: left;
+}
+tbody tr:hover td,
+tbody tr.on td {
+  background: #f6f4fd;
+}
+.camp-name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 380px;
+}
+.camp-name i {
+  width: 11px;
+  height: 11px;
+  border-radius: 3px;
+  flex: 0 0 11px;
+}
+.camp-name a {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--ink);
+  font-weight: 700;
+  text-decoration: none;
+}
+.camp-name a:hover {
+  color: var(--purple);
+  text-decoration: underline;
+}
+.camp-name small {
+  color: var(--muted);
+  font-size: 11px;
+}
+.camp-name small.removed {
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: #fdf0e1;
+  color: #a8650f;
+  font-weight: 700;
+  white-space: nowrap;
+}
+@media (max-width: 1100px) {
+  .page-head {
+    flex-wrap: wrap;
+  }
+  .period-controls {
+    justify-content: flex-start;
+  }
+  .status-line {
+    text-align: left;
+  }
+}
+@media (max-width: 980px) {
+  main {
+    padding: 24px 24px 90px;
+  }
+}
+@media (max-width: 680px) {
+  main {
+    padding: 18px 14px 90px;
+  }
+  h1 {
+    font-size: 18px;
+  }
+  .panel-head,
+  .panel-body {
+    padding-left: 14px;
+    padding-right: 14px;
+  }
+  .multiples {
+    grid-template-columns: 1fr;
+  }
+  .note .actions {
+    opacity: 1;
+  }
+}

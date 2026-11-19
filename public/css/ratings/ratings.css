@@ -1,0 +1,212 @@
+/* Оценки товаров (public/ratings.js) */
+.rating-overview {
+  display: grid;
+  grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr);
+  gap: 15px;
+  margin-bottom: 15px;
+}
+.rating-overview .panel {
+  margin: 0;
+}
+.rating-stars {
+  display: grid;
+  gap: 12px;
+  padding: 16px 20px 20px;
+}
+.rating-star-row {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) 56px 40px 52px;
+  align-items: center;
+  gap: 10px;
+  font-size: 12px;
+}
+.rating-star-label {
+  font-weight: 800;
+  color: var(--ink);
+}
+.rating-star-label i {
+  margin-left: 2px;
+  font-style: normal;
+  color: #f0a04b;
+}
+.rating-star-track {
+  height: 10px;
+  border-radius: 5px;
+  background: #f1f2f0;
+  overflow: hidden;
+}
+.rating-star-track span {
+  display: block;
+  height: 100%;
+  min-width: 2px;
+  border-radius: 5px;
+  background: #f0a04b;
+}
+.rating-star-row b {
+  text-align: right;
+  font-size: 12px;
+}
+.rating-star-row small {
+  color: var(--muted);
+  font-size: 11px;
+  text-align: right;
+}
+.rating-delta {
+  display: block;
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+.rating-star-row .rating-delta {
+  margin: 0;
+  text-align: right;
+}
+.rating-delta.up {
+  color: var(--green);
+}
+.rating-delta.down {
+  color: var(--red);
+}
+.rating-attention {
+  display: grid;
+  padding: 6px 12px 12px;
+}
+.rating-attention-row {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  width: 100%;
+  padding: 9px 8px;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  background: none;
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+  border-radius: 8px;
+}
+.rating-attention-row:hover {
+  background: #faf9ff;
+}
+.rating-attention-row > span {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  flex: 1;
+}
+.rating-attention-row strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+}
+.rating-attention-value {
+  font-size: 13px;
+}
+.rating-photo-stub {
+  width: 34px;
+  height: 34px;
+  flex: 0 0 34px;
+  border-radius: 8px;
+  background: #eef0ed;
+}
+.rating-issues {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.rating-issues em {
+  padding: 2px 7px;
+  border-radius: 20px;
+  font-style: normal;
+  font-size: 11px;
+  font-weight: 700;
+}
+.rating-issues em.bad {
+  background: #fdecec;
+  color: #b84949;
+}
+.rating-issues em.warn {
+  background: #fff1dc;
+  color: #9b5e16;
+}
+.rating-attention-more {
+  justify-self: end;
+  margin-top: 8px;
+  padding: 4px 8px;
+  border: 0;
+  background: none;
+  color: var(--purple);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.rating-empty {
+  margin: 0;
+  padding: 14px 8px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.rating-table {
+  min-width: 1500px !important;
+}
+/* Узкий столбец «Товар» не должен выпускать текст в соседние ячейки — название и артикул обрезаются многоточием. */
+.rating-table td {
+  overflow: hidden;
+}
+.rating-table td.price-product-cell > span {
+  flex: 1;
+  min-width: 0;
+}
+.rating-table td.price-product-cell small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.rating-percentile {
+  display: grid;
+  gap: 4px;
+  min-width: 80px;
+}
+.rating-percentile > span {
+  height: 5px;
+  border-radius: 3px;
+  background: #f1f2f0;
+  overflow: hidden;
+}
+.rating-percentile i {
+  display: block;
+  height: 100%;
+  border-radius: 3px;
+}
+.rating-percentile.good i {
+  background: var(--green);
+}
+.rating-percentile.warn i {
+  background: var(--orange);
+}
+.rating-percentile.bad i {
+  background: var(--red);
+}
+.rating-percentile.bad b {
+  color: #b84949;
+}
+.rating-negative {
+  color: #b84949;
+  font-weight: 800;
+}
+.rating-table .muted {
+  color: #b5bcb8;
+}
+.rating-table td small {
+  display: block;
+}
+tr.rating-row-attention td:first-child {
+  box-shadow: inset 3px 0 0 var(--red);
+}
+@media (max-width: 1180px) {
+  .rating-overview {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
