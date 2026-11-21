@@ -622,6 +622,7 @@ function renderCards() {
     ['photos', 'Медиа', 110],
     ['tags', 'Ярлыки', 150],
     ['verdict', 'Проверка', 170],
+    ['createdAt', 'Дата создания', 120],
     ['updatedAt', 'Изменена', 120]
   ];
   // Заголовки создаются один раз — так сохраняются ширины столбцов (column-widths.js); при сортировке меняется только стрелка.
@@ -691,7 +692,7 @@ function renderCards() {
         `<td class="${card.photos < 3 ? 'card-warn' : ''}">${fmtNum(card.photos)} фото${card.video ? ' · видео' : ''}</td>` +
         `<td>${card.tags.map(cardTagChip).join(' ') || '<span class="muted">—</span>'}</td>` +
         `<td>${card.verdict ? verdict[card.verdict] : '<span class="muted">нет документов</span>'}${card.verdict === 'fail' && card.docErrors.length ? `<small>${escapeHtml(card.docErrors.map(cardDocError).join(', '))}</small>` : ''}${card.needKiz ? `<small>${card.kizMarked ? 'маркировка подтверждена' : '<b class="card-warn">маркировка не подтверждена</b>'}</small>` : ''}${card.noTnved ? `<small><b class="card-warn" title="${card.tnvedCodeOnly ? 'Поле «ТНВЭД» пустое, заполнен только «Код ТН ВЭД» — другая характеристика WB. На странице карточки код можно перенести в «ТНВЭД» одной кнопкой' : 'В карточке нет характеристики «ТНВЭД» — укажите код на странице карточки'}">нет ТН ВЭД</b>${card.tnvedCodeOnly ? ' · есть только «Код ТН ВЭД»' : ''}</small>` : ''}${card.dimensions?.isValid === false ? '<small class="card-warn">габариты под вопросом</small>' : ''}</td>` +
-        `<td>${cardDate(card.updatedAt)}</td></tr>`
+        `<td>${cardDate(card.createdAt)}</td><td>${cardDate(card.updatedAt)}</td></tr>`
       );
     })
     .join('');

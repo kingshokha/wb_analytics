@@ -50,6 +50,8 @@ function normalizePrices(goods = [], cards = []) {
       photo: cardPhoto(card),
       category: card.subjectName || 'Без категории',
       brand: card.brand || 'Без бренда',
+      // Дата создания карточки (createdAt из списка карточек); пока карточки догружаются — пусто.
+      createdAt: card.createdAt || '',
       currency: good.currencyIsoCode4217 || 'RUB',
       price: Number(firstSize.price || good.price || 0),
       discountedPrice: Number(firstSize.discountedPrice || good.discountedPrice || 0),

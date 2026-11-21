@@ -18,6 +18,9 @@ async function loadPrices(force = false) {
         }
         loadPriceStocks(force);
       }
+      // Список приходит частями, и каждая часть — новые строки без остатков: уже загруженные остатки
+      // подставляются сразу, иначе после первой части в колонке «Остаток» оставался бы прочерк.
+      if (state.priceStocks && state.priceStocksKey === state.cabinet) mergePriceStocks();
       state.demo = data.demo;
       renderPrices();
       setNotices('prices', 'load', data.warnings);
@@ -80,8 +83,11 @@ function priceRows() {
     .sort((a, b) => {
       const key = state.priceSort.key,
         av = a[key] ?? '',
-        bv = b[key] ?? '',
-        result = typeof av === 'number' && typeof bv === 'number' ? av - bv : String(av).localeCompare(String(bv), 'ru', { numeric: true });
+        bv = b[key] ?? '';
+      // Пустые значения (например, нет даты создания — карточки нет в списке) — в конце при любом направлении.
+      if (key === 'createdAt' && (av === '' || bv === '')) return (av === '') - (bv === '');
+      const result =
+        typeof av === 'number' && typeof bv === 'number' ? av - bv : String(av).localeCompare(String(bv), 'ru', { numeric: true });
       return state.priceSort.dir === 'asc' ? result : -result;
     });
 }
@@ -120,7 +126,7 @@ function renderPrices() {
   $('#pricesBody').innerHTML = pageRows
     .map(
       row =>
-        `<tr><td class="check-col"><input type="checkbox" data-price-row="${row.nmId}" ${state.priceSelected.has(String(row.nmId)) ? 'checked' : ''}></td><td class="price-product-cell" data-price-open="${row.nmId}" title="История цены и изменение">${row.photo ? `<img class="stock-product-photo" src="${escapeHtml(row.photo)}" alt="" loading="lazy">` : ''}<span><strong>${escapeHtml(row.name)}</strong><small>${row.editableSizePrice ? `Цены размеров · ${row.sizes}` : 'Единая цена'}</small></span></td><td><strong>${escapeHtml(row.vendorCode || '—')}</strong></td><td><strong>${row.nmId}</strong></td><td>${escapeHtml(row.category)}</td><td>${escapeHtml(row.brand)}</td><td><strong>${fmtRub(row.price)}</strong></td><td><strong>${fmtPercent(row.discount)}</strong></td><td><strong>${fmtRub(row.discountedPrice)}</strong></td><td>${fmtPercent(row.clubDiscount)}</td><td>${priceStockCell(row)}</td></tr>`
+        `<tr><td class="check-col"><input type="checkbox" data-price-row="${row.nmId}" ${state.priceSelected.has(String(row.nmId)) ? 'checked' : ''}></td><td class="price-product-cell" data-price-open="${row.nmId}" title="История цены и изменение">${row.photo ? `<img class="stock-product-photo" src="${escapeHtml(row.photo)}" alt="" loading="lazy">` : ''}<span><strong>${escapeHtml(row.name)}</strong><small>${row.editableSizePrice ? `Цены размеров · ${row.sizes}` : 'Единая цена'}</small></span></td><td><strong>${escapeHtml(row.vendorCode || '—')}</strong></td><td><strong>${row.nmId}</strong></td><td>${escapeHtml(row.category)}</td><td>${escapeHtml(row.brand)}</td><td><strong>${fmtRub(row.price)}</strong></td><td><strong>${fmtPercent(row.discount)}</strong></td><td><strong>${fmtRub(row.discountedPrice)}</strong></td><td>${fmtPercent(row.clubDiscount)}</td><td>${priceStockCell(row)}</td><td>${priceCreatedCell(row)}</td></tr>`
     )
     .join('');
   renderPricePagination(pageCount, rows.length);
@@ -347,6 +353,12 @@ async function loadPriceStocks(force = false) {
   }
   mergePriceStocks();
   if (state.activePage === 'prices') renderPrices();
+}
+// Дата создания карточки: дата крупно, время ниже; пока карточки догружаются — прочерк.
+function priceCreatedCell(row) {
+  if (!row.createdAt) return '<span class="stock-muted">—</span>';
+  const date = new Date(row.createdAt);
+  return `<strong>${date.toLocaleDateString('ru-RU')}</strong><small>${date.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}</small>`;
 }
 function priceStockCell(row) {
   if (!state.priceStocks) return '<span class="stock-muted">Загрузка…</span>';
