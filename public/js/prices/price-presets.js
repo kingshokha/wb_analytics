@@ -204,9 +204,10 @@ function openPricePresetApply(id) {
   const missing = preset.items.length - ready.length;
   const rows = preset.items
     .map(item => {
-      const known = byNmId.get(String(item.nmId));
+      const known = byNmId.get(String(item.nmId)),
+        discounted = Math.round((Number(item.price) * (100 - Number(item.discount))) / 100);
       return (
-        `<div class="preset-item">${presetPhoto(item)}<div><b>${escapeHtml(item.name || 'Товар')}</b><small>${known ? `сейчас ${escapeHtml(fmtRub(known.price))} · скидка ${escapeHtml(known.discount)}%` : 'нет в текущем списке цен'}</small></div>` +
+        `<div class="preset-item">${presetPhoto(item)}<div><b>${escapeHtml(item.name || 'Товар')}</b><small>${known ? `сейчас ${escapeHtml(fmtRub(known.price))} · скидка ${escapeHtml(known.discount)}% · со скидкой ${escapeHtml(fmtRub(known.discountedPrice))} → <strong>${escapeHtml(fmtRub(discounted))}</strong>` : 'нет в текущем списке цен'}</small></div>` +
         `<input type="number" value="${Number(item.price) || 0}" disabled><input type="number" value="${Number(item.discount) || 0}" disabled></div>`
       );
     })

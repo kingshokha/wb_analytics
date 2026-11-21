@@ -30,6 +30,7 @@ const {
   savePreset
 } = require('./stocks/presets');
 const { loadPriceGoods, priceStocks, prices, updatePrices } = require('./prices/prices');
+const { minPriceFile } = require('./prices/min-price-file');
 const { dashboard, hourlyOrders } = require('./orders/orders');
 const {
   assembleOrders,
@@ -480,6 +481,15 @@ async function handleApi(req, res, url) {
     const body = await readJson(req);
     if (!body.confirm) throw apiError(400, 'Подтвердите изменение цен и скидок');
     return send(res, 200, await updatePrices(body));
+  }
+  if (req.method === 'POST' && url.pathname === '/api/prices/min-price-file') {
+    const file = await minPriceFile(await readJson(req, 10_000_000));
+    res.writeHead(200, {
+      'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'Content-Disposition': `attachment; filename="min-price.xlsx"; filename*=UTF-8''${encodeURIComponent('Шаблон обновления минимальной цены и блокировки автоакций.xlsx')}`,
+      'Cache-Control': 'no-store'
+    });
+    return res.end(file);
   }
   if (req.method === 'GET' && url.pathname === '/api/stock-presets') {
     return send(res, 200, { presets: cabinetPresets(STOCK_PRESETS_FILE, url.searchParams.get('cabinet') || 'demo') });

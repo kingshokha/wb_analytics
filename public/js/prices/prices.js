@@ -156,19 +156,61 @@ function renderPriceActions() {
   $('#priceActions').classList.toggle('hidden', !count);
   $('#priceSelectedCount').textContent = `Выбрано: ${fmtNum(count)}`;
 }
+const selectedPriceRows = () => (state.prices?.rows || []).filter(row => state.priceSelected.has(String(row.nmId)));
+const BULK_PRICE_SHOWN = 200;
+// Итог массового изменения: цена со скидкой после ввода и по каждому товару «сейчас → станет».
+function renderBulkPricePreview() {
+  const price = Number($('#newPriceInput').value),
+    discount = Number($('#newDiscountInput').value),
+    box = $('#bulkPricePreview'),
+    button = $('#confirmSetPrices');
+  const valid = Number.isFinite(price) && price > 0 && Number.isInteger(discount) && discount >= 0 && discount <= 99;
+  button.disabled = !valid;
+  if (!valid) {
+    box.innerHTML = $('#newPriceInput').value
+      ? '<p class="price-down">Цена — больше 0, скидка — целое число от 0 до 99%</p>'
+      : '<p class="price-product-note">Введите цену — здесь появится окончательная цена со скидкой.</p>';
+    return;
+  }
+  const discounted = Math.round((price * (100 - discount)) / 100),
+    rows = selectedPriceRows();
+  const drops = rows.filter(row => row.discountedPrice && (row.discountedPrice - discounted) / row.discountedPrice >= 0.3).length;
+  const list = rows
+    .slice(0, BULK_PRICE_SHOWN)
+    .map(
+      row =>
+        `<div><span>${escapeHtml(row.name)}<small>${escapeHtml(row.vendorCode || '—')} · ${escapeHtml(row.nmId)}</small></span>` +
+        `<span>${fmtRub(row.discountedPrice)} → <strong>${fmtRub(discounted)}</strong> ${priceChange(discounted, row.discountedPrice)}</span></div>`
+    )
+    .join('');
+  const more =
+    rows.length > BULK_PRICE_SHOWN ? `<p class="price-product-note">И ещё ${fmtNum(rows.length - BULK_PRICE_SHOWN)} товаров.</p>` : '';
+  box.innerHTML =
+    `<p class="bulk-price-total">Окончательная цена со скидкой: <strong>${fmtRub(discounted)}</strong></p>` +
+    (drops
+      ? `<p class="price-down">У ${fmtNum(drops)} товаров цена со скидкой падает на 30% и больше — проверьте, нет ли опечатки.</p>`
+      : '') +
+    `<div class="bulk-price-list">${list}${more}</div>`;
+}
 function openSetPrices() {
   if (state.demo) return toast('В демо-режиме изменение цен отключено');
   openModal(
-    `<p class="eyebrow">Массовое изменение</p><h2>Задать цену и скидку</h2><p>Новые значения будут применены к товарам: ${state.priceSelected.size}. Для поразмерных карточек цена изменится у каждого размера.</p><label class="stock-modal-label">Цена, ₽<input id="newPriceInput" type="number" min="1" step="1"></label><label class="stock-modal-label">Скидка продавца, %<input id="newDiscountInput" type="number" min="0" max="99" step="1" value="0"></label><button class="primary" id="confirmSetPrices">Отправить в WB</button>`
+    `<p class="eyebrow">Массовое изменение</p><h2>Задать цену и скидку</h2><p>Новые значения будут применены к товарам: ${state.priceSelected.size}. Для поразмерных карточек цена изменится у каждого размера.</p><label class="stock-modal-label">Цена, ₽<input id="newPriceInput" type="number" min="1" step="1"></label><label class="stock-modal-label">Скидка продавца, %<input id="newDiscountInput" type="number" min="0" max="99" step="1" value="0"></label><div id="bulkPricePreview"></div><button class="primary" id="confirmSetPrices">Отправить в WB</button>`
   );
+  $('#newPriceInput').oninput = $('#newDiscountInput').oninput = renderBulkPricePreview;
+  renderBulkPricePreview();
   $('#confirmSetPrices').onclick = async () => {
     const price = Number($('#newPriceInput').value),
       discount = Number($('#newDiscountInput').value);
     if (!Number.isFinite(price) || price <= 0 || !Number.isInteger(discount) || discount < 0 || discount > 99)
       return toast('Проверьте цену и скидку от 0 до 99%');
-    const items = (state.prices?.rows || [])
-      .filter(row => state.priceSelected.has(String(row.nmId)))
-      .map(row => ({ nmId: row.nmId, price, discount, editableSizePrice: row.editableSizePrice, sizeItems: row.sizeItems }));
+    const items = selectedPriceRows().map(row => ({
+      nmId: row.nmId,
+      price,
+      discount,
+      editableSizePrice: row.editableSizePrice,
+      sizeItems: row.sizeItems
+    }));
     try {
       await api('/api/prices/update', { method: 'POST', body: JSON.stringify({ cabinet: state.cabinet, items, confirm: true }) });
       closeModal();
@@ -178,6 +220,99 @@ function openSetPrices() {
       toast(e.message);
     }
   };
+}
+
+// --- «Заблокировать цену»: минимальная цена для автоакций и срок блокировки → файл Excel по шаблону WB ---
+// Сайт ничего не меняет в WB: файл (POST /api/prices/min-price-file, server/prices/min-price-file.js) загружается
+// в кабинете WB. Цена у каждого товара своя: «Цена для всех» и «Текущие цены со скидкой» заполняют все строки сразу.
+const PRICE_LOCK_TERMS = ['7 дней', '30 дней', 'Бессрочно'];
+const priceLock = { rows: [], prices: new Map(), term: 'Бессрочно' };
+function renderPriceLockList() {
+  const shown = priceLock.rows.slice(0, BULK_PRICE_SHOWN),
+    rest = priceLock.rows.length - shown.length;
+  $('#priceLockList').innerHTML =
+    shown
+      .map(
+        row =>
+          `<div><span>${escapeHtml(row.name)}<small>${escapeHtml(row.vendorCode || '—')} · ${escapeHtml(row.nmId)} · сейчас со скидкой ${fmtRub(row.discountedPrice)}</small></span>` +
+          `<span><input type="number" min="1" step="1" placeholder="Цена, ₽" data-price-lock="${row.nmId}" value="${escapeHtml(priceLock.prices.get(String(row.nmId)) ?? '')}" aria-label="Минимальная цена, ₽"></span></div>`
+      )
+      .join('') +
+    (rest > 0
+      ? `<p class="price-product-note">И ещё ${fmtNum(rest)} товаров — их цены задаются кнопками «Цена для всех» и «Текущие цены со скидкой».</p>`
+      : '');
+  $$('[data-price-lock]').forEach(input => (input.oninput = () => priceLock.prices.set(input.dataset.priceLock, input.value)));
+}
+function openPriceLock() {
+  priceLock.rows = selectedPriceRows();
+  if (!priceLock.rows.length) return toast('Выберите товары');
+  priceLock.prices = new Map(priceLock.rows.map(row => [String(row.nmId), '']));
+  openModal(
+    `<p class="eyebrow">Автоакции</p><h2>Заблокировать цену</h2>` +
+      `<p>Товаров: ${fmtNum(priceLock.rows.length)}. Сайт соберёт файл Excel по шаблону WB «Шаблон обновления минимальной цены и блокировки автоакций»: новая минимальная цена для применения скидки по автоакции и новая блокировка. Загрузите файл в кабинете WB там же, где скачивается этот шаблон. Сам сайт в WB ничего не меняет.</p>` +
+      `<div class="price-lock-row"><label class="stock-modal-label">Цена для всех, ₽<input id="priceLockAll" type="number" min="1" step="1"></label><button type="button" id="priceLockCurrent">Текущие цены со скидкой</button></div>` +
+      `<div class="stock-modal-label">Срок блокировки<div class="price-lock-terms">${PRICE_LOCK_TERMS.map(
+        term =>
+          `<label><input type="radio" name="priceLockTerm" value="${term}" ${term === priceLock.term ? 'checked' : ''}> ${term}</label>`
+      ).join('')}</div></div>` +
+      `<div class="bulk-price-list" id="priceLockList"></div>` +
+      `<button class="primary" id="priceLockDownload">Скачать Excel</button>`
+  );
+  renderPriceLockList();
+  $('#priceLockAll').oninput = () => {
+    const value = $('#priceLockAll').value;
+    priceLock.rows.forEach(row => priceLock.prices.set(String(row.nmId), value));
+    renderPriceLockList();
+  };
+  $('#priceLockCurrent').onclick = () => {
+    $('#priceLockAll').value = '';
+    priceLock.rows.forEach(row =>
+      priceLock.prices.set(String(row.nmId), row.discountedPrice ? String(Math.round(row.discountedPrice)) : '')
+    );
+    renderPriceLockList();
+  };
+  $$('[name="priceLockTerm"]').forEach(input => (input.onchange = () => (priceLock.term = input.value)));
+  $('#priceLockDownload').onclick = downloadPriceLock;
+}
+async function downloadPriceLock() {
+  const items = priceLock.rows.map(row => ({
+    nmId: row.nmId,
+    price: Number(priceLock.prices.get(String(row.nmId))),
+    vendorCode: row.vendorCode,
+    category: row.category === 'Без категории' ? '' : row.category,
+    brand: row.brand === 'Без бренда' ? '' : row.brand
+  }));
+  const wrong = items.filter(item => !Number.isInteger(item.price) || item.price < 1).length;
+  if (wrong) return toast(`Укажите цену целым числом рублей больше нуля — не указана у товаров: ${fmtNum(wrong)}`);
+  const button = $('#priceLockDownload');
+  button.disabled = true;
+  button.textContent = 'Собираем файл…';
+  try {
+    const response = await fetch('/api/prices/min-price-file', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ cabinet: state.cabinet, lock: priceLock.term, items })
+    });
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}));
+      throw new Error(data.error || `Ошибка ${response.status}`);
+    }
+    const stamp = new Date()
+      .toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+      .replace(', ', ' ')
+      .replace(':', '.');
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(await response.blob());
+    link.download = `Шаблон обновления минимальной цены и блокировки автоакций ${stamp}.xlsx`;
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(link.href), 10_000);
+    toast(`Файл готов: товаров ${fmtNum(items.length)}, блокировка — ${priceLock.term}`);
+  } catch (e) {
+    toast(e.message);
+  } finally {
+    button.disabled = false;
+    button.textContent = 'Скачать Excel';
+  }
 }
 
 // --- Общие остатки в ценах и скидках ---

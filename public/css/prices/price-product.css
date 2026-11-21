@@ -157,6 +157,111 @@
   margin: 8px 0;
   font-size: 13px;
 }
+/* «Задать цену и скидку» и «Заблокировать цену» для нескольких товаров: итог и список товаров */
+.bulk-price-total {
+  margin: 14px 0 6px;
+  font-size: 14px;
+}
+.bulk-price-list {
+  max-height: 280px;
+  overflow: auto;
+  margin: 8px 0 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+.bulk-price-list > div {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 7px 10px;
+  font-size: 12px;
+}
+.bulk-price-list > div + div {
+  border-top: 1px solid var(--line);
+}
+.bulk-price-list > div > span:first-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.bulk-price-list small {
+  display: block;
+  color: var(--muted);
+  font-size: 11px;
+}
+.bulk-price-list > div > span:last-child {
+  flex: none;
+  white-space: nowrap;
+}
+.bulk-price-list > p {
+  padding: 0 10px;
+}
+.bulk-price-list input {
+  width: 110px;
+  padding: 6px 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font: inherit;
+}
+.price-lock-terms {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 7px;
+}
+.price-lock-terms label {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 34px;
+  padding: 0 13px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  font: 700 12px Manrope;
+  color: var(--ink);
+  text-transform: none;
+  letter-spacing: 0;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.stock-modal-label .price-lock-terms input {
+  width: auto;
+  margin: 0;
+  padding: 0;
+  accent-color: var(--purple);
+}
+.price-lock-terms label:has(input:checked) {
+  border-color: var(--purple);
+  color: var(--purple);
+}
+.price-lock-row {
+  display: flex;
+  align-items: end;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.price-lock-row .stock-modal-label {
+  flex: 1 1 160px;
+}
+.price-lock-row .stock-modal-label input {
+  margin: 0;
+}
+.price-lock-row > button {
+  height: 40px;
+  padding: 0 14px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: #fff;
+  color: var(--ink);
+  font: 700 11px Manrope;
+  cursor: pointer;
+}
+.price-lock-row > button:hover {
+  border-color: var(--purple);
+  color: var(--purple);
+}
 .price-edit-confirm {
   padding: 12px 14px;
   border-radius: 10px;

@@ -445,12 +445,19 @@
       ${hidden || view.showAll ? `<button type="button" class="more-toggle" data-action="toggle-charcs">${view.showAll ? 'Скрыть незаполненные' : `Показать незаполненные (${hidden})`}</button>` : ''}
       ${legacy.length ? `<p class="legacy">Есть в карточке, но больше нет у предмета (отправятся без изменений): ${legacy.map(item => `<b>${esc(item.name)}</b>: ${esc(valueText(item.value))}`).join('; ')}</p>` : ''}</div></section>`;
   }
+  // Объём упаковки в литрах: длина × ширина × высота (см) / 1000 — по введённым сейчас значениям.
+  function dimsVolume(d) {
+    const sides = [d.length, d.width, d.height].map(Number);
+    if (sides.some(side => !(side > 0))) return 'Объём: укажите длину, ширину и высоту';
+    const liters = (sides[0] * sides[1] * sides[2]) / 1000;
+    return `Объём ${liters.toLocaleString('ru-RU', { maximumFractionDigits: liters < 1 ? 3 : 2 })} л`;
+  }
   function panelDims() {
     const o = view.original.dimensions,
       d = view.draft.dimensions;
     const input = (key, label, step) =>
       `<label class="field${changedClass(String(o[key]), String(d[key]))}"><span>${label}</span><input type="number" min="0" step="${step}" data-dim="${key}" value="${esc(d[key])}"></label>`;
-    return `<section class="panel"><div class="panel-head"><h2>Габариты и вес с упаковкой</h2></div><div class="panel-body"><div class="grid-4">${input('length', 'Длина, см', 1)}${input('width', 'Ширина, см', 1)}${input('height', 'Высота, см', 1)}${input('weightBrutto', 'Вес, кг', 0.001)}</div>
+    return `<section class="panel"><div class="panel-head"><h2>Габариты и вес с упаковкой</h2><span class="hint" id="dimsVolume">${dimsVolume(d)}</span></div><div class="panel-body"><div class="grid-4">${input('length', 'Длина, см', 1)}${input('width', 'Ширина, см', 1)}${input('height', 'Высота, см', 1)}${input('weightBrutto', 'Вес, кг', 0.001)}</div>
       <p class="hint">Только сантиметры (целые) и килограммы (до трёх знаков после запятой). От габаритов зависят логистика и хранение; WB обновляет их до 30 минут.</p></div></section>`;
   }
   function panelSizes() {
@@ -759,6 +766,8 @@
     if (input.dataset.dim) {
       d.dimensions[input.dataset.dim] = input.value === '' ? '' : Number(input.value);
       markField(input, String(view.original.dimensions[input.dataset.dim]) !== String(d.dimensions[input.dataset.dim]));
+      const volume = $('#dimsVolume');
+      if (volume) volume.textContent = dimsVolume(d.dimensions);
       return;
     }
     if (input.dataset.charcNumber) {

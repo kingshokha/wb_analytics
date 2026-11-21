@@ -10,7 +10,7 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
-const zlib = require('node:zlib');
+const { unzip } = require('../core/zip');
 
 const UPLOAD_LIMIT = 30_000_000; // base64 в JSON — до ~20 МБ файла
 const lenardiArticle = vendorCode =>
@@ -18,26 +18,6 @@ const lenardiArticle = vendorCode =>
     .trim()
     .match(/^(\d{3}-\d{3})\/L$/i)?.[1] || '';
 
-// Файлы zip: имя → содержимое. Хватает обычного zip без ZIP64 — такими xlsx и бывают.
-function unzip(buffer) {
-  let end = buffer.length - 22;
-  while (end >= 0 && buffer.readUInt32LE(end) !== 0x06054b50) end--;
-  if (end < 0) throw new Error('это не файл xlsx');
-  const files = new Map();
-  for (let index = 0, at = buffer.readUInt32LE(end + 16), count = buffer.readUInt16LE(end + 10); index < count; index++) {
-    if (buffer.readUInt32LE(at) !== 0x02014b50) throw new Error('файл xlsx повреждён');
-    const method = buffer.readUInt16LE(at + 10),
-      size = buffer.readUInt32LE(at + 20),
-      nameLength = buffer.readUInt16LE(at + 28);
-    const local = buffer.readUInt32LE(at + 42),
-      name = buffer.toString('utf8', at + 46, at + 46 + nameLength);
-    const start = local + 30 + buffer.readUInt16LE(local + 26) + buffer.readUInt16LE(local + 28),
-      data = buffer.subarray(start, start + size);
-    if (method === 0 || method === 8) files.set(name, method ? zlib.inflateRawSync(data) : data);
-    at += 46 + nameLength + buffer.readUInt16LE(at + 30) + buffer.readUInt16LE(at + 32);
-  }
-  return files;
-}
 const unescapeXml = text =>
   text.replace(/&(lt|gt|quot|apos|amp|#(\d+)|#x([\da-f]+));/gi, (all, name, dec, hex) =>
     dec

@@ -206,6 +206,7 @@ function bind() {
     renderPrices();
   };
   $('#setPriceButton').onclick = openSetPrices;
+  $('#lockPriceButton').onclick = openPriceLock;
   $('#pricePresetsButton').onclick = openPricePresets;
   $('#clearPriceSelection').onclick = () => {
     state.priceSelected.clear();
