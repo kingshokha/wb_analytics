@@ -54,10 +54,9 @@ function renderBalance() {
     return;
   }
   el.classList.remove('hidden');
-  const latest = b.history?.[0],
-    history = (b.history || []).slice(0, 5);
-  const delta = latest?.delta || 0;
-  el.innerHTML = `<div class="balance-main"><p class="eyebrow">Баланс кабинета</p><strong>${balanceMoney(b.current, b.currency)}</strong><small class="balance-delta ${delta > 0 ? 'positive' : delta < 0 ? 'negative' : ''}">${delta ? `${delta > 0 ? '+' : ''}${balanceMoney(delta, b.currency)} с прошлого снимка` : 'Без изменений'}</small></div><div class="balance-withdraw"><span>Доступно к выводу</span><b>${balanceMoney(b.forWithdraw, b.currency)}</b></div><div class="balance-history"><span>Последние изменения</span><div>${history.length ? history.map((x, i) => `<button class="balance-event" data-balance-index="${i}"><i class="${x.delta > 0 ? 'up' : x.delta < 0 ? 'down' : ''}">${i === history.length - 1 && x.delta === 0 ? 'Первый снимок' : `${x.delta > 0 ? '+' : ''}${balanceMoney(x.delta, x.currency)}`}</i><small>${formatDate(x.timestamp)}</small></button>`).join('') : '<small>История начнёт заполняться после изменения баланса</small>'}</div></div>`;
+  el.innerHTML =
+    `<div class="balance-main"><p class="eyebrow">Баланс кабинета</p><strong>${balanceMoney(b.current, b.currency)}</strong></div>` +
+    `<div class="balance-withdraw"><span>Доступно к выводу</span><b>${balanceMoney(b.forWithdraw, b.currency)}</b></div>`;
 }
 function feedStatus(o) {
   if (o.source === 'Лента WB') {

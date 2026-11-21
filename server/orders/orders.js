@@ -1,43 +1,11 @@
 'use strict';
 // --- Лента заказов: заказы за период, заказы по часам, баланс продавца, сводка для главной.
-const fs = require('node:fs');
-const path = require('node:path');
-const { ROOT, addDays, apiError, cabinets, cachedAnalytics, dateDaysAgo, moscowDate, tokenFor, wbRequest } = require('../core/base');
+const { addDays, apiError, cabinets, cachedAnalytics, dateDaysAgo, moscowDate, tokenFor, wbRequest } = require('../core/base');
 const { productCards } = require('../core/product-cards');
 const { cardPhoto } = require('../core/photos');
 const { extractFunnel } = require('../ads/stats');
 
-const BALANCE_HISTORY_FILE = path.join(ROOT, 'data', 'balance-history.json');
 const ORDER_FEED_LIMIT = 10_000;
-function readBalanceHistory() {
-  try {
-    return JSON.parse(fs.readFileSync(BALANCE_HISTORY_FILE, 'utf8'));
-  } catch {
-    return {};
-  }
-}
-
-function saveBalanceSnapshot(cabinetId, balance) {
-  const history = readBalanceHistory();
-  const list = Array.isArray(history[cabinetId]) ? history[cabinetId] : [];
-  const current = Number(balance?.current || 0);
-  const forWithdraw = Number(balance?.for_withdraw || 0);
-  const previous = list[0];
-  if (!previous || previous.current !== current || previous.forWithdraw !== forWithdraw || previous.currency !== balance.currency) {
-    list.unshift({
-      timestamp: new Date().toISOString(),
-      currency: balance.currency || 'RUB',
-      current,
-      forWithdraw,
-      delta: previous ? current - previous.current : 0,
-      withdrawDelta: previous ? forWithdraw - previous.forWithdraw : 0
-    });
-    history[cabinetId] = list.slice(0, 20);
-    fs.mkdirSync(path.dirname(BALANCE_HISTORY_FILE), { recursive: true });
-    fs.writeFileSync(BALANCE_HISTORY_FILE, JSON.stringify(history, null, 2));
-  }
-  return history[cabinetId] || list;
-}
 
 function enrichOrders(orders, cards) {
   const byNmId = new Map((cards || []).map(card => [String(card.nmID), card]));
@@ -303,7 +271,6 @@ async function dashboard(id, from, to) {
   }
   if (safeFrom < addDays(moscowDate(), -30))
     warnings.push('Лента заказов: WB отдаёт события только за последние 31 день — более ранних заказов в списке нет');
-  const balanceHistory = balance ? saveBalanceSnapshot(id, balance) : readBalanceHistory()[id] || [];
   // Новые FBS-задания в строки ленты не входят — для счётчика «Новые FBS» их число отдаётся отдельно.
   return {
     demo: false,
@@ -317,8 +284,7 @@ async function dashboard(id, from, to) {
       ? {
           currency: balance.currency || 'RUB',
           current: Number(balance.current || 0),
-          forWithdraw: Number(balance.for_withdraw || 0),
-          history: balanceHistory
+          forWithdraw: Number(balance.for_withdraw || 0)
         }
       : null,
     warnings

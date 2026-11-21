@@ -213,8 +213,7 @@ th,
 .chart-legend,
 .platform-row span,
 .ad-detail span,
-.balance-withdraw span,
-.balance-history > span {
+.balance-withdraw span {
   font-size: 11px !important;
 }
 .axis-labels text {
@@ -580,7 +579,7 @@ th,
 }
 .balance-strip {
   display: grid;
-  grid-template-columns: minmax(220px, 0.7fr) minmax(180px, 0.45fr) minmax(360px, 1fr);
+  grid-template-columns: minmax(220px, 1fr) minmax(180px, 1fr);
   gap: 0;
   background: #17211d;
   color: white;
@@ -603,24 +602,12 @@ th,
   font: 700 22px Unbounded;
   display: block;
 }
-.balance-main small {
-  display: block;
-  margin-top: 7px;
-  color: #8e9d96;
-}
-.balance-main .positive {
-  color: #7ce0a8;
-}
-.balance-main .negative {
-  color: #ff9494;
-}
 .balance-withdraw {
   display: flex;
   flex-direction: column;
   justify-content: center;
 }
-.balance-withdraw span,
-.balance-history > span {
+.balance-withdraw span {
   font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 0.08em;
@@ -630,38 +617,6 @@ th,
 .balance-withdraw b {
   font-size: 16px;
   margin-top: 7px;
-}
-.balance-history > div {
-  display: flex;
-  gap: 7px;
-  margin-top: 8px;
-  overflow: auto;
-}
-.balance-event {
-  border: 1px solid #3a4942;
-  background: #24302b;
-  color: white;
-  border-radius: 8px;
-  padding: 6px 9px;
-  display: grid;
-  gap: 3px;
-  text-align: left;
-  white-space: nowrap;
-}
-.balance-event i {
-  font-style: normal;
-  font-size: 11px;
-  font-weight: 800;
-}
-.balance-event i.up {
-  color: #7ce0a8;
-}
-.balance-event i.down {
-  color: #ff9494;
-}
-.balance-event small {
-  font-size: 11px;
-  color: #8e9d96;
 }
 .order-id {
   max-width: 180px;
@@ -678,16 +633,6 @@ th,
 table {
   min-width: 1260px !important;
 }
-@media (max-width: 980px) {
-  .balance-strip {
-    grid-template-columns: 1fr 1fr;
-  }
-  .balance-history {
-    grid-column: 1/-1;
-    border-left: 0 !important;
-    border-top: 1px solid #314039;
-  }
-}
 @media (max-width: 680px) {
   .balance-strip {
     grid-template-columns: 1fr;
@@ -695,9 +640,6 @@ table {
   .balance-strip > div + div {
     border-left: 0;
     border-top: 1px solid #314039;
-  }
-  .balance-history {
-    grid-column: auto;
   }
 }
 :root {
