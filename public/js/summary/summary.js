@@ -208,8 +208,9 @@ async function loadSummary(force = false, silent = false) {
     if (request !== summaryView.requestId) return;
     summaryView.data = data;
     summaryView.error = '';
-    // Пока сервер догружает дни воронки из WB, сводка переспрашивает его и дорисовывает графики.
-    if (data.sync?.pending)
+    // Пока сервер догружает дни воронки из WB или обновляет итоги периода (показаны сохранённые), сводка переспрашивает
+    // его и подменяет данные.
+    if (data.sync?.pending || data.refreshing)
       summaryView.pollTimer = setTimeout(() => {
         if (
           request === summaryView.requestId &&
@@ -652,7 +653,10 @@ function renderSummaryFoot(data) {
     const eta = data.sync.etaSeconds >= 60 ? `${Math.ceil(data.sync.etaSeconds / 60)} мин` : `${Math.max(1, data.sync.etaSeconds)} сек`;
     notes.push(`Графики по дням догружаются из WB: осталось ${fmtNum(data.sync.pending)} дн., примерно ${eta}.`);
   }
-  if (data.fetchedAt && !data.demo) notes.push(`Итоги воронки WB на ${formatDate(data.fetchedAt)}.`);
+  if (data.fetchedAt && !data.demo)
+    notes.push(
+      `Итоги воронки WB на ${formatDate(data.fetchedAt)}${data.refreshing ? ' — свежие загружаются из WB (у кабинета с тысячами товаров — несколько минут), сводка обновится сама' : ''}.`
+    );
   if (summaryView.loading && summaryView.data) notes.push('Обновляем…');
   $('#summaryFoot').textContent = notes.join(' ');
 }

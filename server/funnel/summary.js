@@ -8,6 +8,7 @@ const { loadAdStats } = require('../ads/campaign');
 const {
   FUNNEL_COUNT_KEYS,
   FUNNEL_MAX_DEPTH_DAYS,
+  FUNNEL_RETRY_FAILED_MS,
   SUMMARY_REFRESH_MS,
   demoFunnelHistory,
   fetchFunnelRanges,
@@ -135,6 +136,28 @@ function summaryDrops(products = [], limit = SUMMARY_DROP_LIMIT) {
   return { total: drops.length, items: drops.slice(0, limit) };
 }
 
+// Итоги воронки за период по всем товарам: WB отдаёт их по 1000 товаров не чаще 3 запросов в минуту, поэтому у кабинета
+// с 15 000 товаров это ~15 запросов и 5 минут (а если в очереди догрузка дней воронки — дольше). Сохранённые итоги
+// показываются сразу, даже устаревшие, а свежие грузятся в фоне (refreshing: true — страница переспросит и подменит).
+// Ждать приходится только в первый раз, когда сохранённых нет. Одна фоновая загрузка на кабинет и период.
+const summaryRangeJobs = new Map(),
+  summaryRangeErrors = new Map();
+const summaryRangeKey = (id, periods, withPrevious) =>
+  `${id}:${periods.current.from}_${periods.current.to}:${withPrevious ? periods.previous.from : ''}`;
+function loadSummaryRanges(id, token, periods, withPrevious) {
+  const key = summaryRangeKey(id, periods, withPrevious);
+  if (!summaryRangeJobs.has(key)) {
+    const job = (async () => {
+      const [loaded, loadedPrevious = null] = await fetchFunnelRanges(id, token, periods.current, withPrevious ? periods.previous : null);
+      saveFunnelRanges(id, [loaded, loadedPrevious].filter(Boolean));
+      summaryRangeErrors.delete(key);
+      return { current: loaded, previous: loadedPrevious, fetchedAt: new Date().toISOString() };
+    })();
+    job.catch(error => summaryRangeErrors.set(key, { message: error.message, at: Date.now() })).finally(() => summaryRangeJobs.delete(key));
+    summaryRangeJobs.set(key, job);
+  }
+  return summaryRangeJobs.get(key);
+}
 async function summaryFunnelRanges(id, token, periods, refresh = false) {
   const now = Date.now();
   const stored = readFunnelRanges(id);
@@ -148,16 +171,29 @@ async function summaryFunnelRanges(id, token, periods, refresh = false) {
     (refresh ? now - Date.parse(record.fetchedAt || '') < SUMMARY_REFRESH_MS : !funnelRangeNeedsFetch(range.to, record.fetchedAt, now));
   const current = pick(periods.current),
     previous = withPrevious ? pick(periods.previous) : null;
+  // Свежие — без загрузки; но если фоновая загрузка этого периода ещё идёт (её начал «Обновить»), страница должна
+  // переспрашивать, пока она не закончится.
   if (fresh(current, periods.current) && (!withPrevious || fresh(previous, periods.previous)))
-    return { current, previous, fetchedAt: current.fetchedAt };
-  try {
-    const [loaded, loadedPrevious = null] = await fetchFunnelRanges(id, token, periods.current, withPrevious ? periods.previous : null);
-    saveFunnelRanges(id, [loaded, loadedPrevious].filter(Boolean));
-    return { current: loaded, previous: loadedPrevious, fetchedAt: new Date().toISOString() };
-  } catch (error) {
-    if (current) return { current, previous, fetchedAt: current.fetchedAt, staleError: error.message };
-    throw error;
-  }
+    return {
+      current,
+      previous,
+      fetchedAt: current.fetchedAt,
+      refreshing: summaryRangeJobs.has(summaryRangeKey(id, periods, withPrevious))
+    };
+  // Сохранённых нет — ждём загрузку. Есть — сразу их, а свежие — в фоне; после неудачной фоновой загрузки следующая —
+  // не раньше чем через FUNNEL_RETRY_FAILED_MS (страница переспрашивает каждые несколько секунд), с ошибкой в ответе.
+  if (!current) return loadSummaryRanges(id, token, periods, withPrevious);
+  const key = summaryRangeKey(id, periods, withPrevious),
+    failed = summaryRangeErrors.get(key);
+  const retry = !failed || now - failed.at >= FUNNEL_RETRY_FAILED_MS;
+  if (retry) loadSummaryRanges(id, token, periods, withPrevious).catch(() => {});
+  return {
+    current,
+    previous,
+    fetchedAt: current.fetchedAt,
+    refreshing: summaryRangeJobs.has(key),
+    ...(failed && !summaryRangeJobs.has(key) ? { staleError: failed.message } : {})
+  };
 }
 
 function summaryPayload(periods, current, previous, products, history) {
@@ -234,6 +270,7 @@ async function summary(id, from, to, refresh = false) {
     demo: false,
     ...summaryPayload(periods, ranges.current, ranges.previous, products, history),
     fetchedAt: ranges.fetchedAt,
+    refreshing: Boolean(ranges.refreshing),
     warnings
   };
 }

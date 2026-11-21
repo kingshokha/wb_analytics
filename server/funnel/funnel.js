@@ -905,6 +905,7 @@ const SUMMARY_REFRESH_MS = 2 * 60_000;
 module.exports = {
   FUNNEL_COUNT_KEYS,
   FUNNEL_MAX_DEPTH_DAYS,
+  FUNNEL_RETRY_FAILED_MS,
   SUMMARY_REFRESH_MS,
   demoFunnelHistory,
   fetchFunnelRanges,
