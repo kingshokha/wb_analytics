@@ -8,6 +8,7 @@
  *   «Цены»              — текущие цены и скидки всех товаров;
  *   «Реклама»           — текущие статусы и настройки всех рекламных кампаний;
  *   «История»           — строка на каждое изменение: цена, скидка, статус кампании и т. п. (новые сверху);
+ *   «Заказы»            — строка на заказ из «Ленты заказов»: время каждого статуса, тип отмены, текущий статус;
  *   «Журнал обновлений» — когда обновлялось и что вернул WB по каждому кабинету.
  * Токены хранятся в свойствах скрипта (не в ячейках). Меню «WB» появляется после открытия таблицы.
  */
@@ -17,9 +18,26 @@ const WB_URLS = {
   cards: 'https://content-api.wildberries.ru/content/v2/get/cards/list',
   adverts: 'https://advert-api.wildberries.ru/api/advert/v2/adverts?statuses=4,7,8,9,11',
   normqueryList: 'https://advert-api.wildberries.ru/adv/v0/normquery/list',
-  stocksReport: 'https://seller-analytics-api.wildberries.ru/api/analytics/v1/stocks-report/'
+  stocksReport: 'https://seller-analytics-api.wildberries.ru/api/analytics/v1/stocks-report/',
+  orderFeed: 'https://seller-analytics-api.wildberries.ru/api/analytics/v1/order-feed'
 };
-const SHEET_NAMES = { prices: 'Цены', ads: 'Реклама', bids: 'Ставки', minus: 'Минус-фразы', stocks: 'Остатки', history: 'История', stockHistory: 'История остатков', log: 'Журнал обновлений' };
+const SHEET_NAMES = { prices: 'Цены', ads: 'Реклама', bids: 'Ставки', minus: 'Минус-фразы', stocks: 'Остатки', history: 'История', stockHistory: 'История остатков', orders: 'Заказы', log: 'Журнал обновлений' };
+// «Заказы»: строка на заказ (srid) из «Ленты заказов» WB (POST /api/analytics/v1/order-feed, категория токена «Аналитика»).
+// WB отдаёт только текущий статус заказа и время, когда он установлен; при каждом обновлении строка заказа дополняется:
+// время статуса пишется в его столбец («Выкуплен», «Отменён», «Возвращён», «Возвращён (брак)») один раз — когда статус
+// замечен впервые, поэтому прошлые статусы остаются видны. «Текущий статус» и «Статус с» — последний статус.
+// Если статус сменился дважды между обновлениями (раз в час), промежуточного WB не отдаёт — его столбец останется пустым.
+// Лента — максимум за 31 день и 1 запрос в минуту (базовый токен — 1 раз в 3 часа); при отказе WB (429) заказы
+// догрузятся при следующем обновлении: за 30 дней ничего не теряется. Строки не удаляются, новые заказы — сверху.
+const ORDER_HEADERS = ['Кабинет', 'ID заказа', 'Артикул WB', 'Артикул продавца', 'Товар', 'ID размера', 'Склад', 'Тип склада', 'Регион склада',
+  'Город доставки', 'Округ доставки', 'Тип продажи', 'Цена продавца, ₽', 'Оформлен', 'Выкуплен', 'Отменён', 'Тип отмены', 'Возвращён',
+  'Возвращён (брак)', 'Текущий статус', 'Статус с', 'Обновлено'];
+const ORDER_STATUSES = { created: 'Оформлен', buyout: 'Выкуплен', cancel: 'Отменён', return: 'Возвращён', returnDefective: 'Возвращён (брак)' };
+// Столбец времени каждого статуса (номера с нуля).
+const ORDER_STATUS_COLUMNS = { created: 13, buyout: 14, cancel: 15, return: 17, returnDefective: 18 };
+const ORDER_CANCEL_TYPES = { app: 'Отказ до получения', receipt: 'Отказ при получении', expire: 'Истёк срок получения', other: 'Иное' };
+const ORDER_COLUMNS = { cancelType: 16, status: 19, since: 20, updated: 21 };
+const ORDER_FEED_LIMIT = 10000;
 // «Минус-фразы»: строка на пару «кампания + артикул» — какие поисковые запросы исключены (normquery/list → excluded).
 // Изменение списка попадает в «Историю» (раздел «Ключевые слова»): какие запросы исключили и какие вернули в работу.
 const MINUS_HEADERS = ['Кабинет', 'ID кампании', 'Кампания', 'Статус', 'Артикул WB', 'Артикул продавца', 'Исключено запросов', 'Исключённые запросы', 'Обновлено'];
@@ -63,7 +81,56 @@ function onOpen() {
     .addItem('Выключить автообновление', 'disableHourly')
     .addSeparator()
     .addItem('Ключ для сайта', 'showSiteKey')
+    .addSeparator()
+    .addItem('Заполненность таблицы', 'showTableSize')
+    .addItem('Убрать пустые столбцы', 'trimEmptyColumns')
     .addToUi();
+}
+
+// ---------- Размер таблицы ----------
+// Google ограничивает таблицу 10 млн ячеек и считает все ячейки листов — и пустые тоже. Новый лист создаётся
+// с 26 столбцами (A–Z), поэтому у листов с 8 столбцами данных две трети ячеек пустые. Чем ближе к пределу, тем медленнее
+// работает таблица (вплоть до ошибки «Сервис "Таблицы" слишком долго не может получить доступ к документу»).
+const CELL_LIMIT = 10000000;
+function tableSizes() {
+  return SpreadsheetApp.getActive().getSheets().map(function (target) {
+    const rows = target.getMaxRows(), columns = target.getMaxColumns(), lastColumn = Math.max(1, target.getLastColumn());
+    return { sheet: target, name: target.getName(), rows: rows, columns: columns, lastColumn: lastColumn, cells: rows * columns, empty: Math.max(0, columns - lastColumn) * rows };
+  });
+}
+function formatCount(value) { return String(Math.round(value)).replace(/\B(?=(\d{3})+(?!\d))/g, ' '); }
+// Только показывает размеры: ничего не меняет.
+function showTableSize() {
+  const sizes = tableSizes(), total = sizes.reduce(function (sum, item) { return sum + item.cells; }, 0);
+  const empty = sizes.reduce(function (sum, item) { return sum + item.empty; }, 0);
+  const lines = sizes.sort(function (a, b) { return b.cells - a.cells; }).map(function (item) {
+    return item.name + ': ' + formatCount(item.rows) + ' строк × ' + item.columns + ' столбцов = ' + formatCount(item.cells) + ' ячеек' +
+      (item.empty ? ' (пустые столбцы справа: ' + (item.columns - item.lastColumn) + ', это ' + formatCount(item.empty) + ' ячеек)' : '');
+  });
+  SpreadsheetApp.getUi().alert('Заполненность таблицы',
+    'Всего: ' + formatCount(total) + ' ячеек из ' + formatCount(CELL_LIMIT) + ' — ' + Math.round(total / CELL_LIMIT * 1000) / 10 + '%.\n' +
+    (empty ? 'Из них пустые столбцы справа от данных: ' + formatCount(empty) + ' ячеек — их можно убрать: WB → Убрать пустые столбцы.\n' : '') +
+    '\n' + lines.join('\n'), SpreadsheetApp.getUi().ButtonSet.OK);
+}
+// Удаляет на листах скрипта столбцы справа от последнего столбца с данными — только после подтверждения.
+// Данные, строки и столбцы с данными не трогаются; столбцы можно вернуть: правой кнопкой → «Вставить столбцы».
+function trimEmptyColumns() {
+  const ui = SpreadsheetApp.getUi(), names = Object.keys(SHEET_NAMES).map(function (key) { return SHEET_NAMES[key]; });
+  const plan = tableSizes().filter(function (item) { return names.indexOf(item.name) >= 0 && item.empty > 0; });
+  if (!plan.length) { ui.alert('Пустых столбцов справа от данных на листах скрипта нет.'); return; }
+  const freed = plan.reduce(function (sum, item) { return sum + item.empty; }, 0);
+  const text = plan.map(function (item) { return item.name + ': удалить ' + (item.columns - item.lastColumn) + ' пустых столбцов после столбца ' + item.lastColumn; }).join('\n');
+  if (ui.alert('Убрать пустые столбцы', text + '\n\nОсвободится ' + formatCount(freed) + ' ячеек. Данные не удаляются. Продолжить?', ui.ButtonSet.OK_CANCEL) !== ui.Button.OK) return;
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(30000)) { ui.alert('Сейчас идёт обновление таблицы — попробуйте через несколько минут.'); return; }
+  try {
+    plan.forEach(function (item) {
+      // Проверка ещё раз прямо перед удалением: вдруг в столбцы справа что-то вписали, пока было открыто окно.
+      const lastColumn = Math.max(1, item.sheet.getLastColumn()), extra = item.sheet.getMaxColumns() - lastColumn;
+      if (extra > 0) item.sheet.deleteColumns(lastColumn + 1, extra);
+    });
+  } finally { lock.releaseLock(); }
+  showTableSize();
 }
 
 // ---------- Данные для сайта WB Pulse (веб-приложение) ----------
@@ -181,13 +248,19 @@ function disableHourly(silent) {
 }
 
 // ---------- Запросы к WB ----------
-// При лимите WB (429) и сбоях сервера (5xx) ждём и повторяем до 4 раз.
-function wbFetch(url, token, body) {
+// При лимите WB (429) и сбоях сервера (5xx) ждём и повторяем до 4 раз (attempts — сколько попыток; у ленты заказов
+// лимит 1 запрос в минуту, повторять её через секунды бесполезно).
+function wbFetch(url, token, body, attempts) {
   const options = { method: body ? 'post' : 'get', headers: { Authorization: token }, muteHttpExceptions: true };
   if (body) { options.contentType = 'application/json'; options.payload = JSON.stringify(body); }
-  for (let attempt = 0; attempt < 4; attempt++) {
+  const tries = attempts || 4;
+  for (let attempt = 0; attempt < tries; attempt++) {
     const response = UrlFetchApp.fetch(url, options), code = response.getResponseCode();
-    if (code === 429 || code >= 500) { Utilities.sleep(Math.min(30000, (code === 429 ? 6000 : 2000) * (attempt + 1))); continue; }
+    if (code === 429 || code >= 500) {
+      if (attempt === tries - 1) break;
+      Utilities.sleep(Math.min(30000, (code === 429 ? 6000 : 2000) * (attempt + 1)));
+      continue;
+    }
     const text = response.getContentText();
     if (code === 401) throw new Error('WB не принял токен (401): токен неверный, истёк или без нужной категории');
     if (code >= 400) throw new Error('WB ответил ' + code + ': ' + text.slice(0, 200));
@@ -222,6 +295,23 @@ function loadCards(token) {
   return cardsById;
 }
 function loadAdverts(token) { return wbFetch(WB_URLS.adverts, token).adverts || []; }
+// Заказы, у которых статус менялся за последние 30 дней (WB отдаёт не дальше 31 дня). До 10 000 за запрос; дальше —
+// следующая страница с тем же snapshotTime, но не раньше чем через минуту (лимит WB).
+function loadOrderFeed(token, now) {
+  const orders = [], start = new Date(now.getTime() - 30 * 86400000).toISOString();
+  let snapshotTime = '';
+  for (let page = 0; page < 3; page++) {
+    if (page) Utilities.sleep(61000);
+    const pagination = { offset: page * ORDER_FEED_LIMIT, limit: ORDER_FEED_LIMIT };
+    if (snapshotTime) pagination.snapshotTime = snapshotTime;
+    const response = wbFetch(WB_URLS.orderFeed, token, { selectedPeriod: { start: start, end: now.toISOString() }, pagination: pagination }, 1);
+    const data = response.data || {}, batch = data.orders || [];
+    if (!snapshotTime) snapshotTime = data.snapshotTime || '';
+    orders.push.apply(orders, batch);
+    if (batch.length < ORDER_FEED_LIMIT || !snapshotTime) break;
+  }
+  return orders;
+}
 
 // ---------- Строки листов ----------
 function priceRow(cabinet, good, cards, now) {
@@ -298,6 +388,29 @@ function stockRows(cabinet, token, cards, now) {
   });
   return rows;
 }
+// Новая строка заказа: неизменные поля — из ленты и карточек, статус — через applyOrderStatus.
+function orderRow(cabinet, order, cards, now) {
+  const card = cards[order.nmId] || {};
+  const row = [cabinet, String(order.srid), Number(order.nmId) || '', card.vendorCode || '', card.title || '', Number(order.chrtId) || '',
+    order.warehouseName || '', order.isMp ? 'Склад продавца (FBS)' : 'Склад WB (FBW)', order.warehouseRegion || '', order.destinationCity || '',
+    order.destinationDistrict || '', order.isB2b ? 'B2B' : 'B2C', round2(order.sellerPrice), toDate(order.createdAt), '', '', '', '', '', '', '', now];
+  applyOrderStatus(row, order, now);
+  return row;
+}
+// Дополняет строку текущим статусом заказа; true — если что-то изменилось (тогда «Обновлено» = now).
+// Время статуса пишется в его столбец только в первый раз: прошлые статусы не затираются.
+function applyOrderStatus(row, order, now) {
+  const status = String(order.status || ''), at = toDate(order.updatedAt) || toDate(order.createdAt), column = ORDER_STATUS_COLUMNS[status];
+  let changed = false;
+  const set = function (index, value) { if (!same(row[index], value)) { row[index] = value; changed = true; } };
+  if (column !== undefined && row[column] === '' && at) set(column, at);
+  if (status === 'cancel') set(ORDER_COLUMNS.cancelType, ORDER_CANCEL_TYPES[order.cancelType] || order.cancelType || '');
+  set(ORDER_COLUMNS.status, ORDER_STATUSES[status] || status);
+  set(ORDER_COLUMNS.since, at);
+  if (changed) row[ORDER_COLUMNS.updated] = now;
+  return changed;
+}
+
 // «1, 2, 3» → «2, 3, 4»: «убран 1, добавлен 4» — пишется в «Что изменилось»; «Было» и «Стало» — списки целиком.
 // options: separator (по умолчанию «,»), words — подписи { removed: [одно, много], added: [одно, много] }, quote — «в кавычках».
 const LIST_WORDS = { removed: ['убран', 'убраны'], added: ['добавлен', 'добавлены'] };
@@ -327,6 +440,7 @@ function refreshAll() {
     notify('Обновляю цены, рекламу и остатки…');
     const book = SpreadsheetApp.getActive(), now = new Date();
     const priceRows = [], adRows = [], bidRowsAll = [], minusRowsAll = [], stockRowsAll = [], logRows = [], failedPrices = {}, failedAds = {}, failedMinus = {}, failedStocks = {};
+    const orderFeeds = [];
     cabinets.forEach(function (cabinet) {
       const notes = [];
       // Карточки нужны обоим листам: названия — ценам, артикулы продавца — рекламе.
@@ -352,8 +466,20 @@ function refreshAll() {
         stockRowsAll.push.apply(stockRowsAll, stocks);
         notes.push('остатки: ' + stocks.length + ' строк «склад + артикул»');
       } catch (error) { failedStocks[cabinet.name] = true; notes.push('остатки: ошибка — ' + error.message); }
+      try {
+        const orders = loadOrderFeed(cabinet.token, now);
+        orderFeeds.push({ cabinet: cabinet.name, orders: orders, cards: cards });
+        notes.push('заказы: ' + orders.length + ' с изменением статуса за 30 дней');
+      } catch (error) { notes.push('заказы: ошибка — ' + error.message + ' (догрузятся при следующем обновлении)'); }
       logRows.push([now, cabinet.name, notes.join('; ')]);
     });
+    // Заказы пишутся первыми: лист небольшой, а запись больших листов («Цены», «История») при перегруженной таблице
+    // иногда обрывается ошибкой Google «слишком долго не может получить доступ к документу» — заказы от неё не зависят.
+    // Ошибка самих «Заказов» не мешает остальным листам: она пишется строкой в «Журнал».
+    let orderResult = { added: 0, updated: 0 };
+    if (orderFeeds.length) {
+      try { orderResult = writeOrders(book, orderFeeds, now); } catch (error) { logRows.push([now, '—', 'лист «Заказы»: ошибка записи — ' + error.message]); }
+    }
     priceRows.sort(function (a, b) { return String(a[0]).localeCompare(b[0]) || String(a[2]).localeCompare(b[2]) || a[1] - b[1]; });
     const statusOrder = function (row) { return row[3] in AD_STATUS_ORDER ? AD_STATUS_ORDER[row[3]] : 9; };
     adRows.sort(function (a, b) { return String(a[0]).localeCompare(b[0]) || statusOrder(a) - statusOrder(b) || String(a[2]).localeCompare(b[2]); });
@@ -391,7 +517,7 @@ function refreshAll() {
     prependRows(sheet(book, SHEET_NAMES.stockHistory), STOCK_HISTORY_HEADERS, stockHistory, { 1: DATE_FORMAT });
     prependRows(sheet(book, SHEET_NAMES.log), LOG_HEADERS, logRows, { 1: DATE_FORMAT });
     notify('Готово: товаров ' + priceRows.length + ', кампаний ' + adRows.length + ', ставок ' + bidRowsAll.length + ', остатков ' + stockRowsAll.length +
-      ', изменений ' + history.length + ', изменений остатков ' + stockHistory.length);
+      ', изменений ' + history.length + ', изменений остатков ' + stockHistory.length + ', новых заказов ' + orderResult.added + ', обновлено заказов ' + orderResult.updated);
   } finally { lock.releaseLock(); }
 }
 
@@ -449,6 +575,75 @@ function rowsHaveCabinet(rows, cabinet) { return rows.some(function (row) { retu
 function same(a, b) { return normalize(a) === normalize(b); }
 function normalize(value) { return typeof value === 'number' ? String(round2(value)) : value instanceof Date ? String(value.getTime()) : String(value === null || value === undefined ? '' : value).trim(); }
 function display(value) { return value === '' || value === null || value === undefined ? '—' : value; }
+
+// ---------- Заказы ----------
+// Лист «Заказы»: строки заказов, которые уже есть, дополняются на месте (меняются только их ячейки статуса), новые —
+// сверху. Читаются все строки листа (чтобы найти заказ по кабинету и ID), пишутся только изменённые.
+// feeds — [{ cabinet, orders, cards }]. Возвращает { added, updated }.
+function writeOrders(book, feeds, now) {
+  const target = orderSheet(book), width = ORDER_HEADERS.length, lastRow = target.getLastRow();
+  const old = lastRow > 1 ? target.getRange(2, 1, lastRow - 1, width).getValues() : [];
+  const byKey = {}, changed = {}, added = [];
+  old.forEach(function (row, index) { byKey[row[0] + '|' + String(row[1])] = { row: row, index: index }; });
+  feeds.forEach(function (feed) {
+    feed.orders.forEach(function (order) {
+      if (!order.srid) return;
+      const key = feed.cabinet + '|' + String(order.srid), found = byKey[key];
+      if (!found) {
+        const row = orderRow(feed.cabinet, order, feed.cards, now);
+        byKey[key] = { row: row, index: -1 };
+        added.push(row);
+        return;
+      }
+      const card = feed.cards[order.nmId] || {}, row = found.row;
+      // Карточки могли не загрузиться в прошлый раз — артикул продавца и название дописываются, когда появятся.
+      let filled = false;
+      if (row[3] === '' && card.vendorCode) { row[3] = card.vendorCode; filled = true; }
+      if (row[4] === '' && card.title) { row[4] = card.title; filled = true; }
+      if ((applyOrderStatus(row, order, now) || filled) && found.index >= 0) changed[found.index] = true;
+    });
+  });
+  // Изменённые строки — подряд идущими блоками; если блоков много — одним диапазоном от первой до последней.
+  const indexes = Object.keys(changed).map(Number).sort(function (a, b) { return a - b; });
+  const blocks = [];
+  indexes.forEach(function (index) {
+    const last = blocks[blocks.length - 1];
+    if (last && index === last.to + 1) last.to = index; else blocks.push({ from: index, to: index });
+  });
+  const write = function (from, to) {
+    const range = target.getRange(from + 2, 1, to - from + 1, width);
+    range.setValues(old.slice(from, to + 1));
+    applyFormats(target, from + 2, to - from + 1, ORDER_FORMATS);
+  };
+  if (blocks.length > 40) write(indexes[0], indexes[indexes.length - 1]);
+  else blocks.forEach(function (block) { write(block.from, block.to); });
+  if (added.length) {
+    added.sort(function (a, b) { return (b[13] ? b[13].getTime() : 0) - (a[13] ? a[13].getTime() : 0); });
+    target.insertRowsAfter(1, added.length);
+    // ID заказа — текстом: иначе Таблица может превратить его в число.
+    target.getRange(2, 2, added.length, 1).setNumberFormat('@');
+    target.getRange(2, 1, added.length, width).setValues(added).setFontWeight('normal').setBackground(null);
+    applyFormats(target, 2, added.length, ORDER_FORMATS);
+  }
+  return { added: added.length, updated: indexes.length };
+}
+// Форматы столбцов «Заказов» (номера с единицы): цена и даты статусов.
+const ORDER_FORMATS = { 13: '#,##0.00', 14: DATE_FORMAT, 15: DATE_FORMAT, 16: DATE_FORMAT, 18: DATE_FORMAT, 19: DATE_FORMAT, 21: DATE_FORMAT, 22: DATE_FORMAT };
+// Лист создаётся ровно под столбцы заказов (без пустых столбцов и строк: Google считает в лимит 10 млн и пустые ячейки).
+// Если заголовки листа не совпадают с нужными (лист правили вручную), запись не идёт — иначе значения съедут.
+function orderSheet(book) {
+  let target = book.getSheetByName(SHEET_NAMES.orders);
+  if (!target) {
+    target = book.insertSheet(SHEET_NAMES.orders);
+    const extraColumns = target.getMaxColumns() - ORDER_HEADERS.length, extraRows = target.getMaxRows() - 1;
+    if (extraColumns > 0) target.deleteColumns(ORDER_HEADERS.length + 1, extraColumns);
+    if (extraRows > 0) target.deleteRows(2, extraRows);
+  }
+  if (target.getLastRow() === 0) header(target, ORDER_HEADERS);
+  const current = target.getRange(1, 1, 1, ORDER_HEADERS.length).getValues()[0].join('|');
+  if (current !== ORDER_HEADERS.join('|')) throw new Error('заголовки листа «Заказы» не совпадают с нужными — верните их или переименуйте лист');
+  return target;
+}
 
 // ---------- Листы ----------
 function sheet(book, name) { return book.getSheetByName(name) || book.insertSheet(name); }

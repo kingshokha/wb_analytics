@@ -58,22 +58,35 @@ function renderBalance() {
     `<div class="balance-main"><p class="eyebrow">Баланс кабинета</p><strong>${balanceMoney(b.current, b.currency)}</strong></div>` +
     `<div class="balance-withdraw"><span>Доступно к выводу</span><b>${balanceMoney(b.forWithdraw, b.currency)}</b></div>`;
 }
+// Типы отмены ленты заказов WB (cancelType при status = cancel), по документации order-feed.
+const ORDER_CANCEL_TYPES = { app: 'отказ до получения', receipt: 'отказ при получении', expire: 'истёк срок получения', other: 'иное' };
 function feedStatus(o) {
   if (o.source === 'Лента WB') {
     if (o.rawStatus === 'created') return ['Оформлен', 'status-new'];
     if (o.rawStatus === 'buyout') return ['Выкуплен', 'status-complete'];
-    if (o.rawStatus === 'cancel') return [o.cancelType === 'expire' ? 'Отменён · срок истёк' : 'Отменён', 'status-cancel'];
+    if (o.rawStatus === 'cancel') {
+      const type = ORDER_CANCEL_TYPES[o.cancelType] || o.cancelType;
+      return [type ? `Отменён · ${type}` : 'Отменён', 'status-cancel'];
+    }
     if (o.rawStatus === 'return') return ['Возврат', 'status-return'];
     if (o.rawStatus === 'returnDefective') return ['Возврат · брак', 'status-return'];
   }
   return statusMap[o.status] || [o.status || 'Неизвестно', ''];
+}
+// Фильтр статуса: «cancel» — все отмены, «cancel:receipt» — один тип отмены, «return:returnDefective» — один вид возврата.
+function orderStatusMatch(o, value) {
+  if (!value) return true;
+  const [status, kind] = value.split(':');
+  if (o.status !== status) return false;
+  if (!kind) return true;
+  return status === 'cancel' ? o.cancelType === kind : o.rawStatus === kind;
 }
 function renderOrders() {
   const term = $('#search').value.toLowerCase(),
     status = $('#statusFilter').value;
   const rows = state.orders.filter(
     o =>
-      (!status || o.status === status) &&
+      orderStatusMatch(o, status) &&
       (!term ||
         [o.id, o.srid, o.nmId, o.chrtId, o.article, o.name, o.brand, o.warehouse, o.destinationCity].join(' ').toLowerCase().includes(term))
   );
