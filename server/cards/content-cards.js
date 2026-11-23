@@ -378,14 +378,17 @@ module.exports = function createContentCards({
   // больше не нужен. Поиск по тексту сюда не входит: textSearch WB ищет только по артикулам и баркоду, и ненадёжно.
   const priorityJobs = new Map();
   const PRIORITY_MAX_PAGES = 50;
+  // Фильтр страницы → фильтр WB: objectIDs, brands, tagIDs — массивы (02-items.yaml, /content/v2/get/cards/list),
+  // поэтому несколько предметов, брендов и ярлыков уходят одним запросом.
   function wbCardsFilter(filter) {
     const result = {},
-      subjectID = Number(filter.subjectID),
-      tagID = Number(filter.tagID),
-      brand = String(filter.brand || '').trim();
-    if (Number.isInteger(subjectID) && subjectID > 0) result.objectIDs = [subjectID];
-    if (brand) result.brands = [brand];
-    if (Number.isInteger(tagID) && tagID > 0) result.tagIDs = [tagID];
+      ids = list => [...new Set((list || []).map(Number).filter(value => Number.isInteger(value) && value > 0))].sort((a, b) => a - b);
+    const objectIDs = ids(filter.subjectIDs),
+      tagIDs = ids(filter.tagIDs),
+      brands = [...new Set((filter.brands || []).map(value => String(value ?? '').trim()).filter(Boolean))].sort();
+    if (objectIDs.length) result.objectIDs = objectIDs;
+    if (brands.length) result.brands = brands;
+    if (tagIDs.length) result.tagIDs = tagIDs;
     return Object.keys(result).length ? result : null;
   }
   function priorityCards(id, filter, status) {
@@ -1522,12 +1525,20 @@ module.exports = function createContentCards({
   async function handle(req, res, url) {
     const cabinet = () => url.searchParams.get('cabinet') || 'demo';
     if (req.method === 'GET' && url.pathname === '/api/cards') {
+      // Предметы и ярлыки — номера через запятую, бренды — JSON-массив (в названии бренда может быть запятая).
+      let brands = [];
+      try {
+        brands = JSON.parse(url.searchParams.get('brands') || '[]');
+      } catch {
+        brands = [];
+      }
       const filter = {
-        subjectID: url.searchParams.get('subjectID'),
-        brand: url.searchParams.get('brand'),
-        tagID: url.searchParams.get('tagID'),
+        subjectIDs: String(url.searchParams.get('subjectIDs') || url.searchParams.get('subjectID') || '').split(','),
+        brands: Array.isArray(brands) ? brands : [],
+        tagIDs: String(url.searchParams.get('tagIDs') || url.searchParams.get('tagID') || '').split(','),
         imts: url.searchParams.get('imts')
       };
+      if (url.searchParams.get('brand')) filter.brands.push(url.searchParams.get('brand'));
       send(res, 200, await cardsList(cabinet(), url.searchParams.get('force') === '1', filter));
       return true;
     }

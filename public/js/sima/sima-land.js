@@ -24,7 +24,8 @@ const simaView = {
   request: 0,
   days: 14,
   search: '',
-  kind: SIMA_WHOLESALE,
+  // Виды изменений (общий компонент js/common/multi-filter.js); пустой набор — все. Запоминается в браузере.
+  kinds: new Set([SIMA_WHOLESALE]),
   hint: '',
   searchTimer: 0,
   page: 1,
@@ -37,12 +38,35 @@ try {
 } catch {
   /* период по умолчанию */
 }
+// Раньше вид был один (строка, '' — все), теперь — список в JSON; старое значение читается как список из одного.
 try {
-  const kind = localStorage.getItem('wb-sima-kind');
-  if (kind !== null) simaView.kind = kind;
+  const saved = localStorage.getItem('wb-sima-kind');
+  if (saved !== null) {
+    let kinds;
+    try {
+      kinds = JSON.parse(saved);
+    } catch {
+      kinds = saved;
+    }
+    simaView.kinds = new Set((Array.isArray(kinds) ? kinds : [kinds]).map(String).filter(Boolean));
+  }
 } catch {
   /* вид по умолчанию */
 }
+const simaKindFilter = multiFilter('#simaKind', {
+  label: 'Что изменилось',
+  allText: 'Все изменения',
+  selected: () => simaView.kinds,
+  onChange: () => {
+    simaView.page = 1;
+    try {
+      localStorage.setItem('wb-sima-kind', JSON.stringify([...simaView.kinds]));
+    } catch {
+      /* без сохранения */
+    }
+    renderSimaHistory();
+  }
+});
 // Цены Сималенда бывают в копейках (0,14 ₽), поэтому до двух знаков после запятой.
 const simaNumber = new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 2 });
 // В «было / стало» — цены: у изменений цены и у «Добавлен в список», «Убран из списка…», «Нет на Сималенде» и т. п.
@@ -190,7 +214,7 @@ function renderSimaHistory() {
   ).join('');
   const empty = text => {
     body.innerHTML = '';
-    $('#simaKind').innerHTML = '<option value="">Все изменения</option>';
+    simaKindFilter.setItems([...v.kinds]);
     $('#simaHint').textContent = v.hint;
     $('#emptySimaText').textContent = text;
     $('#emptySima').classList.toggle('hidden', !text);
@@ -208,21 +232,30 @@ function renderSimaHistory() {
   }
   const all = data.items || [],
     term = v.search.trim().toLowerCase();
-  const kinds = [...new Set([...all.map(item => item.kind), v.kind].filter(Boolean))].sort((a, b) => a.localeCompare(b, 'ru'));
-  $('#simaKind').innerHTML =
-    `<option value="">Все изменения</option>${kinds.map(kind => `<option value="${escapeHtml(kind)}"${kind === v.kind ? ' selected' : ''}>${escapeHtml(kind)}</option>`).join('')}`;
+  // Виды — из истории периода, с числом строк; выбранные остаются в списке, даже если строк с ними нет.
+  const kindCounts = new Map();
+  all.forEach(item => item.kind && kindCounts.set(item.kind, (kindCounts.get(item.kind) || 0) + 1));
+  v.kinds.forEach(kind => kindCounts.has(kind) || kindCounts.set(kind, 0));
+  simaKindFilter.setItems(
+    [...kindCounts]
+      .sort((a, b) => a[0].localeCompare(b[0], 'ru'))
+      .map(([kind, count]) => ({ value: kind, label: kind, count: fmtNum(count) }))
+  );
+  const oneKind = v.kinds.size === 1;
   const wbText = item =>
     (simaLinks.data?.[item.id] || [])
       .map(entry => `${entry.nmId} ${entry.vendorCode}`)
       .join(' ')
       .toLowerCase();
-  const rows = all.filter(item => (!v.kind || item.kind === v.kind) && (!term || item.text.includes(term) || wbText(item).includes(term))),
+  const rows = all.filter(
+      item => (!v.kinds.size || v.kinds.has(item.kind)) && (!term || item.text.includes(term) || wbText(item).includes(term))
+    ),
     pageCount = Math.ceil(rows.length / v.pageSize);
   v.page = Math.min(Math.max(1, v.page), Math.max(1, pageCount));
   $('#simaCount').textContent =
     `${fmtNum(rows.length)} из ${fmtNum(all.length)} за период${data.truncated ? ' · показаны 200 000 самых новых — сократите период' : ''}`;
   // Выбран один вид изменения — колонка «Что изменилось» везде одинаковая, её не видно.
-  $('#page-sima .change-table').classList.toggle('sima-one-kind', Boolean(v.kind));
+  $('#page-sima .change-table').classList.toggle('sima-one-kind', oneKind);
   $('#simaHint').textContent = [v.hint, simaStatusText(data)].filter(Boolean).join(' · ');
   let lastDay = '';
   body.innerHTML = rows
@@ -230,7 +263,7 @@ function renderSimaHistory() {
     .map(item => {
       const head =
         item.day !== lastDay
-          ? `<tr class="change-day-row"><td colspan="${v.kind ? 6 : 7}">${escapeHtml(changeDayTitle(item.at))}</td></tr>`
+          ? `<tr class="change-day-row"><td colspan="${oneKind ? 6 : 7}">${escapeHtml(changeDayTitle(item.at))}</td></tr>`
           : '';
       lastDay = item.day;
       return (
@@ -275,16 +308,6 @@ document.addEventListener('input', event => {
   }, 250);
 });
 document.addEventListener('change', event => {
-  if (event.target.id === 'simaKind') {
-    simaView.kind = event.target.value;
-    simaView.page = 1;
-    try {
-      localStorage.setItem('wb-sima-kind', simaView.kind);
-    } catch {
-      /* без сохранения */
-    }
-    renderSimaHistory();
-  }
   if (event.target.id === 'simaPeriod') {
     simaView.days = Number(event.target.value);
     simaView.page = 1;

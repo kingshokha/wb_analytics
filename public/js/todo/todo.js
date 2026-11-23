@@ -28,6 +28,8 @@ const todoView = {
   editing: null,
   draft: null,
   openLog: new Set(),
+  types: new Set(),
+  priorities: new Set(),
   limit: TODO_PAGE,
   request: 0,
   ready: false
@@ -89,17 +91,21 @@ function ensureTodoUi() {
   $('#todoForm').innerHTML =
     todoFormFields() +
     '<div class="todo-form-foot"><span class="todo-hint">Enter — добавить, Shift+Enter — новая строка. Ссылки в тексте открываются по клику.</span><button class="primary" type="submit">Добавить дело</button></div>';
-  $('#todoTypeFilter').innerHTML =
-    '<option value="">Все типы</option>' + TODO_TYPES.map(([key, label]) => `<option value="${key}">${label}</option>`).join('');
-  $('#todoPriorityFilter').innerHTML =
-    '<option value="">Любой приоритет</option>' +
-    TODO_PRIORITIES.map(([key, label]) => `<option value="${key}">${label}</option>`).join('');
-  ['#todoSearch', '#todoTypeFilter', '#todoPriorityFilter'].forEach(id =>
-    $(id).addEventListener('input', () => {
-      todoView.limit = TODO_PAGE;
-      renderTodos();
-    })
+  // Тип и приоритет — общий компонент (js/common/multi-filter.js).
+  const changed = () => {
+    todoView.limit = TODO_PAGE;
+    renderTodos();
+  };
+  multiFilter('#todoTypeFilter', { label: 'Типы', allText: 'Все типы', selected: todoView.types, onChange: changed }).setItems(
+    TODO_TYPES.map(([value, label]) => ({ value, label }))
   );
+  multiFilter('#todoPriorityFilter', {
+    label: 'Приоритет',
+    allText: 'Любой приоритет',
+    selected: todoView.priorities,
+    onChange: changed
+  }).setItems(TODO_PRIORITIES.map(([value, label]) => ({ value, label })));
+  $('#todoSearch').addEventListener('input', changed);
 }
 
 async function loadTodos(quiet = false) {
@@ -121,14 +127,14 @@ async function loadTodos(quiet = false) {
 
 function todoRows() {
   const search = $('#todoSearch').value.trim().toLowerCase(),
-    type = $('#todoTypeFilter').value,
-    priority = $('#todoPriorityFilter').value;
+    types = todoView.types,
+    priorities = todoView.priorities;
   const rank = { urgent: 0, high: 1, normal: 2 },
     done = todoView.tab === 'done';
   return (
     (todoView.tasks || [])
       .filter(task => todoOfCabinet(task) && Boolean(task.doneAt) === done)
-      .filter(task => (!type || task.type === type) && (!priority || task.priority === priority))
+      .filter(task => (!types.size || types.has(task.type)) && (!priorities.size || priorities.has(task.priority)))
       .filter(
         task =>
           !search ||

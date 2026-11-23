@@ -73,20 +73,70 @@ function feedStatus(o) {
   }
   return statusMap[o.status] || [o.status || 'Неизвестно', ''];
 }
-// Фильтр статуса: «cancel» — все отмены, «cancel:receipt» — один тип отмены, «return:returnDefective» — один вид возврата.
-function orderStatusMatch(o, value) {
-  if (!value) return true;
-  const [status, kind] = value.split(':');
-  if (o.status !== status) return false;
-  if (!kind) return true;
-  return status === 'cancel' ? o.cancelType === kind : o.rawStatus === kind;
+// Фильтры ленты — общий компонент (js/common/multi-filter.js). Статус заказа для фильтра: «new», «confirm», «complete»,
+// «cancel:<тип отмены>» (без типа — «cancel:other»), «return:return» или «return:returnDefective».
+const orderFilters = { statuses: new Set(), articles: new Set(), cabinet: '' };
+const ORDER_STATUS_OPTIONS = [
+  { value: 'new', label: 'Оформлены / новые FBS' },
+  { value: 'confirm', label: 'На сборке' },
+  { value: 'complete', label: 'Выкуплены / в доставке' },
+  ...Object.entries(ORDER_CANCEL_TYPES).map(([type, label]) => ({
+    value: `cancel:${type}`,
+    label: label[0].toUpperCase() + label.slice(1),
+    group: 'Отменены'
+  })),
+  { value: 'return:return', label: 'Обычные', group: 'Возвраты' },
+  { value: 'return:returnDefective', label: 'Брак', group: 'Возвраты' }
+];
+function orderStatusKey(o) {
+  if (o.status === 'cancel') return `cancel:${ORDER_CANCEL_TYPES[o.cancelType] ? o.cancelType : 'other'}`;
+  if (o.status === 'return') return o.rawStatus === 'returnDefective' ? 'return:returnDefective' : 'return:return';
+  return o.status;
+}
+const orderStatusFilter = multiFilter('#orderStatusFilter', {
+  label: 'Статусы',
+  allText: 'Все статусы',
+  selected: () => orderFilters.statuses,
+  onChange: () => renderOrders()
+});
+const orderArticleFilter = multiFilter('#orderArticleFilter', {
+  label: 'Артикулы',
+  placeholder: 'Поиск по арт. продавца, WB или названию',
+  search: true,
+  allText: 'Все артикулы',
+  empty: 'В заказах за период нет товаров',
+  selected: () => orderFilters.articles,
+  onChange: () => renderOrders()
+});
+// Варианты фильтров — из заказов за период: статусы с числом заказов, артикулы — только те, что есть в заказах.
+// Выбранные артикулы другого кабинета сбрасываются.
+function renderOrderFilters() {
+  if (orderFilters.cabinet !== state.cabinet) {
+    orderFilters.articles.clear();
+    orderFilters.cabinet = state.cabinet;
+  }
+  const counts = {};
+  state.orders.forEach(o => (counts[orderStatusKey(o)] = (counts[orderStatusKey(o)] || 0) + 1));
+  orderStatusFilter.setItems(ORDER_STATUS_OPTIONS.map(item => ({ ...item, count: fmtNum(counts[item.value] || 0) })));
+  orderArticleFilter.setItems(
+    articleFilterItems(
+      state.orders.map(o => ({
+        nmId: o.nmId,
+        vendorCode: String(o.article || '').startsWith('chrtID') ? '' : o.article,
+        title: String(o.name || '').startsWith('Товар WB') ? '' : o.name
+      }))
+    )
+  );
 }
 function renderOrders() {
+  renderOrderFilters();
   const term = $('#search').value.toLowerCase(),
-    status = $('#statusFilter').value;
+    statuses = orderFilters.statuses,
+    articles = orderFilters.articles;
   const rows = state.orders.filter(
     o =>
-      orderStatusMatch(o, status) &&
+      (!statuses.size || statuses.has(orderStatusKey(o))) &&
+      (!articles.size || articles.has(String(o.nmId))) &&
       (!term ||
         [o.id, o.srid, o.nmId, o.chrtId, o.article, o.name, o.brand, o.warehouse, o.destinationCity].join(' ').toLowerCase().includes(term))
   );

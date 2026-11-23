@@ -581,7 +581,9 @@ function renderAdCampaigns() {
     items = state.ads?.campaigns || [],
     term = $('#adSearch').value.toLowerCase();
   const rows = items
-    .filter(x => state.adStatuses.has(String(x.status)) && (!term || `${x.name} ${x.id}`.toLowerCase().includes(term)))
+    .filter(
+      x => (!state.adStatuses.size || state.adStatuses.has(String(x.status))) && (!term || `${x.name} ${x.id}`.toLowerCase().includes(term))
+    )
     .sort((a, b) => {
       const key = state.adSort.key,
         av = a[key] ?? '',

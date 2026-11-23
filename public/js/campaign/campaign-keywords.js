@@ -154,18 +154,16 @@ async function loadKeywords(period, refresh = false, silent = false) {
 }
 function renderKeywords() {
   const note = $('#keywordsNote'),
-    body = $('#keywordsBody'),
-    select = $('#keywordProduct');
+    body = $('#keywordsBody');
   if (!note) return;
   const data = keywords.data;
-  select.innerHTML =
-    '<option value="">Все артикулы</option>' +
-    (data?.products || [])
-      .map(
-        product =>
-          `<option value="${esc(product.nmId)}" ${String(product.nmId) === keywords.product ? 'selected' : ''}>${esc(product.vendorCode || product.name)} · ${esc(product.nmId)}</option>`
-      )
-      .join('');
+  keywordProductFilter.setItems(
+    (data?.products || []).map(product => ({
+      value: product.nmId,
+      label: product.vendorCode || product.name || String(product.nmId),
+      hint: [product.nmId, product.vendorCode ? product.name : ''].filter(Boolean).join(' · ')
+    }))
+  );
   if (keywords.loading && !data) {
     note.textContent = 'Загрузка ключевых запросов…';
     body.innerHTML = '';
@@ -272,12 +270,20 @@ $('#keywordHead').addEventListener('click', event => {
   keywords.page = 1;
   renderKeywords();
 });
-$('#keywordProduct').onchange = event => {
-  keywords.product = event.target.value;
-  keywords.selected.clear();
-  keywords.page = 1;
-  renderKeywords();
-};
+// Выбор артикула — общий компонент (js/common/multi-filter.js) в режиме одного значения, с поиском.
+const keywordProductFilter = multiFilter('#keywordProduct', {
+  single: true,
+  label: 'Артикул',
+  allLabel: 'Все артикулы',
+  placeholder: 'Поиск по артикулу или названию',
+  selected: () => keywords.product,
+  onChange: value => {
+    keywords.product = value;
+    keywords.selected.clear();
+    keywords.page = 1;
+    renderKeywords();
+  }
+});
 // Поля «От» и «До» в заголовках столбцов-показателей. Клик по ним не сортирует таблицу; ввод применяется с короткой задержкой.
 // Проценты и рубли вводятся как в ячейках: «5» в CTR — это 5%, «150» в CPO — 150 ₽; запятая и точка равноценны.
 // Заголовок перестраивается при смене столбцов — введённые границы берутся из keywords.ranges.

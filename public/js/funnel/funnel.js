@@ -64,7 +64,6 @@ async function pollFunnelTable(key, request, known, silent, force = false) {
       );
     renderFunnel();
     renderFunnelDetails();
-    renderFunnelArticleOptions();
     if (firstOfKey && funnelFiltersActive()) loadFunnelTrend(silent, silent);
     if (state.funnelTab === 'sales' && (firstOfKey || (data.done && !data.refreshing))) loadFunnelSales();
     if (data.error && !silent) addNotice('funnel', `Воронка: ${data.error}`, 'warning');
@@ -645,33 +644,18 @@ function renderFunnelDetails() {
   const all = state.funnelProducts || [],
     rows = funnelProductRows(),
     f = state.funnelFilters;
-  const categories = [...new Set(all.map(item => (item.product || item).subjectName || 'Без категории'))].sort((a, b) =>
-    a.localeCompare(b, 'ru')
+  const categoryCounts = new Map();
+  all.forEach(item => {
+    const name = (item.product || item).subjectName || 'Без категории';
+    categoryCounts.set(name, (categoryCounts.get(name) || 0) + 1);
+  });
+  funnelCategoryFilter.setItems(
+    [...categoryCounts]
+      .sort((a, b) => a[0].localeCompare(b[0], 'ru'))
+      .map(([name, count]) => ({ value: name, label: name, count: fmtNum(count) }))
   );
-  $('#funnelCategoryOptions').innerHTML =
-    categories.map(category => `<label><input type="checkbox" value="${escapeHtml(category)}"> ${escapeHtml(category)}</label>`).join('') ||
-    '<span class="filter-empty">Нет вариантов</span>';
-  $$('#funnelCategoryOptions input').forEach(input => {
-    input.checked = f.categories.has(input.value);
-    input.onchange = () => {
-      input.checked ? f.categories.add(input.value) : f.categories.delete(input.value);
-      state.funnelPage = 1;
-      renderFunnelDetails();
-      scheduleFunnelTrendReload();
-    };
-  });
-  $('#funnelCategoryLabel').textContent = f.categories.size ? `Категории (${f.categories.size})` : 'Категории';
-  $$('#funnelAvailabilityOptions input').forEach(input => {
-    input.checked = f.availability.has(input.value);
-    input.onchange = () => {
-      input.checked ? f.availability.add(input.value) : f.availability.delete(input.value);
-      state.funnelPage = 1;
-      renderFunnelDetails();
-      scheduleFunnelTrendReload();
-    };
-  });
-  $('#funnelAvailabilityLabel').textContent = f.availability.size ? `Наличие (${f.availability.size})` : 'Наличие';
-  $('#funnelArticleLabel').textContent = f.articles.size ? `Артикулы (${f.articles.size})` : 'Артикулы';
+  funnelAvailabilityFilter.refresh();
+  renderFunnelArticleOptions();
   const table = state.funnelTable || {},
     progress = !table.done
       ? ` · загружено ${fmtNum(table.loaded || all.length)}, догружается…`
@@ -766,78 +750,37 @@ function renderFunnelPagination(pageCount, total) {
     }
   });
 }
-let funnelArticleTip = null;
-function hideFunnelArticleTip() {
-  funnelArticleTip?.remove();
-  funnelArticleTip = null;
-}
+// Фильтры таблицы товаров — общий компонент (js/common/multi-filter.js); выбранное — в state.funnelFilters.
+const funnelFilterChanged = () => {
+  state.funnelPage = 1;
+  renderFunnelDetails();
+  scheduleFunnelTrendReload();
+};
+const funnelArticleFilter = multiFilter('#funnelArticleFilter', {
+  label: 'Артикулы',
+  placeholder: 'Поиск по арт. продавца, WB или названию',
+  search: true,
+  allText: 'Все артикулы',
+  empty: 'Товары ещё не загружены',
+  selected: () => state.funnelFilters.articles,
+  onChange: funnelFilterChanged
+});
+const funnelAvailabilityFilter = multiFilter('#funnelAvailabilityFilter', {
+  label: 'Наличие',
+  selected: () => state.funnelFilters.availability,
+  onChange: funnelFilterChanged
+}).setItems([
+  { value: 'positive', label: 'В наличии' },
+  { value: 'zero', label: 'Нет в наличии' }
+]);
+const funnelCategoryFilter = multiFilter('#funnelCategoryFilter', {
+  label: 'Категории',
+  selected: () => state.funnelFilters.categories,
+  onChange: funnelFilterChanged
+});
 function renderFunnelArticleOptions() {
-  const box = $('#funnelArticleOptions');
-  if (!box) return;
-  const term = ($('#funnelArticleSearch')?.value || '').trim().toLowerCase(),
-    selected = state.funnelFilters.articles;
-  const items = [
-    ...new Map(
-      (state.funnelProducts || []).map(item => {
-        const p = item.product || item;
-        return [String(p.nmId), { nmId: String(p.nmId), vendorCode: p.vendorCode || '', title: p.title || '' }];
-      })
-    ).values()
-  ].sort((a, b) => String(a.vendorCode || a.title).localeCompare(String(b.vendorCode || b.title), 'ru', { numeric: true }));
-  const found = term ? items.filter(item => `${item.vendorCode} ${item.nmId} ${item.title}`.toLowerCase().includes(term)) : items;
-  box.innerHTML =
-    found
-      .map(
-        item =>
-          `<label class="article-option" data-tip="${escapeHtml(`${item.vendorCode || item.title} · ${item.nmId}`)}"><input type="checkbox" value="${escapeHtml(item.nmId)}" ${selected.has(item.nmId) ? 'checked' : ''}><span><b>${escapeHtml(item.vendorCode || item.title || 'Без артикула')}</b><small>${escapeHtml(item.nmId)}</small></span></label>`
-      )
-      .join('') || `<span class="filter-empty">${items.length ? 'Ничего не найдено' : 'Товары ещё не загружены'}</span>`;
-  box.querySelectorAll('.article-option').forEach(label => {
-    label.onmouseenter = () => {
-      hideFunnelArticleTip();
-      const tip = document.createElement('div');
-      tip.className = 'article-tip';
-      tip.textContent = label.dataset.tip;
-      document.body.append(tip);
-      const rect = label.getBoundingClientRect();
-      tip.style.left = `${Math.max(8, Math.min(rect.left, window.innerWidth - tip.offsetWidth - 8))}px`;
-      tip.style.top = `${Math.max(8, rect.top - tip.offsetHeight - 2)}px`;
-      funnelArticleTip = tip;
-    };
-    label.onmouseleave = hideFunnelArticleTip;
-  });
-  box.querySelectorAll('input').forEach(
-    input =>
-      (input.onchange = () => {
-        input.checked ? selected.add(input.value) : selected.delete(input.value);
-        state.funnelPage = 1;
-        updateFunnelArticleSummary();
-        renderFunnelDetails();
-        scheduleFunnelTrendReload();
-      })
-  );
-  box.onscroll = hideFunnelArticleTip;
-  updateFunnelArticleSummary();
+  funnelArticleFilter.setItems(articleFilterItems((state.funnelProducts || []).map(item => item.product || item)));
 }
-function updateFunnelArticleSummary() {
-  const size = state.funnelFilters.articles.size;
-  const el = $('#funnelArticleSelected');
-  if (el) el.textContent = size ? `Выбрано: ${fmtNum(size)}` : 'Все артикулы';
-  $('#funnelArticleReset').disabled = !size;
-}
-document.addEventListener('input', event => {
-  if (event.target.id === 'funnelArticleSearch') renderFunnelArticleOptions();
-});
-document.addEventListener('click', event => {
-  if (event.target.id === 'funnelArticleReset') {
-    state.funnelFilters.articles.clear();
-    state.funnelPage = 1;
-    renderFunnelArticleOptions();
-    renderFunnelDetails();
-    scheduleFunnelTrendReload();
-  }
-  if (!event.target.closest('.article-filter')) hideFunnelArticleTip();
-});
 
 // --- Вкладка «Продажи по дням» ---
 const FUNNEL_SALES_METRICS = [

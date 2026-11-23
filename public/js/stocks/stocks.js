@@ -49,38 +49,31 @@ async function loadFbwStocks(force = false) {
     addNotice('fbw-stocks', `Ошибка загрузки остатков FBW: ${e.message}`);
   }
 }
+// Фильтры остатков FBW и FBS — общий компонент (js/common/multi-filter.js); выбранное — в state.fbwFilters / state.stockFilters.
+const STOCK_AVAILABILITY = [
+  { value: 'positive', label: 'В наличии' },
+  { value: 'zero', label: 'Нулевые' }
+];
+function stockFilters(prefix, filters, changed) {
+  const make = (label, key) =>
+    multiFilter(`#${prefix}${label[1]}Filter`, { label: label[0], selected: () => state[filters][key], onChange: changed });
+  return {
+    warehouses: make(['Склады', 'Warehouse'], 'warehouses'),
+    categories: make(['Категории', 'Category'], 'categories'),
+    availability: make(['Наличие', 'Availability'], 'availability').setItems(STOCK_AVAILABILITY),
+    set(data) {
+      this.warehouses.setItems((data.warehouses || []).map(item => ({ value: item.id, label: item.name })));
+      this.categories.setItems(data.categories || []);
+      this.availability.refresh();
+    }
+  };
+}
+const fbwStockFilters = stockFilters('fbw', 'fbwFilters', () => {
+  state.fbwPage = 1;
+  renderFbwStocks();
+});
 function setFbwFilterOptions(data) {
-  const filters = [
-    ['fbwWarehouseOptions', data.warehouses || [], 'warehouses', 'id', 'name'],
-    ['fbwCategoryOptions', (data.categories || []).map(name => ({ id: name, name })), 'categories', 'id', 'name']
-  ];
-  for (const [id, items, key, value, label] of filters) {
-    const options = items
-      .map(item => {
-        const v = String(item[value]);
-        return `<label><input type="checkbox" value="${escapeHtml(v)}" ${state.fbwFilters[key].has(v) ? 'checked' : ''}> ${escapeHtml(item[label])}</label>`;
-      })
-      .join('');
-    $(`#${id}`).innerHTML = options || '<span class="filter-empty">Нет вариантов</span>';
-    $$(`#${id} input`).forEach(
-      input =>
-        (input.onchange = () => {
-          input.checked ? state.fbwFilters[key].add(input.value) : state.fbwFilters[key].delete(input.value);
-          state.fbwPage = 1;
-          renderFbwStocks();
-        })
-    );
-  }
-  $$('#fbwAvailabilityOptions input').forEach(input => {
-    input.checked = state.fbwFilters.availability.has(input.value);
-    input.onchange = () => {
-      input.checked ? state.fbwFilters.availability.add(input.value) : state.fbwFilters.availability.delete(input.value);
-      state.fbwPage = 1;
-      renderFbwStocks();
-    };
-  });
-  $('#fbwWarehouseLabel').textContent = state.fbwFilters.warehouses.size ? `Склады (${state.fbwFilters.warehouses.size})` : 'Склады';
-  $('#fbwCategoryLabel').textContent = state.fbwFilters.categories.size ? `Категории (${state.fbwFilters.categories.size})` : 'Категории';
+  fbwStockFilters.set(data);
 }
 // Пагинация — общая (pager.js); число строк на странице у каждой таблицы своё и запоминается.
 function renderFbwPagination(pageCount, total) {
@@ -224,40 +217,12 @@ function applyStockChanges(result, cabinet, meta = null) {
   renderStocks();
   if (result?.warnings?.length) toast(result.warnings.join(' '));
 }
+const fbsStockFilters = stockFilters('stock', 'stockFilters', () => {
+  resetStockPage();
+  renderStocks();
+});
 function setStockFilterOptions(data) {
-  const filters = [
-    ['stockWarehouseOptions', data.warehouses || [], 'warehouses', 'id', 'name'],
-    ['stockCategoryOptions', (data.categories || []).map(name => ({ id: name, name })), 'categories', 'id', 'name']
-  ];
-  for (const [id, items, key, value, label] of filters) {
-    const options = items
-      .map(item => {
-        const v = String(item[value]);
-        return `<label><input type="checkbox" data-stock-filter="${key}" value="${escapeHtml(v)}" ${state.stockFilters[key].has(v) ? 'checked' : ''}> ${escapeHtml(item[label])}</label>`;
-      })
-      .join('');
-    $(`#${id}`).innerHTML = options || '<span class="filter-empty">Нет вариантов</span>';
-    $$(`#${id} input`).forEach(
-      input =>
-        (input.onchange = () => {
-          input.checked ? state.stockFilters[key].add(input.value) : state.stockFilters[key].delete(input.value);
-          resetStockPage();
-          renderStocks();
-        })
-    );
-  }
-  $$('#stockAvailabilityOptions input').forEach(input => {
-    input.checked = state.stockFilters.availability.has(input.value);
-    input.onchange = () => {
-      input.checked ? state.stockFilters.availability.add(input.value) : state.stockFilters.availability.delete(input.value);
-      resetStockPage();
-      renderStocks();
-    };
-  });
-  $('#stockWarehouseLabel').textContent = state.stockFilters.warehouses.size ? `Склады (${state.stockFilters.warehouses.size})` : 'Склады';
-  $('#stockCategoryLabel').textContent = state.stockFilters.categories.size
-    ? `Категории (${state.stockFilters.categories.size})`
-    : 'Категории';
+  fbsStockFilters.set(data);
 }
 function resetStockPage() {
   state.stockPage = 1;

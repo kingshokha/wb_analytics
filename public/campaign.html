@@ -17,6 +17,7 @@
     <link rel="stylesheet" href="/css/common/sidebar.css" />
     <link rel="stylesheet" href="/css/common/pager.css" />
     <link rel="stylesheet" href="/css/common/tables.css" />
+    <link rel="stylesheet" href="/css/common/multi-filter.css" />
     <link rel="stylesheet" href="/css/common/scroll-index.css" />
   </head>
   <body>
@@ -173,9 +174,8 @@
           <div class="panel-head">
             <h2>Статистика по дням и зонам показов</h2>
             <div class="keywords-controls">
-              <select id="zonesProduct" aria-label="Артикул">
-                <option value="">Все артикулы</option></select
-              ><button
+              <details id="zonesProduct"></details>
+              <button
                 type="button"
                 class="secondary-button"
                 id="zonesRefresh"
@@ -230,9 +230,8 @@
                   Исключённые
                 </button>
               </div>
-              <select id="keywordProduct" aria-label="Артикул">
-                <option value="">Все артикулы</option></select
-              ><button id="keywordRangeReset" class="secondary-button" type="button" hidden>Сбросить «от — до»</button>
+              <details id="keywordProduct"></details>
+              <button id="keywordRangeReset" class="secondary-button" type="button" hidden>Сбросить «от — до»</button>
               <details class="columns-menu" data-columns-table="keywords">
                 <summary>Столбцы</summary>
                 <div class="columns-options"></div>
@@ -393,6 +392,7 @@
     <script src="/js/common/mini-charts.js"></script>
     <script src="/js/common/sheet-sync.js"></script>
     <script src="/js/common/column-widths.js"></script>
+    <script src="/js/common/multi-filter.js"></script>
     <script src="/js/campaign/campaign-core.js"></script>
     <script src="/js/campaign/campaign-summary.js"></script>
     <script src="/js/campaign/campaign-chart.js"></script>

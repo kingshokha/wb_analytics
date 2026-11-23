@@ -56,7 +56,9 @@ function renderCampaignMinis() {
     .map(day => ({ ...day, date: String(day.date).slice(0, 10) }))
     .sort((a, b) => a.date.localeCompare(b.date));
   // CPC-кампании WB присылает без показов — тогда графики показов, CTR и CPM пустые («нет данных»).
-  const markers = (campaignNotes?.list || []).map(item => String(item.at || '').slice(0, 10)).filter(Boolean);
+  // Первая отрисовка (ResizeObserver) бывает раньше, чем подключится campaign-notes.js: заметок тогда ещё нет.
+  const notes = typeof campaignNotes === 'undefined' ? [] : campaignNotes.list || [];
+  const markers = notes.map(item => String(item.at || '').slice(0, 10)).filter(Boolean);
   window.MiniCharts.render(box, CAMPAIGN_MINIS, days, { markers });
 }
 let minisWidth = 0;

@@ -35,6 +35,7 @@
     <link rel="stylesheet" href="/css/common/pager.css" />
     <link rel="stylesheet" href="/css/messages/messages.css" />
     <link rel="stylesheet" href="/css/common/tables.css" />
+    <link rel="stylesheet" href="/css/common/multi-filter.css" />
     <link rel="stylesheet" href="/css/sima/sima-land.css" />
     <link rel="stylesheet" href="/css/prices/price-metric.css" />
   </head>
@@ -207,20 +208,8 @@
               </div>
               <div class="filters">
                 <label class="search">⌕ <input id="search" placeholder="Артикул, товар или номер" /></label>
-                <select id="statusFilter">
-                  <option value="">Все статусы</option>
-                  <option value="new">Оформлены / новые FBS</option>
-                  <option value="confirm">На сборке</option>
-                  <option value="complete">Выкуплены / в доставке</option>
-                  <option value="cancel">Отменены — все</option>
-                  <option value="cancel:app">Отменены · отказ до получения</option>
-                  <option value="cancel:receipt">Отменены · отказ при получении</option>
-                  <option value="cancel:expire">Отменены · истёк срок получения</option>
-                  <option value="cancel:other">Отменены · иное</option>
-                  <option value="return">Возвраты — все</option>
-                  <option value="return:return">Возвраты · обычные</option>
-                  <option value="return:returnDefective">Возвраты · брак</option>
-                </select>
+                <details id="orderArticleFilter"></details>
+                <details id="orderStatusFilter"></details>
               </div>
             </div>
             <div class="table-wrap">
@@ -258,21 +247,9 @@
               </div>
               <div class="filters stock-filters">
                 <label class="search">⌕ <input id="fbsSearch" placeholder="Товар, артикул или номер задания" /></label>
-                <details class="multi-filter">
-                  <summary id="fbsWarehouseLabel">Склады</summary>
-                  <div id="fbsWarehouseOptions"></div>
-                </details>
-                <details class="multi-filter">
-                  <summary id="fbsCategoryLabel">Категории</summary>
-                  <div id="fbsCategoryOptions"></div>
-                </details>
-                <details class="multi-filter">
-                  <summary>Сборка</summary>
-                  <div id="fbsAssemblyOptions">
-                    <label><input type="checkbox" value="free" /> Без поставки</label
-                    ><label><input type="checkbox" value="assembled" /> Уже в поставке</label>
-                  </div>
-                </details>
+                <details id="fbsWarehouseFilter"></details>
+                <details id="fbsCategoryFilter"></details>
+                <details id="fbsAssemblyFilter"></details>
               </div>
             </div>
             <div class="table-wrap">
@@ -390,21 +367,9 @@
               </div>
               <div class="filters stock-filters">
                 <label class="search">⌕ <input id="fbwStockSearch" placeholder="Товар или артикул" /></label>
-                <details class="multi-filter">
-                  <summary id="fbwWarehouseLabel">Склады</summary>
-                  <div id="fbwWarehouseOptions"></div>
-                </details>
-                <details class="multi-filter">
-                  <summary id="fbwCategoryLabel">Категории</summary>
-                  <div id="fbwCategoryOptions"></div>
-                </details>
-                <details class="multi-filter">
-                  <summary>Наличие</summary>
-                  <div id="fbwAvailabilityOptions">
-                    <label><input type="checkbox" value="positive" /> В наличии</label
-                    ><label><input type="checkbox" value="zero" /> Нулевые</label>
-                  </div>
-                </details>
+                <details id="fbwWarehouseFilter"></details>
+                <details id="fbwCategoryFilter"></details>
+                <details id="fbwAvailabilityFilter"></details>
               </div>
             </div>
             <div class="table-wrap">
@@ -442,21 +407,9 @@
               </div>
               <div class="filters stock-filters">
                 <label class="search">⌕ <input id="stockSearch" placeholder="Товар или артикул" /></label>
-                <details class="multi-filter">
-                  <summary id="stockWarehouseLabel">Склады</summary>
-                  <div id="stockWarehouseOptions"></div>
-                </details>
-                <details class="multi-filter">
-                  <summary id="stockCategoryLabel">Категории</summary>
-                  <div id="stockCategoryOptions"></div>
-                </details>
-                <details class="multi-filter">
-                  <summary>Наличие</summary>
-                  <div id="stockAvailabilityOptions">
-                    <label><input type="checkbox" value="positive" /> В наличии</label
-                    ><label><input type="checkbox" value="zero" /> Нулевые</label>
-                  </div>
-                </details>
+                <details id="stockWarehouseFilter"></details>
+                <details id="stockCategoryFilter"></details>
+                <details id="stockAvailabilityFilter"></details>
                 <button
                   class="secondary preset-button"
                   id="stockAddButton"
@@ -528,17 +481,9 @@
                 <p id="returnCount">Загрузка возвратов…</p>
               </div>
               <div class="filters stock-filters">
-                <label class="search">⌕ <input id="returnSearch" placeholder="Товар, артикул, баркод, стикер, ПВЗ" /></label
-                ><select id="returnStatusFilter" aria-label="Статус возврата">
-                  <option value="">Все статусы</option>
-                  <option value="active">Активные</option>
-                  <option value="ready">Готовы к выдаче</option>
-                  <option value="transit">В пути</option>
-                  <option value="done">Получены</option>
-                  <option value="lost">Не забраны</option></select
-                ><select id="returnTypeFilter" aria-label="Тип возврата">
-                  <option value="">Все типы</option>
-                </select>
+                <label class="search">⌕ <input id="returnSearch" placeholder="Товар, артикул, баркод, стикер, ПВЗ" /></label>
+                <details id="returnStatusFilter"></details>
+                <details id="returnTypeFilter"></details>
               </div>
             </div>
             <div class="table-wrap">
@@ -567,22 +512,9 @@
               </div>
               <div class="filters stock-filters">
                 <label class="search">⌕ <input id="priceSearch" placeholder="Товар, артикул или nmId" /></label>
-                <details class="multi-filter">
-                  <summary id="priceCategoryLabel">Категории</summary>
-                  <div id="priceCategoryOptions"></div>
-                </details>
-                <details class="multi-filter">
-                  <summary id="priceBrandLabel">Бренды</summary>
-                  <div id="priceBrandOptions"></div>
-                </details>
-                <details class="multi-filter">
-                  <summary id="priceDiscountLabel">Скидки</summary>
-                  <div id="priceDiscountOptions">
-                    <label><input type="checkbox" value="discounted" /> Со скидкой</label
-                    ><label><input type="checkbox" value="none" /> Без скидки</label
-                    ><label><input type="checkbox" value="club" /> Скидка WB Клуба</label>
-                  </div>
-                </details>
+                <details id="priceCategoryFilter"></details>
+                <details id="priceBrandFilter"></details>
+                <details id="priceDiscountFilter"></details>
                 <button class="secondary preset-button" id="pricePresetsButton" type="button">⚡ Шаблоны цен</button>
               </div>
             </div>
@@ -663,33 +595,9 @@
                 <p id="funnelProductCount">Загрузка товаров…</p>
               </div>
               <div class="filters funnel-filters">
-                <details class="multi-filter article-filter">
-                  <summary id="funnelArticleLabel">Артикулы</summary>
-                  <div class="article-filter-panel">
-                    <label class="article-search"
-                      ><input id="funnelArticleSearch" type="search" placeholder="Поиск по арт. продавца или WB" autocomplete="off" /><span
-                        aria-hidden="true"
-                        >⌕</span
-                      ></label
-                    >
-                    <div class="article-options" id="funnelArticleOptions"></div>
-                    <div class="article-filter-actions">
-                      <span id="funnelArticleSelected">Все артикулы</span
-                      ><button type="button" id="funnelArticleReset" disabled>Сбросить</button>
-                    </div>
-                  </div>
-                </details>
-                <details class="multi-filter">
-                  <summary id="funnelAvailabilityLabel">Наличие</summary>
-                  <div id="funnelAvailabilityOptions">
-                    <label><input type="checkbox" value="positive" /> В наличии</label
-                    ><label><input type="checkbox" value="zero" /> Нет в наличии</label>
-                  </div>
-                </details>
-                <details class="multi-filter">
-                  <summary id="funnelCategoryLabel">Категории</summary>
-                  <div id="funnelCategoryOptions"></div>
-                </details>
+                <details id="funnelArticleFilter"></details>
+                <details id="funnelAvailabilityFilter"></details>
+                <details id="funnelCategoryFilter"></details>
               </div>
             </div>
             <div class="table-wrap">
@@ -822,14 +730,8 @@
                 <p id="ratingCount">Загрузка оценок…</p>
               </div>
               <div class="filters stock-filters">
-                <label class="search">⌕ <input id="ratingSearch" placeholder="Товар, артикул или nmId" /></label
-                ><select id="ratingFilter" aria-label="Какие товары показать">
-                  <option value="">Все товары</option>
-                  <option value="new">С новыми отзывами</option>
-                  <option value="attention">Требуют внимания</option>
-                  <option value="weak">Хуже 75% конкурентов</option>
-                  <option value="shadowed">Скрытые из каталога</option>
-                </select>
+                <label class="search">⌕ <input id="ratingSearch" placeholder="Товар, артикул или nmId" /></label>
+                <details id="ratingFilter"></details>
               </div>
             </div>
             <div class="table-wrap">
@@ -884,14 +786,7 @@
                 ><select id="adStatus" hidden>
                   <option value=""></option>
                 </select>
-                <details class="multi-filter">
-                  <summary id="adStatusLabel">Статусы (2)</summary>
-                  <div id="adStatusOptions">
-                    <label><input type="checkbox" value="9" checked /> Активные</label
-                    ><label><input type="checkbox" value="11" checked /> На паузе</label
-                    ><label><input type="checkbox" value="7" /> Завершённые</label>
-                  </div>
-                </details>
+                <details id="adStatusFilter"></details>
                 <details class="multi-filter column-filter">
                   <summary id="adColumnsLabel">Столбцы</summary>
                   <div id="adColumnOptions"></div>
@@ -984,9 +879,9 @@
                 <p id="todoCount">Загрузка дел…</p>
               </div>
               <div class="filters stock-filters">
-                <label class="search">⌕ <input id="todoSearch" placeholder="Текст, артикул, комментарий" /></label
-                ><select id="todoTypeFilter" aria-label="Тип дела"></select
-                ><select id="todoPriorityFilter" aria-label="Приоритет"></select>
+                <label class="search">⌕ <input id="todoSearch" placeholder="Текст, артикул, комментарий" /></label>
+                <details id="todoTypeFilter"></details>
+                <details id="todoPriorityFilter"></details>
               </div>
             </div>
             <div class="todo-list" id="todoList"></div>
@@ -1006,18 +901,15 @@
                 <p id="cardsCount">Загрузка карточек…</p>
               </div>
               <div class="filters stock-filters" id="cardsFilters">
-                <label class="search">⌕ <input id="cardSearch" placeholder="Название, артикул, баркод" /></label
-                ><select id="cardSubjectFilter" aria-label="Предмет"></select
-                ><select id="cardBrandFilter" aria-label="Бренд"></select
-                ><select id="cardColorFilter" aria-label="Цвет"></select
-                ><select id="cardTagFilter" aria-label="Ярлык"></select
-                ><select id="cardProblemFilter" aria-label="Что проверить"></select
-                ><select id="cardDocFilter" aria-label="Документы и маркировка"></select
-                ><select id="cardGlueFilter" aria-label="Склейка">
-                  <option value="">Склейка: все</option>
-                  <option value="glued">Со склейкой</option>
-                  <option value="single">Без склейки</option></select
-                ><button type="button" class="card-tags-button hidden" id="cardGlueAll">Склеить по 30…</button
+                <label class="search">⌕ <input id="cardSearch" placeholder="Название, артикул, баркод" /></label>
+                <details id="cardSubjectFilter"></details>
+                <details id="cardBrandFilter"></details>
+                <details id="cardColorFilter"></details>
+                <details id="cardTagFilter"></details>
+                <details id="cardProblemFilter"></details>
+                <details id="cardDocFilter"></details>
+                <details id="cardGlueFilter"></details>
+                <button type="button" class="card-tags-button hidden" id="cardGlueAll">Склеить по 30…</button
                 ><button type="button" class="card-tags-button" id="cardTagsButton">Ярлыки</button
                 ><button
                   type="button"
@@ -1077,8 +969,8 @@
                 <p id="changeCount">Загрузка истории…</p>
               </div>
               <div class="filters stock-filters">
-                <label class="search">⌕ <input id="changeSearch" placeholder="Кампания, артикул, товар, запрос" /></label
-                ><select id="changeKind" aria-label="Что изменилось"></select>
+                <label class="search">⌕ <input id="changeSearch" placeholder="Кампания, артикул, товар, запрос" /></label>
+                <details id="changeKind"></details>
               </div>
             </div>
             <p class="sheet-hint change-hint" id="changeHint"></p>
@@ -1112,9 +1004,9 @@
             <div class="panel-head">
               <div><p id="simaCount">Загрузка истории…</p></div>
               <div class="filters stock-filters">
-                <label class="search">⌕ <input id="simaSearch" placeholder="Артикул, артикул WB или товар" /></label
-                ><select id="simaKind" aria-label="Что изменилось"></select
-                ><select id="simaPeriod" aria-label="Период"></select
+                <label class="search">⌕ <input id="simaSearch" placeholder="Артикул, артикул WB или товар" /></label>
+                <details id="simaKind"></details>
+                <select id="simaPeriod" aria-label="Период"></select
                 ><button
                   type="button"
                   class="preset-button"
@@ -1163,10 +1055,10 @@
             <div class="panel-head">
               <div><p id="simaProfitCount">Загрузка товаров и цен…</p></div>
               <div class="filters stock-filters">
-                <label class="search">⌕ <input id="simaProfitSearch" placeholder="Товар, артикул WB или поставщика" /></label
-                ><select id="simaProfitSupplier" aria-label="Поставщик"></select
-                ><select id="simaProfitFilter" aria-label="Отбор товаров"></select
-                ><label
+                <label class="search">⌕ <input id="simaProfitSearch" placeholder="Товар, артикул WB или поставщика" /></label>
+                <details id="simaProfitSupplier"></details>
+                <details id="simaProfitFilter"></details>
+                <label
                   class="sima-diff-only"
                   title="Только товары, у которых цена для нужной прибыли отличается от текущей больше чем на 0,2% — в любую сторону"
                   ><input type="checkbox" id="simaProfitDiffOnly" /> С отличием &gt; 0,2%</label
@@ -1278,6 +1170,7 @@
     <script src="/js/common/pager.js"></script>
     <script src="/js/common/date-range.js"></script>
     <script src="/js/common/table-ui.js"></script>
+    <script src="/js/common/multi-filter.js"></script>
     <script src="/js/common/column-widths.js"></script>
     <script src="/js/common/notifications.js"></script>
     <script src="/js/common/sheet-sync.js"></script>

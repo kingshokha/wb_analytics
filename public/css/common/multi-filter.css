@@ -1,0 +1,203 @@
+/* Общий фильтр с галочками (js/common/multi-filter.js). Основа повторяет .multi-filter из base.css: на странице кампании
+   base.css не подключён. */
+.mf {
+  position: relative;
+  min-width: 145px;
+}
+.mf summary {
+  height: 35px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 11px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fafbfa;
+  cursor: pointer;
+  font: 600 11px Manrope;
+  list-style: none;
+  user-select: none;
+}
+.mf summary::-webkit-details-marker {
+  display: none;
+}
+.mf summary:after {
+  content: '⌄';
+  margin-left: 8px;
+  color: var(--muted);
+}
+.mf[open] summary {
+  border-color: var(--purple);
+  color: var(--purple);
+}
+.mf > .mf-panel {
+  position: absolute;
+  z-index: 30;
+  top: 41px;
+  right: 0;
+  background: white;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  box-shadow: 0 14px 40px #17211d22;
+}
+.mf label {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 8px 7px;
+  border-radius: 6px;
+  font-size: 11px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.mf label:hover {
+  background: #f1efff;
+}
+.mf .filter-empty {
+  display: block;
+  padding: 9px;
+  color: var(--muted);
+  font-size: 11px;
+}
+.mf.mf-active summary {
+  border-color: var(--purple);
+  color: var(--purple);
+  background: #f6f4ff;
+}
+.mf summary {
+  gap: 8px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.multi-filter.mf > .mf-panel {
+  min-width: 240px;
+  max-width: min(360px, calc(100vw - 32px));
+  max-height: none;
+  overflow: visible;
+  padding: 8px;
+}
+.multi-filter.mf.mf-wide > .mf-panel {
+  width: 320px;
+}
+.multi-filter label.mf-search {
+  position: relative;
+  display: block;
+  padding: 0;
+  margin-bottom: 6px;
+  background: none;
+}
+.mf-search input {
+  width: 100%;
+  height: 38px;
+  padding: 0 34px 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  font: 500 12px Manrope;
+  color: var(--ink);
+  outline: 0;
+}
+.mf-search input:focus {
+  border-color: var(--purple);
+}
+.mf-search span {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--muted);
+  font-size: 15px;
+  pointer-events: none;
+}
+.multi-filter label.mf-all {
+  margin-bottom: 4px;
+  border-bottom: 1px solid var(--line);
+  border-radius: 6px 6px 0 0;
+  font-weight: 700;
+  color: var(--muted);
+}
+.mf-options {
+  max-height: 300px;
+  overflow: auto;
+  margin: 0 -4px;
+  padding: 0 4px;
+}
+.multi-filter label.mf-option {
+  align-items: center;
+  gap: 10px;
+  padding: 7px 8px;
+  white-space: normal;
+}
+.mf-option input,
+.mf-all input {
+  flex: 0 0 16px;
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: var(--purple);
+  cursor: pointer;
+}
+.mf-option > span {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+}
+.mf-option b {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink);
+}
+.mf-option small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--muted);
+  font-size: 11px;
+}
+.mf-option em {
+  flex: none;
+  font-style: normal;
+  font-size: 11px;
+  color: var(--muted);
+}
+.mf-option:has(input:checked) {
+  background: #f1efff;
+}
+.multi-filter label.mf-group-head b {
+  font-weight: 800;
+}
+.multi-filter label.mf-in-group {
+  padding-left: 30px;
+}
+.mf-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 6px;
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+  font-size: 11px;
+  color: var(--muted);
+}
+.mf-actions button {
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--ink);
+  font: 700 11px Manrope;
+  cursor: pointer;
+}
+.mf-actions button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.mf .hidden {
+  display: none !important;
+}

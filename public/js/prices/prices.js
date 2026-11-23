@@ -30,41 +30,28 @@ async function loadPrices(force = false) {
     addNotice('prices', `Ошибка загрузки цен: ${e.message}`);
   }
 }
-function priceFilterOptions() {
-  const data = state.prices || {};
-  for (const [id, items, key] of [
-    ['priceCategoryOptions', data.categories || [], 'categories'],
-    ['priceBrandOptions', data.brands || [], 'brands']
-  ]) {
-    $(`#${id}`).innerHTML =
-      items
-        .map(
-          value =>
-            `<label><input type="checkbox" value="${escapeHtml(value)}" ${state.priceFilters[key].has(String(value)) ? 'checked' : ''}> ${escapeHtml(value)}</label>`
-        )
-        .join('') || '<span class="filter-empty">Нет вариантов</span>';
-    $$(`#${id} input`).forEach(
-      input =>
-        (input.onchange = () => {
-          input.checked ? state.priceFilters[key].add(input.value) : state.priceFilters[key].delete(input.value);
-          resetPricePage();
-          renderPrices();
-        })
-    );
-  }
-  $$('#priceDiscountOptions input').forEach(input => {
-    input.checked = state.priceFilters.discounts.has(input.value);
-    input.onchange = () => {
-      input.checked ? state.priceFilters.discounts.add(input.value) : state.priceFilters.discounts.delete(input.value);
+// Фильтры — общий компонент (js/common/multi-filter.js); выбранное — в state.priceFilters.
+const priceFilter = (target, label, key) =>
+  multiFilter(target, {
+    label,
+    selected: () => state.priceFilters[key],
+    onChange: () => {
       resetPricePage();
       renderPrices();
-    };
+    }
   });
-  $('#priceCategoryLabel').textContent = state.priceFilters.categories.size
-    ? `Категории (${state.priceFilters.categories.size})`
-    : 'Категории';
-  $('#priceBrandLabel').textContent = state.priceFilters.brands.size ? `Бренды (${state.priceFilters.brands.size})` : 'Бренды';
-  $('#priceDiscountLabel').textContent = state.priceFilters.discounts.size ? `Скидки (${state.priceFilters.discounts.size})` : 'Скидки';
+const priceCategoryFilter = priceFilter('#priceCategoryFilter', 'Категории', 'categories'),
+  priceBrandFilter = priceFilter('#priceBrandFilter', 'Бренды', 'brands'),
+  priceDiscountFilter = priceFilter('#priceDiscountFilter', 'Скидки', 'discounts').setItems([
+    { value: 'discounted', label: 'Со скидкой' },
+    { value: 'none', label: 'Без скидки' },
+    { value: 'club', label: 'Скидка WB Клуба' }
+  ]);
+function priceFilterOptions() {
+  const data = state.prices || {};
+  priceCategoryFilter.setItems(data.categories || []);
+  priceBrandFilter.setItems(data.brands || []);
+  priceDiscountFilter.refresh();
 }
 function priceRows() {
   const term = $('#priceSearch').value.toLowerCase(),

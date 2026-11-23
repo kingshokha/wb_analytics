@@ -19,7 +19,7 @@ const changeView = {
   period: null,
   periodKey: '',
   sections: new Set(),
-  kind: '',
+  kinds: new Set(),
   search: '',
   searchTimer: 0,
   page: 1,
@@ -117,7 +117,7 @@ function loadChangeHistory(force = false) {
     changeView.data = null;
     changeView.cabinet = cabinet;
     changeView.page = 1;
-    changeView.kind = '';
+    changeView.kinds.clear();
   }
   if (!changeView.data) {
     $('#changeCount').textContent = 'Загрузка истории…';
@@ -154,7 +154,8 @@ function changeRows(period) {
   const v = changeView,
     term = v.search.trim().toLowerCase();
   return period.filter(
-    item => (!v.sections.size || v.sections.has(item.section)) && (!v.kind || item.kind === v.kind) && (!term || item.text.includes(term))
+    item =>
+      (!v.sections.size || v.sections.has(item.section)) && (!v.kinds.size || v.kinds.has(item.kind)) && (!term || item.text.includes(term))
   );
 }
 function changeLink(page, params, label, title) {
@@ -246,12 +247,17 @@ function renderChangeHistory() {
       section =>
         `<button type="button" class="change-chip${v.sections.has(section) ? ' active' : ''}" data-change-section="${escapeHtml(section)}" aria-pressed="${v.sections.has(section)}">${escapeHtml(section)} <b>${fmtNum(counts.get(section) || 0)}</b></button>`
     ).join('');
-  // Виды изменений — из данных периода; выбранное значение остаётся в списке, даже если строк с ним нет.
-  const kinds = [
-    ...new Set([...period.filter(item => !v.sections.size || v.sections.has(item.section)).map(item => item.kind), v.kind].filter(Boolean))
-  ].sort((a, b) => a.localeCompare(b, 'ru'));
-  $('#changeKind').innerHTML =
-    `<option value="">Все изменения</option>${kinds.map(kind => `<option value="${escapeHtml(kind)}"${kind === v.kind ? ' selected' : ''}>${escapeHtml(kind)}</option>`).join('')}`;
+  // Виды изменений — из данных периода, с числом строк; выбранное значение остаётся в списке, даже если строк с ним нет.
+  const kindCounts = new Map();
+  period
+    .filter(item => item.kind && (!v.sections.size || v.sections.has(item.section)))
+    .forEach(item => kindCounts.set(item.kind, (kindCounts.get(item.kind) || 0) + 1));
+  v.kinds.forEach(kind => kindCounts.has(kind) || kindCounts.set(kind, 0));
+  changeKindFilter.setItems(
+    [...kindCounts]
+      .sort((a, b) => a[0].localeCompare(b[0], 'ru'))
+      .map(([kind, count]) => ({ value: kind, label: kind, count: fmtNum(count) }))
+  );
 
   const rows = changeRows(period),
     pageCount = Math.ceil(rows.length / v.pageSize);
@@ -303,7 +309,7 @@ document.addEventListener('click', event => {
     const section = chip.dataset.changeSection;
     if (!section) changeView.sections.clear();
     else changeView.sections.has(section) ? changeView.sections.delete(section) : changeView.sections.add(section);
-    changeView.kind = '';
+    changeView.kinds.clear();
     changeView.page = 1;
     renderChangeHistory();
   }
@@ -325,8 +331,13 @@ document.addEventListener('change', event => {
     changeView.page = 1;
     loadChangeHistory();
   }
-  if (event.target.id === 'changeKind') {
-    changeView.kind = event.target.value;
+});
+// «Что изменилось» — общий компонент (js/common/multi-filter.js).
+const changeKindFilter = multiFilter('#changeKind', {
+  label: 'Что изменилось',
+  allText: 'Все изменения',
+  selected: () => changeView.kinds,
+  onChange: () => {
     changeView.page = 1;
     renderChangeHistory();
   }

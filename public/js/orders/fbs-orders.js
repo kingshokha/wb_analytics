@@ -31,38 +31,22 @@ async function loadFbsOrders(force = false) {
     btn.classList.remove('loading');
   }
 }
+// Фильтры — общий компонент (js/common/multi-filter.js); выбранное — в state.fbsFilters.
+const fbsFilterChanged = () => {
+  state.fbsPage = 1;
+  renderFbsOrders();
+};
+const fbsFilter = (target, label, key) => multiFilter(target, { label, selected: () => state.fbsFilters[key], onChange: fbsFilterChanged });
+const fbsWarehouseFilter = fbsFilter('#fbsWarehouseFilter', 'Склады', 'warehouses'),
+  fbsCategoryFilter = fbsFilter('#fbsCategoryFilter', 'Категории', 'categories'),
+  fbsAssemblyFilter = fbsFilter('#fbsAssemblyFilter', 'Сборка', 'assembly').setItems([
+    { value: 'free', label: 'Без поставки' },
+    { value: 'assembled', label: 'Уже в поставке' }
+  ]);
 function setFbsFilterOptions(data) {
-  const filters = [
-    ['fbsWarehouseOptions', data.warehouses || [], 'warehouses'],
-    ['fbsCategoryOptions', (data.categories || []).map(name => ({ id: name, name })), 'categories']
-  ];
-  for (const [id, items, key] of filters) {
-    $(`#${id}`).innerHTML =
-      items
-        .map(item => {
-          const value = String(item.id);
-          return `<label><input type="checkbox" value="${escapeHtml(value)}" ${state.fbsFilters[key].has(value) ? 'checked' : ''}> ${escapeHtml(item.name)}</label>`;
-        })
-        .join('') || '<span class="filter-empty">Нет вариантов</span>';
-    $$(`#${id} input`).forEach(
-      input =>
-        (input.onchange = () => {
-          inputSelection(state.fbsFilters[key], input.value, input.checked);
-          state.fbsPage = 1;
-          renderFbsOrders();
-        })
-    );
-  }
-  $$('#fbsAssemblyOptions input').forEach(input => {
-    input.checked = state.fbsFilters.assembly.has(input.value);
-    input.onchange = () => {
-      inputSelection(state.fbsFilters.assembly, input.value, input.checked);
-      state.fbsPage = 1;
-      renderFbsOrders();
-    };
-  });
-  $('#fbsWarehouseLabel').textContent = state.fbsFilters.warehouses.size ? `Склады (${state.fbsFilters.warehouses.size})` : 'Склады';
-  $('#fbsCategoryLabel').textContent = state.fbsFilters.categories.size ? `Категории (${state.fbsFilters.categories.size})` : 'Категории';
+  fbsWarehouseFilter.setItems((data.warehouses || []).map(item => ({ value: item.id, label: item.name })));
+  fbsCategoryFilter.setItems(data.categories || []);
+  fbsAssemblyFilter.refresh();
 }
 function fbsFilteredRows() {
   const rows = state.fbsOrders?.rows || [],

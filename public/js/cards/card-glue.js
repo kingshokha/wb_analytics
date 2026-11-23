@@ -179,7 +179,7 @@ function renderCardGluePlan() {
   $('#cardGlueFill').checked = v.glueFill;
   $('#cardGlueScope').textContent = all
     ? `Все предметы по текущим фильтрам: ${fmtNum(list.length)} ${cardWord(list.length)} без склейки в ${fmtNum(subjects)} ${pluralRu(subjects, ['предмете', 'предметах', 'предметах'])}. Каждый предмет склеивается отдельно — WB не склеивает разные предметы. Изменения сразу уйдут в WB.`
-    : `Предмет «${v.subject}»: выбрано ${fmtNum(list.length)} ${cardWord(list.length)} без склейки. Изменения сразу уйдут в WB.`;
+    : `Выбрано ${fmtNum(list.length)} ${cardWord(list.length)} без склейки в ${fmtNum(subjects)} ${pluralRu(subjects, ['предмете', 'предметах', 'предметах'])}. Каждый предмет склеивается отдельно. Изменения сразу уйдут в WB.`;
   $('#cardGlueHint').textContent =
     (v.glueMode === 'title'
       ? 'Вместе — карточки одного предмета с одинаковым названием (регистр и знаки препинания не важны), в порядке таблицы. Карточка с уникальным названием остаётся одна.'

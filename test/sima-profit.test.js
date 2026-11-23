@@ -8,7 +8,21 @@ const { simaSid, boxTariff, profitRows } = createSimaProfit;
 
 // public/sima-profit.js — скрипт страницы: запускается в отдельном контексте, из него берутся функции расчёта.
 function pageScript() {
-  const context = vm.createContext({ document: { addEventListener() {} }, localStorage: { getItem: () => null }, pageSizeFor: () => 50 });
+  // multiFilter — заглушка общего фильтра (js/common/multi-filter.js): расчёту он не нужен.
+  const multiFilter = () => ({
+    setItems() {
+      return this;
+    },
+    refresh() {
+      return this;
+    }
+  });
+  const context = vm.createContext({
+    document: { addEventListener() {} },
+    localStorage: { getItem: () => null },
+    pageSizeFor: () => 50,
+    multiFilter
+  });
   vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'public', 'js', 'sima', 'sima-profit.js'), 'utf8'), context);
   return context;
 }

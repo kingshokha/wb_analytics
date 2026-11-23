@@ -15,8 +15,9 @@
 // «Применить цены» — выбранным галочками товарам ставит цену со скидкой, равную цене для нужной прибыли
 // (POST /api/sima-profit/apply; скидка не меняется, большое снижение — ступенями по 30%), окно показывает ход и итог.
 // Файл подключается до app.js: $, escapeHtml и прочее из app.js используются только внутри функций.
+// «Отбор» и «Поставщик» — общий компонент (js/common/multi-filter.js): товар показывается, если подходит хотя бы
+// под один выбранный пункт; ничего не выбрано — все.
 const SIMA_PROFIT_FILTERS = [
-  ['', 'Все товары'],
   ['loss', 'Убыток'],
   ['below', 'Прибыль ниже желаемой'],
   ['above', 'Прибыль не ниже желаемой'],
@@ -25,7 +26,6 @@ const SIMA_PROFIT_FILTERS = [
   ['noStock', 'Нет в наличии на Сималенде']
 ];
 const SIMA_PROFIT_SUPPLIERS = [
-  ['', 'Все поставщики'],
   ['sima', 'Сималенд'],
   ['lenardi', 'Lenardi']
 ];
@@ -51,8 +51,8 @@ const simaProfit = {
   request: 0,
   key: '',
   search: '',
-  filter: '',
-  supplier: '',
+  filters: new Set(),
+  suppliers: new Set(),
   sort: { key: 'margin', dir: 'asc' },
   page: 1,
   pageSize: pageSizeFor('sima-profit'),
@@ -61,6 +61,24 @@ const simaProfit = {
   selected: new Set(),
   applyTimer: 0,
   settings: { target: 20, tax: 6, assembly: 50, cost: 'wholesale' }
+};
+const simaProfitFilterChanged = () => {
+  simaProfit.page = 1;
+  renderSimaProfit();
+};
+const simaProfitFilters = {
+  suppliers: multiFilter('#simaProfitSupplier', {
+    label: 'Поставщик',
+    allText: 'Все поставщики',
+    selected: () => simaProfit.suppliers,
+    onChange: simaProfitFilterChanged
+  }).setItems(SIMA_PROFIT_SUPPLIERS.map(([value, label]) => ({ value, label }))),
+  filters: multiFilter('#simaProfitFilter', {
+    label: 'Отбор',
+    allText: 'Все товары',
+    selected: () => simaProfit.filters,
+    onChange: simaProfitFilterChanged
+  }).setItems(SIMA_PROFIT_FILTERS.map(([value, label]) => ({ value, label })))
 };
 try {
   const saved = JSON.parse(localStorage.getItem('wb-sima-profit') || '{}');
@@ -159,14 +177,15 @@ function simaProfitRows() {
     data = v.data,
     term = v.search.trim().toLowerCase();
   const all = (data?.rows || []).map(row => ({ row, calc: simaProfitCalc(row, s, data.tariff) }));
-  const test = {
+  const tests = {
     loss: ({ calc }) => calc.profit != null && calc.profit < 0,
     below: ({ calc }) => calc.margin != null && simaBelow(calc.margin, s.target),
     above: ({ calc }) => calc.margin != null && !simaBelow(calc.margin, s.target),
     noCost: ({ calc }) => calc.cost == null,
     notListed: ({ row }) => row.supplier.status === 'notListed',
     noStock: ({ row }) => row.supplier.inStock === false
-  }[v.filter];
+  };
+  const chosen = [...v.filters].map(key => tests[key]).filter(Boolean);
   const value =
     {
       name: ({ row }) => row.name,
@@ -184,8 +203,8 @@ function simaProfitRows() {
     }[v.sort.key] || (() => null);
   const rows = all.filter(
     item =>
-      (!v.supplier || item.row.supplier.source === v.supplier) &&
-      (!test || test(item)) &&
+      (!v.suppliers.size || v.suppliers.has(item.row.supplier.source)) &&
+      (!chosen.length || chosen.some(test => test(item))) &&
       (!v.diffOnly || simaHasDiff(item.calc)) &&
       (!term ||
         [item.row.name, item.row.nmId, item.row.vendorCode, item.row.article, item.row.subject].join(' ').toLowerCase().includes(term))
@@ -205,7 +224,8 @@ function simaProfitCells({ row, calc }) {
     supplier = row.supplier,
     status = simaSupplierStatus(supplier);
   // Сималенд — ссылкой на товар; у Lenardi своей страницы товара нет. Название поставщика — только когда в таблице оба.
-  const name = simaProfit.supplier ? '' : `<small class="sima-profit-sub">${supplier.source === 'sima' ? 'Сималенд' : 'Lenardi'}</small>`;
+  const name =
+    simaProfit.suppliers.size === 1 ? '' : `<small class="sima-profit-sub">${supplier.source === 'sima' ? 'Сималенд' : 'Lenardi'}</small>`;
   const article =
     supplier.source === 'sima'
       ? `<a class="change-link" href="https://www.sima-land.ru/${encodeURIComponent(row.article)}/" target="_blank" rel="noopener noreferrer" title="${escapeHtml(supplier.name || 'Открыть на Сималенде')}">${escapeHtml(row.article)}</a>${name}`
@@ -238,7 +258,7 @@ function simaProfitCells({ row, calc }) {
 function simaProfitNotes(data, rows) {
   const l = data.lenardi,
     notes = [],
-    show = source => !simaProfit.supplier || simaProfit.supplier === source;
+    show = source => !simaProfit.suppliers.size || simaProfit.suppliers.has(source);
   if (show('sima'))
     notes.push(
       data.simaAt
@@ -281,13 +301,9 @@ function renderSimaProfit() {
     if (document.activeElement !== input) input.value = String(v.settings[key]);
   }
   $('#simaProfitCost').value = v.settings.cost;
-  $('#simaProfitFilter').innerHTML = SIMA_PROFIT_FILTERS.map(
-    ([value, label]) => `<option value="${value}"${value === v.filter ? ' selected' : ''}>${label}</option>`
-  ).join('');
+  simaProfitFilters.filters.refresh();
   $('#simaProfitDiffOnly').checked = Boolean(v.diffOnly);
-  $('#simaProfitSupplier').innerHTML = SIMA_PROFIT_SUPPLIERS.map(
-    ([value, label]) => `<option value="${value}"${value === v.supplier ? ' selected' : ''}>${label}</option>`
-  ).join('');
+  simaProfitFilters.suppliers.refresh();
   $$('#page-sima-profit [data-sima-sort]').forEach(th => {
     const active = th.dataset.simaSort === v.sort.key;
     th.classList.toggle('sorted', active);
@@ -315,7 +331,7 @@ function renderSimaProfit() {
     pageCount = Math.ceil(rows.length / v.pageSize);
   v.page = Math.min(Math.max(1, v.page), Math.max(1, pageCount));
   // Счётчики — по выбранному поставщику (поиск и отбор их не меняют); нули не показываются.
-  const scope = v.supplier ? all.filter(item => item.row.supplier.source === v.supplier) : all,
+  const scope = v.suppliers.size ? all.filter(item => v.suppliers.has(item.row.supplier.source)) : all,
     count = test => scope.filter(test).length;
   const counts = [
     ['убыток', count(({ calc }) => calc.profit != null && calc.profit < 0)],
@@ -654,16 +670,6 @@ document.addEventListener('input', event => {
 });
 document.addEventListener('change', event => {
   const v = simaProfit;
-  if (event.target.id === 'simaProfitFilter') {
-    v.filter = event.target.value;
-    v.page = 1;
-    renderSimaProfit();
-  }
-  if (event.target.id === 'simaProfitSupplier') {
-    v.supplier = event.target.value;
-    v.page = 1;
-    renderSimaProfit();
-  }
   if (event.target.id === 'simaProfitDiffOnly') {
     v.diffOnly = event.target.checked;
     v.page = 1;

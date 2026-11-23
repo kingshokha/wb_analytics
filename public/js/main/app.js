@@ -99,14 +99,17 @@ setTimeout(() => {
     state.adsKey = '';
     loadAds(true);
   };
-  $$('#adStatusOptions input').forEach(
-    input =>
-      (input.onchange = () => {
-        input.checked ? state.adStatuses.add(input.value) : state.adStatuses.delete(input.value);
-        $('#adStatusLabel').textContent = `Статусы (${state.adStatuses.size})`;
-        renderAdCampaigns();
-      })
-  );
+  // Статусы кампаний — общий компонент (js/common/multi-filter.js); по умолчанию активные и на паузе, ничего — все.
+  multiFilter('#adStatusFilter', {
+    label: 'Статусы',
+    allText: 'Ничего не выбрано — показаны все',
+    selected: () => state.adStatuses,
+    onChange: renderAdCampaigns
+  }).setItems([
+    { value: '9', label: 'Активные' },
+    { value: '11', label: 'На паузе' },
+    { value: '7', label: 'Завершённые' }
+  ]);
   document.addEventListener('click', event => {
     const nav = event.target.closest('.nav-item');
     if (nav && event.defaultPrevented) month.classList.toggle('hidden', nav.dataset.page !== 'ads');
@@ -183,7 +186,6 @@ function bind() {
     loadCurrentPage();
   };
   $('#search').oninput = renderOrders;
-  $('#statusFilter').onchange = renderOrders;
   $('#adSearch').oninput = renderAdCampaigns;
   $('#adStatus').onchange = renderAdCampaigns;
   $('#stockSearch').oninput = () => {

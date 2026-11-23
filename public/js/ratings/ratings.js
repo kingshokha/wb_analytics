@@ -8,7 +8,7 @@ const ratings = {
   key: '',
   error: '',
   search: '',
-  filter: '',
+  filters: new Set(),
   sort: { key: 'newFeedbacks', dir: 'desc' },
   page: 1,
   pageSize: pageSizeFor('ratings'),
@@ -83,6 +83,22 @@ function ratingIssues(item) {
     });
   return { issues, score, attention: score > 0 };
 }
+// «Отбор» — общий компонент (js/common/multi-filter.js): товар показывается, если подходит хотя бы под один выбранный пункт.
+const RATING_FILTERS = [
+  { value: 'new', label: 'С новыми отзывами', match: item => item.newFeedbacks > 0 },
+  { value: 'attention', label: 'Требуют внимания', match: item => item.attention },
+  { value: 'weak', label: 'Хуже 75% конкурентов', match: item => item.percentile != null && item.percentile < 25 },
+  { value: 'shadowed', label: 'Скрытые из каталога', match: item => item.shadowed }
+];
+const ratingFilter = multiFilter('#ratingFilter', {
+  label: 'Отбор',
+  allText: 'Все товары',
+  selected: () => ratings.filters,
+  onChange: () => {
+    ratings.page = 1;
+    if (ratings.data) renderRatingTable();
+  }
+});
 function ratingRows() {
   const items = (ratings.data?.items || []).map(item => {
     const negative = item.stars[1].count + item.stars[2].count;
@@ -98,14 +114,13 @@ function ratingRows() {
       status: item.shadowed ? 1 : 0
     };
   });
-  const term = ratings.search.trim().toLowerCase();
+  const term = ratings.search.trim().toLowerCase(),
+    chosen = RATING_FILTERS.filter(entry => ratings.filters.has(entry.value));
+  ratingFilter.setItems(RATING_FILTERS.map(({ value, label, match }) => ({ value, label, count: fmtNum(items.filter(match).length) })));
   const filtered = items.filter(
     item =>
       (!term || [item.title, item.vendorCode, item.nmId, item.subjectName, item.brandName].join(' ').toLowerCase().includes(term)) &&
-      (ratings.filter !== 'new' || item.newFeedbacks > 0) &&
-      (ratings.filter !== 'attention' || item.attention) &&
-      (ratings.filter !== 'weak' || (item.percentile != null && item.percentile < 25)) &&
-      (ratings.filter !== 'shadowed' || item.shadowed)
+      (!chosen.length || chosen.some(entry => entry.match(item)))
   );
   // Пустые значения (нет рейтинга, нет новых отзывов для доли) — всегда в конце.
   const { key, dir } = ratings.sort,
@@ -328,8 +343,8 @@ document.addEventListener('click', event => {
   if (focus) {
     ratings.search = focus.dataset.ratingFocus;
     $('#ratingSearch').value = ratings.search;
-    ratings.filter = '';
-    $('#ratingFilter').value = '';
+    ratings.filters.clear();
+    ratingFilter.refresh();
     ratings.page = 1;
     renderRatingTable();
     $('#page-ratings .stock-panel').scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -337,8 +352,8 @@ document.addEventListener('click', event => {
   }
   const filter = event.target.closest('[data-rating-filter]');
   if (filter) {
-    ratings.filter = filter.dataset.ratingFilter;
-    $('#ratingFilter').value = ratings.filter;
+    ratings.filters = new Set([filter.dataset.ratingFilter]);
+    ratingFilter.refresh();
     ratings.search = '';
     $('#ratingSearch').value = '';
     ratings.page = 1;
@@ -350,12 +365,6 @@ document.addEventListener('click', event => {
 document.addEventListener('input', event => {
   if (event.target.id !== 'ratingSearch') return;
   ratings.search = event.target.value;
-  ratings.page = 1;
-  if (ratings.data) renderRatingTable();
-});
-document.addEventListener('change', event => {
-  if (event.target.id !== 'ratingFilter') return;
-  ratings.filter = event.target.value;
   ratings.page = 1;
   if (ratings.data) renderRatingTable();
 });

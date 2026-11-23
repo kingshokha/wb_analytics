@@ -7,8 +7,8 @@ const returnsView = {
   key: '',
   error: '',
   search: '',
-  status: '',
-  type: '',
+  statuses: new Set(),
+  types: new Set(),
   sort: { key: 'orderDt', dir: 'desc' },
   page: 1,
   pageSize: pageSizeFor('returns'),
@@ -63,10 +63,36 @@ function returnLeftLabel(value) {
   return `<small class="returns-left ${days < 2 ? 'bad' : days < 5 ? 'warn' : ''}">осталось ${text}</small>`;
 }
 const returnAll = () => [...(returnsView.data?.active || []), ...(returnsView.data?.archive || [])];
+// Фильтры статуса и типа — общий компонент (js/common/multi-filter.js). «Активные» и «Не забраны» — группы статусов.
+const RETURN_STATUS_FILTER = [
+  { value: 'active', label: 'Активные' },
+  { value: 'ready', label: 'Готовы к выдаче' },
+  { value: 'transit', label: 'В пути' },
+  { value: 'done', label: 'Получены' },
+  { value: 'lost', label: 'Не забраны' }
+];
+const returnStatusMatch = (item, status) =>
+  status === 'active' ? item.active : status === 'lost' ? ['expired', 'cancel'].includes(item.status) : item.status === status;
+function returnFilterChanged() {
+  returnsView.page = 1;
+  if (returnsView.data) renderReturnTable();
+}
+const returnStatusFilter = multiFilter('#returnStatusFilter', {
+  label: 'Статусы',
+  allText: 'Все статусы',
+  selected: () => returnsView.statuses,
+  onChange: returnFilterChanged
+});
+const returnTypeFilter = multiFilter('#returnTypeFilter', {
+  label: 'Типы',
+  allText: 'Все типы',
+  selected: () => returnsView.types,
+  onChange: returnFilterChanged
+});
 const returnPeriodText = data => `${trendFullDate(data.period.from)} – ${trendFullDate(data.period.to)}`;
 function returnRows() {
   const term = returnsView.search.trim().toLowerCase(),
-    { status, type } = returnsView;
+    { statuses, types } = returnsView;
   const filtered = returnAll().filter(
     item =>
       (!term ||
@@ -86,9 +112,8 @@ function returnRows() {
           .join(' ')
           .toLowerCase()
           .includes(term)) &&
-      (!status ||
-        (status === 'active' ? item.active : status === 'lost' ? ['expired', 'cancel'].includes(item.status) : item.status === status)) &&
-      (!type || item.returnType === type)
+      (!statuses.size || [...statuses].some(status => returnStatusMatch(item, status))) &&
+      (!types.size || types.has(item.returnType))
   );
   // Пустые значения (ещё не готов, ещё не получен) — всегда в конце.
   const { key, dir } = returnsView.sort,
@@ -249,12 +274,20 @@ function renderReturnSummary(data) {
     ? `<h3>Чаще возвращают</h3>${top.map(({ item, count }) => `<button type="button" class="rating-attention-row" data-return-focus="${item.nmId}" title="Показать товар в таблице">${item.photo ? `<img class="stock-product-photo" src="${escapeHtml(item.photo)}" alt="" loading="lazy">` : '<i class="rating-photo-stub"></i>'}<span><strong>${escapeHtml(item.title)}</strong><small class="muted">${escapeHtml(item.vendorCode || '—')} · ${item.nmId}</small></span><b class="rating-attention-value">${fmtNum(count)}</b></button>`).join('')}`
     : '';
 }
+// Варианты фильтров — с числом возвратов; типы — те, что есть в загруженных возвратах (выбранные, которых больше нет, снимаются).
 function renderReturnTypeFilter() {
-  const select = $('#returnTypeFilter'),
-    types = [...new Set(returnAll().map(item => item.returnType))].sort((a, b) => a.localeCompare(b, 'ru'));
-  if (returnsView.type && !types.includes(returnsView.type)) returnsView.type = '';
-  select.innerHTML = `<option value="">Все типы</option>${types.map(type => `<option value="${escapeHtml(type)}">${escapeHtml(type)}</option>`).join('')}`;
-  select.value = returnsView.type;
+  const all = returnAll(),
+    typeCounts = new Map();
+  all.forEach(item => typeCounts.set(item.returnType, (typeCounts.get(item.returnType) || 0) + 1));
+  [...returnsView.types].forEach(type => typeCounts.has(type) || returnsView.types.delete(type));
+  returnTypeFilter.setItems(
+    [...typeCounts]
+      .sort((a, b) => String(a[0]).localeCompare(String(b[0]), 'ru'))
+      .map(([type, count]) => ({ value: type, label: type || 'Без типа', count: fmtNum(count) }))
+  );
+  returnStatusFilter.setItems(
+    RETURN_STATUS_FILTER.map(item => ({ ...item, count: fmtNum(all.filter(entry => returnStatusMatch(entry, item.value)).length) }))
+  );
 }
 const returnCopy = (value, title) =>
   value
@@ -323,10 +356,10 @@ function renderReturnTable() {
 }
 // Клик по ПВЗ, типу или товару в верхних блоках — показывает эти возвраты в таблице.
 function focusReturns({ search = '', status = '', type = '' }) {
-  Object.assign(returnsView, { search, status, type, page: 1 });
+  Object.assign(returnsView, { search, statuses: new Set(status ? [status] : []), types: new Set(type ? [type] : []), page: 1 });
   $('#returnSearch').value = search;
-  $('#returnStatusFilter').value = status;
-  $('#returnTypeFilter').value = type;
+  returnStatusFilter.refresh();
+  returnTypeFilter.refresh();
   renderReturnTable();
   $('#page-returns .stock-panel').scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
@@ -361,16 +394,4 @@ document.addEventListener('input', event => {
   returnsView.search = event.target.value;
   returnsView.page = 1;
   if (returnsView.data) renderReturnTable();
-});
-document.addEventListener('change', event => {
-  if (event.target.id === 'returnStatusFilter') {
-    returnsView.status = event.target.value;
-    returnsView.page = 1;
-    if (returnsView.data) renderReturnTable();
-  }
-  if (event.target.id === 'returnTypeFilter') {
-    returnsView.type = event.target.value;
-    returnsView.page = 1;
-    if (returnsView.data) renderReturnTable();
-  }
 });

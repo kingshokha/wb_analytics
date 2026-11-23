@@ -31,13 +31,15 @@ const cardsView = {
   errors: null,
   errorsKey: '',
   search: '',
-  subject: '',
-  brand: '',
-  color: '',
-  tag: '',
-  problem: '',
-  doc: '',
-  glue: '',
+  // Фильтры — наборы выбранных значений (общий компонент js/common/multi-filter.js): предметы и бренды — названия,
+  // цвета (none — без цвета), ярлыки — id, что проверить, документы, склейка (glued / single). Пустой набор — все.
+  subjects: new Set(),
+  brands: new Set(),
+  colors: new Set(),
+  tags: new Set(),
+  problems: new Set(),
+  docs: new Set(),
+  glue: new Set(),
   extras: { key: '', ratings: null, prices: null, ratingsError: '', pricesError: '', poll: 0 },
   sort: { key: 'updatedAt', dir: 'desc' },
   page: 1,
@@ -128,9 +130,9 @@ function cardDocOptions(cards, selected) {
   const fixed = ['kiz', 'tnved', 'fail', 'pending'],
     group = key => (fixed.includes(key) ? 0 : key.startsWith('missing:') ? 1 : 2);
   return [...counts]
-    .filter(([key, count]) => key === 'kiz' || key === 'tnved' || count > 0 || key === selected)
+    .filter(([key, count]) => key === 'kiz' || key === 'tnved' || count > 0 || selected.has(key))
     .sort((a, b) => group(a[0]) - group(b[0]) || (group(a[0]) ? b[1] - a[1] : fixed.indexOf(a[0]) - fixed.indexOf(b[0])))
-    .map(([key, count]) => [key, `${cardDocLabel(key)} · ${fmtNum(count)}`]);
+    .map(([key, count]) => ({ value: key, label: cardDocLabel(key), count: fmtNum(count) }));
 }
 const cardWord = n => {
   const a = n % 100,
@@ -155,12 +157,12 @@ async function loadCards(force = false, silent = false) {
       data: null,
       trash: null,
       errors: null,
-      subject: '',
-      brand: '',
-      color: '',
-      tag: '',
-      doc: '',
-      glue: '',
+      subjects: new Set(),
+      brands: new Set(),
+      colors: new Set(),
+      tags: new Set(),
+      docs: new Set(),
+      glue: new Set(),
       page: 1
     });
     cardsView.selected.clear();
@@ -339,14 +341,16 @@ function cardExtraCell(card, kind) {
   return `<td><strong class="card-price">${fmtRub(card.price)}</strong></td>`;
 }
 // Фильтры страницы для сервера: пока весь список грузится из WB, карточки по ним он грузит отдельно и отдаёт первыми.
-// Предмет на странице выбран по названию — серверу нужен его номер (subjectID).
+// Предметы на странице выбраны по названию — серверу нужны их номера (subjectIDs через запятую); бренды — JSON-массив.
 function cardsFilterQuery() {
   const v = cardsView,
     query = {};
-  const subjectID = v.subject && (v.data?.cards || []).find(card => card.subjectName === v.subject)?.subjectID;
-  if (subjectID) query.subjectID = String(subjectID);
-  if (v.brand) query.brand = v.brand;
-  if (v.tag) query.tagID = v.tag;
+  const subjectIDs = [
+    ...new Set((v.data?.cards || []).filter(card => v.subjects.has(card.subjectName)).map(card => card.subjectID))
+  ].filter(Boolean);
+  if (subjectIDs.length) query.subjectIDs = subjectIDs.join(',');
+  if (v.brands.size) query.brands = JSON.stringify([...v.brands]);
+  if (v.tags.size) query.tagIDs = [...v.tags].join(',');
   // Склейки страницы, которую сейчас видно: их оценки сервер загрузит первыми.
   if (v.pageImts) query.imts = v.pageImts;
   return query;
@@ -383,6 +387,70 @@ function cardProblem(card, key) {
 }
 // Строка поиска по карточке собирается один раз на загрузку — при тысячах карточек ввод в поиск не тормозит.
 const cardSearchText = new WeakMap();
+// Фильтры над таблицей — общий компонент (js/common/multi-filter.js). Предметы, бренды и ярлыки ещё и уходят серверу:
+// пока весь список грузится из WB, карточки по ним он загрузит первыми. Смена предметов снимает выбор карточек.
+function cardFilterChanged(key) {
+  cardsView.page = 1;
+  if (key === 'subjects') {
+    cardsView.selected.clear();
+    cardsView.lastSelected = null;
+  }
+  renderCards();
+  if (cardsView.data?.refreshing && ['subjects', 'brands', 'tags'].includes(key)) loadCards(false, true);
+}
+const cardFilter = (target, label, key) =>
+  multiFilter(target, { label, selected: () => cardsView[key], onChange: () => cardFilterChanged(key) });
+const cardFilters = {
+  subjects: cardFilter('#cardSubjectFilter', 'Предметы', 'subjects'),
+  brands: cardFilter('#cardBrandFilter', 'Бренды', 'brands'),
+  colors: cardFilter('#cardColorFilter', 'Цвета', 'colors'),
+  tags: cardFilter('#cardTagFilter', 'Ярлыки', 'tags'),
+  problems: cardFilter('#cardProblemFilter', 'Что проверить', 'problems'),
+  docs: cardFilter('#cardDocFilter', 'Документы', 'docs'),
+  glue: cardFilter('#cardGlueFilter', 'Склейка', 'glue')
+};
+// Варианты — из карточек кабинета, с числом карточек; выбранное значение остаётся в списке, даже если карточек с ним нет.
+function renderCardFilters(cards, data) {
+  const v = cardsView;
+  const counted = (values, selected) => {
+    const counts = new Map();
+    values.forEach(value => value && counts.set(value, (counts.get(value) || 0) + 1));
+    selected.forEach(value => counts.has(value) || counts.set(value, 0));
+    return [...counts]
+      .sort((a, b) => a[0].localeCompare(b[0], 'ru'))
+      .map(([value, count]) => ({ value, label: value, count: fmtNum(count) }));
+  };
+  const subjects = cards.map(card => card.subjectName),
+    brands = cards.map(card => card.brand);
+  cardFilters.subjects.setItems(counted(subjects, v.subjects));
+  cardFilters.brands.setItems(counted(brands, v.brands));
+  // Цвета — «Без цвета» последним, если такие карточки есть.
+  const colors = counted(
+    cards.flatMap(card => card.colors || []),
+    [...v.colors].filter(color => color !== 'none')
+  );
+  const noColor = cards.filter(card => !(card.colors || []).length).length;
+  if (noColor || v.colors.has('none')) colors.push({ value: 'none', label: 'Без цвета', count: fmtNum(noColor) });
+  cardFilters.colors.setItems(colors);
+  cardFilters.tags.setItems(
+    (data?.tags || []).map(tag => ({
+      value: String(tag.id),
+      label: tag.name,
+      count: fmtNum(cards.filter(card => card.tags.some(item => String(item.id) === String(tag.id))).length)
+    }))
+  );
+  cardFilters.problems.setItems(
+    CARD_PROBLEMS.slice(1).map(([value, label]) => ({ value, label, count: fmtNum(cards.filter(card => cardProblem(card, value)).length) }))
+  );
+  cardFilters.docs.setItems(cardDocOptions(cards, v.docs));
+  const glued = cards.filter(card => card.groupSize > 1).length;
+  cardFilters.glue.setItems([
+    { value: 'glued', label: 'Со склейкой', count: fmtNum(glued) },
+    { value: 'single', label: 'Без склейки', count: fmtNum(cards.length - glued) }
+  ]);
+}
+// Выбрано только «Со склейкой»: карточки одной склейки идут подряд под строкой группы.
+const cardGluedOnly = () => cardsView.glue.size === 1 && cardsView.glue.has('glued');
 // Фильтр «Цвет»: карточка подходит, если среди её цветов есть выбранный; «none» — карточки без цвета.
 const cardColorMatch = (card, color) => !color || (color === 'none' ? !(card.colors || []).length : (card.colors || []).includes(color));
 const cardHaystack = card => {
@@ -400,13 +468,13 @@ function cardRows() {
     term = v.search.trim().toLowerCase();
   const rows = (v.data?.cards || []).filter(
     card =>
-      (!v.subject || card.subjectName === v.subject) &&
-      (!v.brand || card.brand === v.brand) &&
-      cardColorMatch(card, v.color) &&
-      (!v.tag || card.tags.some(tag => String(tag.id) === v.tag)) &&
-      cardProblem(card, v.problem) &&
-      (!v.doc || cardDocKeys(card).includes(v.doc)) &&
-      (!v.glue || (v.glue === 'glued') === card.groupSize > 1) &&
+      (!v.subjects.size || v.subjects.has(card.subjectName)) &&
+      (!v.brands.size || v.brands.has(card.brand)) &&
+      (!v.colors.size || [...v.colors].some(color => cardColorMatch(card, color))) &&
+      (!v.tags.size || card.tags.some(tag => v.tags.has(String(tag.id)))) &&
+      (!v.problems.size || [...v.problems].some(key => cardProblem(card, key))) &&
+      (!v.docs.size || cardDocKeys(card).some(key => v.docs.has(key))) &&
+      (!v.glue.size || v.glue.has(card.groupSize > 1 ? 'glued' : 'single')) &&
       (!term || cardHaystack(card).includes(term))
   );
   const dir = v.sort.dir === 'asc' ? 1 : -1,
@@ -420,7 +488,7 @@ function cardRows() {
       dir * (typeof av === 'number' && typeof bv === 'number' ? av - bv : String(av).localeCompare(String(bv), 'ru', { numeric: true }))
     );
   });
-  if (v.glue !== 'glued') return rows;
+  if (!cardGluedOnly()) return rows;
   // «Со склейкой»: карточки одной группы подряд. Группы — в порядке сортировки их первой карточки, внутри — тоже по сортировке.
   const groups = new Map();
   rows.forEach(card => {
@@ -552,41 +620,7 @@ function renderCards() {
   if (v.tab === 'trash') return renderCardTrash();
   if (v.tab === 'errors') return renderCardErrors();
   $('#emptyCardsTitle').textContent = 'Карточек не найдено';
-  // Фильтры: предметы, бренды, ярлыки — из данных; выбранное значение остаётся в списке.
-  const options = (id, label, values, selected) => {
-    $(id).innerHTML =
-      `<option value="">${label}</option>${values.map(([value, text]) => `<option value="${escapeHtml(value)}"${String(value) === selected ? ' selected' : ''}>${escapeHtml(text)}</option>`).join('')}`;
-  };
-  const uniq = list => [...new Set(list.filter(Boolean))].sort((a, b) => a.localeCompare(b, 'ru')).map(value => [value, value]);
-  options('#cardSubjectFilter', 'Все предметы', uniq(cards.map(card => card.subjectName)), v.subject);
-  options('#cardBrandFilter', 'Все бренды', uniq(cards.map(card => card.brand)), v.brand);
-  // Цвета — со счётчиками; «Без цвета» — последним, если такие карточки есть.
-  const colorCounts = new Map();
-  let noColor = 0;
-  cards.forEach(card => {
-    const list = card.colors || [];
-    if (!list.length) noColor++;
-    list.forEach(color => colorCounts.set(color, (colorCounts.get(color) || 0) + 1));
-  });
-  if (v.color && v.color !== 'none' && !colorCounts.has(v.color)) colorCounts.set(v.color, 0);
-  options(
-    '#cardColorFilter',
-    'Все цвета',
-    [
-      ...[...colorCounts].sort((a, b) => a[0].localeCompare(b[0], 'ru')).map(([color, count]) => [color, `${color} · ${fmtNum(count)}`]),
-      ...(noColor || v.color === 'none' ? [['none', `Без цвета · ${fmtNum(noColor)}`]] : [])
-    ],
-    v.color
-  );
-  options(
-    '#cardTagFilter',
-    'Все ярлыки',
-    (data?.tags || []).map(tag => [String(tag.id), tag.name]),
-    v.tag
-  );
-  options('#cardProblemFilter', 'Все карточки', CARD_PROBLEMS.slice(1), v.problem);
-  options('#cardDocFilter', 'Документы: все', cardDocOptions(cards, v.doc), v.doc);
-  $('#cardGlueFilter').value = v.glue;
+  renderCardFilters(cards, data);
   $('#cardsTitle').textContent = 'Карточки товаров';
   if (!data) {
     $('#cardsCount').textContent = v.error ? `Не удалось загрузить: ${v.error}` : 'Загрузка карточек…';
@@ -644,9 +678,9 @@ function renderCards() {
     button.querySelector('.card-sort-alt-arrow').textContent =
       v.sort.key === button.dataset.cardSortAlt ? (v.sort.dir === 'asc' ? '↑' : '↓') : '↕';
   });
-  // Галочки — у всех карточек. «Выбрать все» — все карточки по фильтрам, на всех страницах. selecting — выбран предмет:
-  // тогда выбранные без склейки можно склеить.
-  const selecting = Boolean(v.subject),
+  // Галочки — у всех карточек. «Выбрать все» — все карточки по фильтрам, на всех страницах. Выбранные без склейки
+  // можно склеить при любом выборе предметов: план склейки раскладывает карточки по предметам (в склейке — один предмет).
+  const selecting = true,
     free = rows.filter(cardSelectable).length,
     picked = cardPicked(rows).length,
     all = $('#cardSelectAll');
@@ -654,9 +688,9 @@ function renderCards() {
   all.indeterminate = picked > 0 && picked < rows.length;
   all.disabled = !rows.length;
   all.title = rows.length ? `Выбрать все по фильтрам: ${fmtNum(rows.length)}` : 'Карточек нет';
-  // Без предмета — «Склеить по 30…» сразу по всем предметам (каждый отдельно).
+  // «Склеить по 30…» — все карточки без склейки по текущим фильтрам, каждый предмет отдельно.
   const glueAll = $('#cardGlueAll');
-  glueAll.classList.toggle('hidden', selecting);
+  glueAll.classList.remove('hidden');
   glueAll.disabled = !free;
   glueAll.title = free ? `Карточек без склейки по фильтрам: ${fmtNum(free)} — склеить по предметам` : 'Карточек без склейки нет';
   renderCardSelectBar(rows, selecting);
@@ -667,7 +701,7 @@ function renderCards() {
   };
   // В режиме «Со склейкой» над каждой группой — строка группы (и в начале страницы, если группа продолжается с прошлой).
   const pageRows = rows.slice((v.page - 1) * v.pageSize, v.page * v.pageSize),
-    glued = v.glue === 'glued',
+    glued = cardGluedOnly(),
     shown = new Map();
   v.pageImts = [...new Set(pageRows.map(card => card.imtID))].join(',');
   if (glued) rows.forEach(card => shown.set(card.imtID, (shown.get(card.imtID) || 0) + 1));
@@ -908,28 +942,6 @@ document.addEventListener('input', event => {
   if (cardsView.data) renderCards();
 });
 document.addEventListener('change', event => {
-  const map = {
-      cardSubjectFilter: 'subject',
-      cardBrandFilter: 'brand',
-      cardColorFilter: 'color',
-      cardTagFilter: 'tag',
-      cardProblemFilter: 'problem',
-      cardDocFilter: 'doc',
-      cardGlueFilter: 'glue'
-    },
-    key = map[event.target.id];
-  if (key) {
-    cardsView[key] = event.target.value;
-    cardsView.page = 1;
-    if (key === 'subject') {
-      cardsView.selected.clear();
-      cardsView.lastSelected = null;
-    }
-    renderCards();
-    // Список ещё грузится из WB — сразу попросить карточки по новому фильтру.
-    if (cardsView.data?.refreshing && ['subject', 'brand', 'tag'].includes(key)) loadCards(false, true);
-    return;
-  }
   const one = event.target.closest('[data-card-select]');
   if (one) {
     const v = cardsView,

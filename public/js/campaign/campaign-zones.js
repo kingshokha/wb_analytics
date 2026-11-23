@@ -195,8 +195,7 @@ function zoneDates(from, to) {
 function renderZones() {
   const head = $('#zonesHead'),
     body = $('#zonesBody'),
-    note = $('#zonesNote'),
-    select = $('#zonesProduct');
+    note = $('#zonesNote');
   head.innerHTML =
     `<tr class="zones-group"><th></th><th colspan="6">Статистика РК</th><th colspan="7" class="zones-split">Эффективность РК (товар + заказы других товаров после клика)</th></tr>` +
     `<tr><th>Дата</th>${ZONE_COLUMNS.map((column, index) => `<th${index === 6 ? ' class="zones-split"' : ''}${column.title ? ` title="${esc(column.title)}"` : ''}>${column.label}</th>`).join('')}</tr>`;
@@ -216,8 +215,18 @@ function renderZones() {
   };
   if (zones.product && zones.product !== ZONE_OTHER && !articles.own.includes(zones.product) && !articles.others.includes(zones.product))
     zones.product = '';
-  select.innerHTML = `<option value="">Все артикулы</option>${articles.own.map(nm => `<option value="${esc(nm)}">${esc(label(nm))}</option>`).join('')}${articles.others.length ? `<option value="${ZONE_OTHER}">Другие товары (заказы после клика): ${articles.others.length}</option>` : ''}`;
-  select.value = zones.product;
+  zonesProductFilter.setItems([
+    ...articles.own.map(nm => {
+      const product = state.setupProducts?.get(nm) || state.productDaily.find(row => String(row.nmId) === nm);
+      return {
+        value: nm,
+        label: product?.vendorCode || nm,
+        hint: [nm, product?.name || data.names?.[nm]].filter(Boolean).join(' · '),
+        title: label(nm)
+      };
+    }),
+    ...(articles.others.length ? [{ value: ZONE_OTHER, label: `Другие товары (заказы после клика): ${articles.others.length}` }] : [])
+  ]);
   const nms = zoneSelection(articles);
   const list = received
     .map(day => ({ date: day.date, ...zoneDay(day, nms) }))
@@ -294,9 +303,17 @@ $('#summaryZoneSwitch').addEventListener('click', event => {
     .forEach(item => item.setAttribute('aria-pressed', String(item === button)));
   if (state.summaryCampaign) renderSummary(state.summaryCampaign);
 });
-$('#zonesProduct').addEventListener('change', event => {
-  zones.product = event.target.value;
-  renderZones();
+// Выбор артикула — общий компонент (js/common/multi-filter.js) в режиме одного значения, с поиском.
+const zonesProductFilter = multiFilter('#zonesProduct', {
+  single: true,
+  label: 'Артикул',
+  allLabel: 'Все артикулы',
+  placeholder: 'Поиск по артикулу или названию',
+  selected: () => zones.product,
+  onChange: value => {
+    zones.product = value;
+    renderZones();
+  }
 });
 $('#zonesCollapse').addEventListener('click', () => {
   zones.collapsed = !zones.collapsed;
