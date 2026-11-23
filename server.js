@@ -60,6 +60,7 @@ const {
   sheetSiteCabinet,
   splitSheetByCabinet,
   syncSheet,
+  syncSheetOrders,
   withoutClubPriceRepeats
 } = require('./server/sheet/sheet');
 const { todoFields, todoNmId } = require('./server/todo/todo');
@@ -100,10 +101,13 @@ if (require.main === module)
   server.listen(PORT, '127.0.0.1', () => {
     console.log(`WB Analytics: http://127.0.0.1:${PORT}`);
     // Копия Google Таблицы на компьютере: старая раскладка — по кабинетам, дозагрузка вскоре после запуска и дальше раз в час.
+    // Заказы — отдельной дозагрузкой (лист «Заказы»), чтобы окна истории её не ждали.
     splitSheetByCabinet();
     if (sheetConfigured()) {
       setTimeout(syncSheet, 20_000);
       setInterval(syncSheet, SHEET_SYNC_EVERY);
+      setTimeout(syncSheetOrders, 60_000);
+      setInterval(syncSheetOrders, SHEET_SYNC_EVERY);
     }
     simaLand.start();
   });

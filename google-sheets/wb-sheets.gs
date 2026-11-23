@@ -143,6 +143,7 @@ function doGet(e) {
   const params = (e && e.parameter) || {}, key = PropertiesService.getScriptProperties().getProperty('WB_SITE_KEY');
   if (!key || params.key !== key) return jsonOutput({ error: 'Неверный ключ доступа к таблице' });
   if (params.sync) return jsonOutput(syncExport(params));
+  if (params.orders) return jsonOutput(ordersExport(params));
   const book = SpreadsheetApp.getActive(), log = book.getSheetByName(SHEET_NAMES.log);
   const list = function (value) { return String(value || '').split(',').map(function (item) { return item.trim(); }).filter(String); };
   const ids = list(params.id), sections = list(params.sections), days = Number(params.days) || 0, fromTime = days > 0 ? Date.now() - days * 86400000 : 0;
@@ -185,6 +186,25 @@ function syncExport(params) {
     .map(function (row) { return { cabinet: row[0], type: row[1], warehouse: row[2], nmId: String(row[3]), vendorCode: row[4], name: row[5], quantity: Number(row[6]) || 0, updatedAt: isoDate(row[7]) }; });
   const since = log && log.getLastRow() > 1 ? isoDate(log.getRange(log.getLastRow(), 1).getValue()) : null;
   return { items: items.slice(offset, offset + limit), total: items.length, more: offset + limit < items.length, current: current, since: since, now: new Date().toISOString() };
+}
+// Выгрузка «Заказов» для копии на компьютере (сервер сайта, data/Sheet/<кабинет>/Заказы): ?orders=1&after=<ISO>&offset=0&limit=5000.
+// Строки, изменённые не раньше after (столбец «Обновлено»; без after — все), порциями; more — есть ли следующая порция.
+// Поле orders (а не items) — чтобы сайт отличил ответ от старой версии скрипта, которая параметр orders не знает.
+function ordersExport(params) {
+  const target = SpreadsheetApp.getActive().getSheetByName(SHEET_NAMES.orders);
+  const after = params.after ? new Date(params.after).getTime() : 0, offset = Math.max(0, Number(params.offset) || 0);
+  const limit = Math.min(20000, Math.max(1, Number(params.limit) || 5000));
+  if (!target || target.getLastRow() < 2) return { orders: [], more: false };
+  const updated = ORDER_COLUMNS.updated;
+  const rows = target.getRange(2, 1, target.getLastRow() - 1, ORDER_HEADERS.length).getValues()
+    .filter(function (row) { return row[1] !== '' && (!after || (row[updated] instanceof Date && row[updated].getTime() >= after)); });
+  const page = rows.slice(offset, offset + limit).map(function (row) {
+    return { cabinet: row[0], srid: String(row[1]), nmId: row[2], vendorCode: row[3], title: row[4], chrtId: row[5], warehouse: row[6], warehouseType: row[7],
+      warehouseRegion: row[8], city: row[9], district: row[10], saleType: row[11], price: row[12], createdAt: isoDate(row[13]), buyoutAt: isoDate(row[14]),
+      cancelAt: isoDate(row[15]), cancelType: row[16], returnAt: isoDate(row[17]), returnDefectiveAt: isoDate(row[18]), status: row[19],
+      statusAt: isoDate(row[20]), updatedAt: isoDate(row[21]) };
+  });
+  return { orders: page, more: offset + page.length < rows.length };
 }
 function jsonOutput(value) { return ContentService.createTextOutput(JSON.stringify(value)).setMimeType(ContentService.MimeType.JSON); }
 function isoDate(value) { return value instanceof Date ? value.toISOString() : (value ? String(value) : null); }

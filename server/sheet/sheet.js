@@ -355,6 +355,105 @@ function syncSheet() {
   })();
   return sheetSyncState.running;
 }
+// --- «Заказы» из таблицы: копия на компьютере ---
+// Лист «Заказы» (google-sheets/wb-sheets.gs): строка на заказ, статусы дописываются в той же строке. Копия:
+// data/Sheet/<кабинет>/Заказы/<ГГГГ-ММ>.json — месяц оформления заказа, { items: [заказ, …] }. Заказ, который уже
+// есть в копии, заменяется более свежей строкой (по «Обновлено»); заказы из копии не удаляются никогда.
+// Дозагрузка — ?orders=1&after=… (строки, изменённые после прошлой дозагрузки), отметка — data/Sheet/orders-sync.json.
+const SHEET_ORDERS = 'Заказы';
+const sheetOrderMonth = order => String(order.createdAt || order.statusAt || order.updatedAt || '').slice(0, 7);
+function saveSheetOrders(orders = [], dir = SHEET_DIR) {
+  const groups = new Map(),
+    folderOf = sheetFolderOf(dir);
+  for (const order of orders) {
+    if (!order?.srid || !/^\d{4}-\d{2}$/.test(sheetOrderMonth(order))) continue;
+    const group = `${folderOf(order.cabinet)}|${sheetOrderMonth(order)}`;
+    if (!groups.has(group)) groups.set(group, []);
+    groups.get(group).push(order);
+  }
+  let added = 0,
+    updated = 0;
+  for (const [group, list] of groups) {
+    const [folder, month] = group.split('|'),
+      file = path.join(dir, folder, SHEET_ORDERS, `${month}.json`);
+    const items = readSheetJson(file, { items: [] }).items || [],
+      bySrid = new Map(items.map((item, index) => [String(item.srid), index]));
+    let changed = false;
+    for (const order of list) {
+      const index = bySrid.get(String(order.srid));
+      if (index === undefined) {
+        bySrid.set(String(order.srid), items.length);
+        items.push(order);
+        added++;
+        changed = true;
+      } else if (
+        String(order.updatedAt || '') >= String(items[index].updatedAt || '') &&
+        JSON.stringify(order) !== JSON.stringify(items[index])
+      ) {
+        items[index] = order;
+        updated++;
+        changed = true;
+      }
+    }
+    if (changed) {
+      items.sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
+      writeSheetJson(file, { items });
+    }
+  }
+  return { added, updated };
+}
+const sheetOrdersState = { running: null };
+function syncSheetOrders() {
+  if (!sheetConfigured()) return Promise.resolve({ configured: false });
+  if (sheetOrdersState.running) return sheetOrdersState.running;
+  sheetOrdersState.running = (async () => {
+    const syncFile = path.join(SHEET_DIR, 'orders-sync.json'),
+      saved = readSheetJson(syncFile, {});
+    let added = 0,
+      updated = 0;
+    try {
+      // Минус минута: строки одного обновления таблицы пишутся с одним временем — повторы безвредны (заказ заменяется).
+      const after = saved.cursor ? new Date(Date.parse(saved.cursor) - 60_000).toISOString() : '';
+      let cursor = saved.cursor || '';
+      for (let offset = 0, page = 0; page < 100; page++) {
+        const target = new URL(String(process.env.WB_SHEET_URL).trim());
+        target.searchParams.set('key', String(process.env.WB_SHEET_KEY).trim());
+        target.searchParams.set('orders', '1');
+        if (after) target.searchParams.set('after', after);
+        target.searchParams.set('offset', String(offset));
+        target.searchParams.set('limit', '5000');
+        let data;
+        try {
+          data = await (await fetch(target, { redirect: 'follow', signal: AbortSignal.timeout(180_000) })).json();
+        } catch (error) {
+          throw new Error(`Google Таблица не ответила: ${error.message}`);
+        }
+        if (data?.error) throw new Error(`Google Таблица: ${data.error}`);
+        // Старая версия скрипта параметр orders не знает и отдаёт историю (items) — это не заказы.
+        if (!Array.isArray(data?.orders))
+          throw new Error('скрипт таблицы не отдаёт заказы — обновите развёртывание веб-приложения (google-sheets/README.md)');
+        const result = saveSheetOrders(data.orders);
+        added += result.added;
+        updated += result.updated;
+        for (const order of data.orders) if (String(order.updatedAt || '') > cursor) cursor = String(order.updatedAt);
+        if (!data.more || !data.orders.length) break;
+        offset += data.orders.length;
+      }
+      const result = { cursor, syncedAt: new Date().toISOString(), lastError: '', added, updated };
+      writeSheetJson(syncFile, result);
+      return result;
+    } catch (error) {
+      const result = { ...saved, lastError: error.message, failedAt: new Date().toISOString() };
+      writeSheetJson(syncFile, result);
+      console.error('Google Таблица, заказы:', error.message);
+      return { ...result, added, updated };
+    } finally {
+      sheetOrdersState.running = null;
+    }
+  })();
+  return sheetOrdersState.running;
+}
+
 // /api/sheet-history: source=local — сразу с компьютера; source=sheet — сначала дозагрузка из таблицы.
 // added — сколько новых строк скачано за эту дозагрузку (по всей таблице), syncError — почему не получилось.
 // all — раздел «История изменений»: все строки всех разделов (или выбранных) без текущих остатков, до 200 000 новых
@@ -426,6 +525,7 @@ module.exports = {
   readSheetHistory,
   readSheetJson,
   saveSheetCurrent,
+  saveSheetOrders,
   saveSheetRows,
   sheetAdsTrackingSince,
   sheetCabinetFilter,
@@ -435,5 +535,6 @@ module.exports = {
   sheetSiteCabinet,
   splitSheetByCabinet,
   syncSheet,
+  syncSheetOrders,
   withoutClubPriceRepeats
 };
