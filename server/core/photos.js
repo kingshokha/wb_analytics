@@ -13,11 +13,15 @@ const PHOTO_TYPES = { '.webp': 'image/webp', '.jpg': 'image/jpeg', '.jpeg': 'ima
 const photoPending = new Map();
 function cardPhoto(card = {}) {
   const photo = card.photos?.[0] || {};
-  return localPhoto(photo.c246x328 || photo.tm || photo.square || photo.big || '');
+  return localPhoto(photo.c246x328 || photo.tm || photo.square || photo.big || '', card.updatedAt);
 }
 
 // Фото карточек с CDN WB идут через /api/photo/...: сервер один раз скачивает их в data/Photos
 // и дальше отдаёт с диска, раз в PHOTO_REFRESH_MS тихо обновляя (продавец мог заменить фото под тем же адресом).
+// Заменённое фото WB кладёт под тот же адрес, поэтому к адресу добавляется версия ?v= — updatedAt карточки: при замене
+// фото в кабинете WB он меняется (сверено 23.11.2026 по Last-Modified фото и updatedAt 10 647 карточек). Новая версия —
+// сервер скачивает фото заново, а браузер не берёт старое из своего кэша. ?r= (кнопка «Обновить» в карточке) —
+// скачать заново в любом случае.
 function isWbPhotoUrl(value) {
   try {
     const target = new URL(value);
@@ -31,17 +35,29 @@ function isWbPhotoUrl(value) {
   }
 }
 
-function localPhoto(url) {
-  return isWbPhotoUrl(url) ? `/api/photo/${url.slice('https://'.length)}` : url;
+function localPhoto(url, version = '') {
+  if (!isWbPhotoUrl(url)) return url;
+  return `/api/photo/${url.slice('https://'.length)}${version ? `?v=${encodeURIComponent(version)}` : ''}`;
 }
 
-function downloadPhoto(source, file) {
+// Версия скачанной копии лежит рядом: <файл>.v. У копий, скачанных до версий, его нет.
+const photoVersion = file => {
+  try {
+    return fs.readFileSync(`${file}.v`, 'utf8');
+  } catch {
+    return '';
+  }
+};
+
+// fresh — скачать мимо промежуточных кэшей CDN: к адресу добавляется метка, WB отдаёт по ней тот же файл.
+function downloadPhoto(source, file, version = '', fresh = false) {
   if (!photoPending.has(file))
     photoPending.set(
       file,
       (async () => {
         try {
-          const response = await fetch(source, { signal: AbortSignal.timeout(15_000), headers: { 'User-Agent': 'wb-analytics/1.0' } });
+          const target = fresh ? `${source}?t=${Date.now()}` : source;
+          const response = await fetch(target, { signal: AbortSignal.timeout(15_000), headers: { 'User-Agent': 'wb-analytics/1.0' } });
           if (!response.ok) throw apiError(response.status === 404 ? 404 : 502, `Фото WB не загрузилось (${response.status})`);
           const body = Buffer.from(await response.arrayBuffer());
           if (!body.length || body.length > PHOTO_MAX_BYTES) throw apiError(502, 'Фото WB пустое или слишком большое');
@@ -54,7 +70,9 @@ function downloadPhoto(source, file) {
           } catch (error) {
             fs.rmSync(temp, { force: true });
             if (!fs.existsSync(file)) throw error;
+            return;
           }
+          if (version) fs.writeFileSync(`${file}.v`, version);
         } finally {
           photoPending.delete(file);
         }
@@ -69,8 +87,20 @@ async function servePhoto(res, url) {
   const ext = path.extname(new URL(source).pathname).toLowerCase();
   const file = path.join(PHOTOS_DIR, crypto.createHash('sha1').update(source).digest('hex') + ext);
   const stat = fs.statSync(file, { throwIfNoEntry: false });
-  if (!stat) await downloadPhoto(source, file);
-  else if (Date.now() - stat.mtimeMs > PHOTO_REFRESH_MS) downloadPhoto(source, file).catch(() => {});
+  const version = url.searchParams.get('v') || '',
+    force = url.searchParams.has('r');
+  let outdated = false;
+  if (stat && version) {
+    const stored = photoVersion(file);
+    // Копия без версии, скачанная после изменения карточки, уже свежая: только запоминаем версию.
+    if (!stored && Date.parse(version) <= stat.mtimeMs) fs.writeFileSync(`${file}.v`, version);
+    else outdated = stored !== version;
+  }
+  if (!stat) await downloadPhoto(source, file, version);
+  else if (force || outdated)
+    // Не скачалось — отдаём прежнюю копию: лучше старое фото, чем пустое место.
+    await downloadPhoto(source, file, version, true).catch(() => {});
+  else if (Date.now() - stat.mtimeMs > PHOTO_REFRESH_MS) downloadPhoto(source, file, version).catch(() => {});
   res.writeHead(200, { 'Content-Type': PHOTO_TYPES[ext], 'Cache-Control': 'public, max-age=86400, stale-while-revalidate=604800' });
   fs.createReadStream(file).pipe(res);
 }

@@ -559,6 +559,14 @@ test('фото с CDN WB отдаются через локальный кэш, 
   assert.equal(localPhoto(''), '');
 });
 
+test('к фото карточки добавляется версия — дата изменения карточки', () => {
+  assert.equal(
+    localPhoto('https://basket-47.wbbasket.ru/vol1/part1/1/images/c246x328/1.webp', '2026-11-21T00:26:00.123Z'),
+    '/api/photo/basket-47.wbbasket.ru/vol1/part1/1/images/c246x328/1.webp?v=2026-11-21T00%3A26%3A00.123Z'
+  );
+  assert.equal(localPhoto('https://basket.example/card.webp', '2026-11-21'), 'https://basket.example/card.webp');
+});
+
 test('суммирует показатели воронки разных товаров', () => {
   const result = extractFunnel({
     data: {

@@ -302,7 +302,7 @@ module.exports = function createContentCards({
       brand: card.brand || '',
       subjectID: card.subjectID,
       subjectName: card.subjectName || '',
-      photo: localPhoto(photo.c246x328 || photo.tm || photo.square || photo.big || ''),
+      photo: localPhoto(photo.c246x328 || photo.tm || photo.square || photo.big || '', card.updatedAt),
       photos: (card.photos || []).length,
       video: Boolean(card.video),
       sizes: (card.sizes || []).map(size => ({ techSize: size.techSize || '', wbSize: size.wbSize || '', skus: size.skus || [] })),
@@ -612,7 +612,7 @@ module.exports = function createContentCards({
             nmID: item.nmID,
             vendorCode: item.vendorCode,
             title: item.title,
-            photo: localPhoto(item.photos?.[0]?.tm || item.photos?.[0]?.c246x328 || ''),
+            photo: localPhoto(item.photos?.[0]?.tm || item.photos?.[0]?.c246x328 || '', item.updatedAt),
             feedback: itemFeedback(item.nmID)
           }));
     const groupSizes = new Map();
@@ -626,7 +626,7 @@ module.exports = function createContentCards({
             imtID: item.imtID,
             vendorCode: item.vendorCode,
             title: item.title,
-            photo: localPhoto(item.photos?.[0]?.tm || item.photos?.[0]?.c246x328 || ''),
+            photo: localPhoto(item.photos?.[0]?.tm || item.photos?.[0]?.c246x328 || '', item.updatedAt),
             groupSize: groupSizes.get(item.imtID) || 1
           }));
     return {

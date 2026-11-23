@@ -68,6 +68,16 @@
   }
   const post = (url, body) => api(url, { method: 'POST', body: JSON.stringify({ cabinet, confirm: true, ...body }) });
 
+  // Фото WB показываем через сервер сайта с версией — датой изменения карточки (server/core/photos.js): заменённое
+  // в кабинете WB фото лежит под тем же адресом, и без версии браузер показал бы старое из своего кэша.
+  // После «Обновить» (view.photoReload) сервер скачивает фото из WB заново.
+  function shownPhoto(url, card) {
+    if (!/^https:\/\/[^/]*wbbasket\.ru\/.+\.(webp|jpe?g|png)$/i.test(url || '')) return url || '';
+    const query = new URLSearchParams({ v: card.updatedAt || '' });
+    if (view.photoReload) query.set('r', view.photoReload);
+    return `/api/photo/${url.slice('https://'.length)}?${query}`;
+  }
+
   // --- Загрузка ---
   async function load(message) {
     if (!Number.isInteger(nmId) || nmId <= 0) {
@@ -82,7 +92,7 @@
       view.original = editable(data.card);
       view.draft = clone(view.original);
       view.mediaOriginal = (data.card.photos || []).map(photo => ({
-        preview: photo.c246x328 || photo.c516x688 || photo.tm || photo.big || '',
+        preview: shownPhoto(photo.c246x328 || photo.c516x688 || photo.tm || photo.big || '', data.card),
         url: photo.hq || photo.big || photo.c516x688 || ''
       }));
       view.media = clone(view.mediaOriginal);
@@ -286,7 +296,7 @@
       photo = card.photos?.[0];
     document.title = `${card.title || card.vendorCode} — карточка — WB Pulse`;
     $('#cardTitle').textContent = card.title || 'Без названия';
-    if (photo) $('#cardPhoto').src = photo.c246x328 || photo.tm || photo.big;
+    if (photo) $('#cardPhoto').src = shownPhoto(photo.c246x328 || photo.tm || photo.big, card);
     $('#cardMeta').innerHTML = [
       `Артикул продавца <b>${esc(card.vendorCode)}</b>`,
       `Артикул WB <button type="button" class="copy" data-copy="${card.nmID}" title="Скопировать">${card.nmID}</button>`,
@@ -956,6 +966,7 @@
     }
     if (target.closest('#reloadButton')) {
       if (changes().length && !window.confirm('Несохранённые изменения пропадут. Загрузить карточку заново?')) return;
+      view.photoReload = Date.now();
       load();
       return;
     }
