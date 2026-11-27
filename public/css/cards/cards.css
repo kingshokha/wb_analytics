@@ -34,6 +34,11 @@
   color: var(--muted);
   font-size: 11px;
 }
+/* Корзина: у карточки есть остаток — товар ещё продаётся */
+.cards-alt-table td small.card-trash-selling {
+  color: #b84949;
+  font-weight: 800;
+}
 .card-cell {
   display: flex;
   align-items: center;

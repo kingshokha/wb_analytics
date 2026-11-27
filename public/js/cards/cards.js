@@ -30,6 +30,7 @@ const cardsView = {
   trashKey: '',
   errors: null,
   errorsKey: '',
+  trashStocks: null,
   search: '',
   // Фильтры — наборы выбранных значений (общий компонент js/common/multi-filter.js): предметы и бренды — названия,
   // цвета (none — без цвета), ярлыки — id, что проверить, документы, склейка (glued / single). Пустой набор — все.
@@ -357,11 +358,22 @@ function cardsFilterQuery() {
 }
 async function loadCardTrash(force = false) {
   if (!force && cardsView.trashKey === state.cabinet && cardsView.trash) return renderCards();
-  cardsView.trashKey = state.cabinet;
+  const cabinet = state.cabinet;
+  cardsView.trashKey = cabinet;
   cardsView.trash = null;
+  cardsView.trashStocks = null;
   renderCards();
+  // Остатки карточек из корзины — из отчётов остатков WB (FBS и FBW по артикулу, как колонка «Остаток» в «Ценах»):
+  // пока остаток есть, товар продаётся и из корзины.
+  api(`/api/prices/stocks?cabinet=${encodeURIComponent(cabinet)}`)
+    .catch(error => ({ failed: error.message, byNmId: {} }))
+    .then(data => {
+      if (cardsView.trashKey !== cabinet) return;
+      cardsView.trashStocks = data;
+      if (cardsView.tab === 'trash') renderCards();
+    });
   try {
-    cardsView.trash = await api(`/api/cards/trash?cabinet=${encodeURIComponent(state.cabinet)}`);
+    cardsView.trash = await api(`/api/cards/trash?cabinet=${encodeURIComponent(cabinet)}`);
   } catch (e) {
     cardsView.trash = { error: e.message, cards: [] };
   }
@@ -764,16 +776,31 @@ function renderCardTrash() {
     $('#emptyCards').classList.add('hidden');
     return;
   }
+  // Остаток карточки: null — ещё грузится или отчёт недоступен. Карточки с остатком — сверху: они ещё продаются.
+  const stocks = cardsView.trashStocks,
+    stockOf = card => (stocks && !stocks.failed ? stocks.byNmId?.[String(card.nmID)] || { total: 0, fbs: 0, fbw: 0 } : null);
+  const selling = stocks && !stocks.failed ? trash.cards.filter(card => stockOf(card).total > 0) : [];
+  const sellingUnits = selling.reduce((sum, card) => sum + stockOf(card).total, 0);
+  const cards = [...trash.cards].sort((a, b) => (stockOf(b)?.total > 0) - (stockOf(a)?.total > 0));
+  const stockCell = card => {
+    if (!stocks) return '<td class="muted">Загрузка…</td>';
+    if (stocks.failed) return `<td class="muted" title="${escapeHtml(stocks.failed)}">—</td>`;
+    const s = stockOf(card);
+    return s.total > 0
+      ? `<td><strong>${fmtNum(s.total)} шт</strong><small>FBS ${fmtNum(s.fbs)} · FBW ${fmtNum(s.fbw)}</small><small class="card-trash-selling" title="Пока есть остаток, товар продаётся и из корзины. Чтобы снять его с продажи, обнулите остаток в «Остатках FBS»">ещё продаётся</small></td>`
+      : '<td class="muted">0</td>';
+  };
   $('#cardsCount').textContent = trash.error
     ? `Не удалось загрузить: ${trash.error}`
-    : `${fmtNum(trash.cards.length)} карточек · без остатков WB удаляет их через 30 дней в корзине`;
+    : `${fmtNum(trash.cards.length)} карточек · без остатков WB удаляет их через 30 дней в корзине` +
+      (selling.length ? ` · с остатком ${fmtNum(selling.length)} (${fmtNum(sellingUnits)} шт) — ещё продаются` : '');
   $('#cardsAlt').innerHTML =
-    '<table class="stock-table cards-alt-table" data-no-resize><thead><tr><th>Товар</th><th>Предмет</th><th>В корзине с</th><th>Удалится</th><th></th></tr></thead><tbody>' +
-    trash.cards
+    '<table class="stock-table cards-alt-table" data-no-resize><thead><tr><th>Товар</th><th>Предмет</th><th>Остаток</th><th>В корзине с</th><th>Удалится</th><th></th></tr></thead><tbody>' +
+    cards
       .map(card => {
         const removeAt = card.trashedAt ? new Date(Date.parse(card.trashedAt) + 30 * 86_400_000).toISOString() : '';
         return (
-          `<tr><td><div class="card-cell"><span><a class="card-title-link" href="${escapeHtml(cardLink(card.nmID))}" target="_blank" rel="noopener noreferrer">${escapeHtml(card.title || card.vendorCode || 'Без названия')}</a><small>${escapeHtml(card.vendorCode || '—')} · ${escapeHtml(card.nmID)}</small></span></div></td><td>${escapeHtml(card.subjectName || '—')}</td><td>${cardDate(card.trashedAt)}</td><td>${removeAt ? `${cardDate(removeAt).slice(0, 8)}<small>если нет остатков</small>` : '—'}</td>` +
+          `<tr><td><div class="card-cell"><span><a class="card-title-link" href="${escapeHtml(cardLink(card.nmID))}" target="_blank" rel="noopener noreferrer">${escapeHtml(card.title || card.vendorCode || 'Без названия')}</a><small>${escapeHtml(card.vendorCode || '—')} · ${escapeHtml(card.nmID)}</small></span></div></td><td>${escapeHtml(card.subjectName || '—')}</td>${stockCell(card)}<td>${cardDate(card.trashedAt)}</td><td>${removeAt ? `${cardDate(removeAt).slice(0, 8)}<small>${stockOf(card)?.total > 0 ? 'не удалится, пока есть остаток' : 'если нет остатков'}</small>` : '—'}</td>` +
           `<td><button type="button" class="ghost card-recover" data-card-recover="${escapeHtml(card.nmID)}" data-card-name="${escapeHtml(card.vendorCode || card.nmID)}">Восстановить</button></td></tr>`
         );
       })

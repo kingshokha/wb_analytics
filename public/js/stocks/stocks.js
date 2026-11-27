@@ -12,7 +12,7 @@ async function loadStocks(force = false) {
       state.stocksKey = state.cabinet;
       if (first) state.stockSelected = new Set();
       if (!sameCabinet) {
-        state.stockFilters = { warehouses: new Set(), categories: new Set(), availability: new Set() };
+        state.stockFilters = { warehouses: new Set(), categories: new Set(), availability: new Set(), trash: new Set() };
         resetStockPage();
       }
       state.demo = data.demo;
@@ -36,7 +36,7 @@ async function loadFbwStocks(force = false) {
       state.fbwStocks = data;
       state.fbwStocksKey = state.cabinet;
       if (first && !sameCabinet) {
-        state.fbwFilters = { warehouses: new Set(), categories: new Set(), availability: new Set() };
+        state.fbwFilters = { warehouses: new Set(), categories: new Set(), availability: new Set(), trash: new Set() };
         state.fbwPage = 1;
       }
       state.demo = data.demo;
@@ -54,6 +54,13 @@ const STOCK_AVAILABILITY = [
   { value: 'positive', label: 'В наличии' },
   { value: 'zero', label: 'Нулевые' }
 ];
+// «Корзина»: карточки, перенесённые в корзину WB. Товар с остатком продаётся и из корзины — чтобы снять его с продажи,
+// остаток нужно обнулить (документация WB, «Перенос карточек товаров в корзину»).
+const stockTrashMatch = (row, set) => !set.size || set.has(row.trashed ? 'trash' : 'active');
+const stockTrashBadge = row =>
+  row.trashed
+    ? '<span class="stock-trash-badge" title="Карточка в корзине WB. Пока есть остаток, товар продаётся — чтобы снять с продажи, обнулите остаток">в корзине</span>'
+    : '';
 function stockFilters(prefix, filters, changed) {
   const make = (label, key) =>
     multiFilter(`#${prefix}${label[1]}Filter`, { label: label[0], selected: () => state[filters][key], onChange: changed });
@@ -61,10 +68,18 @@ function stockFilters(prefix, filters, changed) {
     warehouses: make(['Склады', 'Warehouse'], 'warehouses'),
     categories: make(['Категории', 'Category'], 'categories'),
     availability: make(['Наличие', 'Availability'], 'availability').setItems(STOCK_AVAILABILITY),
+    trash: make(['Корзина', 'Trash'], 'trash'),
     set(data) {
       this.warehouses.setItems((data.warehouses || []).map(item => ({ value: item.id, label: item.name })));
       this.categories.setItems(data.categories || []);
       this.availability.refresh();
+      const rows = data.rows || [],
+        trashed = rows.filter(row => row.trashed),
+        units = trashed.reduce((sum, row) => sum + row.amount, 0);
+      this.trash.setItems([
+        { value: 'trash', label: 'В корзине', count: `${fmtNum(trashed.length)} · ${fmtNum(units)} шт` },
+        { value: 'active', label: 'Не в корзине', count: fmtNum(rows.length - trashed.length) }
+      ]);
     }
   };
 }
@@ -123,6 +138,7 @@ function renderFbwStocks() {
           (!state.fbwFilters.availability.size ||
             ([...state.fbwFilters.availability].includes('positive') && row.amount > 0) ||
             ([...state.fbwFilters.availability].includes('zero') && row.amount === 0)) &&
+          stockTrashMatch(row, state.fbwFilters.trash) &&
           (!term ||
             [row.name, row.vendorCode, row.nmId, row.sku, row.category, row.warehouseName, row.regionName, row.size]
               .join(' ')
@@ -148,7 +164,7 @@ function renderFbwStocks() {
   $('#fbwStocksBody').innerHTML = pageRows
     .map(
       row =>
-        `<tr><td class="fbw-product-cell">${row.photo ? `<img class="stock-product-photo" src="${escapeHtml(row.photo)}" alt="" loading="lazy">` : ''}<strong>${escapeHtml(row.name)}</strong></td><td><strong>${escapeHtml(row.vendorCode || '—')}</strong></td><td><strong>${escapeHtml(row.nmId || '—')}</strong></td><td>${escapeHtml(row.category || '—')}</td><td><strong>${escapeHtml(row.warehouseName || '—')}</strong><small>ID ${escapeHtml(row.warehouseId || '—')}</small></td><td><strong class="stock-amount ${row.amount > 0 ? 'in-stock' : 'out-stock'}">${fmtNum(row.amount)}</strong></td><td>${fmtNum(row.inWayToClient)}</td><td>${fmtNum(row.inWayFromClient)}</td></tr>`
+        `<tr><td class="fbw-product-cell">${row.photo ? `<img class="stock-product-photo" src="${escapeHtml(row.photo)}" alt="" loading="lazy">` : ''}${stockTrashBadge(row)}<strong>${escapeHtml(row.name)}</strong></td><td><strong>${escapeHtml(row.vendorCode || '—')}</strong></td><td><strong>${escapeHtml(row.nmId || '—')}</strong></td><td>${escapeHtml(row.category || '—')}</td><td><strong>${escapeHtml(row.warehouseName || '—')}</strong><small>ID ${escapeHtml(row.warehouseId || '—')}</small></td><td><strong class="stock-amount ${row.amount > 0 ? 'in-stock' : 'out-stock'}">${fmtNum(row.amount)}</strong></td><td>${fmtNum(row.inWayToClient)}</td><td>${fmtNum(row.inWayFromClient)}</td></tr>`
     )
     .join('');
   renderFbwPagination(pageCount, filtered.length);
@@ -276,6 +292,7 @@ function renderStocks() {
           (!state.stockFilters.availability.size ||
             ([...state.stockFilters.availability].includes('positive') && row.amount > 0) ||
             ([...state.stockFilters.availability].includes('zero') && row.amount === 0)) &&
+          stockTrashMatch(row, state.stockFilters.trash) &&
           (!term || [row.name, row.vendorCode, row.nmId, row.sku, row.category, row.warehouseName].join(' ').toLowerCase().includes(term))
       )
       .sort((a, b) => {
@@ -298,7 +315,7 @@ function renderStocks() {
   $('#stocksBody').innerHTML = pageRows
     .map(
       row =>
-        `<tr><td class="check-col"><input type="checkbox" data-stock-row="${escapeHtml(stockRowKey(row))}" ${state.stockSelected.has(stockRowKey(row)) ? 'checked' : ''} aria-label="Выбрать ${escapeHtml(row.name)}"></td><td><strong>${escapeHtml(row.name)}</strong></td><td><strong>${escapeHtml(row.vendorCode || '—')}</strong></td><td><strong>${escapeHtml(row.nmId || '—')}</strong></td><td>${escapeHtml(row.category || '—')}</td><td><strong>${escapeHtml(row.warehouseName || '—')}</strong><small>ID ${escapeHtml(row.warehouseId || '—')}</small></td><td>${escapeHtml(row.sku || '—')}</td><td><strong class="stock-amount ${row.amount > 0 ? 'in-stock' : 'out-stock'}">${fmtNum(row.amount)}</strong></td></tr>`
+        `<tr><td class="check-col"><input type="checkbox" data-stock-row="${escapeHtml(stockRowKey(row))}" ${state.stockSelected.has(stockRowKey(row)) ? 'checked' : ''} aria-label="Выбрать ${escapeHtml(row.name)}"></td><td>${stockTrashBadge(row)}<strong>${escapeHtml(row.name)}</strong></td><td><strong>${escapeHtml(row.vendorCode || '—')}</strong></td><td><strong>${escapeHtml(row.nmId || '—')}</strong></td><td>${escapeHtml(row.category || '—')}</td><td><strong>${escapeHtml(row.warehouseName || '—')}</strong><small>ID ${escapeHtml(row.warehouseId || '—')}</small></td><td>${escapeHtml(row.sku || '—')}</td><td><strong class="stock-amount ${row.amount > 0 ? 'in-stock' : 'out-stock'}">${fmtNum(row.amount)}</strong></td></tr>`
     )
     .join('');
   renderStockPagination(pageCount, filtered.length);

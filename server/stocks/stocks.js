@@ -1,7 +1,7 @@
 'use strict';
 // --- Остатки FBS и FBW: списки по складам, изменение, копирование на склады, «Добавить вручную».
 const { apiError, cabinets, cachedAnalytics, tokenFor, wait, wbRequest } = require('../core/base');
-const { productCards } = require('../core/product-cards');
+const { productCards, trashCards } = require('../core/product-cards');
 const { cardPhoto } = require('../core/photos');
 const { cardsSoFar, forgetList, progressiveList } = require('../core/lists');
 
@@ -12,14 +12,16 @@ function stockCardIndex(cards = []) {
     for (const size of card.sizes || []) {
       const chrtId = String(size.chrtID || size.chrtId || '');
       if (!chrtId) continue;
+      // У карточек из корзины нет названия (метод корзины его не отдаёт) — вместо него предмет.
       index.set(chrtId, {
         nmId: card.nmID,
         vendorCode: card.vendorCode || '',
-        name: card.title || `Товар ${card.nmID}`,
+        name: card.title || (card.trashedAt && card.subjectName) || `Товар ${card.nmID}`,
         category: card.subjectName || 'Без категории',
         size: size.techSize || size.wbSize || '—',
         sku: (size.skus || [])[0] || '',
-        photo: cardPhoto(card)
+        photo: cardPhoto(card),
+        trashed: Boolean(card.trashedAt)
       });
     }
   return index;
@@ -43,7 +45,8 @@ function normalizeFbsStocks(warehouses = [], stockResponses = [], cards = []) {
         sku: stock.sku || meta.sku || '',
         photo: meta.photo || '',
         chrtId: stock.chrtId,
-        amount: Number(stock.amount || 0)
+        amount: Number(stock.amount || 0),
+        trashed: Boolean(meta.trashed)
       });
     })
   );
@@ -121,6 +124,31 @@ function demoFbsStocks() {
   };
 }
 
+// Карточки для остатков: обычный список (по мере загрузки) и карточки из корзины — товар с остатком продаётся и из
+// корзины, а список карточек WB их не отдаёт. Ошибка корзины не мешает остаткам остальных карточек.
+function stockCards(id, token, warnings) {
+  const cards = cardsSoFar(id, token, warnings);
+  let trash = [],
+    trashLoading = true;
+  const trashDone = trashCards(id, token)
+    .then(
+      list => {
+        trash = list;
+      },
+      error => {
+        warnings.push(`Карточки в корзине: ${error.message}`);
+      }
+    )
+    .finally(() => {
+      trashLoading = false;
+    });
+  return {
+    cards: () => [...cards.cards(), ...trash],
+    loading: () => cards.loading() || trashLoading,
+    done: Promise.all([cards.done, trashDone])
+  };
+}
+
 // Остатки FBS: WB отдаёт их по списку размеров (chrtId, до 1000 за запрос, POST /api/v3/stocks/{warehouseId}; лимит —
 // 300 запросов в минуту, интервал 200 мс), а размеры — из карточек. Поэтому остатки запрашиваются по каждой новой
 // тысяче размеров из уже пришедших карточек, не дожидаясь всех.
@@ -137,7 +165,7 @@ async function fbsStocks(id, force = false) {
     const warehouses = (Array.isArray(warehousesResponse) ? warehousesResponse : []).filter(
       item => Number(item.deliveryType) === 1 && !item.isDeleting
     );
-    const cards = cardsSoFar(id, token, warnings),
+    const cards = stockCards(id, token, warnings),
       responses = warehouses.map(warehouse => ({ warehouse, stocks: [] })),
       asked = new Set();
     const snapshot = () => ({
@@ -194,7 +222,8 @@ function normalizeFbwStocks(items = [], cards = []) {
       photo: meta.photo || '',
       amount: Number(item.quantity || 0),
       inWayToClient: Number(item.inWayToClient || 0),
-      inWayFromClient: Number(item.inWayFromClient || 0)
+      inWayFromClient: Number(item.inWayFromClient || 0),
+      trashed: Boolean(meta.trashed)
     };
   });
   const warehouses = [
@@ -296,7 +325,7 @@ async function fbwStocks(id, force = false) {
   const token = tokenFor(id);
   return progressiveList(`fbw-stocks:${id}`, 60_000, force, async publish => {
     const warnings = [],
-      cards = cardsSoFar(id, token, warnings);
+      cards = stockCards(id, token, warnings);
     const items = await inventoryReport(id, token, 'wb-warehouses');
     const snapshot = () => ({
       demo: false,

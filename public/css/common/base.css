@@ -1585,6 +1585,19 @@ td small {
 .stock-product-photo:hover {
   box-shadow: 0 0 0 2px var(--purple);
 }
+/* Остатки: карточка в корзине WB — товар ещё продаётся, пока есть остаток */
+.stock-trash-badge {
+  display: inline-block;
+  margin-right: 6px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: #fdecec;
+  color: #b84949;
+  font-size: 10px;
+  font-weight: 800;
+  white-space: nowrap;
+  vertical-align: middle;
+}
 .month-select {
   height: 43px;
   border: 1px solid var(--line);

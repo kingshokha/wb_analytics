@@ -3,7 +3,17 @@
 // data/Cards/<кабинет>/, правки списка на сайте, оценки склеек (server/cards/glue-ratings.js).
 const fs = require('node:fs');
 const path = require('node:path');
-const { ROOT, analyticsCache, analyticsPending, cabinetFolderName, safeFolderName, tokenFor, wait, wbRequest } = require('./base');
+const {
+  ROOT,
+  analyticsCache,
+  analyticsPending,
+  cabinetFolderName,
+  cachedAnalytics,
+  safeFolderName,
+  tokenFor,
+  wait,
+  wbRequest
+} = require('./base');
 
 // Все карточки кабинета: по 100 за запрос (cursor updatedAt + nmID), до 30 000 карточек. Лимит категории «Контент» —
 // 100 запросов в минуту, всплеск 5: после каждых 5 страниц пауза, а на 429 — повтор после паузы, которую назвал WB,
@@ -164,6 +174,8 @@ function productCardsChanged(id, patch) {
     if (patch) copy.value = patch(copy.value) || copy.value;
     copy.stale = true;
   }
+  // Карточки могли уйти в корзину или вернуться из неё.
+  analyticsCache.delete(trashCardsKey(id));
   refreshProductCards(id);
 }
 function productCardsStatus(id) {
@@ -193,19 +205,42 @@ async function loadProductCards(token) {
 // изменённые за это время заменяют или дополняют загруженные.
 const CATCH_UP_MARGIN = 5 * 60_000,
   CATCH_UP_MAX_PAGES = 100;
-async function cardsListPage(token, cursor) {
+// Страница списка WB (карточки или корзина): на 429 — повтор после паузы, которую назвал WB.
+async function contentPage(token, path, body) {
   for (let retry = 0; ; retry++) {
     try {
-      return await wbRequest(token, 'https://content-api.wildberries.ru/content/v2/get/cards/list', {
-        method: 'POST',
-        body: { settings: { sort: { ascending: false }, cursor, filter: { withPhoto: -1 } } }
-      });
+      return await wbRequest(token, `https://content-api.wildberries.ru${path}`, { method: 'POST', body });
     } catch (error) {
       if (error.status !== 429 || retry >= 3) throw error;
       await wait(Math.max(1000, (error.retryAfter || 0) * 1000));
     }
   }
 }
+const cardsListPage = (token, cursor) =>
+  contentPage(token, '/content/v2/get/cards/list', { settings: { sort: { ascending: false }, cursor, filter: { withPhoto: -1 } } });
+
+// Карточки в корзине. Список карточек их не отдаёт, а товар с остатком продолжает продаваться и из корзины
+// (02-items.yaml, «Перенос карточек товаров в корзину»: «Карточка будет продаваться, пока по ней есть остатки…»), поэтому
+// остаткам нужны и они: размеры (chrtID), артикул продавца, предмет, фото. Названия метод корзины не отдаёт.
+// POST /content/v2/get/cards/trash по 100 (cursor trashedAt + nmID), лимит категории «Контент» — 100 запросов в минуту,
+// всплеск 5. Для остатков — кэш на 5 минут; перенос в корзину и восстановление на сайте его сбрасывают.
+const TRASH_CARDS_TTL = 5 * 60_000;
+const trashCardsKey = id => `trash-cards:${id}`;
+async function loadTrashCards(token) {
+  const cards = [],
+    seen = new Set();
+  let cursor = { limit: 100 };
+  for (let page = 0; page < 300; page++) {
+    if (page && page % 5 === 0) await wait(650);
+    const response = await contentPage(token, '/content/v2/get/cards/trash', { settings: { sort: { ascending: false }, cursor } });
+    const batch = Array.isArray(response?.cards) ? response.cards : [];
+    for (const card of batch) if (!seen.has(card.nmID) && seen.add(card.nmID)) cards.push(card);
+    if (batch.length < 100 || !response?.cursor?.trashedAt) break;
+    cursor = { limit: 100, trashedAt: response.cursor.trashedAt, nmID: response.cursor.nmID };
+  }
+  return cards;
+}
+const trashCards = (id, token = tokenFor(id)) => cachedAnalytics(trashCardsKey(id), () => loadTrashCards(token), TRASH_CARDS_TTL);
 async function loadProductCardPages(token, cards) {
   const startedAt = Date.now();
   let cursor = { limit: 100 };
@@ -250,9 +285,11 @@ async function loadProductCardPages(token, cards) {
 module.exports = {
   glueRatings,
   loadProductCards,
+  loadTrashCards,
   productCards,
   productCardsChanged,
   productCardsLoading,
   productCardsStatus,
-  refreshProductCards
+  refreshProductCards,
+  trashCards
 };
