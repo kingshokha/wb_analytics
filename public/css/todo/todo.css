@@ -125,6 +125,9 @@
   justify-content: space-between;
   gap: 10px;
 }
+.todo-add {
+  margin-left: auto;
+}
 .todo-hint {
   color: var(--muted);
   font-size: 11px;

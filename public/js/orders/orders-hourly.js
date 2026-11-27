@@ -264,10 +264,10 @@ function renderOrdersHourlyInsights(data, series) {
   const advice = !peaks
     ? `<p>За прошлую неделю ${buyouts ? 'выкупов' : 'заказов'} нет — пиковые часы определить не по чему.</p>`
     : buyouts
-      ? `<p><b>Пиковые часы выкупов</b> (среднее за 7 дней): ${peaks.ranges.map(range => hourRange(range.from, range.to)).join(', ')} — ${Math.round(peaks.peakShare * 100)}% ${what}. В эти часы покупатели чаще всего забирают заказы из пунктов выдачи.</p>`
-      : `<p><b>Пиковые часы</b> (среднее за 7 дней): ${peaks.ranges.map(range => hourRangeMsk(range.from, range.to, data)).join(', ')} — ${Math.round(peaks.peakShare * 100)}% ${what}. Подсказка для расписания показов (в кабинете WB время московское): в эти часы реклама должна быть включена.` +
+      ? `<p title="В эти часы покупатели чаще всего забирают заказы из пунктов выдачи"><b>Пик выкупов</b> (среднее за 7 дней): ${peaks.ranges.map(range => hourRange(range.from, range.to)).join(', ')} — ${Math.round(peaks.peakShare * 100)}% ${what}.</p>`
+      : `<p title="Для расписания показов: в пиковые часы реклама должна быть включена, часы минимума можно исключить из показов, чтобы не тратить бюджет. В кабинете WB время московское."><b>Пик</b> (среднее за 7 дней): ${peaks.ranges.map(range => hourRangeMsk(range.from, range.to, data)).join(', ')} — ${Math.round(peaks.peakShare * 100)}% ${what}.` +
         (peaks.quiet.share < 0.1
-          ? ` Меньше всего — ${hourRangeMsk(peaks.quiet.from, peaks.quiet.from + 6, data)}: всего ${Math.max(1, Math.round(peaks.quiet.share * 100))}% ${what}, эти часы можно исключить из показов, чтобы не тратить бюджет.`
+          ? ` <b>Минимум</b>: ${hourRangeMsk(peaks.quiet.from, peaks.quiet.from + 6, data)} — ${Math.max(1, Math.round(peaks.quiet.share * 100))}%.`
           : '') +
         '</p>';
   $('#ordersHourlyInsights').innerHTML =

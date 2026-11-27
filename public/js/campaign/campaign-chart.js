@@ -470,11 +470,11 @@ function renderChart() {
           `<span><i style="background:${s.color}"></i>${esc(s.label)} — до ${esc(chartAxisNumber(group.max))}${s.key === 'drr' ? '%' : ''}</span>`
       )
     );
-  const since = sheetEvents.since ? ` (таблица следит с ${new Date(sheetEvents.since).toLocaleDateString('ru-RU')})` : '';
+  const since = sheetEvents.since ? `, таблица следит с ${new Date(sheetEvents.since).toLocaleDateString('ru-RU')}` : '';
   note.innerHTML = [
-    own.length ? `Со своей шкалой, без оси: ${own.join(' ')}` : '',
+    own.length ? `<span title="Линии без оси: у каждой своя шкала">Своя шкала:</span> ${own.join(' ')}` : '',
     sheetEvents.loaded
-      ? `Флажки — изменения из Google Таблицы${since}: ${EVENT_ORDER.map(kind => `<span><i style="background:${EVENT_KINDS[kind].color}"></i>${EVENT_KINDS[kind].label.toLowerCase()}</span>`).join(' ')}`
+      ? `<span title="Изменения из Google Таблицы${esc(since)}">Флажки:</span> ${EVENT_ORDER.map(kind => `<span><i style="background:${EVENT_KINDS[kind].color}"></i>${EVENT_KINDS[kind].label.toLowerCase()}</span>`).join(' ')}`
       : ''
   ]
     .filter(Boolean)

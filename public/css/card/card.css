@@ -32,7 +32,8 @@ textarea {
 main {
   grid-column: 2;
   min-width: 0;
-  padding: 30px 42px 120px;
+  /* Снизу место под закреплённую панель «Сохранить». */
+  padding: 10px 5px 120px;
 }
 h1 {
   margin: 0 0 8px;
@@ -821,7 +822,7 @@ tr.new td {
   justify-content: flex-end;
   align-items: center;
   gap: 10px;
-  padding: 12px 42px;
+  padding: 12px 5px;
   background: #ffffffee;
   border-top: 1px solid var(--line);
   box-shadow: 0 -10px 30px #17211d14;
@@ -981,10 +982,7 @@ tr.new td {
 }
 @media (max-width: 980px) {
   main {
-    padding: 24px 24px 120px;
-  }
-  .savebar {
-    padding: 12px 24px;
+    padding: 10px 5px 120px;
   }
 }
 @media (max-width: 680px) {

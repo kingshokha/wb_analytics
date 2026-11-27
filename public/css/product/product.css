@@ -37,7 +37,7 @@ select {
 main {
   grid-column: 2;
   min-width: 0;
-  padding: 30px 42px 90px;
+  padding: 10px 5px 0;
 }
 h1 {
   margin: 0 0 8px;
@@ -752,7 +752,7 @@ tbody tr.on td {
 }
 @media (max-width: 980px) {
   main {
-    padding: 24px 24px 90px;
+    padding: 10px 5px 0;
   }
 }
 @media (max-width: 680px) {

@@ -1,4 +1,13 @@
 /* «Карточки товаров» (public/js/cards/cards.js): таблица карточек, корзина, ошибки, ярлыки */
+/* Шапка и вкладки ближе к таблице. На телефоне отступы общие. */
+@media (min-width: 681px) {
+  main:has(#page-cards.active) header {
+    margin-bottom: 5px;
+  }
+  #page-cards > .funnel-tabs {
+    margin-top: 5px;
+  }
+}
 .cards-table {
   min-width: 1200px;
 }

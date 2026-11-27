@@ -369,7 +369,7 @@
       data = view.data;
     if (!data || !box) return;
     const metric = METRICS.find(item => item.key === view.metric);
-    $('#mainTitle').textContent = `${metric.title}: органика и реклама`;
+    $('#mainTitle').textContent = `${metric.title}: органика и реклама ⓘ`;
     const days = data.days,
       count = days.length,
       W = Math.max(320, box.clientWidth || 900);

@@ -498,19 +498,10 @@ function renderSummaryMix(top, hasPrevious) {
     const diff = row.share - row.previousShare;
     return Math.abs(diff) < 0.1 ? '±0%' : `${diff > 0 ? '+' : '−'}${summaryNumber(Math.abs(diff))}%`;
   };
-  const leader = rows[0],
-    leaderShift = hasPrevious && top.previousTotal ? leader.share - leader.previousShare : null;
-  const lead =
-    `<b>«${escapeHtml(leader.name)}»</b> даёт <b>${summaryNumber(leader.share)}%</b> суммы заказов` +
-    (leaderShift == null
-      ? '.'
-      : Math.abs(leaderShift) < 0.1
-        ? ' — столько же, сколько в прошлом периоде.'
-        : ` — на ${summaryNumber(Math.abs(leaderShift))}% ${leaderShift > 0 ? 'больше' : 'меньше'}, чем в прошлом периоде.`);
+  // Лидера по сумме заказов называет «Коротко о периоде» — здесь не повторяем.
   el.innerHTML =
     `<svg class="summary-donut" viewBox="0 0 170 170" role="img" aria-label="Доли товаров в сумме заказов">${arcs}<text class="summary-donut-total" x="85" y="86" text-anchor="middle">${new Intl.NumberFormat('ru-RU', { notation: 'compact', maximumFractionDigits: 1 }).format(top.total)}</text><text class="summary-donut-caption" x="85" y="104" text-anchor="middle">₽ в заказах</text></svg>` +
-    `<div class="summary-mix-list">${rows.map((row, i) => `<div class="summary-mix-row ${row.other ? '' : 'clickable'}" data-mix="${i}" ${row.other ? '' : `data-summary-nm="${escapeHtml(row.nmId)}" title="Открыть в воронке"`}><i style="--dot:${row.color}"></i><span><strong>${escapeHtml(row.name)}</strong><small>${row.other ? `${fmtNum(row.orderCount)} шт` : `${escapeHtml(row.vendorCode || row.nmId)} · ${fmtNum(row.orderCount)} шт`}</small></span><b>${summaryNumber(row.share)}%${shift(row) ? `<em>${shift(row)}</em>` : ''}</b></div>`).join('')}</div>` +
-    `<p class="summary-mix-lead">${lead}</p>`;
+    `<div class="summary-mix-list">${rows.map((row, i) => `<div class="summary-mix-row ${row.other ? '' : 'clickable'}" data-mix="${i}" ${row.other ? '' : `data-summary-nm="${escapeHtml(row.nmId)}" title="Открыть в воронке"`}><i style="--dot:${row.color}"></i><span><strong>${escapeHtml(row.name)}</strong><small>${row.other ? `${fmtNum(row.orderCount)} шт` : `${escapeHtml(row.vendorCode || row.nmId)} · ${fmtNum(row.orderCount)} шт`}</small></span><b>${summaryNumber(row.share)}%${shift(row) ? `<em>${shift(row)}</em>` : ''}</b></div>`).join('')}</div>`;
   const highlight = index => {
     el.classList.toggle('dimmed', index != null);
     el.querySelectorAll('[data-mix]').forEach(item => item.classList.toggle('active', item.dataset.mix === index));
@@ -586,7 +577,7 @@ function summaryInsights(now, before, data) {
   return items;
 }
 function renderSummaryText(now, before, data) {
-  $('#summaryTextNote').textContent = before ? `Сравнение ${summaryCompareLabel()}` : 'Без сравнения с прошлым периодом';
+  $('#summaryTextNote').textContent = before ? '' : 'Без сравнения с прошлым периодом';
   const icons = { up: '↑', down: '↓', flat: '•' };
   $('#summaryText').innerHTML = summaryInsights(now, before, data)
     .map(([tone, text]) => `<li><i class="${tone}" aria-hidden="true">${icons[tone]}</i><span>${escapeHtml(text)}</span></li>`)
@@ -612,13 +603,13 @@ function renderSummaryDrops(drops, hasPrevious) {
   $('#summaryDropsNote').textContent =
     drops?.total > drops?.items?.length
       ? `Показаны ${drops.items.length} из ${fmtNum(drops.total)} товаров с просадкой`
-      : 'Товары с просадкой к прошлому периоду';
+      : '';
   if (!hasPrevious) {
     el.innerHTML = '<div class="summary-empty">Нет данных прошлого периода для сравнения</div>';
     return;
   }
   if (!drops?.items?.length) {
-    el.innerHTML = '<div class="summary-empty">Просадок нет: заказы, переходы и конверсия товаров не упали на 30% и больше</div>';
+    el.innerHTML = '<div class="summary-empty" title="Заказы, переходы и конверсия товаров не упали на 30% и больше">Просадок нет</div>';
     return;
   }
   const value = reason =>
@@ -643,22 +634,15 @@ function renderSummaryDrops(drops, hasPrevious) {
 
 function renderSummaryFoot(data) {
   const notes = [],
-    { periods } = data,
-    today = new Date(Date.now() + 3 * 3_600_000).toISOString().slice(0, 10);
-  if (data.totals.previous)
-    notes.push(`Сравнение с периодом ${trendFullDate(periods.previous.from)} – ${trendFullDate(periods.previous.to)}.`);
-  if (periods.current.to >= today)
-    notes.push('Сегодняшний день ещё не закончился, поэтому последние цифры могут быть ниже прошлого периода.');
+    { periods } = data;
+  if (data.totals.previous) notes.push(`Сравнение с ${trendFullDate(periods.previous.from)} – ${trendFullDate(periods.previous.to)}`);
+  if (data.fetchedAt && !data.demo) notes.push(`данные на ${formatDate(data.fetchedAt)}${data.refreshing ? ', обновляются из WB' : ''}`);
   if (data.sync?.pending) {
     const eta = data.sync.etaSeconds >= 60 ? `${Math.ceil(data.sync.etaSeconds / 60)} мин` : `${Math.max(1, data.sync.etaSeconds)} сек`;
-    notes.push(`Графики по дням догружаются из WB: осталось ${fmtNum(data.sync.pending)} дн., примерно ${eta}.`);
+    notes.push(`догружаем графики: ${fmtNum(data.sync.pending)} дн., ~${eta}`);
   }
-  if (data.fetchedAt && !data.demo)
-    notes.push(
-      `Итоги воронки WB на ${formatDate(data.fetchedAt)}${data.refreshing ? ' — свежие загружаются из WB (у кабинета с тысячами товаров — несколько минут), сводка обновится сама' : ''}.`
-    );
-  if (summaryView.loading && summaryView.data) notes.push('Обновляем…');
-  $('#summaryFoot').textContent = notes.join(' ');
+  if (summaryView.loading && summaryView.data) notes.push('обновляем…');
+  $('#summaryFoot').textContent = notes.join(' · ');
 }
 
 function summaryOpenFunnel(nmId) {

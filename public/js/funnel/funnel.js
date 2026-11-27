@@ -409,7 +409,7 @@ function renderFunnelTrend() {
     const eta = seconds => (seconds >= 60 ? `${Math.ceil(seconds / 60)} мин` : `${Math.max(1, seconds)} сек`);
     if (data.sync?.pending)
       notes.push(
-        `Загружаем из WB: осталось ${fmtNum(data.sync.pending)} ${grouping === 'week' ? 'нед.' : grouping === 'month' ? 'мес.' : 'дн.'}, примерно ${eta(data.sync.etaSeconds)}. WB разрешает 3 запроса в минуту, график дорисуется сам.`
+        `Загружаем: осталось ${fmtNum(data.sync.pending)} ${grouping === 'week' ? 'нед.' : grouping === 'month' ? 'мес.' : 'дн.'}, ~${eta(data.sync.etaSeconds)}.`
       );
     if (data.sync?.lastError) notes.push(`Часть дней не загрузилась: ${data.sync.lastError}. Повторим позже.`);
     if (data.earliestAvailable && earliest < data.earliestAvailable)

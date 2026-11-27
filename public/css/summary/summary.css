@@ -269,16 +269,6 @@
 .summary-mix.dimmed [data-mix]:not(.active) {
   opacity: 0.3;
 }
-.summary-mix-lead {
-  grid-column: 1/-1;
-  margin: 2px 0 0;
-  font-size: 12px;
-  line-height: 1.55;
-  color: var(--muted);
-}
-.summary-mix-lead b {
-  color: var(--ink);
-}
 .summary-text {
   list-style: none;
   margin: 0;
@@ -439,7 +429,7 @@
   color: var(--muted);
 }
 .summary-empty {
-  padding: 30px 14px;
+  padding: 12px 14px;
   text-align: center;
   font-size: 12px;
   line-height: 1.5;

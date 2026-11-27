@@ -407,11 +407,11 @@
     return `<section class="panel"><div class="panel-head"><h2>Основное</h2></div><div class="panel-body">
       <label class="field${changedClass(o.title, d.title)}"><span>Наименование <small class="counter${d.title.length > 60 ? ' over' : ''}" data-counter="title">${d.title.length} / 60</small></span><input data-field="title" maxlength="80" value="${esc(d.title)}"></label>
       <div class="grid-2"><label class="field${changedClass(o.brand, d.brand)}"><span>Бренд</span><input data-field="brand" value="${esc(d.brand)}"></label>
-      <label class="field${changedClass(o.vendorCode, d.vendorCode)}"><span>Артикул продавца</span><input data-field="vendorCode" maxlength="72" value="${esc(d.vendorCode)}"></label></div>
+      <label class="field${changedClass(o.vendorCode, d.vendorCode)}"><span title="Меняйте осторожно: по артикулу продавца товар ищется в кабинете, отчётах и на этом сайте">Артикул продавца ⓘ</span><input data-field="vendorCode" maxlength="72" value="${esc(d.vendorCode)}"></label></div>
       ${o.gtin ? `<label class="field${changedClass(o.gtin, d.gtin)}"><span>Дополнительный GTIN</span><input data-field="gtin" value="${esc(d.gtin)}"></label>` : ''}
       <label class="field${changedClass(o.description, d.description)}"><span>Описание <small class="counter${d.description.length > 5000 ? ' over' : ''}" data-counter="description">${d.description.length} символов · обычно до 2000, в некоторых предметах до 5000</small></span><textarea data-field="description" rows="9">${esc(d.description)}</textarea></label>
       ${card.needKiz || o.kizMarked ? `<label class="check"><input type="checkbox" data-field="kizMarked"${d.kizMarked ? ' checked' : ''}> На товар нанесён обязательный код маркировки Честного знака${card.needKiz ? '' : ' (для этого товара маркировка не обязательна)'}</label>` : ''}
-      <p class="hint">Артикул продавца меняйте осторожно: по нему товар ищется в кабинете, отчётах и на этом сайте.</p></div></section>`;
+</div></section>`;
   }
   function charcField(charc) {
     const id = charc.charcID,
@@ -467,8 +467,7 @@
       d = view.draft.dimensions;
     const input = (key, label, step) =>
       `<label class="field${changedClass(String(o[key]), String(d[key]))}"><span>${label}</span><input type="number" min="0" step="${step}" data-dim="${key}" value="${esc(d[key])}"></label>`;
-    return `<section class="panel"><div class="panel-head"><h2>Габариты и вес с упаковкой</h2><span class="hint" id="dimsVolume">${dimsVolume(d)}</span></div><div class="panel-body"><div class="grid-4">${input('length', 'Длина, см', 1)}${input('width', 'Ширина, см', 1)}${input('height', 'Высота, см', 1)}${input('weightBrutto', 'Вес, кг', 0.001)}</div>
-      <p class="hint">Только сантиметры (целые) и килограммы (до трёх знаков после запятой). От габаритов зависят логистика и хранение; WB обновляет их до 30 минут.</p></div></section>`;
+    return `<section class="panel"><div class="panel-head"><h2 title="Только сантиметры (целые) и килограммы (до трёх знаков после запятой). От габаритов зависят логистика и хранение; WB обновляет их до 30 минут.">Габариты и вес с упаковкой ⓘ</h2><span class="hint" id="dimsVolume">${dimsVolume(d)}</span></div><div class="panel-body"><div class="grid-4">${input('length', 'Длина, см', 1)}${input('width', 'Ширина, см', 1)}${input('height', 'Высота, см', 1)}${input('weightBrutto', 'Вес, кг', 0.001)}</div></div></section>`;
   }
   function panelSizes() {
     const d = view.draft;
@@ -489,9 +488,8 @@
         );
       })
       .join('');
-    return `<section class="panel"><div class="panel-head"><h2>Размеры и баркоды</h2></div><div class="panel-body"><div class="table-wrap"><table><thead><tr><th>Размер</th><th>Российский</th><th>Баркоды</th><th>Цена</th></tr></thead><tbody>${rows}</tbody></table></div>
-      <div class="sizes-actions"><button type="button" class="btn small" data-action="add-size">+ Размер</button></div>
-      <p class="hint">WB не даёт удалять размеры и баркоды через API — только добавлять. У нового размера нужна цена (₽) и баркод; цены существующих размеров меняются в разделе «Цены и скидки».</p></div></section>`;
+    return `<section class="panel"><div class="panel-head"><h2 title="WB не даёт удалять размеры и баркоды через API — только добавлять. У нового размера нужна цена (₽) и баркод; цены существующих размеров меняются в разделе «Цены и скидки».">Размеры и баркоды ⓘ</h2></div><div class="panel-body"><div class="table-wrap"><table><thead><tr><th>Размер</th><th>Российский</th><th>Баркоды</th><th>Цена</th></tr></thead><tbody>${rows}</tbody></table></div>
+      <div class="sizes-actions"><button type="button" class="btn small" data-action="add-size">+ Размер</button></div></div></section>`;
   }
   function panelDocs() {
     const d = view.draft.documents,
@@ -520,12 +518,11 @@
       )
       .join('');
     const reason = { documents_missing: 'нет нужных документов', valid: '' }[overall?.reason] ?? overall?.reason ?? '';
-    return `<section class="panel"><div class="panel-head"><h2>Разрешительные документы</h2>${overall ? `<span class="badge ${overall.status === 1 ? 'ok' : 'fail'}">карточка: ${overall.status === 1 ? 'проверка пройдена' : `проверка не пройдена${reason ? ` — ${esc(reason)}` : ''}`}</span>` : card.documents?.items?.length ? '<span class="badge pending">карточка на проверке</span>' : ''}</div><div class="panel-body">
+    return `<section class="panel"><div class="panel-head"><h2 title="После изменения документа WB проверяет карточку заново — до 3 дней. Продажи на это время не останавливаются, если карточка уже продавалась.">Разрешительные документы ⓘ</h2>${overall ? `<span class="badge ${overall.status === 1 ? 'ok' : 'fail'}">карточка: ${overall.status === 1 ? 'проверка пройдена' : `проверка не пройдена${reason ? ` — ${esc(reason)}` : ''}`}</span>` : card.documents?.items?.length ? '<span class="badge pending">карточка на проверке</span>' : ''}</div><div class="panel-body">
       ${overall?.status === 2 && overall.reason === 'documents_missing' ? '<p class="banner" style="margin-bottom:10px">WB считает, что для этого товара нужны разрешительные документы (сертификат, декларация и т. п.). Добавьте документ ниже или, если документы для товара по закону не требуются, отметьте это галочкой внизу.</p>' : ''}
       ${docs || '<p class="hint" style="margin-bottom:10px">Документов нет.</p>'}
       <div class="sizes-actions"><button type="button" class="btn small" data-action="add-doc"${d.excludeDocuments ? ' disabled' : ''}>+ Документ</button></div>
-      <label class="check"><input type="checkbox" data-field="excludeDocuments"${d.excludeDocuments ? ' checked' : ''}> Для товара документы не требуются (все документы будут удалены из карточки)</label>
-      <p class="hint">После изменения документа WB проверяет карточку заново — до 3 дней. Продажи на это время не останавливаются, если карточка уже продавалась.</p></div></section>`;
+      <label class="check"><input type="checkbox" data-field="excludeDocuments"${d.excludeDocuments ? ' checked' : ''}> Для товара документы не требуются (все документы будут удалены из карточки)</label></div></section>`;
   }
   function panelMedia() {
     const card = view.data.card,
@@ -542,9 +539,8 @@
       ${
         view.data.trashed
           ? ''
-          : `${hasVideo ? '<p class="hint" style="margin-top:8px">У карточки есть видео: WB заменяет медиа только целиком, а видео он отдаёт в формате, который нельзя загрузить обратно. Поэтому менять порядок и удалять фото здесь нельзя — только добавлять файлом. Порядок меняйте в личном кабинете WB.</p>' : `<div class="media-add"><input type="url" id="mediaUrl" placeholder="Ссылка на фото: https://…/photo.jpg"><button type="button" class="btn small" data-action="media-url">Добавить ссылку</button></div>`}
-      <div class="media-add"><label class="btn small" style="display:inline-flex;align-items:center">Загрузить файл с компьютера<input type="file" id="mediaFile" accept="image/jpeg,image/png,image/bmp,image/gif,image/webp,video/mp4,video/quicktime" hidden></label>${changed ? '<button type="button" class="btn small" data-action="media-reset">Вернуть как было</button><button type="button" class="btn small primary" data-action="media-save">Сохранить фото в WB</button>' : ''}</div>
-      <p class="hint" style="margin-top:8px">Фото: от 700×900 px, до 32 Мб, JPG, PNG, BMP, GIF, WebP. Видео: одно, до 50 Мб, MP4 или MOV. Файл сразу добавляется в карточку в конец, после подтверждения.</p>`
+          : `${hasVideo ? '<p class="hint" style="margin-top:8px" title="WB заменяет медиа только целиком, а видео он отдаёт в формате, который нельзя загрузить обратно. Поэтому менять порядок и удалять фото здесь нельзя — только добавлять файлом.">Есть видео — порядок фото меняйте в кабинете WB ⓘ</p>' : `<div class="media-add"><input type="url" id="mediaUrl" placeholder="Ссылка на фото: https://…/photo.jpg"><button type="button" class="btn small" data-action="media-url">Добавить ссылку</button></div>`}
+      <div class="media-add"><label class="btn small" style="display:inline-flex;align-items:center" title="Фото: от 700×900 px, до 32 Мб, JPG, PNG, BMP, GIF, WebP. Видео: одно, до 50 Мб, MP4 или MOV. Файл сразу добавляется в карточку в конец, после подтверждения.">Загрузить файл с компьютера<input type="file" id="mediaFile" accept="image/jpeg,image/png,image/bmp,image/gif,image/webp,video/mp4,video/quicktime" hidden></label>${changed ? '<button type="button" class="btn small" data-action="media-reset">Вернуть как было</button><button type="button" class="btn small primary" data-action="media-save">Сохранить фото в WB</button>' : ''}</div>`
       }</div></section>`;
   }
   function panelTags() {
@@ -573,15 +569,15 @@
       group.length && glueRating != null
         ? `<span class="hint">★ ${fmtStar(glueRating)} · ${fmtCount(fb.glueCount)} ${ratingWord(fb.glueCount || 0)} у склейки</span>`
         : '';
-    return `<section class="panel"><div class="panel-head"><h2>Склейка</h2>${head}</div><div class="panel-body">
+    return `<section class="panel"><div class="panel-head"><h2 title="Карточки склейки покупатель видит как варианты одного товара, отзывы и оценка у них общие">Склейка ⓘ</h2>${head}</div><div class="panel-body">
       ${
         group.length
-          ? `<p class="hint" style="margin-bottom:8px">Вместе с этой карточкой (покупатель видит их как варианты одного товара, отзывы и оценка у них общие):</p><div class="group-list">${fb ? `<div class="group-item"><b>Эта карточка</b>${itemRating({ feedback: fb })}</div>` : ''}${group.map(item => `<div class="group-item">${item.photo ? `<img src="${esc(item.photo)}" alt="">` : ''}<a href="/card.html?${new URLSearchParams({ cabinet, nmId: item.nmID })}">${esc(item.vendorCode)}</a><span class="hint">${esc(short(item.title, 40))}</span>${itemRating(item)}</div>`).join('')}</div>
+          ? `<div class="group-list">${fb ? `<div class="group-item"><b>Эта карточка</b>${itemRating({ feedback: fb })}</div>` : ''}${group.map(item => `<div class="group-item">${item.photo ? `<img src="${esc(item.photo)}" alt="">` : ''}<a href="/card.html?${new URLSearchParams({ cabinet, nmId: item.nmID })}">${esc(item.vendorCode)}</a><span class="hint">${esc(short(item.title, 40))}</span>${itemRating(item)}</div>`).join('')}</div>
       <div class="row-actions"><button type="button" class="btn small" data-action="unmerge">Отсоединить эту карточку</button></div>`
           : '<p class="hint" style="margin-bottom:8px">Карточка не объединена с другими.</p>'
       }
-      ${data.trashed ? '' : `<div class="row-actions" style="margin-top:10px"><button type="button" class="btn small primary" data-action="glue-open"${same.length && free > 0 ? '' : ' disabled'}>Добавить в карточку другие товары</button></div>`}
-      <p class="hint" style="margin-top:8px">Объединять можно только карточки одного предмета, до 30 в группе${group.length ? ` (свободно ${Math.max(0, free)})` : ''}.</p></div></section>`;
+      ${data.trashed ? '' : `<div class="row-actions" style="margin-top:10px"><button type="button" class="btn small primary" data-action="glue-open" title="Объединять можно только карточки одного предмета, до 30 в группе"${same.length && free > 0 ? '' : ' disabled'}>Добавить в карточку другие товары</button></div>`}
+      ${group.length ? `<p class="hint" style="margin-top:8px">Свободно ${Math.max(0, free)} из 30</p>` : ''}</div></section>`;
   }
   // --- Окно «Добавить в карточку другие товары»: несколько карточек того же предмета сразу (как в кабинете WB) ---
   // Список — карточки того же предмета не из этой склейки. Выбрать можно столько, чтобы в склейке было не больше 30.
@@ -658,7 +654,7 @@
   }
   function panelTrash() {
     if (view.data.trashed) return '';
-    return `<section class="panel"><div class="panel-head"><h2>Корзина</h2></div><div class="panel-body"><p class="hint" style="margin-bottom:10px">Карточка в корзине продаётся, пока есть остатки. Без остатков WB удаляет её через 30 дней; до этого её можно восстановить.</p><button type="button" class="btn small danger" data-action="trash">Перенести в корзину</button></div></section>`;
+    return `<section class="panel"><div class="panel-head"><h2>Корзина</h2></div><div class="panel-body"><button type="button" class="btn small danger" data-action="trash" title="Карточка в корзине продаётся, пока есть остатки. Без остатков WB удаляет её через 30 дней; до этого её можно восстановить.">Перенести в корзину</button></div></section>`;
   }
   function updateSavebar() {
     if (!view.draft || view.data?.trashed) {

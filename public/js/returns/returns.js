@@ -163,6 +163,7 @@ function renderReturns() {
   if (!data) {
     const text = returnsView.error ? `Не удалось загрузить возвраты: ${escapeHtml(returnsView.error)}` : 'Загрузка возвратов…';
     $('#returnMetrics').innerHTML = '';
+    $('.returns-overview').classList.remove('hidden');
     $('#returnPickup').innerHTML = `<p class="rating-empty">${text}</p>`;
     $('#returnTypes').innerHTML = '';
     $('#returnTop').innerHTML = '';
@@ -196,13 +197,15 @@ function renderReturnSummary(data) {
       ready.length,
       ready.length
         ? `в ${offices} ${pluralRu(offices, ['ПВЗ', 'ПВЗ', 'ПВЗ'])}${soonest ? ` · ближайший срок ${returnDate(soonest)}` : ''}`
-        : 'забирать нечего',
+        : '',
       '#7651e5'
     ],
-    ['В пути', transit.length, transit.length ? 'едут в ПВЗ выдачи' : 'нет возвратов в пути', '#f0a04b'],
+    ['В пути', transit.length, transit.length ? 'едут в ПВЗ выдачи' : '', '#f0a04b'],
     ['Получено', done.length, `за ${period}`, '#318f68'],
-    ['Не забрано', lost.length, lost.length ? 'истёк срок хранения или отменено по задержке' : `за ${period} — ни одного`, '#e76464']
+    ['Не забрано', lost.length, lost.length ? 'истёк срок хранения или отменено по задержке' : `за ${period}`, '#e76464']
   ];
+  // Возвратов нет совсем — об этом говорит одно сообщение под таблицей, панели ПВЗ и типов не нужны.
+  $('.returns-overview').classList.toggle('hidden', !all.length);
   $('#returnMetrics').innerHTML = metrics
     .map(
       x =>
@@ -231,8 +234,9 @@ function renderReturnSummary(data) {
       b.ready - a.ready ||
       b.transit - a.transit
   );
-  $('#returnPickupNote').textContent =
-    `${fmtNum(ready.length)} готово к выдаче · ${fmtNum(transit.length)} в пути · активные за последние 3 месяца${data.demo ? ' · демо-данные' : ''}`;
+  $('#returnPickupNote').textContent = active.length
+    ? `${fmtNum(ready.length)} готово к выдаче · ${fmtNum(transit.length)} в пути · активные за последние 3 месяца${data.demo ? ' · демо-данные' : ''}`
+    : '';
   $('#returnPickup').innerHTML = list.length
     ? list
         .map(group => {
@@ -244,7 +248,7 @@ function renderReturnSummary(data) {
           return `<button type="button" class="returns-pickup-row" data-return-office="${escapeHtml(group.address)}" title="Показать возвраты этого ПВЗ в таблице"><span><strong>${escapeHtml(group.address)}</strong><span class="rating-issues">${group.ready ? `<em class="ready">${fmtNum(group.ready)} готово к выдаче</em>` : ''}${group.transit ? `<em class="transit">${fmtNum(group.transit)} в пути</em>` : ''}</span></span><span class="returns-pickup-when">${when}</span></button>`;
         })
         .join('')
-    : '<p class="rating-empty">Активных возвратов нет — забирать ничего не нужно.</p>';
+    : '<p class="rating-empty">Забирать нечего.</p>';
   // Типы возвратов и товары, которые возвращают чаще, — по всем возвратам таблицы.
   const types = new Map();
   all.forEach(item => types.set(item.returnType, (types.get(item.returnType) || 0) + 1));
@@ -317,8 +321,14 @@ function renderReturnTable() {
     pageCount = Math.ceil(rows.length / returnsView.pageSize);
   returnsView.page = Math.min(Math.max(1, returnsView.page), Math.max(1, pageCount));
   const pageRows = rows.slice((returnsView.page - 1) * returnsView.pageSize, returnsView.page * returnsView.pageSize);
-  $('#returnCount').textContent =
-    `${fmtNum(rows.length)} из ${fmtNum(all.length)} · активные за 3 месяца и завершённые за ${returnPeriodText(returnsView.data)}`;
+  $('#returnCount').textContent = all.length
+    ? `${fmtNum(rows.length)} из ${fmtNum(all.length)} · активные за 3 месяца и завершённые за ${returnPeriodText(returnsView.data)}`
+    : '';
+  // Пусто без фильтров — возвратов нет вообще; пусто с фильтрами — не нашлось по ним.
+  $('#emptyReturnsTitle').textContent = all.length ? 'Возвратов не найдено' : 'Возвратов нет';
+  $('#emptyReturnsText').textContent = all.length
+    ? 'Измените фильтры или период.'
+    : `Ни активных, ни завершённых за ${returnPeriodText(returnsView.data)}.`;
   // Заголовки создаются один раз — так сохраняются ширины столбцов (column-widths.js); при сортировке меняется только стрелка.
   const head = $('#returnHead');
   if (!head.children.length)

@@ -249,16 +249,22 @@ function renderZones() {
       ? zoneDates(state.period.from, state.period.to)
       : zoneDates(loaded.from, loaded.to);
   const missing = zoneMissing(active, new Set(received.map(day => day.date)));
-  const noCatalog = !nms ? received.filter(day => !day.catalog).map(day => ddmmOf(day.date)) : [];
+  // Дни без отдельного каталога — диапазонами («17.11–23.11»), а не списком дат.
+  const noCatalog = nms
+    ? ''
+    : zoneMissing(
+        received.map(day => day.date).sort(),
+        new Set(received.filter(day => day.catalog).map(day => day.date))
+      );
   const when = data.updatedAt
     ? new Date(data.updatedAt).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
     : '';
   note.innerHTML =
     zoneExtNote() +
     [
-      data.demo ? 'Демо-данные.' : `Из кабинета WB через расширение${when ? `, последняя передача ${when}` : ''}.`,
+      data.demo ? 'Демо-данные.' : `Из расширения${when ? ` на ${when}` : ''}.`,
       missing ? `Нет данных за ${missing}. ${how}` : '',
-      noCatalog.length ? `За ${noCatalog.join(', ')} WB не отдал каталог отдельно — поиск и каталог одной строкой.` : '',
+      noCatalog ? `<span title="WB не отдал каталог отдельно — поиск и каталог одной строкой">За ${noCatalog} каталог вместе с поиском.</span>` : '',
       nms && zones.product !== ZONE_OTHER
         ? `По артикулу WB отдаёт каталог только итогом за период, поэтому по дням поиск и каталог — одной строкой${catalogEntry ? ', а в «За период» разделены' : ''}.`
         : ''

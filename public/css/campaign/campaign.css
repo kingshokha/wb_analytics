@@ -35,7 +35,8 @@ select {
 main {
   grid-column: 2;
   min-width: 0;
-  padding: 34px 42px 90px;
+  /* Снизу место под плавающие кнопки (заметки, действия с запросами) — иначе они закроют последние строки. */
+  padding: 10px 5px 90px;
 }
 .page-head {
   display: flex;
@@ -2115,9 +2116,6 @@ tbody tr.total-row:hover td {
 .minis-panel .panel-head {
   flex-wrap: wrap;
 }
-.minis-note {
-  font-size: 12px;
-}
 .minis-body {
   padding: 16px 20px 20px;
 }
@@ -2597,7 +2595,7 @@ table.metrics-table {
 }
 @media (max-width: 980px) {
   main {
-    padding: 28px 24px 90px;
+    padding: 10px 5px 90px;
   }
 }
 @media (max-width: 680px) {

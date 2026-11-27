@@ -833,7 +833,7 @@ nav {
 }
 main {
   grid-column: 2;
-  padding: 34px 42px 60px;
+  padding: 10px 5px 0;
   min-width: 0;
 }
 header {
@@ -966,6 +966,9 @@ p {
 .panel-head p {
   font-size: 11px;
   margin: 0;
+}
+.panel-head p:empty {
+  display: none;
 }
 .filters {
   display: flex;
@@ -1304,7 +1307,7 @@ td small {
     grid-template-columns: repeat(2, 1fr);
   }
   main {
-    padding: 28px 24px;
+    padding: 10px 5px 0;
   }
   .funnel-layout {
     grid-template-columns: 1fr;

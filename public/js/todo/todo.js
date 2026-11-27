@@ -90,7 +90,7 @@ function ensureTodoUi() {
   todoView.ready = true;
   $('#todoForm').innerHTML =
     todoFormFields() +
-    '<div class="todo-form-foot"><span class="todo-hint">Enter — добавить, Shift+Enter — новая строка. Ссылки в тексте открываются по клику.</span><button class="primary" type="submit">Добавить дело</button></div>';
+    '<div class="todo-form-foot"><button class="primary todo-add" type="submit" title="Enter — добавить, Shift+Enter — новая строка. Ссылки в тексте открываются по клику.">Добавить дело</button></div>';
   // Тип и приоритет — общий компонент (js/common/multi-filter.js).
   const changed = () => {
     todoView.limit = TODO_PAGE;
