@@ -7,7 +7,7 @@
  * Листы:
  *   «Цены»              — текущие цены и скидки всех товаров;
  *   «Реклама»           — текущие статусы и настройки всех рекламных кампаний;
- *   «История»           — строка на каждое изменение: цена, скидка, статус кампании и т. п. (новые сверху);
+ *   «История»           — строка на каждое изменение: цена, скидка, статус кампании и т. п. (новые внизу);
  *   «Заказы»            — строка на заказ из «Ленты заказов»: время каждого статуса, тип отмены, текущий статус;
  *   «Журнал обновлений» — когда обновлялось и что вернул WB по каждому кабинету.
  * Токены хранятся в свойствах скрипта (не в ячейках). Меню «WB» появляется после открытия таблицы.
@@ -67,6 +67,8 @@ const AD_STATUS_ORDER = { 'Активна': 0, 'На паузе': 1, 'Готов
 const BID_TYPES = { unified: 'Единая', manual: 'Ручная' };
 const PAYMENT_TYPES = { cpm: 'За показы (CPM)', cpc: 'За клики (CPC)' };
 const DATE_FORMAT = 'dd.MM.yyyy HH:mm';
+// Сколько прогон обновления может идти: Google останавливает скрипт через 6 минут, 30 секунд — запас на журнал.
+const RUN_LIMIT = 330000;
 
 // ---------- Меню ----------
 function onOpen() {
@@ -152,15 +154,17 @@ function doGet(e) {
   const rowsOf = function (name, width) { const target = book.getSheetByName(name); return target && target.getLastRow() > 1 ? target.getRange(2, 1, target.getLastRow() - 1, width).getValues() : []; };
   const fresh = function (row) { return !fromTime || (row[0] instanceof Date && row[0].getTime() >= fromTime); };
   const byId = function (value) { return !ids.length || ids.indexOf(String(value)) >= 0; };
+  // Новые строки дописываются в конец листа, поэтому перед обрезкой — от новых к старым: отдаются самые свежие.
+  const newestFirst = function (a, b) { return (b[0] instanceof Date ? b[0].getTime() : 0) - (a[0] instanceof Date ? a[0].getTime() : 0); };
   let items = [], current = null;
   if (!sections.length || mainSections.length) {
     items = rowsOf(SHEET_NAMES.history, HISTORY_HEADERS.length).filter(function (row) { return byId(row[3]) && (!mainSections.length || mainSections.indexOf(String(row[2])) >= 0) && fresh(row); })
-      .slice(0, 3000).map(function (row) { return { at: isoDate(row[0]), cabinet: row[1], section: row[2], id: String(row[3]), title: row[4], what: row[5], before: row[6], after: row[7] }; });
+      .sort(newestFirst).slice(0, 3000).map(function (row) { return { at: isoDate(row[0]), cabinet: row[1], section: row[2], id: String(row[3]), title: row[4], what: row[5], before: row[6], after: row[7] }; });
   }
   if (stockTypes.length) {
     // «История остатков»: Когда | Кабинет | Тип | Артикул WB | Товар | Склад | Было | Стало — склад отдаётся в what.
     items = items.concat(rowsOf(SHEET_NAMES.stockHistory, STOCK_HISTORY_HEADERS.length).filter(function (row) { return stockTypes.indexOf(String(row[2])) >= 0 && byId(row[3]) && fresh(row); })
-      .slice(0, 40000).map(function (row) { return { at: isoDate(row[0]), cabinet: row[1], section: 'Остатки ' + row[2], id: String(row[3]), title: row[4], what: row[5], before: row[6], after: row[7] }; }));
+      .sort(newestFirst).slice(0, 40000).map(function (row) { return { at: isoDate(row[0]), cabinet: row[1], section: 'Остатки ' + row[2], id: String(row[3]), title: row[4], what: row[5], before: row[6], after: row[7] }; }));
     current = rowsOf(SHEET_NAMES.stocks, STOCK_HEADERS.length).filter(function (row) { return stockTypes.indexOf(String(row[1])) >= 0 && byId(row[3]); })
       .map(function (row) { return { cabinet: row[0], type: row[1], warehouse: row[2], nmId: String(row[3]), vendorCode: row[4], name: row[5], quantity: Number(row[6]) || 0, updatedAt: isoDate(row[7]) }; });
   }
@@ -473,7 +477,7 @@ function refreshAll() {
     const cabinets = getCabinets();
     if (!cabinets.length) { notify('Сначала добавьте кабинет: WB → Добавить кабинет (токен)'); return; }
     notify('Обновляю цены, рекламу и остатки…');
-    const book = SpreadsheetApp.getActive(), now = new Date();
+    const book = SpreadsheetApp.getActive(), now = new Date(), started = Date.now();
     const priceRows = [], adRows = [], bidRowsAll = [], minusRowsAll = [], stockRowsAll = [], logRows = [], failedPrices = {}, failedAds = {}, failedMinus = {}, failedStocks = {};
     const orderFeeds = [];
     cabinets.forEach(function (cabinet) {
@@ -508,48 +512,70 @@ function refreshAll() {
       } catch (error) { notes.push('заказы: ошибка — ' + error.message + ' (догрузятся при следующем обновлении)'); }
       logRows.push([now, cabinet.name, notes.join('; ')]);
     });
+    // Запись — по шагам; время каждого шага уходит в «Журнал обновлений». Google останавливает скрипт через 6 минут:
+    // если до лимита не хватает запаса на шаг, он переносится на следующий час целиком — лист остаётся прежним,
+    // и его изменения запишутся в следующий раз одной строкой («7 → 5»), а не потеряются.
+    const timings = ['загрузка из WB ' + Math.round((Date.now() - started) / 1000) + ' с'], skipped = [];
+    const step = function (name, reserve, write) {
+      if (Date.now() - started + reserve > RUN_LIMIT) { skipped.push(name); return; }
+      const at = Date.now();
+      write();
+      timings.push(name + ' ' + Math.round((Date.now() - at) / 1000) + ' с');
+    };
     // Заказы пишутся первыми: лист небольшой, а запись больших листов («Цены», «История») при перегруженной таблице
     // иногда обрывается ошибкой Google «слишком долго не может получить доступ к документу» — заказы от неё не зависят.
     // Ошибка самих «Заказов» не мешает остальным листам: она пишется строкой в «Журнал».
     let orderResult = { added: 0, updated: 0 };
-    if (orderFeeds.length) {
+    if (orderFeeds.length) step('заказы', 30000, function () {
       try { orderResult = writeOrders(book, orderFeeds, now); } catch (error) { logRows.push([now, '—', 'лист «Заказы»: ошибка записи — ' + error.message]); }
-    }
+    });
+    // Остатки — сразу после заказов: их пачки маленькие, и долгая запись цен больше не может их оборвать.
+    // Строка «Истории остатков» на каждое изменение по складу и артикулу; появился остаток — «было 0»,
+    // закончился (строки больше нет) — «стало 0».
+    stockRowsAll.sort(function (a, b) { return String(a[0]).localeCompare(b[0]) || String(a[1]).localeCompare(b[1]) || String(a[2]).localeCompare(b[2]) || String(a[4]).localeCompare(b[4]) || a[3] - b[3]; });
+    const stockHistory = [];
+    step('остатки', 30000, function () {
+      writeWithHistory(book, stockHistory, now, { name: SHEET_NAMES.stocks, headers: STOCK_HEADERS, rows: stockRowsAll, failed: failedStocks, tracked: [6],
+        key: function (row) { return row[0] + '|' + row[1] + '|' + row[2] + '|' + row[3]; }, absent: { column: 6, value: 0 },
+        section: function (row) { return row[1]; }, id: function (row) { return row[3]; }, label: function (row) { return row[2]; },
+        title: function (row) { return [row[4], row[5]].filter(String).join(' · '); },
+        log: { name: SHEET_NAMES.stockHistory, headers: STOCK_HISTORY_HEADERS }, formats: { 7: '#,##0', 8: DATE_FORMAT } });
+    });
     priceRows.sort(function (a, b) { return String(a[0]).localeCompare(b[0]) || String(a[2]).localeCompare(b[2]) || a[1] - b[1]; });
     const statusOrder = function (row) { return row[3] in AD_STATUS_ORDER ? AD_STATUS_ORDER[row[3]] : 9; };
     adRows.sort(function (a, b) { return String(a[0]).localeCompare(b[0]) || statusOrder(a) - statusOrder(b) || String(a[2]).localeCompare(b[2]); });
     bidRowsAll.sort(function (a, b) { return String(a[0]).localeCompare(b[0]) || statusOrder(a) - statusOrder(b) || String(a[2]).localeCompare(b[2]) || String(a[6]).localeCompare(b[6]) || a[5] - b[5]; });
     const history = [];
-    writeWithHistory(book, history, now, { name: SHEET_NAMES.prices, headers: PRICE_HEADERS, rows: priceRows, failed: failedPrices, tracked: PRICE_TRACKED, section: 'Цены',
-      title: function (row) { return [row[2], row[3]].filter(String).join(' · '); }, summary: function (row) { return row[6]; },
-      formats: { 5: '#,##0', 6: '0', 7: '#,##0', 8: '0', 9: '#,##0', 11: DATE_FORMAT } });
-    writeWithHistory(book, history, now, { name: SHEET_NAMES.ads, headers: AD_HEADERS, rows: adRows, failed: failedAds, tracked: AD_TRACKED, section: 'Реклама',
-      title: function (row) { return row[2]; }, summary: function (row) { return row[3]; }, listColumn: AD_LIST_COLUMN,
-      formats: { 9: '@', 10: '@', 11: DATE_FORMAT, 12: DATE_FORMAT, 13: DATE_FORMAT, 14: DATE_FORMAT } });
+    // Цены — самый тяжёлый шаг (лист на десятки тысяч товаров и иногда тысячи изменений), ему нужен больший запас.
+    step('цены', 120000, function () {
+      writeWithHistory(book, history, now, { name: SHEET_NAMES.prices, headers: PRICE_HEADERS, rows: priceRows, failed: failedPrices, tracked: PRICE_TRACKED, section: 'Цены',
+        title: function (row) { return [row[2], row[3]].filter(String).join(' · '); }, summary: function (row) { return row[6]; },
+        formats: { 5: '#,##0', 6: '0', 7: '#,##0', 8: '0', 9: '#,##0', 11: DATE_FORMAT } });
+    });
+    step('реклама', 30000, function () {
+      writeWithHistory(book, history, now, { name: SHEET_NAMES.ads, headers: AD_HEADERS, rows: adRows, failed: failedAds, tracked: AD_TRACKED, section: 'Реклама',
+        title: function (row) { return row[2]; }, summary: function (row) { return row[3]; }, listColumn: AD_LIST_COLUMN,
+        formats: { 9: '@', 10: '@', 11: DATE_FORMAT, 12: DATE_FORMAT, 13: DATE_FORMAT, 14: DATE_FORMAT } });
+    });
     // Ставки: ключ — кабинет, кампания и артикул; появление и пропажа артикулов уже видны в «Реклама → Артикулы WB».
-    writeWithHistory(book, history, now, { name: SHEET_NAMES.bids, headers: BID_HEADERS, rows: bidRowsAll, failed: failedAds, tracked: BID_TRACKED, section: 'Ставки',
-      key: function (row) { return row[0] + '|' + row[1] + '|' + row[5]; }, presence: false,
-      title: function (row) { return row[2] + ' · ' + row[5] + (row[6] ? ' (' + row[6] + ')' : ''); },
-      formats: { 9: '#,##0.00', 10: '#,##0.00', 11: DATE_FORMAT } });
+    step('ставки', 30000, function () {
+      writeWithHistory(book, history, now, { name: SHEET_NAMES.bids, headers: BID_HEADERS, rows: bidRowsAll, failed: failedAds, tracked: BID_TRACKED, section: 'Ставки',
+        key: function (row) { return row[0] + '|' + row[1] + '|' + row[5]; }, presence: false,
+        title: function (row) { return row[2] + ' · ' + row[5] + (row[6] ? ' (' + row[6] + ')' : ''); },
+        formats: { 9: '#,##0.00', 10: '#,##0.00', 11: DATE_FORMAT } });
+    });
     // Минус-фразы: в «Историю» — какие запросы исключили и какие вернули в работу, по кампании и артикулу.
     minusRowsAll.sort(function (a, b) { return String(a[0]).localeCompare(b[0]) || statusOrder(a) - statusOrder(b) || String(a[2]).localeCompare(b[2]) || a[4] - b[4]; });
-    writeWithHistory(book, history, now, { name: SHEET_NAMES.minus, headers: MINUS_HEADERS, rows: minusRowsAll, failed: failedMinus, tracked: MINUS_TRACKED, section: 'Ключевые слова',
-      key: function (row) { return row[0] + '|' + row[1] + '|' + row[4]; }, presence: false, listColumn: 7,
-      list: { separator: MINUS_SEPARATOR, quote: true, counts: true, words: { removed: ['возвращён в работу', 'возвращены в работу'], added: ['исключён', 'исключены'] } },
-      label: function () { return 'Исключённые запросы'; },
-      title: function (row) { return row[2] + ' · ' + row[4] + (row[5] ? ' (' + row[5] + ')' : ''); },
-      formats: { 9: DATE_FORMAT } });
-    // Остатки: строка «Истории остатков» на каждое изменение по складу и артикулу; появился остаток — «было 0»,
-    // закончился (строки больше нет) — «стало 0».
-    stockRowsAll.sort(function (a, b) { return String(a[0]).localeCompare(b[0]) || String(a[1]).localeCompare(b[1]) || String(a[2]).localeCompare(b[2]) || String(a[4]).localeCompare(b[4]) || a[3] - b[3]; });
-    const stockHistory = [];
-    writeWithHistory(book, stockHistory, now, { name: SHEET_NAMES.stocks, headers: STOCK_HEADERS, rows: stockRowsAll, failed: failedStocks, tracked: [6],
-      key: function (row) { return row[0] + '|' + row[1] + '|' + row[2] + '|' + row[3]; }, absent: { column: 6, value: 0 },
-      section: function (row) { return row[1]; }, id: function (row) { return row[3]; }, label: function (row) { return row[2]; },
-      title: function (row) { return [row[4], row[5]].filter(String).join(' · '); },
-      formats: { 7: '#,##0', 8: DATE_FORMAT } });
-    prependRows(sheet(book, SHEET_NAMES.history), HISTORY_HEADERS, history, { 1: DATE_FORMAT });
-    prependRows(sheet(book, SHEET_NAMES.stockHistory), STOCK_HISTORY_HEADERS, stockHistory, { 1: DATE_FORMAT });
+    step('минус-фразы', 30000, function () {
+      writeWithHistory(book, history, now, { name: SHEET_NAMES.minus, headers: MINUS_HEADERS, rows: minusRowsAll, failed: failedMinus, tracked: MINUS_TRACKED, section: 'Ключевые слова',
+        key: function (row) { return row[0] + '|' + row[1] + '|' + row[4]; }, presence: false, listColumn: 7,
+        list: { separator: MINUS_SEPARATOR, quote: true, counts: true, words: { removed: ['возвращён в работу', 'возвращены в работу'], added: ['исключён', 'исключены'] } },
+        label: function () { return 'Исключённые запросы'; },
+        title: function (row) { return row[2] + ' · ' + row[4] + (row[5] ? ' (' + row[5] + ')' : ''); },
+        formats: { 9: DATE_FORMAT } });
+    });
+    logRows.push([now, '—', 'время: ' + timings.join(', ') + ', всего ' + Math.round((Date.now() - started) / 1000) + ' с' +
+      (skipped.length ? '; не успели до лимита Google в 6 минут, перенесено на следующий час: ' + skipped.join(', ') : '')]);
     prependRows(sheet(book, SHEET_NAMES.log), LOG_HEADERS, logRows, { 1: DATE_FORMAT });
     notify('Готово: товаров ' + priceRows.length + ', кампаний ' + adRows.length + ', ставок ' + bidRowsAll.length + ', остатков ' + stockRowsAll.length +
       ', изменений ' + history.length + ', изменений остатков ' + stockHistory.length + ', новых заказов ' + orderResult.added + ', обновлено заказов ' + orderResult.updated);
@@ -566,14 +592,18 @@ function refreshAll() {
 // summary(row) — значение для «Появилось / Пропало», key(row) — по умолчанию кабинет + ID,
 // presence: false — не писать «Появилось / Пропало», absent: { column, value } — вместо «Появилось / Пропало»
 // писать изменение этого столбца от value и до value (остаток появился: 0 → 5, закончился: 5 → 0),
-// listColumn и list — столбец-список и настройки listDiff, formats.
+// listColumn и list — столбец-список и настройки listDiff, formats,
+// log — лист истории { name, headers }: по умолчанию «История», у остатков — «История остатков».
+// Отличия дописываются в лист истории сразу, до записи самого листа: если прогон оборвётся между ними, следующий
+// прогон запишет изменение ещё раз (повтор), а не потеряет его, как было при истории в самом конце прогона.
 function writeWithHistory(book, history, now, options) {
   const headers = options.headers, rows = options.rows, failed = options.failed, title = options.title;
   const key = options.key || function (row) { return row[0] + '|' + row[1]; }, presence = options.presence !== false;
   const sectionOf = typeof options.section === 'function' ? options.section : function () { return options.section; };
   const idOf = options.id || function (row) { return row[1]; };
   const labelOf = options.label || function (row, index) { return headers[index]; };
-  const record = function (row, what, before, after) { history.push([now, row[0], sectionOf(row), idOf(row), title(row), what, before, after]); };
+  const log = options.log || { name: SHEET_NAMES.history, headers: HISTORY_HEADERS }, found = [];
+  const record = function (row, what, before, after) { found.push([now, row[0], sectionOf(row), idOf(row), title(row), what, before, after]); };
   const absent = options.absent;
   const target = sheet(book, options.name), lastColumn = Math.max(1, target.getLastColumn ? target.getLastColumn() : headers.length);
   const sameLayout = target.getLastRow() > 0 && target.getRange(1, 1, 1, lastColumn).getValues()[0].filter(String).join('|') === headers.join('|');
@@ -604,6 +634,8 @@ function writeWithHistory(book, history, now, options) {
     if (absent) record(row, labelOf(row, absent.column), row[absent.column], absent.value);
     else record(row, 'Пропало из списка', display(options.summary(row)), '—');
   });
+  appendRows(sheet(book, log.name), log.headers, found);
+  found.forEach(function (row) { history.push(row); });
   writeSheet(target, headers, rows.concat(kept), options.formats);
 }
 function rowsHaveCabinet(rows, cabinet) { return rows.some(function (row) { return row[0] === cabinet; }); }
@@ -695,7 +727,35 @@ function writeSheet(target, headers, rows, formats) {
   if (rows.length) { target.getRange(2, 1, rows.length, headers.length).setValues(rows); applyFormats(target, 2, rows.length, formats); }
   if (target.getLastRow() < 200) target.autoResizeColumns(1, headers.length);
 }
-// Новые строки — сверху, сразу под заголовком. Старые строки не удаляются: история хранится вся.
+// «История» и «История остатков»: новые строки — в конец листа. Запись в конец ничего не сдвигает, и её время не растёт
+// вместе с листом; вставка в начало сдвигала все прошлые строки, и на листе в десятки тысяч строк большая пачка
+// изменений (тысячи цен) писалась минутами — прогон упирался в лимит Google в 6 минут (ноябрь 2026).
+// Старые строки не удаляются: история хранится вся. Формат даты и обычный шрифт задаёт ensureAppendLayout.
+function appendRows(target, headers, rows) {
+  ensureAppendLayout(target, headers);
+  if (!rows.length) return;
+  const last = target.getLastRow(), free = target.getMaxRows() - last;
+  if (free < rows.length) target.insertRowsAfter(target.getMaxRows(), rows.length - free);
+  const block = target.getRange(last + 1, 1, rows.length, headers.length).setValues(rows);
+  // Строки сразу под заголовком унаследовали бы его жирный шрифт — только у пустого листа.
+  if (last <= 1) { block.setFontWeight('normal').setBackground(null); target.getRange(2, 1, rows.length, 1).setNumberFormat(DATE_FORMAT); }
+}
+// Один раз на лист (отметка в свойствах скрипта): строки, записанные раньше новыми сверху, сортируются по времени —
+// от старых к новым, как теперь дописываются; всем строкам — обычный шрифт и формат даты в «Когда». Новые строки в конце
+// наследуют формат от строки выше, поэтому дальше ничего не форматируется. Строки не удаляются, только переставляются.
+function ensureAppendLayout(target, headers) {
+  if (target.getLastRow() === 0) header(target, headers);
+  const props = PropertiesService.getScriptProperties(), flag = 'appendLayout:' + target.getName();
+  if (props.getProperty(flag)) return;
+  const last = target.getLastRow(), rows = target.getMaxRows() - 1;
+  if (last > 2) target.getRange(2, 1, last - 1, headers.length).sort({ column: 1, ascending: true });
+  if (rows > 0) {
+    target.getRange(2, 1, rows, headers.length).setFontWeight('normal').setBackground(null);
+    target.getRange(2, 1, rows, 1).setNumberFormat(DATE_FORMAT);
+  }
+  props.setProperty(flag, '1');
+}
+// «Журнал обновлений»: новые строки — сверху (лист маленький, сдвиг строк дешёвый). Старые строки не удаляются.
 function prependRows(target, headers, rows, formats) {
   if (target.getLastRow() === 0) header(target, headers);
   if (!rows.length) return;
