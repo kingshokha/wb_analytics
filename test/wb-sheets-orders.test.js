@@ -205,6 +205,31 @@ test('«Убрать пустые столбцы»: только пустые с
   assert.match(alerts[alerts.length - 1][1], /Всего: /);
 });
 
+test('запросы к WB: «Адрес недоступен» повторяется с паузами, потом ошибка с числом попыток', () => {
+  const pauses = [];
+  let failures = 2,
+    calls = 0;
+  const response = { getResponseCode: () => 200, getContentText: () => '{"ok":true}' };
+  const context = vm.createContext({
+    UrlFetchApp: {
+      fetch: () => {
+        calls++;
+        if (failures-- > 0) throw new Error('Адрес недоступен: https://content-api.wildberries.ru/content/v2/get/cards/list');
+        return response;
+      }
+    },
+    Utilities: { sleep: ms => pauses.push(ms) }
+  });
+  vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'google-sheets', 'wb-sheets.gs'), 'utf8'), context);
+  assert.deepEqual({ ...context.wbFetch('https://content-api.wildberries.ru/x', 'token', {}) }, { ok: true });
+  assert.equal(calls, 3);
+  assert.deepEqual(pauses, [2000, 5000]);
+  failures = 10;
+  calls = 0;
+  assert.throws(() => context.wbFetch('https://content-api.wildberries.ru/x', 'token'), /Адрес недоступен.*\(попыток: 4\)/);
+  assert.equal(calls, 4);
+});
+
 test('лист «Заказы»: при чужих заголовках запись не идёт', () => {
   const { context, book } = script();
   const sheet = book.insertSheet('Заказы');

@@ -268,6 +268,21 @@ function disableHourly(silent) {
 }
 
 // ---------- Запросы к WB ----------
+// Сбой связи: Google не смог соединиться с WB — исключение «Адрес недоступен: <адрес>» (Address unavailable) без ответа
+// WB. Скрипт работает на серверах Google за рубежом, и связь с WB иногда ненадолго пропадает; одна сорвавшаяся страница
+// из сотни обрывала весь шаг (карточки или цены кабинета за этот час). Поэтому тот же запрос повторяется ещё 3 раза
+// с паузами 2, 5 и 10 секунд; не помогло — ошибка уходит дальше, в «Журнал обновлений».
+const NETWORK_RETRY_PAUSES = [2000, 5000, 10000];
+function fetchWithRetry(url, options) {
+  for (let retry = 0; ; retry++) {
+    try {
+      return UrlFetchApp.fetch(url, options);
+    } catch (error) {
+      if (retry >= NETWORK_RETRY_PAUSES.length) throw new Error(error.message + ' (попыток: ' + (retry + 1) + ')');
+      Utilities.sleep(NETWORK_RETRY_PAUSES[retry]);
+    }
+  }
+}
 // При лимите WB (429) и сбоях сервера (5xx) ждём и повторяем до 4 раз (attempts — сколько попыток; у ленты заказов
 // лимит 1 запрос в минуту, повторять её через секунды бесполезно).
 function wbFetch(url, token, body, attempts) {
@@ -275,7 +290,7 @@ function wbFetch(url, token, body, attempts) {
   if (body) { options.contentType = 'application/json'; options.payload = JSON.stringify(body); }
   const tries = attempts || 4;
   for (let attempt = 0; attempt < tries; attempt++) {
-    const response = UrlFetchApp.fetch(url, options), code = response.getResponseCode();
+    const response = fetchWithRetry(url, options), code = response.getResponseCode();
     if (code === 429 || code >= 500) {
       if (attempt === tries - 1) break;
       Utilities.sleep(Math.min(30000, (code === 429 ? 6000 : 2000) * (attempt + 1)));
